@@ -15,7 +15,8 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
    `git clone https://github.com/VysseCodes/HMG-API tmp/HMG-API`,
    `git clone https://github.com/VysseCodes/HMG-Leafia-Plus tmp/HMG-Leafia-Plus`.
    Many `.agents` citations point into `tmp/`. Car reports go in `tmp/car-reports/` (never commit them).
-4. Add new findings to `.agents/` (and list new docs in `.agents/README.md`).
+4. Add new findings to `.agents/` (and list new docs in `.agents/README.md`). For mapping work,
+   read `docs/mapping-new-firmware.md` and `UPSTREAM.md` as well.
 
 ## Target device (verified facts)
 
@@ -43,15 +44,17 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 - **Exact restore on uninstall is the top priority.** Restores are guarded: only undo bytes/values
   we wrote; if the target changed since (e.g. an official firmware update), report conflict, keep
   backups and fail the uninstall closed. Baselines are bound to `ro.build.product`.
-- **Root channel:** the app is unprivileged and calls only `hmg-seogaemo-root <id> <verb>` with
+- **Root channel:** the app is unprivileged and calls only fixed `hmg-seogaemo-root <id> <verb>`
+  or `hmg-seogaemo-root map status|run|verify|export` commands with
   fixed, validated arguments. NEMESIS root is reachable by any UID; never add a verb that takes
   free-form shell or paths.
 - **No key material in git.** Only `keys/ota-manifest-public.pem` is committed. Release secrets live
   in the GitHub environment `release` (tags `v*`); owners keep a local backup.
-- **Licensing:** `modules/wireless-carplay-and-aa` contains AGPL-3.0 code adapted from HMG-API
-  (see `NOTICE.md`). Keep original headers, mark modified files. The repository LICENSE is **not
-  decided yet**; distribution must be AGPL-3.0-compatible. Everything else is our own code: do not
-  copy upstream code elsewhere without an owner decision.
+- **Licensing:** the repository is GNU AGPL-3.0 (`LICENSE`, `NOTICE.md`).
+  `modules/wireless-carplay-and-aa` contains AGPL-3.0 code adapted from HMG-API; keep original
+  headers and mark modified files. The core mapper, verifier, host mapper, and catalogue are
+  our own implementation. Do not copy upstream source into them. Keep stable hookpoint IDs and
+  provenance in `UPSTREAM.md`; run `tools/upstream-diff.sh` before translating upstream changes.
 - Commit messages: plain, no AI attribution / `Co-Authored-By` trailers.
 - **Confirm before anything non-trivial (car touch screens are easy to mis-tap).** Every action that
   changes files/properties/state on the unit or the app's persistent settings, or that starts work
@@ -74,6 +77,7 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 | `nemesis/package/` | NEMESIS package `hmg-seogaemo`: `NEMESIS.data`, `bin/` (`hmg-seogaemo-root`, `open.sh`, `install-apk.sh`), `lib/common.sh`, `core/update.sh`, `scripts/` (stable hook wrappers), `svc/reconcile.sh` |
 | `nemesis/usb/` | USB wrapper descriptor (`packages/hmg-seogaemo.zip`) |
 | `tools/` | module generator, packager, root-script lint, tests, `testlib/fakebin` (toolbox shims) |
+| `core/hookpoints/`, `core/map/`, `maps/` | full hookpoint catalogue, standalone API 19 mapper, bundled verified map data |
 | `keys/` | OTA manifest public key only |
 | `.agents/` | design, contracts, research, per-module notes |
 
@@ -81,6 +85,19 @@ The module list/graph is generated at build time from `modules/*/module.properti
 hand-edited list. Current modules: `wifi-client` (excludes `wireless-carplay-and-aa`),
 `wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`.
 Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, baselines, ledger).
+
+## Car mapping
+
+- The core owns mapping; modules declare stable IDs in `hookpoints.required`. The build validates
+  those manifests against the full catalogue. The bundled NEEV KOR map has 324 of 325 points;
+  `themesettings.split_item.type` remains unresolved and no module requires it.
+- `map status` is read-only and matches the exact product, onebin, Android release, and MD5 of every
+  stock file in `car.json`. Known maps get reflection verification once per boot on a worker.
+  Unknown firmware requires the confirmed **Map this car** action in Settings → Car mapping.
+  `map run` scans the full catalogue in a separate root `app_process`; it publishes only verified
+  points through the package API and ledger. Modules stay off unless all their required IDs pass.
+- `map export` and ordinary USB/adb ledger export include a PR-ready `maps/...` folder. See
+  `docs/mapping-new-firmware.md` for adb, host baksmali mapping, comparison, and PR steps.
 
 ## Build, test, release
 
@@ -118,7 +135,7 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 
 ## Known gaps / risks (not yet verified on a car)
 
-- Nothing has run on a real head unit yet; all tests use fakes and an emulator.
+- HMG-Seogaemo's mapper, verifier, and modules have not run on a real head unit; tests use fakes and an emulator.
 - `wireless-carplay-and-aa` replaces `/system/bin/app_process` (boot guard disables it after 3
   quick restarts). Dalvik offsets were proven on a US EV6 only. Keep an adb recovery path ready.
 - `wifi-client` STA vs the CarPlay AP on one radio: treated as mutually exclusive; concurrency is

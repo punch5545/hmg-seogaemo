@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Follows HMG-API tools/probe-test.py@4fab437 (host/on-car parity testing).
 """Build a synthetic Dalvik fixture and exercise the structural mapper."""
 import json
 import os

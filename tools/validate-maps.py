@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Follows HMG-API tools/test-hooks.py@4fab437 (catalogue coverage checks).
 """Validate independently authored hook rules, required points, and bundled maps."""
 import argparse
 import json
@@ -91,7 +92,7 @@ def validate_bundle(directory, points, stock_files, apps, required, map_root=Non
         fail(f"invalid car schema or forbidden field: {directory}")
     if not PRODUCT.fullmatch(car["product"]) or not PRODUCT.fullmatch(car["onebin"]) or not re.fullmatch(r"[0-9.]+", car["android"]):
         fail(f"invalid car identity: {directory}")
-    if set(car["files"]) != stock_files or not all(MD5.fullmatch(v) for v in car["files"].values()):
+    if not set(car["files"]) <= stock_files or not car["files"] or not all(MD5.fullmatch(v) for v in car["files"].values()):
         fail(f"stock hash coverage mismatch: {directory}")
     if set(car["app_files"]) != set(apps):
         fail(f"app file coverage mismatch: {directory}")
@@ -104,6 +105,10 @@ def validate_bundle(directory, points, stock_files, apps, required, map_root=Non
         fail(f"unknown or empty mapped points: {directory}")
     if set(mapped) & set(car["missing"]) or set(mapped) | set(car["missing"]) != set(points):
         fail(f"catalogue coverage mismatch: {directory}")
+    for key in mapped:
+        group = key.split(".", 1)[0]
+        if not set(apps[group]["files"]) <= set(car["files"]):
+            fail(f"stock hash missing for mapped point: {key}")
     if not set(car["by_reference"]) <= set(mapped):
         fail(f"invalid by_reference: {directory}")
     for key, value in mapped.items():

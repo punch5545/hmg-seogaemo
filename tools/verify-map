@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Follows HMG-API tools/test-hooks.py@4fab437 (map coverage checks).
 """Check a PR-ready maps folder and optionally compare two mapping results."""
 import argparse
 import importlib.util

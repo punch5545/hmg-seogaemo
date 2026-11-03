@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Follows HMG-API tools/test-hooks.py@4fab437 (host catalogue testing).
 """Synthetic smali shapes for the independent host mapper."""
 import importlib.util
 from pathlib import Path

@@ -11,7 +11,7 @@ Review date: 2026-11-03. Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR
 | `feature_flags` generates CarPlay/AA wireless permission XMLs and comments their removal lines; `patches.json` comments the hotspot removal line. | `sg_file_put` only for absent XMLs and `sg_file_replace_line` for exact active lines. Missing removal lines are no-ops, as in the upstream engine; duplicate lines are refused. An existing XML must declare the expected feature. We also add hotspot XML if absent on this KOR build. |
 | `persist.ium.support=carplay`; bridge `persist.sys.iap2.wifi=t`, `persist.iap2.iden.wireless=t`. | Same values via `sg_prop_set`; ledger restores live values and `/data/property` existence/content. |
 | `Wireless`, `AaTurns`, `dipo/{Dipo,Bridge,CpTurns}` Java hooks DiPO, iAP2, GPM, navigation, USB startService, BtSettings. | Copied with fixed upstream default settings. Korean BtSettings menu hook is a no-op; upstream changes only US/CAN. |
-| Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | Bundled under this module; single-mod loader replaces HMG-API app/engine/manager. `sg_zygote_install` now runs through the shared package API. |
+| Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | Wrapper, loader and hook JAR remain under this module; the core now selects and publishes the verified map. `sg_zygote_install` runs through the shared package API. |
 | Native `MemRecipe` on `libautoreceiver_infobank.so`, `libCarPlayCore.so`, `libCarPlayAudio.so`, `libCarPlayUtils.so`. | Same 5 recipes applied **in memory** after exact byte-region verification. Stock libraries stay untouched. No `lpatch` binary or rebuilt OEM APK/odex. KOR CarPlayCore hash `ef49c09b7ab5eb72298f9973443b66b3` is listed as Wi-Fi native; Utils hash `e85385d70194efe82cc8a6d0f66f5115` as converter native. Other builds may reject recipes. |
 | `libleafiaaac.so` for AAC/Opus. | Rebuilt from upstream `leafiaaac.c` with local clang/lld and installed through the package API. No manufacturer binary is bundled. |
 | Generic settings UI, HMG-API `hmgapid`, mod engine, APK patch transaction, network keeper. | Dropped. The upstream mod declares no network rule; this car's pre-install firewall report is permissive. No Wi-Fi client property or feature is requested. |
@@ -20,7 +20,7 @@ The `hmgapi.*` Java namespaces remain internally to preserve the mod's app-part 
 
 ## Exact car map and firmware guards
 
-`payload/data/car-map.json` contains the Car Report's 324 `map_car.points` and its file hashes. Root precheck and zygote loader both verify: `/system/framework/framework.odex` `ffe86fa1540c8dea3b5499b1191bb727`; `/system/app/HKMC_DiPO.odex` `3b26cdcbf3c43f75623311f2bdfc3471`; `/system/app/Iap2ServerApp.odex` `a672fd0e0070414f2eb70a2807117a6f`; `/system/app/HKMC_GPM.odex` `c38a7fd61f90973625401501215375db`. The report has no whole-file hash for `app_process`, `featurexml.cfg`, or native libraries. Native recipes verify their byte regions and skip unknown builds. HMG-API's Dalvik offsets were proven on US EV6; on-car KOR validation remains necessary despite the owner's working HMG-API report.
+The map is now `maps/hyundai/ioniq5/kor/260902/{map.json,car.json}` in the core package. It contains 324 resolved point names and all 18 stock-file MD5s reported for this car. The module declares 120 point IDs, including owner classes and supporting fields, in `hookpoints.required`. Root precheck requires `map status` to report a verified core map. The zygote loader reads the package API's active pointer under `/data/nemesis/backup/hmg-seogaemo/car-maps/`, checks the exact product, onebin, Android version, boot verification seal, and all map stock MD5s, then loads the published verified entries. The private payload map and `/system` map install were removed. The report has no whole-file hash for `app_process`, `featurexml.cfg`, or native libraries. Native recipes still verify their own byte regions. HMG-API's Dalvik offsets were proven on US EV6; on-car KOR validation remains necessary.
 
 Declared hook points and their exact resolved members on this car:
 
@@ -76,7 +76,6 @@ The package API must baseline each owned path before writing it, record applied 
 | `/system/etc/permissions/com.hkmc.software.connectivity.androidauto_wireless.xml` | Same. |
 | `/system/etc/permissions/com.hkmc.software.wifihotspot.xml` | Same. |
 | `/system/lib/libleafiaaac.so` | Put rebuilt converter; restore bytes or absence. |
-| `/system/etc/seogaemo/wireless-carplay-and-aa/car-map.json` | Put fixed map; restore bytes or absence. |
 | `/system/etc/seogaemo/wireless-carplay-and-aa/recipes/aa-tbt-48ee793a.recipe`, `aa-tbt-a0bea1c4.recipe`, `carplay-core-wifi.recipe`, `carplay-audio-formats.recipe`, `carplay-utils-converter.recipe` | Put five recipes; restore each exact original or absence and remove newly created empty directories. |
 | `/system/bin/app_process` | `sg_zygote_install` installs wrapper; restore exact stock executable bytes/mode/owner. |
 | `/system/bin/app_process.seogaemo-stock` | `sg_zygote_install` copies the current original here before swap; restore prior bytes or absence. |
@@ -106,7 +105,7 @@ Copied HMG-API paths (destinations relative to this module's `payload/`):
 - `mods/wireless-carplay-aa/recipes/{aa-tbt-48ee793a,aa-tbt-a0bea1c4,carplay-core-wifi,carplay-audio-formats,carplay-utils-converter}.recipe` → `recipes/` unchanged.
 - `mods/wireless-carplay-aa/stubs/com/{broadcom,tcc}/...` (six Java compile-time signature stubs and README) → `stubs/` as `.java.src`, unchanged, not in the runtime JAR.
 
-Original headers remain; modified files have a `Modified by HMG-Seogaemo` marker. Root `NOTICE.md` credits HMG-API (VysseCodes), NEMESIS (xwtk), HMG Leafia Plus, and Xposed design lineage. HMG-API is AGPL-3.0. Distribution of the combined work must be AGPL-3.0-compatible with Corresponding Source. The owner must settle the repository-wide license; no root `LICENSE` was changed.
+Original headers remain; modified files have a `Modified by HMG-Seogaemo` marker. Root `NOTICE.md` credits HMG-API (VysseCodes), NEMESIS (xwtk), HMG Leafia Plus, and Xposed design lineage. The repository is GNU AGPL-3.0 (`LICENSE`). The core mapper is an independent implementation; `UPSTREAM.md` tracks the HMG-API reference paths.
 
 ## On-car validation and recovery
 

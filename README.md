@@ -14,6 +14,8 @@ make test
 make package
 ```
 
+To map another firmware, follow [Mapping a new Gen5W firmware](docs/mapping-new-firmware.md).
+
 ## Screenshots
 
 ### Home
