@@ -285,6 +285,7 @@ case "$1" in
     revert)
         sg_print "${{HMG_SEOGAEMO_STATE##*/}} revert" >> "$FAKE_CALLS"
         sg_revert_all || {{ sg_status conflict none drift; exit 3; }}
+        [ "$FAKE_FAIL" != "late-${{HMG_SEOGAEMO_STATE##*/}}" ] || {{ sg_status failed none service; exit 1; }}
         sg_status off none restored ;;
     status) sg_status off none restored ;;
 esac
@@ -314,6 +315,15 @@ esac
     car.hook()
     assert target.read_bytes() == stock and not car.apk.exists()
     assert not shared.exists() or not any(shared.iterdir())
+    # A late failure after a line-owned revert keeps the shared composition.
+    car.apk.write_text('apk')
+    car.enable()
+    car.env['FAKE_FAIL'] = 'late-b'
+    result = car.run('stock', 'restore', ok=False)
+    assert 'info.module_b=failed' in result.stdout
+    copies = list((car.state / 'stock').glob('recovery.*/shared-lines/*'))
+    assert copies, 'late failure lost shared-line recovery material'
+    assert list((car.state / 'stock').glob('recovery.*/b/line.*'))
 
 
 with tempfile.TemporaryDirectory() as directory:

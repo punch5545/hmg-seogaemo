@@ -98,6 +98,16 @@ hmg_seogaemo_stock_restore() {
                 stock_detail="$stock_id recovery copy failed; no further restores attempted"
                 hmg_seogaemo_stock_finish; return $?
             fi
+            # Line-owned modules also need the shared composition state.
+            for stock_line in "$SG_DATA_ROOT/modules/$stock_id"/line.*; do
+                [ -e "$stock_line" ] && [ -d "$SG_DATA_ROOT/shared-lines" ] || continue
+                if ! cp -R "$SG_DATA_ROOT/shared-lines" "$stock_recovery/shared-lines"; then
+                    sg_write failed > "$stock/outcome.$stock_id"
+                    stock_detail="$stock_id recovery copy failed; no further restores attempted"
+                    hmg_seogaemo_stock_finish; return $?
+                fi
+                break
+            done
         fi
         (
             hmg_seogaemo_stock_context "$stock_id"
@@ -136,7 +146,7 @@ hmg_seogaemo_stock_restore() {
         fi
         sg_write reverted > "$stock/outcome.$stock_id" || return 1
         hmg_seogaemo_stock_receipt && hmg_seogaemo_stock_ledger stock_module "$stock_id" || return 1
-        rm -rf "$stock_recovery/$stock_id"
+        rm -rf "$stock_recovery/$stock_id" "$stock_recovery/shared-lines"
         rmdir "$stock_recovery" 2>/dev/null || true
     done
     stock_state=off; stock_detail='All modules restored; HMG-Seogaemo remains installed'
