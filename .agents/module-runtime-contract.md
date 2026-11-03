@@ -31,21 +31,46 @@ notes). Anything outside needs a note in the final report instead of an edit.
 Dependencies and exclusions are enforced by `seogaemo-root`/`ModuleManager`, never inside a
 module script. A module script must assume its dependencies are already applied.
 
-Module scripts start with `. "$SEOGAEMO_BASE/lib/common.sh"` and use only these functions:
+Module scripts start with `. "$SEOGAEMO_BASE/lib/common.sh"`.
+
+**Modules never modify the system themselves.** Every write goes through the package API below,
+which baselines, writes, records the applied state and appends to the change ledger in one step.
+Module scripts may only *read* directly (`getprop`, `cat`, `ls`, `grep`, `pm list features`,
+`ifconfig`/`netcfg`, `ps`, `dumpsys`). `make test` lints module root scripts and fails on direct
+mutations: `setprop`, `mount`/`umount`, `cp`, `mv`, `rm`, `dd`, `ln`, `chmod`, `chown`, `sed -i`,
+output redirection to absolute paths outside `$SEOGAEMO_STATE`, `nemesis remount`,
+`pm install|uninstall|enable|disable`, `settings put`, `start`/`stop`, `iptables`, `am`.
+
+Mutation API (each call: validate target against the module's `owns_props`/`owns_files`,
+baseline on first touch, perform, verify, mark applied, append ledger; non-zero on failure):
 
 | Function | Meaning |
 |---|---|
-| `sg_log <msg>` | append to the module log (bounded) |
-| `sg_prop_baseline <key>` | first call per enable session records live value + `/data/property/<key>` presence/content; later calls are no-ops |
-| `sg_prop_set <key> <value>` | `setprop` + readback check; non-zero on mismatch |
-| `sg_prop_restore <key>` | restore the recorded baseline exactly (incl. "was absent"); if the live value differs from what the module set, refuse with conflict instead of overwriting |
-| `sg_file_baseline <path>` | first call records bytes, existence, mode, owner |
-| `sg_file_mark_applied <path>` | after a module writes `<path>`, record a copy of the bytes it wrote |
-| `sg_file_restore <path>` | restore the recorded file exactly (incl. "was absent") **only if** the current bytes equal the marked applied copy (or already equal the baseline → no-op); otherwise refuse with conflict and keep the baseline (firmware OTA or another tool changed it) |
-| `sg_remount rw\|ro` | `/system` remount through `nemesis remount` |
-| `sg_baseline_clear` | drop this module's baselines after a verified revert |
-| `sg_owner_present <name>` | 0 if a known external owner is installed: `nemesis-adb-tcp`, `hmgapi`, `leafia` |
-| `sg_status <state> <restart> [detail]` | print the status block below and return the matching exit code |
+| `sg_prop_set <key> <value>` | set a persistent/live property (must be in `owns_props`) |
+| `sg_file_put <path> <payload-rel-src> [mode] [owner:group]` | create/replace a file from `$SEOGAEMO_MODULE_DIR/<src>` atomically (path in `owns_files`); handles `/system` remount |
+| `sg_file_replace_line <path> <exact-old-line> <new-line>` | replace exactly one line that must match exactly once (e.g. comment a `featurexml.cfg` entry) |
+| `sg_file_delete <path>` | remove a file (baseline keeps its bytes) |
+| `sg_bind_mount <target> <payload-rel-src>` | non-persistent bind mount, recorded; reapplied by reconcile at boot |
+| `sg_service_restart <name>` | `stop`/`start` an init service (allow-listed per module in `module.properties` `services=`) |
+| `sg_revert_all` | undo every change this module made, newest first, with the guarded restore rules below; clears baselines only after every item verified |
+
+Read/report helpers: `sg_log <msg>`, `sg_owner_present <name>` (`nemesis-adb-tcp`, `hmgapi`,
+`leafia`), `sg_applied <path|key>` (0 if our applied state is current), `sg_status <state> <restart> [detail]`.
+Internal (not for modules): baseline capture, applied-copy marking, remount, ledger writes.
+
+**Change ledger.** `/data/nemesis/backup/seogaemo/ledger/` holds an append-only `ledger.tsv`
+(`time, module, op, target, before-ref, after-ref, result`) plus, per change, the original bytes
+(`before/`), the bytes we wrote (`after/`), file metadata, and property before/after values. It is
+never pruned while any change is active; after a verified uninstall it is kept as a final
+export-able record until the package directory is removed.
+
+**Export.** `seogaemo-root export usb|adb` copies the ledger, all original and modified files,
+property before/after values, `ro.build.product`, package version and module desired states into
+`HMG-Seogaemo-export/<timestamp>/` on the first mounted USB drive (`usb`) or into
+`/data/local/tmp/hmg-seogaemo-export/<timestamp>/` readable by the adb shell user (`adb pull`).
+Read-only for the system; bounded size; refuses if no target. Exposed in Settings (Logs) as
+"Export changes to USB" and documented for adb:
+`adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/seogaemo/bin/seogaemo-root export adb'`.
 
 Status block on stdout (one `key=value` per line, ASCII, detail ≤ 200 chars):
 
