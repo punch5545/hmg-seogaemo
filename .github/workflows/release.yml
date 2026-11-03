@@ -16,11 +16,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - name: Install native module build tools
         run: sudo apt-get update && sudo apt-get install -y clang lld
       - name: Install Android API 19 tools
-        run: sdkmanager --install 'platforms;android-19' 'build-tools;34.0.0'
+        # Use the runner's preinstalled SDK (setup-android@v3 fails installing the removed 'tools' package).
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'platforms;android-19' 'build-tools;34.0.0'
       - name: Build, verify, and publish release
         shell: bash
         env:
