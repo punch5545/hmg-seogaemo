@@ -1,9 +1,10 @@
 #!/system/bin/sh
 umask 077
-if [ "$#" -ne 2 ]; then
-    echo 'usage: hmg-seogaemo-root <id> apply|revert|status|precheck' >&2
+if [ "$#" -ne 2 ] && [ "$#" -ne 3 ]; then
+    echo 'usage: hmg-seogaemo-root <id> apply|revert|status|precheck or <id> watch boot|screen_on' >&2
     exit 2
 fi
+[ "$#" -ne 3 ] || [ "$2" = watch ] || exit 2
 base=${0%/*}
 base=${base%/bin}
 SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
@@ -69,7 +70,10 @@ fi
 case "$1" in
     ''|*[!a-z0-9-]*|-*|*--*|*-) exit 2 ;;
 esac
-case "$2" in apply|revert|status|precheck) ;; *) exit 2 ;; esac
+case "$2:$#" in apply:2|revert:2|status:2|precheck:2) ;; watch:3)
+    case "$3" in boot|screen_on) ;; *) exit 2;; esac ;;
+    *) exit 2 ;;
+esac
 base=${0%/*}
 base=${base%/bin}
 [ -L /data/nemesis/backup/hmg-seogaemo/update/current ] && base=/data/nemesis/backup/hmg-seogaemo/update/current
@@ -81,6 +85,7 @@ script=$base/modules/$1.sh
 HMG_SEOGAEMO_BASE=$base
 HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$1
 HMG_SEOGAEMO_MODULE_DIR=$base/modules/$1.d
+unset SG_SKIP_CONSENT_FRAMEWORK SG_BOOT_ID_FILE HMG_SEOGAEMO_SERVICE_BIN
 export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE HMG_SEOGAEMO_MODULE_DIR SG_DATA_ROOT
 if [ "$2" = status ] || [ "$2" = precheck ]; then
     exec sh "$script" "$2"
@@ -102,6 +107,16 @@ while ! mkdir "$lock" 2>/dev/null; do
 done
 printf '%s' "$$" > "$lock/pid"
 trap 'rm -rf "$lock"' EXIT HUP INT TERM
+if [ "$2" = watch ]; then
+    [ "$(cat "$SG_DATA_ROOT/desired/$1" 2>/dev/null)" = on ] || exit 3
+    watch_events=
+    while IFS='=' read -r field value; do
+        [ "$field" = watch ] && watch_events=$value
+    done < "$base/modules/$1.properties"
+    case ",$watch_events," in *,"$3",*) ;; *) exit 2;; esac
+    sh "$script" watch "$3"
+    exit $?
+fi
 relation() {
     relation_id=$1; relation_field=$2
     while IFS='	' read -r graph_id graph_dep graph_exc; do
@@ -147,7 +162,12 @@ if [ "$code" -eq 0 ]; then
     case "$2" in
         apply) grep -q '^state=on$' "$result" ||
             grep -q '^state=pending-restart$' "$result" || code=1 ;;
-        revert) grep -q '^state=off$' "$result" || code=1 ;;
+        revert) grep -q '^state=off$' "$result" || {
+            grep -Fxq 'restore=reboot' "$base/modules/$1.properties" &&
+                grep -q '^state=pending-restart$' "$result" &&
+                grep -q '^restart=head_unit$' "$result" &&
+                grep -q '^info.desired=off$' "$result" || code=1
+        } ;;
     esac
 fi
 if [ "$code" -eq 0 ]; then

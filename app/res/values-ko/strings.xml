@@ -84,6 +84,7 @@
     <string name="module_status_incompatible">이 헤드 유닛과 호환되지 않습니다</string>
     <string name="module_status_unsupported">상태 확인을 지원하지 않습니다</string>
     <string name="module_restart">이 변경을 적용하려면 헤드 유닛을 재시작해야 합니다</string>
+    <string name="module_restore_reboot">끄고 나서 헤드 유닛을 재시작하면 기본 시작 안내 화면이 복원됩니다</string>
     <string name="module_confirm">모듈 변경을 적용할까요?</string>
     <string name="module_no_changes">변경할 내용이 없습니다.</string>
     <string name="export_changes_usb">변경 내역을 USB로 내보내기</string>

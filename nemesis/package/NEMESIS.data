@@ -20,4 +20,4 @@ name=reconcile
 kind=sh
 path=svc/reconcile.sh
 uid=root
-mode=once
+mode=restart

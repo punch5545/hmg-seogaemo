@@ -14,7 +14,7 @@ sg_clean() {
         sg_char=${sg_chars%"${sg_chars#?}"}
         sg_chars=${sg_chars#?}
         case "$sg_char" in
-            [a-zA-Z0-9]|' '|[.,:_/+=-]) sg_output=$sg_output$sg_char ;;
+            [a-zA-Z0-9]|' '|'('|')'|[.,:_/+=-]) sg_output=$sg_output$sg_char ;;
             *) sg_output=$sg_output? ;;
         esac
     done
@@ -255,7 +255,7 @@ sg_ledger() {
     if [ -f "$4" ]; then sg_copy "$4" "$sg_ledger_dir/$sg_after" || return 1
     else printf absent > "$sg_ledger_dir/$sg_after" || return 1; fi
     if [ -n "$5" ] && [ -f "$5" ]; then sg_copy "$5" "$sg_ledger_dir/$sg_before.meta" || return 1; fi
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" "${HMG_SEOGAEMO_STATE##*/}" "$1" "$2" "$sg_before" "$sg_after" ok >> "$sg_ledger_dir/ledger.tsv"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" "${HMG_SEOGAEMO_STATE##*/}" "$1" "$2" "$sg_before" "$sg_after" "${6:-ok}" >> "$sg_ledger_dir/ledger.tsv"
 }
 sg_changed() { printf '%s\t%s\n' "$1" "$2" >> "$HMG_SEOGAEMO_STATE/changes"; }
 sg_prop_set() {
@@ -376,6 +376,61 @@ sg_service_restart() {
     [ "$(cat "$sg_after_service")" = running ] || return 1
     sg_ledger service_restart "$1" "$sg_before_service" "$sg_after_service" "" || return 1
     rm -f "$sg_before_service" "$sg_after_service"
+}
+sg_service_call() {
+    [ "$#" -eq 2 ] || return 2
+    case "$1" in ''|*[!a-zA-Z0-9_.-]*|.*|*.|*..*|*-*) return 2;; esac
+    case "$2" in ''|0*|*[!0-9]*) return 2;; esac
+    [ "$2" -le 65535 ] || return 2
+    sg_validate service_calls "$1:$2" || return 2
+    sg_call_boot=$(cat "${SG_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}" 2>/dev/null) || return 1
+    case "$sg_call_boot" in ''|*[!a-zA-Z0-9-]*) return 1;; esac
+    [ "${#sg_call_boot}" -le 64 ] || return 1
+    sg_ready || return 1
+    sg_call_output=$HMG_SEOGAEMO_STATE/service-call.$$.out
+    sg_call_before=$HMG_SEOGAEMO_STATE/service-call.$$.before
+    sg_call_after=$HMG_SEOGAEMO_STATE/service-call.$$.after
+    printf 'no call\n' > "$sg_call_before" || return 1
+    printf '%s' "$sg_call_boot" > "$HMG_SEOGAEMO_STATE/last-call-boot.tmp.$$" &&
+        mv -f "$HMG_SEOGAEMO_STATE/last-call-boot.tmp.$$" "$HMG_SEOGAEMO_STATE/last-call-boot" &&
+        printf pending > "$HMG_SEOGAEMO_STATE/last-call-result.tmp.$$" &&
+        mv -f "$HMG_SEOGAEMO_STATE/last-call-result.tmp.$$" "$HMG_SEOGAEMO_STATE/last-call-result" || return 1
+    "${HMG_SEOGAEMO_SERVICE_BIN:-/system/bin/service}" call "$1" "$2" > "$sg_call_output" 2>&1 &
+    sg_call_pid=$!
+    sg_call_wait=0
+    while kill -0 "$sg_call_pid" 2>/dev/null && [ "$sg_call_wait" -lt 15 ]; do
+        sleep 1
+        sg_call_wait=$((sg_call_wait + 1))
+    done
+    if kill -0 "$sg_call_pid" 2>/dev/null; then
+        kill "$sg_call_pid" 2>/dev/null || :
+        wait "$sg_call_pid" 2>/dev/null || :
+        sg_call_result=timeout
+        sg_call_rc=1
+    else
+        wait "$sg_call_pid"; sg_call_rc=$?
+        if [ "$sg_call_rc" -eq 0 ]; then sg_call_result=ok; else sg_call_result=failed; fi
+    fi
+    SG_SERVICE_CALL_RESPONSE=$(dd if="$sg_call_output" bs=1 count=512 2>/dev/null) || SG_SERVICE_CALL_RESPONSE=
+    case "$SG_SERVICE_CALL_RESPONSE" in
+        *'Cannot broadcast before boot completed'*|*'fffffffb 00000026 00610043'*)
+            sg_call_result=boot-incomplete; sg_call_rc=1 ;;
+    esac
+    printf '%s\n' "$(sg_clean "$SG_SERVICE_CALL_RESPONSE")" > "$sg_call_after" || return 1
+    sg_ledger service_call "$1:$2" "$sg_call_before" "$sg_call_after" "" "$sg_call_result" || return 1
+    printf '%s' "$sg_call_result" > "$HMG_SEOGAEMO_STATE/last-call-result.tmp.$$" &&
+        mv -f "$HMG_SEOGAEMO_STATE/last-call-result.tmp.$$" "$HMG_SEOGAEMO_STATE/last-call-result" || return 1
+    rm -f "$sg_call_output" "$sg_call_before" "$sg_call_after"
+    [ "$sg_call_rc" -eq 0 ]
+}
+sg_service_call_this_boot() {
+    [ -f "$HMG_SEOGAEMO_STATE/last-call-boot" ] || return 1
+    sg_seen_boot=$(cat "$HMG_SEOGAEMO_STATE/last-call-boot") || return 1
+    sg_now_boot=$(cat "${SG_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}" 2>/dev/null) || return 1
+    [ -n "$sg_now_boot" ] && [ "$sg_seen_boot" = "$sg_now_boot" ]
+}
+sg_service_call_ok_this_boot() {
+    sg_service_call_this_boot && [ "$(cat "$HMG_SEOGAEMO_STATE/last-call-result" 2>/dev/null)" = ok ]
 }
 sg_applied() {
     sg_check_build || return 3
@@ -578,6 +633,7 @@ sg_owner_present() {
         nemesis-adb-tcp) [ -d /data/nemesis/apps/adb.tcp ] || [ -d /data/nemesis/backup/adb.tcp ] ;;
         hmgapi) [ -d /data/nemesis/apps/hmgapi ] || [ -f /data/hmgapi/uninstall.sh ] ;;
         leafia) [ -d /data/nemesis/apps/wireless.carplay.aa ] || [ -d /data/nemesis/backup/wireless.carplay.aa ] ;;
+        local-hkmc-factory82) [ -d /data/nemesis/apps/local.hkmc.factory82 ] || [ -d /data/nemesis/backup/local.hkmc.factory82 ] ;;
         *) return 2 ;;
     esac
 }

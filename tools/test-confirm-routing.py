@@ -25,6 +25,8 @@ def method(name):
 assert "prepareModuleChange" in method("dispatchModuleAction")
 assert "dispatchModuleAction(action)" in method("renderPageItem")
 assert "ConfirmDialog.show" in method("confirmModuleChange")
+assert "module.rebootRestore()" in method("confirmModuleChange")
+assert '"off".equals(result.info.get("desired"))' in activity
 assert "ConfirmDialog.show" in method("addLanguageOption")
 assert method("addLanguageOption").index("ConfirmDialog.show") < method("addLanguageOption").index('putString("language"')
 assert "ConfirmDialog.show" in method("confirmCheckUpdate")

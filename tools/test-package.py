@@ -69,7 +69,7 @@ def run():
             "os": "NEEV.KOR.*.260902", "models": "neev_kr", "postinstall": "scripts/postinstall.sh",
             "preuninstall": "scripts/preuninstall.sh"}
         assert dict(meta["app.0"]) == {"kind": "sh", "path": "bin/open.sh", "uid": "root"}
-        assert dict(meta["service.0"]) == {"name": "reconcile", "kind": "sh", "path": "svc/reconcile.sh", "uid": "root", "mode": "once"}
+        assert dict(meta["service.0"]) == {"name": "reconcile", "kind": "sh", "path": "svc/reconcile.sh", "uid": "root", "mode": "restart"}
         ids = package.read("modules.list").decode().splitlines()
         assert ids and len(ids) == len(set(ids))
         assert len(package.read("modules.graph").decode().splitlines()) == len(ids)

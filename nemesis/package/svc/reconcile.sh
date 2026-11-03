@@ -47,4 +47,51 @@ for id in $(cat "$base/modules.list"); do
         echo "applied $id" >> "$log"
     else echo "apply failed: $id" >> "$log"; failed=1; fi
 done
-exit "$failed"
+[ "$failed" -eq 0 ] || exit "$failed"
+[ "${HMG_SEOGAEMO_UPDATE_HEALTH:-0}" = 1 ] && exit 0
+if [ "$missing_apk" -eq 1 ]; then
+    while :; do
+        sleep 60
+        case "$(pm path com.seogaemo.hmg 2>/dev/null)" in
+            package:*) exec sh "$base/svc/reconcile.sh" ;;
+        esac
+    done
+fi
+watch_ids=
+for id in $(cat "$base/modules.list"); do
+    [ -f "$base/modules/$id.properties" ] || continue
+    grep -Eq '^watch=(boot|screen_on|boot,screen_on|screen_on,boot)$' "$base/modules/$id.properties" || continue
+    watch_ids="$watch_ids $id"
+done
+[ -n "$watch_ids" ] || exit 0
+for id in $watch_ids; do
+    [ "$(cat "$state/desired/$id" 2>/dev/null)" = on ] || continue
+    grep -Eq '^watch=(boot|boot,screen_on|screen_on,boot)$' "$base/modules/$id.properties" || continue
+    sh "$root" "$id" watch boot >> "$log" 2>&1 || echo "watch boot failed: $id" >> "$log"
+done
+display_state() {
+    power=$(dumpsys power 2>/dev/null) || { echo unknown; return; }
+    case "$power" in
+        *'mDisplayPowerRequest=policy=OFF'*|*'mDisplayPowerRequest=policy=0'*|*'mScreenOn=false'*|*'mInteractive=false'*) echo off ;;
+        *'mDisplayPowerRequest=policy=BRIGHT'*|*'mDisplayPowerRequest=policy=DIM'*|*'mScreenOn=true'*|*'mInteractive=true'*) echo on ;;
+        *) echo unknown ;;
+    esac
+}
+last_display=$(display_state)
+polls=0
+while [ "${HMG_SEOGAEMO_WATCH_ONCE:-0}" != 1 ]; do
+    sleep 5
+    current_display=$(display_state)
+    if [ "$last_display" = off ] && [ "$current_display" = on ]; then
+        for id in $watch_ids; do
+            [ "$(cat "$state/desired/$id" 2>/dev/null)" = on ] || continue
+            grep -Eq '^watch=(screen_on|boot,screen_on|screen_on,boot)$' "$base/modules/$id.properties" || continue
+            sh "$root" "$id" watch screen_on >> "$log" 2>&1 || echo "watch screen_on failed: $id" >> "$log"
+        done
+    fi
+    [ "$current_display" = unknown ] || last_display=$current_display
+    polls=$((polls + 1))
+    [ "${HMG_SEOGAEMO_WATCH_MAX_POLLS:-0}" -eq 0 ] ||
+        [ "$polls" -lt "$HMG_SEOGAEMO_WATCH_MAX_POLLS" ] || break
+done
+exit 0
