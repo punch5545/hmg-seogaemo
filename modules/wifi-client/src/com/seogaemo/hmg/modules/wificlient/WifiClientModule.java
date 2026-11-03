@@ -17,7 +17,7 @@ public final class WifiClientModule extends RootBackedModule {
     public boolean hasHomeAction() { return false; }
     public boolean requiresRoot() { return true; }
     public Setting[] settings() { return new Setting[0]; }
-    public String[] ownedProperties() { return new String[0]; }
+    public String[] ownedProperties() { return new String[] { "persist.wifi.state" }; }
     public String[] conflicts() {
         return new String[] { "hmgapi.wifi", "leafia.wireless.carplay.aa", "nemesis.wireless.projection" };
     }

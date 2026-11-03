@@ -20,7 +20,7 @@ HMG-API's `svc/trace.sh` (a root service) waited for the setting, created `Wirel
 
 ## Wi-Fi: client and CarPlay access point
 - Hotspot: wlan0 `192.168.0.1/24` (hostapd). Stock hotspot menu says "check Bluelink" and cannot be used.
-- HMG-API's `wifi.client` also set `persist.wifi.state=3`; with that and wireless CarPlay both on, CarPlay failed to connect even with the car joined to nothing. Each alone worked. HMG-Seogaemo's `wifi-client` adds only the feature file and the featurexml line (no state=3), which is the safer first test.
+- HMG-API's `wifi.client` also set `persist.wifi.state=3`; with that and wireless CarPlay both on, CarPlay failed to connect even with the car joined to nothing. Each alone worked. HMG-Seogaemo's `wifi-client` now sets the feature file and state=3 (the NEEV KOR featurexml has no Wi-Fi line); it excludes `wireless-carplay-and-aa`, so this combination cannot be enabled together here.
 - AOSP enables STA by first stopping the AP; one radio, so STA and AP at once is not expected. Hyundai's mode 3 is unverified.
 - Wireless adb over the car AP: needs the AP's SSID and password (HMG-API's ap-info mod logged them to its private log; never share it), then `adb connect 192.168.0.1:5555`; ADB over USB puts the USB port in device mode, so USB sticks stop being recognized (turn it off and apply). The Engineering Mode ADB TCP switch must stay off (it assigns eth0 192.168.0.123 and breaks DHCP).
 - Diagnostic worth porting as a read-only status: `persist.wifi.state`, interfaces, hostapd and wpa_supplicant processes, wifi files with passwords removed, dmesg wifi lines, snapshot at start, at AP up, then each minute; compare client off versus on. HMG-API's `wifi-diag` mod did exactly that (not ported yet).
