@@ -170,13 +170,15 @@ def run():
                 path.write_text(script)
                 path.chmod(0o755)
             env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", FAKE_STATE=str(state),
-                       HMG_SEOGAEMO_TEST_COMMON=str(temp / "lib/common.sh"))
+                       HMG_SEOGAEMO_TEST_COMMON=str(temp / "lib/common.sh"),
+                       HMG_SEOGAEMO_APK_STAGE=str(temp))
             for output, succeeds in (("Success", True), ("Failure [INSTALL_FAILED]", False)):
                 state.write_text("1")
                 env["FAKE_PM_RESULT"] = output
                 result = subprocess.run([SHELL, str(temp / "bin/install-apk.sh")], env=env, capture_output=True)
                 assert (result.returncode == 0) == succeeds
                 assert state.read_text() == "1"
+                assert not list(temp.glob("hmg-seogaemo-install.*.apk"))
             # Root postinstall must explicitly install native client mode, even
             # when its source and all package bin files start non-executable.
             native = temp / "fake-nemesis"

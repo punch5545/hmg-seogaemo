@@ -6,7 +6,7 @@ apk=$base/app/hmg-seogaemo.apk
 [ -f "$apk" ] || { echo 'HMG-Seogaemo APK missing' >&2; exit 1; }
 old=$(getprop sys.boot_completed)
 # PackageManager cannot read APKs under the 0700 OTA state tree; stage a readable copy.
-staged=/data/local/tmp/hmg-seogaemo-install.$$.apk
+staged=${HMG_SEOGAEMO_APK_STAGE:-/data/local/tmp}/hmg-seogaemo-install.$$.apk
 cp "$apk" "$staged" && chmod 644 "$staged" || { rm -f "$staged"; echo 'Could not stage APK' >&2; exit 1; }
 restored=0
 restore() {
