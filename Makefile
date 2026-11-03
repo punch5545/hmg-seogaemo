@@ -5,13 +5,16 @@ OUT := out/seogaemo.apk
 SOURCES := $(shell find app/src modules -name '*.java' | sort)
 INPUTS := $(shell find app/res modules -type f | sort)
 
-.PHONY: all clean generate test package verify-dist
+.PHONY: all clean generate module-build test package verify-dist
 all: $(OUT)
+
+module-build:
+	@set -eu; for hook in modules/*/build/build.sh; do test ! -f "$$hook" || sh "$$hook"; done
 
 generate:
 	sh tools/gen-modules.sh
 
-$(OUT): VERSION app/AndroidManifest.xml app/allow-sha1.security $(SOURCES) $(INPUTS) Makefile tools/gen-modules.sh tools/version.py generate
+$(OUT): VERSION app/AndroidManifest.xml app/allow-sha1.security $(SOURCES) $(INPUTS) Makefile tools/gen-modules.sh tools/version.py generate module-build
 	rm -rf out/classes out/dex
 	mkdir -p out/gen out/classes out/dex
 	python3 tools/version.py --manifest out/AndroidManifest.xml
@@ -43,6 +46,12 @@ verify-dist:
 test: package
 	sh tools/test-gen-modules.sh
 	python3 tools/test-package.py --aapt $(BT)/aapt
+	python3 tools/test-runtime.py
+	python3 tools/lint-module-root.py
+	@for t in modules/*/test/run.sh; do test ! -f "$$t" || sh "$$t"; done
+	mkdir -p out/planner-test
+	javac -d out/planner-test app/src/com/seogaemo/app/module/ModulePlan.java app/src/com/seogaemo/app/module/ModulePlanner.java app/src/com/seogaemo/app/module/Warning.java tools/ModulePlannerTest.java
+	java -cp out/planner-test ModulePlannerTest
 
 clean:
 	rm -rf out

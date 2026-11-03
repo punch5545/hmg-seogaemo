@@ -1,6 +1,9 @@
 package com.seogaemo.app;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
@@ -17,10 +20,23 @@ import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
+import com.seogaemo.app.module.InfoRow;
+import com.seogaemo.app.module.Module;
+import com.seogaemo.app.module.ModuleAction;
+import com.seogaemo.app.module.ModuleManager;
+import com.seogaemo.app.module.ModulePlan;
+import com.seogaemo.app.module.ModuleRegistry;
+import com.seogaemo.app.module.RootClient;
+import com.seogaemo.app.module.RootResult;
+import com.seogaemo.app.module.Warning;
+import com.seogaemo.app.ui.settings.SettingsPage;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
-/** Gen5W visual mock. No vehicle or settings operations are performed. */
+/** Gen5W settings and built-in module controls. */
 public final class MainActivity extends Activity {
     private static final int CANVAS = 0xFF111111;
     private static final int SURFACE = 0xFF171717;
@@ -38,14 +54,16 @@ public final class MainActivity extends Activity {
     private static final int[] ICONS = {R.string.icon_battery, R.string.icon_exhaust,
         R.string.icon_climate, R.string.icon_drive, R.string.icon_audio,
         R.string.icon_connect, R.string.icon_restart, R.string.icon_settings};
-    private static final int[] CATEGORIES = {R.string.cat_general, R.string.cat_wireless,
-        R.string.cat_logs, R.string.cat_display, R.string.cat_about};
-    private static final int[] CATEGORY_SUBS = {R.string.cat_general_sub, R.string.cat_wireless_sub,
-        R.string.cat_logs_sub, R.string.cat_display_sub, R.string.cat_about_sub};
+    private static final int[] CATEGORIES = {R.string.cat_general, R.string.cat_modules,
+        R.string.cat_logs, R.string.cat_about};
+    private static final int[] CATEGORY_SUBS = {R.string.cat_general_sub, R.string.cat_modules_sub,
+        R.string.cat_logs_sub, R.string.cat_about_sub};
     private Typeface sans;
     private Typeface medium;
     private Typeface mono;
     private int category = 0;
+    private int sidebarOffset;
+    private ScrollView sidebarScroll;
     private final boolean[][] checks = {{false, false}, {true, false}, {true, false}, {true, false}, {false, false}};
     private boolean settingsVisible;
 
@@ -58,6 +76,7 @@ public final class MainActivity extends Activity {
         mono = Typeface.MONOSPACE;
         if (state != null && state.getBoolean("settings", false)) {
             category = state.getInt("category", 0);
+            sidebarOffset = state.getInt("sidebarOffset", 0);
             showSettings();
         } else showHome();
     }
@@ -65,6 +84,7 @@ public final class MainActivity extends Activity {
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putBoolean("settings", settingsVisible);
         state.putInt("category", category);
+        state.putInt("sidebarOffset", sidebarScroll == null ? sidebarOffset : sidebarScroll.getScrollY());
         super.onSaveInstanceState(state);
     }
 
@@ -256,22 +276,34 @@ public final class MainActivity extends Activity {
     }
 
     private void showSettings() {
+        if (sidebarScroll != null) sidebarOffset = sidebarScroll.getScrollY();
         settingsVisible = true;
         LinearLayout r = root();
         header(r, true);
         LinearLayout body = horizontal();
         r.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
+        ScrollView sideScroll = new ScrollView(this);
+        sidebarScroll = sideScroll;
         LinearLayout side = vertical();
         side.setBackgroundColor(SURFACE);
-        body.addView(side, new LinearLayout.LayoutParams(0, -1, 1));
+        sideScroll.addView(side);
+        body.addView(sideScroll, new LinearLayout.LayoutParams(0, -1, 1));
         TextView sideTitle = text(getString(R.string.categories), 17, MUTED, mono);
         sideTitle.setPadding(dp(22), 0, 0, 0);
         side.addView(sideTitle, new LinearLayout.LayoutParams(-1, dp(52)));
         for (int i = 0; i < CATEGORIES.length; i++) addCategory(side, i);
+        divider(side, false);
+        for (int i = 0; i < ModuleRegistry.all().length; i++)
+            addModuleCategory(side, i, ModuleRegistry.all()[i]);
+        sideScroll.post(new Runnable() {
+            public void run() { if (sidebarScroll != null) sidebarScroll.scrollTo(0, sidebarOffset); }
+        });
         divider(body, true);
         LinearLayout content = vertical();
         body.addView(content, new LinearLayout.LayoutParams(0, -1, 2));
-        TextView paneTitle = text(getString(CATEGORIES[category]), 26, WHITE, medium);
+        int titleRes = category < CATEGORIES.length ? CATEGORIES[category]
+                : ModuleRegistry.all()[category - CATEGORIES.length].nameResId();
+        TextView paneTitle = text(getString(titleRes), 26, WHITE, medium);
         paneTitle.setPadding(dp(30), 0, 0, 0);
         paneTitle.setTextScaleX(0.97f);
         content.addView(paneTitle, new LinearLayout.LayoutParams(-1, dp(52)));
@@ -280,37 +312,44 @@ public final class MainActivity extends Activity {
             showLanguage(content);
             return;
         } else if (category == 1) {
-            addRow(content, R.string.carplay, R.string.wireless_hint, 0, 0);
-            addRow(content, R.string.android_auto, R.string.wireless_hint, 0, 1);
-            addRow(content, R.string.connection_mode, R.string.automatic_pairing, R.string.value_auto, -1);
-            addRow(content, R.string.profile, R.string.target_head_unit, R.string.value_gen5w, -1);
+            showModules(content);
+            return;
         } else if (category == 2) {
-            addRow(content, R.string.diagnostic_logging, R.string.record_events, 0, 0);
-            addRow(content, R.string.verbose_output, R.string.detailed_entries, 0, 1);
-            addRow(content, R.string.last_export, R.string.no_logs, R.string.value_never, -1);
-            addRow(content, R.string.storage, R.string.local_log_space, R.string.value_zero_mb, -1);
+            TextView explanation = text(getString(R.string.export_changes_hint), 19, MUTED, sans);
+            explanation.setPadding(dp(30), 0, dp(28), 0);
+            content.addView(explanation, new LinearLayout.LayoutParams(-1, dp(85)));
+            TextView export = action(getString(R.string.export_changes_usb), true);
+            LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(-1, dp(60));
+            ep.leftMargin = dp(30);
+            ep.rightMargin = dp(28);
+            content.addView(export, ep);
+            export.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) {
+                    new Thread(new Runnable() {
+                        public void run() {
+                            final RootResult result = RootClient.exportUsb();
+                            runOnUiThread(new Runnable() {
+                                public void run() {
+                                    new AlertDialog.Builder(MainActivity.this)
+                                            .setMessage(result.detail)
+                                            .setPositiveButton("OK", null).show();
+                                }
+                            });
+                        }
+                    }, "export-changes").start();
+                }
+            });
+            return;
         } else if (category == 3) {
-            addRow(content, R.string.high_contrast, R.string.legibility, 0, 0);
-            addRow(content, R.string.night_theme, R.string.dark_display, 0, 1);
-            addRow(content, R.string.resolution, R.string.wide_head_unit, R.string.value_resolution, -1);
-            addRow(content, R.string.density, R.string.display_scaling, R.string.value_dpi, -1);
-        } else {
             addRow(content, R.string.app, R.string.ui_mock, R.string.app_name, -1);
             addRow(content, R.string.version, R.string.preview_build, installedVersion(), -1);
             addRow(content, R.string.android, R.string.minimum_api, R.string.value_api, -1);
             addRow(content, R.string.platform, R.string.vehicle_brands, R.string.value_gen5w, -1);
+            return;
+        } else {
+            showModulePage(content, ModuleRegistry.all()[category - CATEGORIES.length]);
+            return;
         }
-        LinearLayout actionBar = horizontal();
-        actionBar.setPadding(dp(30), 0, dp(28), 0);
-        View spacer = new View(this);
-        actionBar.addView(spacer, new LinearLayout.LayoutParams(0, dp(48), 1));
-        TextView secondary = action(getString(R.string.cancel), false);
-        actionBar.addView(secondary, new LinearLayout.LayoutParams(dp(142), dp(60)));
-        TextView primary = action(getString(category == 2 ? R.string.export_logs : R.string.apply), true);
-        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(dp(170), dp(60));
-        pp.leftMargin = dp(10);
-        actionBar.addView(primary, pp);
-        content.addView(actionBar, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private void showLanguage(LinearLayout content) {
@@ -323,6 +362,204 @@ public final class MainActivity extends Activity {
         TextView hint = text(getString(R.string.language_scope), 18, MUTED, sans);
         hint.setPadding(dp(30), 0, 0, 0);
         content.addView(hint, new LinearLayout.LayoutParams(-1, 0, 1));
+    }
+
+    private void showModules(final LinearLayout content) {
+        final ScrollView scroll = new ScrollView(this);
+        final LinearLayout rows = vertical();
+        rows.setPadding(dp(30), dp(10), dp(28), dp(20));
+        scroll.addView(rows);
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        rows.addView(text(getString(R.string.module_loading), 20, MUTED, sans),
+                new LinearLayout.LayoutParams(-1, dp(75)));
+        new Thread(new Runnable() {
+            public void run() {
+                final Module[] modules = ModuleRegistry.all();
+                final RootResult[] results = new RootResult[modules.length];
+                for (int i = 0; i < modules.length; i++) {
+                    results[i] = RootClient.run(modules[i].id(), "status");
+                }
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        if (!settingsVisible || category != 1) return;
+                        rows.removeAllViews();
+                        for (int i = 0; i < modules.length; i++) {
+                            if (results[i] != null) addModule(rows, modules[i], results[i]);
+                        }
+                    }
+                });
+            }
+        }, "module-status").start();
+    }
+
+    private void addModule(LinearLayout parent, final Module module, RootResult result) {
+        final boolean enabled = "on".equals(result.state) || "pending-restart".equals(result.state);
+        final boolean observed = enabled || "off".equals(result.state);
+        LinearLayout row = horizontal();
+        row.setPadding(dp(18), 0, dp(18), 0);
+        row.setBackgroundDrawable(selectable(RAISED, HAIRLINE, 8, false));
+        LinearLayout copy = vertical();
+        copy.setGravity(Gravity.CENTER_VERTICAL);
+        copy.addView(text(getString(module.nameResId()), 23, WHITE, medium));
+        copy.addView(text(getString(module.descriptionResId()), 17, MUTED, sans));
+        row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
+        TextView toggle = text(getString(observed ? (enabled ? R.string.on : R.string.off)
+                : R.string.module_unavailable), 20, enabled ? BLUE : MUTED, mono);
+        toggle.setGravity(Gravity.CENTER);
+        toggle.setBackgroundDrawable(shape(enabled ? 0xFF17283A : SURFACE,
+                enabled ? BLUE : HAIRLINE, 6));
+        row.addView(toggle, new LinearLayout.LayoutParams(dp(96), dp(54)));
+        if (observed) row.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) { prepareModuleChange(module, !enabled); }
+        });
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, dp(82));
+        rp.bottomMargin = dp(8);
+        parent.addView(row, rp);
+        String stateText = getString(R.string.module_state) + ": " + result.state;
+        if (result.detail.length() > 0) stateText += " · " + result.detail;
+        parent.addView(text(stateText, 18, MUTED, sans),
+                new LinearLayout.LayoutParams(-1, dp(34)));
+        if ("pending-restart".equals(result.state)) {
+            TextView banner = text(getString(R.string.module_restart), 20, WHITE, medium);
+            banner.setPadding(dp(18), 0, dp(18), 0);
+            banner.setBackgroundDrawable(shape(0xFF263347, BLUE, 6));
+            parent.addView(banner, new LinearLayout.LayoutParams(-1, dp(60)));
+        }
+        View gap = new View(this);
+        parent.addView(gap, new LinearLayout.LayoutParams(-1, dp(12)));
+    }
+
+    private void showModulePage(final LinearLayout content, final Module module) {
+        final ScrollView scroll = new ScrollView(this);
+        final LinearLayout rows = vertical();
+        rows.setPadding(dp(30), dp(10), dp(28), dp(20));
+        scroll.addView(rows);
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        rows.addView(text(getString(R.string.module_loading), 20, MUTED, sans),
+                new LinearLayout.LayoutParams(-1, dp(75)));
+        new Thread(new Runnable() {
+            public void run() {
+                final RootResult result = RootClient.run(module.id(), "status");
+                final SettingsPage page = new SettingsPage();
+                module.buildSettingsPage(page);
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        if (!settingsVisible || category < CATEGORIES.length ||
+                                !ModuleRegistry.all()[category - CATEGORIES.length].id().equals(module.id()))
+                            return;
+                        rows.removeAllViews();
+                        for (SettingsPage.Item item : page.items())
+                            renderPageItem(rows, module, result, item);
+                    }
+                });
+            }
+        }, "module-settings").start();
+    }
+
+    private void renderPageItem(LinearLayout rows, final Module module,
+            RootResult result, SettingsPage.Item item) {
+        switch (item.type) {
+            case STATUS_HEADER:
+                addModule(rows, module, result);
+                break;
+            case SECTION:
+                rows.addView(text(getString(item.labelResId), 22, WHITE, medium),
+                        new LinearLayout.LayoutParams(-1, dp(55)));
+                break;
+            case INFO:
+                String value = result.info.get(item.key);
+                rows.addView(text(getString(item.labelResId) + ": " +
+                        (value == null || value.length() == 0 ? "—" : value), 19, WHITE, sans),
+                        new LinearLayout.LayoutParams(-1, dp(55)));
+                break;
+            case NOTE:
+            case WARNING:
+                TextView note = text(getString(item.labelResId), 18,
+                        item.type == SettingsPage.Type.WARNING ? 0xFFFFB366 : MUTED, sans);
+                rows.addView(note, new LinearLayout.LayoutParams(-1, dp(60)));
+                break;
+            case TOGGLE:
+            case CHOICE:
+                TextView setting = text(getString(item.labelResId), 21, WHITE, medium);
+                rows.addView(setting, new LinearLayout.LayoutParams(-1, dp(75)));
+                break;
+            case ACTION:
+                final ModuleAction action = item.action;
+                TextView button = action(getString(item.labelResId), false);
+                LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-1, dp(60));
+                ap.bottomMargin = dp(8);
+                rows.addView(button, ap);
+                button.setOnClickListener(new View.OnClickListener() {
+                    public void onClick(View view) {
+                        if (action.type == ModuleAction.Type.ENABLE_MODULE)
+                            prepareModuleChange(ModuleRegistry.find(action.target), true);
+                        else if (action.type == ModuleAction.Type.OPEN_STOCK_WIFI_SETTINGS)
+                            startActivity(new Intent("android.settings.WIFI_SETTINGS"));
+                    }
+                });
+                break;
+        }
+    }
+
+    private void prepareModuleChange(final Module module, final boolean enable) {
+        new Thread(new Runnable() {
+            public void run() {
+                final ModulePlan plan;
+                try { plan = new ModuleManager(MainActivity.this).plan(module.id(), enable); }
+                catch (final IllegalStateException error) {
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            new AlertDialog.Builder(MainActivity.this).setMessage(error.getMessage())
+                                    .setPositiveButton("OK", null).show();
+                        }
+                    });
+                    return;
+                }
+                final RootResult precheck = enable ? RootClient.run(module.id(), "precheck") : null;
+                runOnUiThread(new Runnable() {
+                    public void run() { confirmModuleChange(module, enable, plan, precheck); }
+                });
+            }
+        }, "module-plan").start();
+    }
+
+    private void confirmModuleChange(final Module module, final boolean enable,
+            final ModulePlan plan, RootResult precheck) {
+        StringBuilder message = new StringBuilder();
+        for (ModulePlan.Step step : plan.steps) {
+            message.append(step.enable ? "+ " : "− ")
+                    .append(getString(ModuleRegistry.find(step.id).nameResId())).append('\n');
+        }
+        if (plan.steps.isEmpty()) message.append(getString(R.string.module_no_changes));
+        if (precheck != null) {
+            for (Warning warning : module.enableWarnings()) {
+                if ("1".equals(precheck.warnings.get(warning.checkKey)))
+                    message.append('\n').append(getString(warning.messageResId));
+            }
+            if (precheck.exitCode != 0) message.append('\n').append(precheck.detail);
+        }
+        new AlertDialog.Builder(this).setTitle(getString(R.string.module_confirm))
+                .setMessage(message.toString())
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.apply, new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int which) {
+                        new Thread(new Runnable() {
+                            public void run() {
+                                final RootResult outcome = enable
+                                        ? new ModuleManager(MainActivity.this).requestEnable(module.id(), "settings")
+                                        : new ModuleManager(MainActivity.this).execute(plan);
+                                runOnUiThread(new Runnable() {
+                                    public void run() {
+                                        if (outcome.exitCode != 0)
+                                            new AlertDialog.Builder(MainActivity.this)
+                                                    .setMessage(outcome.detail).setPositiveButton("OK", null).show();
+                                        showSettings();
+                                    }
+                                });
+                            }
+                        }, "module-operation").start();
+                    }
+                }).show();
     }
 
     private void addLanguageOption(LinearLayout content, int labelRes, final String choice) {
@@ -367,6 +604,29 @@ public final class MainActivity extends Activity {
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
         row.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { category = index; showSettings(); }
+        });
+        parent.addView(row, new LinearLayout.LayoutParams(-1, dp(70)));
+        divider(parent, false);
+    }
+
+    private void addModuleCategory(LinearLayout parent, int moduleIndex, Module module) {
+        final int index = CATEGORIES.length + moduleIndex;
+        LinearLayout row = horizontal();
+        row.setPadding(dp(22), 0, dp(16), 0);
+        row.setBackgroundDrawable(selectable(index == category ? 0xFF1C2938 : SURFACE,
+                Color.TRANSPARENT, 0, false));
+        View marker = new View(this);
+        marker.setBackgroundColor(index == category ? BLUE : Color.TRANSPARENT);
+        row.addView(marker, new LinearLayout.LayoutParams(dp(4), dp(56)));
+        LinearLayout copy = vertical();
+        copy.setGravity(Gravity.CENTER_VERTICAL);
+        copy.setPadding(dp(16), 0, 0, 0);
+        copy.addView(text(getString(module.nameResId()), 21,
+                index == category ? WHITE : 0xFFD0D0D0, medium));
+        copy.addView(text(getString(R.string.module_settings), 16, MUTED, sans));
+        row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
+        row.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) { category = index; showSettings(); }
         });
         parent.addView(row, new LinearLayout.LayoutParams(-1, dp(70)));
         divider(parent, false);

@@ -52,6 +52,8 @@ baseline on first touch, perform, verify, mark applied, append ledger; non-zero 
 | `sg_file_delete <path>` | remove a file (baseline keeps its bytes) |
 | `sg_bind_mount <target> <payload-rel-src>` | non-persistent bind mount, recorded; reapplied by reconcile at boot |
 | `sg_service_restart <name>` | `stop`/`start` an init service (allow-listed per module in `module.properties` `services=`) |
+| `sg_zygote_install <wrapper-rel-src> <loader-rel-src> <jar-rel-src>` | guarded transaction for `/system/bin/app_process`, its `app_process.seogaemo-stock` copy, the wireless loader and JAR, and `enable`/`enabled`/`starts`/`disable` state; all eight paths must be in `owns_files` |
+| `sg_dex_cache_track <system-jar> <app-package>` | track the Dalvik cache entry for an owned `/system/framework/*.jar` and the package's `app_seogaemo-wireless-dex` files; these two derived cache namespaces are the sole exception to explicit `owns_files` listing |
 | `sg_revert_all` | undo every change this module made, newest first, with the guarded restore rules below; clears baselines only after every item verified |
 
 Read/report helpers: `sg_log <msg>`, `sg_owner_present <name>` (`nemesis-adb-tcp`, `hmgapi`,
@@ -63,6 +65,16 @@ Internal (not for modules): baseline capture, applied-copy marking, remount, led
 (`before/`), the bytes we wrote (`after/`), file metadata, and property before/after values. It is
 never pruned while any change is active; after a verified uninstall it is kept as a final
 export-able record until the package directory is removed.
+
+The zygote transaction copies the original executable to `app_process.seogaemo-stock` and
+verifies that backup before replacing `app_process`. The wrapper must always exec that stock
+path, including when its 3-start/120-second preload guard trips. A failure rolls back via the
+same full preflight and guarded restore as uninstall. `starts` is a dynamic decimal counter;
+its final value is captured in the ledger before restore. Dalvik cache entries in the two
+derived namespaces are captured before activation and again at revert, then restored to their
+original bytes or absence. `sg_revert_all` checks every owned path for drift before its first
+restore write. `make test` also runs optional `modules/<id>/build/build.sh` hooks before APK
+packaging and every `modules/<id>/test/run.sh`.
 
 **Export.** `seogaemo-root export usb|adb` copies the ledger, all original and modified files,
 property before/after values, `ro.build.product`, package version and module desired states into
@@ -138,3 +150,41 @@ Strings: modules add only `<snake_id>_*` resources in their own `res/values{,-ko
   from an older firmware; report conflict, keep backups, and let the uninstall fail closed.
 - Baselines are bound to `ro.build.product`; a different firmware build invalidates them (conflict).
 - Uninstall aborts (non-zero preuninstall) rather than leaving a half-restored system.
+
+## Home screen tiles
+
+- Home is a horizontally paged row of tall vertical cards (ccNC style), NEMESIS-scale touch targets.
+- `Module.homeTiles()` → `HomeTile[]` (`id`, `labelResId`, `iconResId` or glyph, `ModuleAction action`,
+  `int order`). Tiles appear only while their module is enabled (or always, if `alwaysVisible`).
+- The runtime builds the tile list: the built-in **Settings tile is always first on page 1**; module
+  tiles follow, sorted by `order` then module id; overflow continues on the next page with page dots
+  and swipe/arrow navigation. Tiles per page is a layout constant (not per module).
+
+## Shell tools available on the head unit (hard rule)
+
+Stock userland is **toolbox + mksh only** (`tmp/hmg_nemesis/01-DSP-OTA-troubleShooter.md:121`,
+`05-Run-Scripts.md:101`). Root-side scripts may use: mksh builtins (`case`, `read`, `${var#…}`,
+`${var%…}`, `printf`, `echo`, `test`, arithmetic), toolbox commands (`cat`, `cmp`, `cp`, `dd`,
+`grep`, `ls`, `mkdir`, `mv`, `rm`, `rmdir`, `ln`, `chmod`, `chown`, `touch`, `sleep`, `ps`,
+`kill`, `md5`, `mount`, `umount`, `sync`, `date`, `id`, `ifconfig`, `netcfg`, `route`,
+`getprop`, `setprop`, `start`, `stop`, `log`, `dmesg`), and system binaries `pm`, `am`,
+`settings`, `logcat`, `dumpsys`, `wpa_cli`, `/system/xbin/nemesis`.
+**Not available:** `awk`, `sed`, `tail`, `head`, `cut`, `tr`, `wc`, `sort`, `uniq`, `xargs`,
+`find`, `stat`, `readlink -f`, `sha256sum`/`sha1sum`, `tar`, `unzip`, `busybox`, `toybox`.
+Parse with `while read`, `case` and parameter expansion. Hashing on the unit: `md5` only.
+`make test` lints root scripts (package and modules) for the unavailable tools.
+
+## Settings layout and module pages
+
+- Sidebar, top to bottom: core categories (General first, then e.g. "Modules", Logs, About),
+  a divider, then one entry per module ("module settings"), in generated module order.
+- **Modules** (working name; KO "모듈 관리"): one large row per module with ON/OFF toggle, observed
+  state and restart banner; toggling goes through `ModuleManager.plan` + confirmation dialog.
+- **Module settings pages**: each module gets its own page. Reusable components live in the core app
+  (`com.seogaemo.app.ui.settings`): `SettingsPage` builder with `section(titleRes)`,
+  `info(labelRes, infoKey)`, `toggle(labelRes, settingKey)`, `choice(labelRes, settingKey, valuesRes)`,
+  `action(labelRes, ModuleAction)`, `note(textRes)`, `warning(textRes)`, `statusHeader()`.
+  Modules compose their page in `Module.buildSettingsPage(SettingsPage page)`; they never create
+  Android views themselves. Default implementation (in `RootBackedModule`) renders
+  `statusHeader()` + `infoRows()` + `notes()` + `actions()`, so declarative modules need no code.
+- Components follow `ui-guidelines.md` (NEMESIS-scale rows, EN/KO).

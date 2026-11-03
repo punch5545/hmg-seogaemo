@@ -68,12 +68,27 @@ def run():
                 (module_root / "lib/common.sh").write_bytes(package.read("lib/common.sh"))
                 script = module_root / f"modules/{name}.sh"
                 script.write_bytes(package.read(f"modules/{name}.sh"))
+                (module_root / "state").mkdir()
+                fake = module_root / "fake-bin"
+                fake.mkdir()
+                for command in ("getprop", "ifconfig", "netcfg", "pm", "settings", "dumpsys"):
+                    path = fake / command
+                    path.write_text("#!/bin/sh\nexit 0\n")
+                    path.chmod(0o755)
                 for verb in ("status", "precheck"):
                     result = subprocess.run(["sh", str(script), verb],
-                                            env=dict(os.environ, SEOGAEMO_BASE=str(module_root)),
+                                            env=dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}",
+                                                     SEOGAEMO_BASE=str(module_root),
+                                                     SEOGAEMO_STATE=str(module_root / "state"),
+                                                     SEOGAEMO_MODULE_DIR=str(module_root / "payload"),
+                                                     SG_DATA_ROOT=str(module_root / "data")),
                                             capture_output=True, text=True)
-                    assert result.returncode == 0
-                    assert result.stdout == "state=not-implemented\nrestart=none\ndetail=not implemented\n"
+                    assert result.returncode in (0, 1, 3, 4), result.stderr
+                    fields = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+                    assert fields.get("state") in ("off", "on", "pending-restart", "conflict",
+                                                    "incompatible", "failed", "not-implemented"), result.stdout
+                    assert fields.get("restart") in ("none", "adbd", "head_unit"), result.stdout
+                    assert "detail" in fields and len(fields["detail"]) <= 200, result.stdout
         with tempfile.TemporaryDirectory() as temp:
             temp = Path(temp)
             for name in entries:

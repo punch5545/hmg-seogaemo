@@ -8,6 +8,16 @@ public final class ModuleRegistry {
         return GeneratedModules.ALL.clone();
     }
 
+    public static String[] orderedIds() {
+        return GeneratedModules.IDS.clone();
+    }
+
+    public static Module find(String id) {
+        Module[] modules = all();
+        for (Module module : modules) if (module.id().equals(id)) return module;
+        throw new IllegalArgumentException("Unknown module: " + id);
+    }
+
     public static String[] depends(String id) {
         return relation(id, GeneratedModules.DEPENDS);
     }
