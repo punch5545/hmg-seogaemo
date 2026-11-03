@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Check a PR-ready maps folder and optionally compare two mapping results."""
+import argparse
+import importlib.util
+import json
+from pathlib import Path
+import sys
+
+ROOT=Path(__file__).resolve().parent.parent
+spec=importlib.util.spec_from_file_location("map_validation",ROOT/"tools/validate-maps.py")
+validation=importlib.util.module_from_spec(spec);spec.loader.exec_module(validation)
+
+
+def checked(folder,points,files,apps,required):
+    folder=folder.resolve()
+    map_root=folder.parents[3]
+    if map_root.name!="maps":raise ValueError("path must be maps/<make>/<model>/<region>/<firmware>")
+    validation.validate_bundle(folder,points,files,apps,required,map_root)
+    return json.loads((folder/"map.json").read_text()),json.loads((folder/"car.json").read_text())
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("folder",type=Path)
+    parser.add_argument("--against",type=Path)
+    args=parser.parse_args()
+    points,files,apps=validation.catalogue();required=validation.requirements(points)
+    mapping,car=checked(args.folder,points,files,apps,required)
+    print(f"valid: {len(mapping['points'])} mapped, {len(car['missing'])} unresolved, {len(car['files'])} stock hashes")
+    if args.against:
+        other,other_car=checked(args.against,points,files,apps,required)
+        ids=sorted(key for key in set(mapping["points"])|set(other["points"])
+                   if mapping["points"].get(key)!=other["points"].get(key))
+        hashes=sorted(key for key in set(car["files"])|set(other_car["files"])
+                      if car["files"].get(key)!=other_car["files"].get(key))
+        print(f"point differences: {len(ids)}; stock hash differences: {len(hashes)}")
+        for key in ids[:40]:print("point:",key)
+        for key in hashes[:40]:print("stock:",key)
+        if ids or hashes:return 1
+    return 0
+
+
+if __name__=="__main__":
+    try:sys.exit(main())
+    except (ValueError,KeyError,FileNotFoundError,TypeError) as error:
+        print(f"verify-map: {error}",file=sys.stderr);sys.exit(1)

@@ -56,6 +56,8 @@ test: package
 	python3 tools/validate-maps.py all
 	python3 tools/test-validate-maps.py
 	python3 tools/test-map-scanner.py
+	python3 tools/test-map-car.py
+	./tools/verify-map maps/hyundai/ioniq5/kor/260902
 	python3 tools/test-map-root.py
 	python3 tools/test-confirm-routing.py
 	sh tools/test-gen-modules.sh

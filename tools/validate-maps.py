@@ -35,11 +35,19 @@ def catalogue():
                 fail(f"unsafe stock file: {file}")
             files.add(file)
         apps[path.stem] = data
+        captures = data.get("captures", {})
+        for name, capture in captures.items():
+            if not isinstance(capture.get("within"), str) or not isinstance(capture.get("expression"), str):
+                fail(f"invalid capture {name} in {path}")
+            re.compile(capture["expression"])
         for key, rule in data["points"].items():
             if not POINT.fullmatch(key) or not key.startswith(path.stem + ".") or key in points:
                 fail(f"invalid point id: {key}")
             if rule.get("type") not in {"class", "field", "method", "ctor"} or not isinstance(rule.get("match"), dict):
                 fail(f"invalid point rule: {key}")
+            pattern = rule["match"].get("smali_pattern")
+            if pattern is not None and pattern not in captures:
+                fail(f"unknown capture {pattern} in {key}")
             points[key] = rule
     if not points:
         fail("catalogue absent")
@@ -71,8 +79,8 @@ def requirements(points):
     return found
 
 
-def validate_bundle(directory, points, stock_files, apps, required):
-    relative = directory.relative_to(ROOT / "maps")
+def validate_bundle(directory, points, stock_files, apps, required, map_root=None):
+    relative = directory.relative_to(map_root or ROOT / "maps")
     if len(relative.parts) != 4 or not all(re.fullmatch(r"[a-z0-9_-]+", part) for part in relative.parts):
         fail(f"invalid map layout: {directory}")
     car = json.loads((directory / "car.json").read_text())

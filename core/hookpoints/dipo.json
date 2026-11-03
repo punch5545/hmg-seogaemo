@@ -1,5 +1,17 @@
 {
   "_origin": "Follows HMG-API core/hookpoints/dipo.json@4fab437",
+  "captures": {
+    "iap2_notify_flag": {
+      "description": "on connect DiPO's iAP2 listener turns its manager's notification flag on, through a static setter",
+      "expression": "\\.method public final connected\\(ILjava/lang/String;\\)V\\n(?:.*\\n)*?invoke-static \\{v\\d+, v\\d+\\}, L[\\w/$]+;->(?P<set>\\w+)\\(L[\\w/$]+;Z\\)Z\\n",
+      "within": "@dipo.iap2_listener"
+    },
+    "session_bt_address": {
+      "description": "onSessionDetails reads the iAP2 manager's Bluetooth address and upper-cases it",
+      "expression": "invoke-virtual \\{v\\d+\\}, L[\\w/$]+;->(?P<address>\\w+)\\(\\)Ljava/lang/String;\\nmove-result-object v\\d+\\ninvoke-virtual \\{v\\d+\\}, Ljava/lang/String;->toUpperCase\\(\\)Ljava/lang/String;\\n",
+      "within": "@dipo.session_listener"
+    }
+  },
   "files": [
     "/system/app/HKMC_DiPO.odex",
     "/system/framework/com.tcc.iap2.odex",

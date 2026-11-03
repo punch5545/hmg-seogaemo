@@ -1,5 +1,12 @@
 {
   "_origin": "Follows HMG-API core/hookpoints/panel.json@4fab437",
+  "captures": {
+    "test_slot": {
+      "description": "",
+      "expression": "invoke-static \\{\\}, Lcom/mobis/splitscreen/right/(?P<gate>[\\w/]+);->(?P<gate_m>\\w+)\\(\\)Z\\nmove-result v0\\nif-eqz v0, :cond_\\w+\\niget-object v0, p0, Lcom/mobis/splitscreen/right/SplitScreenHome;->(?P<test_f>\\w+):Lcom/mobis/splitscreen/right/(?P<test>subviewExample/\\w+);\\ngoto(/16)? :goto_\\w+",
+      "within": "com.mobis.splitscreen.right.SplitScreenHome"
+    }
+  },
   "files": [
     "/system/app/RightScreenHome.odex"
   ],
