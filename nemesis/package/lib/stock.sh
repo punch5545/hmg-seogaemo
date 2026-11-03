@@ -118,7 +118,7 @@ hmg_seogaemo_stock_restore() {
                     sg_status off none 'Already off'; exit $?
                 fi
             fi
-            sh "$base/modules/$stock_id.sh" revert
+            /system/bin/sh "$base/modules/$stock_id.sh" revert
         ) > "$stock/module-output" 2>&1
         stock_code=$?
         if [ "$stock_code" -eq 0 ]; then
@@ -203,7 +203,7 @@ hmg_seogaemo_stock_uninstall() {
     (
         trap '' HUP
         cd / || exit 1
-        exec sh "$stock_uninstall/run.sh"
+        exec /system/bin/sh "$stock_uninstall/run.sh"
     ) < /dev/null > "$stock_uninstall/log" 2>&1 &
     stock_pid=$!
     stock_detail='Uninstall queued with NEMESIS; app will close when removed'

@@ -7,7 +7,7 @@ import signal
 import subprocess
 import tempfile
 import time
-from testlib import car_env, SHELL
+from testlib import car_env, SHELL, host_shell_tree
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,6 +21,7 @@ class Car:
     def __init__(self, folder):
         self.base = folder / 'package'
         shutil.copytree(ROOT / 'nemesis/package', self.base)
+        host_shell_tree(self.base)
         self.state = folder / 'data'
         self.fake = folder / 'fake'
         self.fake.mkdir()

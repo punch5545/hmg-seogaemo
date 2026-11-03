@@ -6,7 +6,7 @@ base=${base%/svc}
 . "$base/lib/common.sh"
 current=/data/nemesis/backup/hmg-seogaemo/update/current
 if [ "$base" != "$current" ] && [ -L "$current" ] && [ -f "$current/svc/watcher.sh" ]; then
-    exec sh "$current/svc/watcher.sh"
+    exec /system/bin/sh "$current/svc/watcher.sh"
 fi
 state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 root=$base/bin/hmg-seogaemo-root
@@ -47,13 +47,13 @@ while :; do
         for id in $boot_ids; do
             [ "$(cat "$state/watch/boot.$id" 2>/dev/null)" = "$boot_id" ] && continue
             sg_write "$boot_id" > "$state/watch/boot.$id" || continue
-            sh "$root" "$id" watch boot >> "$log" 2>&1 || echo "watch boot failed: $id" >> "$log"
+            /system/bin/sh "$root" "$id" watch boot >> "$log" 2>&1 || echo "watch boot failed: $id" >> "$log"
         done
         if [ -n "$screen_ids" ]; then
             current_display=$(display_state)
             if [ "$last_display" = off ] && [ "$current_display" = on ]; then
                 for id in $screen_ids; do
-                    sh "$root" "$id" watch screen_on >> "$log" 2>&1 || echo "watch screen_on failed: $id" >> "$log"
+                    /system/bin/sh "$root" "$id" watch screen_on >> "$log" 2>&1 || echo "watch screen_on failed: $id" >> "$log"
                 done
             fi
             [ "$current_display" = unknown ] || last_display=$current_display

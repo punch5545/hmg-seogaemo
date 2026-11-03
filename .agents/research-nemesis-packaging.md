@@ -75,3 +75,59 @@ package/                       USB wrapper/
 Historical proposed descriptor: `version=1.1`, `id=hmg-seogaemo`, `name=HMG-Seogaemo` (current descriptor uses `name=HMG-Seogaemo`), `type=application` (add `service` only when used), numeric `package-version`, concise descriptions, explicit tested `os` glob(s), `models` scope, and `depends` only for real package dependencies/conflicts. Use `[app.0] kind=sh,path=bin/open.sh,uid=root` without `package`/`component` to preserve app state across NEMESIS package updates; follow HMG-API's open/install pattern. An optional `[service.0] kind=sh,name=root-helper,path=svc/root-helper.sh,uid=root,mode=restart` is for genuine long-running work; ordinary toggles can call `nemesis root -c` on demand. `hmg_nemesis/04-Packages.md:27-48,86-120`; `HMG-API/install/nemesis/README.md:37-43`.
 
 `postinstall` should set `umask 077`, copy the APK to a stable package-owned `/data/hmg-seogaemo/` location **readable by PackageManager**, install/update it when Android is up using the boot-property workaround, and save any live-file snapshots before changes. For Android-down recovery installs, arrange a bounded background install after `sys.boot_completed=1` (as HMG-API's pending installer does), and keep the Launch script able to reinstall if needed. `open.sh` should open `com.seogaemo.hmg/.MainActivity`. `preuninstall` should distinguish staged update from real removal; for real removal, stop helper work, restore exact snapshots, uninstall the APK, and delete backups **only after** successful restoration. Any `/system` edits need stock checks and `nemesis remount`. Avoid a `kind=apk` entry if retaining Android app data through NEMESIS updates matters. `HMG-API/install/nemesis/scripts/postinstall.sh:1-7`; `HMG-API/install/nemesis/scripts/preuninstall.sh:1-22`; `HMG-API/install/common/app-open.sh:15-35`; `HMG-API/install/common/app-pending.sh:1-34`; `HMG-API/install/common/install.sh:115-120,189-209`; `hmg_nemesis/Sources/packages/adb-tcp/scripts/preun.sh:5-13`; `HMG-API/CLAUDE.md:7-8,52,58`.
+
+## Verified on-car extraction modes and execution audit (2026-11-03)
+
+Owner report: real Ioniq 5 KOR, v0.1.4 installed with `nemesis install <package.zip>`.
+NEMESIS ignores ZIP Unix modes: installed `scripts/*` and `svc/*` are 0755;
+all other package files are 0644. `bin/nemesis-client` is 0755 only because
+postinstall explicitly creates/chmods it. HMG-API shows the same extraction
+pattern and invokes shell payloads with `sh`. Direct execution of
+`bin/hmg-seogaemo-root map status` failed with Permission denied; running
+`/system/bin/sh <dispatcher> map status` worked, with 324/324 verification.
+This verifies the invocation failure and mapper result, not all module behavior.
+
+Audit and resulting rules:
+
+| Caller | Packaged target | Invocation / mode responsibility |
+| --- | --- | --- |
+| `RootClient` | `bin/hmg-seogaemo-root`: module lifecycle, map, export, stock, uninstall | Fixed allowlisted commands prefixed with `/system/bin/sh`; daemon transport stays the installed `bin/nemesis-client` |
+| `UpdateClient.root` | dispatcher `update stage/apply/rollback/status` | Same interpreter prefix and daemon client; verb validation unchanged |
+| `NEMESIS.data` | `bin/open.sh`, `svc/reconcile.sh`, `svc/watcher.sh` | All declared `kind=sh`; postinstall additionally chmods the three bin shell entry points as defense for direct Launch execution |
+| NEMESIS hooks | `scripts/postinstall.sh`, `scripts/preuninstall.sh` | NEMESIS root hooks; extraction already makes scripts executable |
+| postinstall / open | `bin/install-apk.sh`, including OTA current | Explicit `/system/bin/sh` |
+| root dispatcher | `core/stock.sh`, `core/hmg-seogaemo-map.sh`, fixed installed `core/update.sh`, `modules/<validated-id>.sh` lifecycle/watch | Explicit `/system/bin/sh`, no executable-mode checks |
+| reconcile | updater rollback, OTA current reconcile, dispatcher apply/revert | Explicit `/system/bin/sh` |
+| watcher | OTA current watcher, dispatcher boot/screen_on | Explicit `/system/bin/sh` |
+| preuninstall / stock library | stock restore, module revert, detached uninstall runner copied outside package | Explicit `/system/bin/sh`; detached runner/common additionally chmod 0700 |
+| Wi-Fi / projection module probes | dispatcher projection status / map status | Explicit `/system/bin/sh`; Wi-Fi checks regular file existence rather than `-x` |
+| OTA updater | current install-apk, health reconcile, rollback install-apk | Explicit `/system/bin/sh`; extracted scripts need no chmod, including payload-only updates |
+| postinstall | native `bin/nemesis-client` copied from `/system/xbin/nemesis` | chmod 0755 on temporary copy before rename; never a ZIP payload executable |
+| projection package API | native wrapper installed as `/system/bin/app_process` | `sg_zygote_install` / `sg_commit_file` explicitly commits mode 0755; stock executable copy uses captured stock mode and is checked executable |
+| native wrapper | `/system/bin/app_process.hmg-seogaemo-stock` | `execve` of installed baseline copy, never extracted payload |
+| projection package API | loader, AAC shared libraries and hook JAR | Explicit 0644 installs; loaded as libraries/classes, never executed as packaged binaries |
+| mapper / update verifier | mapper JAR / trusted APK | System `app_process` with CLASSPATH; files need readability only |
+
+Upstream source cross-check: `Sources/native/util.c:420-449` implements
+`run_script` by chmod 0755 followed by `execl("/system/bin/sh", "sh", script, ...)`;
+`pkg.c:1096-1099` sends kind=sh Launch through it. `svc.c:195` selects the same
+interpreter for shell services. The bin chmod is defense in depth, not required
+by those upstream interpreter paths.
+
+All `lib/*.sh` inputs are sourced, not executed. Module build scripts and native
+compiler helpers are host-only and excluded from device payloads. No packaged
+native binary is executed in place. OTA does not run postinstall, so its shell
+paths rely on interpreter invocation and native system installs rely on the
+same package API modes, independently of archive metadata.
+
+Regression coverage: package fixtures reproduce scripts/svc 0755 and other
+entry points 0644; dispatcher/module lifecycle and watch tests run with 0644
+inputs; Wi-Fi and projection probes use non-executable fake dispatchers; native
+zygote tests install from 0644 payloads and assert both installed executables;
+OTA transaction tests exercise staged ordinary files, health checks and rollback.
+Java command-string checks cover every root operation. Host fixtures translate
+only `/system/bin/sh` to the selected host shell because macOS has no device
+interpreter; POSIX sh and, when installed, mksh suites exercise the translated
+private copies. Validation for this fix: `make test` passed with POSIX sh; mksh
+was not installed on the host. Android 4.4 profile lint also passed on source
+and packaged scripts.

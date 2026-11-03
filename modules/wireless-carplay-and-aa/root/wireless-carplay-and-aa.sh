@@ -15,7 +15,7 @@ conflict() { sg_status conflict none "$1"; }
 incompatible() { sg_status incompatible none "$1"; }
 
 compatibility() {
-    map_state=$("$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state= # android44-shell: allow -- fixed dispatcher beneath the runtime-supplied package root
+    map_state=$(/system/bin/sh "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state= # android44-shell: allow -- fixed dispatcher beneath the runtime-supplied package root
     sg_print "$map_state" | grep -Fxq 'state=on' ||
         { incompatible 'verified car map required'; return 4; }
     [ "$(value ro.mobis.onebindir)" = neev_kr ] || { incompatible 'unsupported onebin'; return 4; }

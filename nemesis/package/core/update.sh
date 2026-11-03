@@ -113,7 +113,7 @@ if [ "$verb" = rollback ]; then
     [ -f "$old/app/hmg-seogaemo.apk" ] || exit 1
     echo 'phase=rollback' > "$root/journal"
     switch_to "$old"
-    sh "$root/current/bin/install-apk.sh" || exit 1
+    /system/bin/sh "$root/current/bin/install-apk.sh" || exit 1
     rewrite_descriptor "$previous_version" || exit 1
     echo 'phase=rolled-back' > "$root/journal"
     exit 0
@@ -135,16 +135,16 @@ sg_print "$installed" > "$root/previous-version"
 echo 'phase=applying' > "$root/journal"
 sync
 switch_to "$new"
-if ! sh "$root/current/bin/install-apk.sh" || ! grep -Fxq "$version" "$root/current/VERSION" || ! [ -s "$root/current/modules.graph" ] || ! dumpsys package com.seogaemo.hmg | grep -Fq "versionName=$version" || ! HMG_SEOGAEMO_UPDATE_HEALTH=1 sh "$root/current/svc/reconcile.sh"; then
+if ! /system/bin/sh "$root/current/bin/install-apk.sh" || ! grep -Fxq "$version" "$root/current/VERSION" || ! [ -s "$root/current/modules.graph" ] || ! dumpsys package com.seogaemo.hmg | grep -Fq "versionName=$version" || ! HMG_SEOGAEMO_UPDATE_HEALTH=1 /system/bin/sh "$root/current/svc/reconcile.sh"; then
     echo 'phase=auto-rollback' > "$root/journal"
     switch_to "$old"
-    sh "$root/current/bin/install-apk.sh" || true
+    /system/bin/sh "$root/current/bin/install-apk.sh" || true
     exit 1
 fi
 if ! rewrite_descriptor "$version"; then
     echo 'phase=auto-rollback' > "$root/journal"
     switch_to "$old"
-    sh "$root/current/bin/install-apk.sh" || true
+    /system/bin/sh "$root/current/bin/install-apk.sh" || true
     exit 1
 fi
 rm -f "$root/staged"

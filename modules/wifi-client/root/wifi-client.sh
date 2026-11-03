@@ -78,8 +78,8 @@ ap_active() {
 
 projection_desired() {
     # The sibling module status reflects the runtime-owned desired state.
-    [ -x "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" ] || return 1
-    "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" wireless-carplay-and-aa status 2>/dev/null | # android44-shell: allow -- fixed dispatcher beneath the runtime-supplied package root
+    [ -f "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" ] || return 1
+    /system/bin/sh "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" wireless-carplay-and-aa status 2>/dev/null | # android44-shell: allow -- fixed dispatcher beneath the runtime-supplied package root
         grep -Eq '^state=(on|pending-restart)$'
 }
 

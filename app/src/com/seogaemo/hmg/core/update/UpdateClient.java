@@ -137,7 +137,7 @@ public final class UpdateClient {
 
     public static String root(String verb) throws Exception {
         if (!("stage".equals(verb) || "apply".equals(verb) || "rollback".equals(verb) || "status".equals(verb))) throw new IOException("invalid verb");
-        Process process = new ProcessBuilder("/system/xbin/nemesis", "root", "-c", "/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root update " + verb).redirectErrorStream(true).start();
+        Process process = new ProcessBuilder("/data/nemesis/apps/hmg-seogaemo/bin/nemesis-client", "root", "-c", "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root update " + verb).redirectErrorStream(true).start();
         InputStream in = process.getInputStream();
         byte[] data = new byte[4096];
         int used = 0, n;

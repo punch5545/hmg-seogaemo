@@ -80,6 +80,17 @@ Ownership:
 Module worktrees touch only their own `modules/<id>/` directory (plus their own `.agents/<id>.md`
 notes). Anything outside needs a note in the final report instead of an edit.
 
+## Packaged executable invocation (2026-11-03)
+
+NEMESIS extraction on the owner’s Ioniq 5 KOR ignores ZIP executable modes:
+only scripts/ and svc/ are 0755; other files are 0644. Invoke packaged shell
+entry points using `/system/bin/sh <fixed-path>`, including Java root commands
+and module probes. Fixed IDs/verbs and validation remain unchanged. Scripts
+need readability, not executable mode. Postinstall creates the daemon client
+with mode 0755. The package API commits the zygote wrapper as 0755 and preserves
+the stock executable’s baseline mode. These rules also cover ordinary files
+created by OTA extraction; no archive mode metadata is required.
+
 ## Root side
 
 ### Stock restore and package removal
@@ -233,7 +244,7 @@ property before/after values, `ro.build.product`, package version and module des
 `/data/local/tmp/hmg-seogaemo-export/<timestamp>/` readable by the adb shell user (`adb pull`).
 Read-only for the system; bounded size; refuses if no target. Exposed in Settings (Logs) as
 "Export changes to USB" and documented for adb:
-`adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.
+`adb shell /data/local/tmp/nemesis-d root -c '/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.
 
 Status block on stdout (one `key=value` per line, ASCII, detail ≤ 200 chars):
 
@@ -377,7 +388,7 @@ the root dispatcher is `hmg-seogaemo-root`. Installed files live under
 `/data/nemesis/apps/hmg-seogaemo`, state under
 `/data/nemesis/backup/hmg-seogaemo`, and the USB wrapper contains
 `packages/hmg-seogaemo.zip`. For example:
-`adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.
+`adb shell /data/local/tmp/nemesis-d root -c '/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.
 
 ## Naming and install boundary (2026-11-03)
 

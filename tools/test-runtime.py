@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from testlib import car_env, SHELL
+from testlib import car_env, SHELL, host_shell_script, copy_shell_script
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,7 +28,7 @@ def test_toolbox_md5(temp):
 
 def script(path, body):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('#!/bin/sh\n. "' + str(ROOT / 'nemesis/package/lib/common.sh') + '"\n' + body)
+    path.write_text('#!/bin/sh\n. "' + str(ROOT / 'nemesis/package/lib/common.sh') + '"\n' + host_shell_script(body))
     path.chmod(0o755)
 
 
@@ -213,8 +213,8 @@ def test_root(temp):
     (base / "bin").mkdir(parents=True)
     (base / "modules").mkdir()
     (base / "lib").mkdir()
-    shutil.copy(ROOT / "nemesis/package/bin/hmg-seogaemo-root", base / "bin/hmg-seogaemo-root")
-    shutil.copy(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
+    copy_shell_script(ROOT / "nemesis/package/bin/hmg-seogaemo-root", base / "bin/hmg-seogaemo-root")
+    copy_shell_script(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
     (base / "modules.list").write_text("a\nb\nc\n")
     (base / "modules.graph").write_text(
         "a\tdepends=\texcludes=c\n"
@@ -234,6 +234,10 @@ echo detail=
 ''')
     (base / "modules/a.properties").write_text("watch=boot,screen_on\n")
     (base / "modules/c.properties").write_text("restore=reboot\n")
+    # All module entry points and the dispatcher are non-executable after extraction.
+    for path in base.rglob("*"):
+        if path.is_file():
+            path.chmod(0o644)
     state = base / "state"
     env = dict(os.environ, SG_DATA_ROOT=str(state))
     root = base / "bin/hmg-seogaemo-root"
@@ -291,7 +295,7 @@ sg_print "bind $4 ext4 rw 0 0" > "$SG_MOUNTS_FILE"
     (base / "payload/bind").write_text("overlay")
     (base / "modules/test.properties").write_text(
         f"owns_props=demo\nowns_files={put},{replace},{deleted},{bound}\nservices=adbd\n")
-    shutil.copy(ROOT / "nemesis/package/bin/hmg-seogaemo-root", base / "bin/hmg-seogaemo-root")
+    copy_shell_script(ROOT / "nemesis/package/bin/hmg-seogaemo-root", base / "bin/hmg-seogaemo-root")
     (base / "NEMESIS.data").write_text("package-version=1.2.3\n")
     mounts = base / "mounts"
     mounts.write_text("")
@@ -339,7 +343,7 @@ sg_revert_all
     assert (base / "remounts").read_text().splitlines() == ["remount rw", "remount ro"]
     export_root = base / "hmg-seogaemo-export"
     (base / "lib").mkdir(exist_ok=True)
-    shutil.copy(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
+    copy_shell_script(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
     env["SG_EXPORT_ROOT"] = str(export_root)
     result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
     assert "state=on" in result.stdout
@@ -425,9 +429,9 @@ def test_reconcile(temp):
     base = temp / "lifecycle"
     for folder in ("bin", "svc", "scripts", "lib"):
         (base / folder).mkdir(parents=True)
-    shutil.copy(ROOT / "nemesis/package/svc/reconcile.sh", base / "svc/reconcile.sh")
-    shutil.copy(ROOT / "nemesis/package/scripts/preuninstall.sh", base / "scripts/preuninstall.sh")
-    shutil.copy(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
+    copy_shell_script(ROOT / "nemesis/package/svc/reconcile.sh", base / "svc/reconcile.sh")
+    copy_shell_script(ROOT / "nemesis/package/scripts/preuninstall.sh", base / "scripts/preuninstall.sh")
+    copy_shell_script(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
     (base / "modules.list").write_text("a\nb\n")
     state = base / "state"
     (state / "desired").mkdir(parents=True)
@@ -471,7 +475,7 @@ def test_watch_dispatch(temp):
     base = temp / "watch-dispatch"
     for folder in ("bin", "svc", "modules", "lib"):
         (base / folder).mkdir(parents=True)
-    shutil.copy(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
+    copy_shell_script(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
     # Newer mksh has a sleep builtin, so PATH alone cannot intercept it.
     script(base / "svc/watcher.sh",
            f'sleep() {{ "{base / "fake/sleep"}" "$@"; }}\n' +
@@ -586,6 +590,8 @@ def test_zygote_and_dex(temp):
     (payload / "wrapper").write_bytes(b"wrapper")
     (payload / "loader").write_bytes(b"loader")
     (payload / "jar").write_bytes(b"jar")
+    for source in payload.iterdir():
+        source.chmod(0o644)
     manifest.write_text("owns_props=\nowns_files=" + ",".join(map(str, paths + guards)) +
                         "\nservices=\n")
     live = base / "live"
@@ -611,6 +617,7 @@ sg_zygote_install wrapper loader jar
 [ "$(cat "{paths[1]}")" = stock-executable ]
 [ -x "{paths[1]}" ]
 [ "$(cat "{paths[0]}")" = wrapper ]
+[ -x "{paths[0]}" ]
 sg_write 3 > "{guards[2]}"
 sg_write generated > "{cache}"
 mkdir -p "{app_dir}"
@@ -649,6 +656,7 @@ sg_zygote_install wrapper loader jar
 sg_write external > "{paths[2]}"
 if sg_revert_all; then exit 1; fi
 [ "$(cat "{paths[0]}")" = wrapper ]
+[ -x "{paths[0]}" ]
 [ "$(cat "{paths[1]}")" = stock-executable ]
 ''')
     run(runner, env=env)

@@ -12,7 +12,7 @@ import zipfile
 
 from package import DIST, ROOT, HOST_SHELL, apk_version, verify
 from version import read_version
-from testlib import car_env, SHELL
+from testlib import car_env, SHELL, host_shell_script
 
 
 def descriptor(data):
@@ -33,6 +33,15 @@ def run():
     usb_path = DIST / f"{prefix}-nemesis-usb.zip"
     ota_path = DIST / f"{prefix}-ota.zip"
     with zipfile.ZipFile(package_path) as package, zipfile.ZipFile(usb_path) as usb, zipfile.ZipFile(ota_path) as ota:
+        # Every Java root command must explicitly select the device interpreter.
+        for source, expected_count in (("module/RootClient.java", 5),
+                                       ("core/update/UpdateClient.java", 1)):
+            java = (ROOT / "app/src/com/seogaemo/hmg" / source).read_text()
+            commands = re.findall(r'"([^"\n]*bin/hmg-seogaemo-root [^"\n]*)"', java)
+            assert len(commands) == expected_count, commands
+            assert all(command.startswith("/system/bin/sh /data/nemesis/apps/")
+                       for command in commands), commands
+            assert '"/data/nemesis/apps/hmg-seogaemo/bin/nemesis-client"' in java
         entries = set(package.namelist())
         required = {"NEMESIS.data", "app/hmg-seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
                     "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
@@ -126,11 +135,16 @@ def run():
                 if name.endswith(".sh") or name == "bin/hmg-seogaemo-root":
                     path = temp / name
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_bytes(package.read(name))
+                    path.write_text(host_shell_script(package.read(name).decode()))
+                    # Reproduce NEMESIS extraction rather than ZIP Unix modes.
+                    path.chmod(0o755 if name.startswith(("scripts/", "svc/")) else 0o644)
                     subprocess.run([SHELL, "-n", str(path)], check=True)
             # Run a copied dispatcher against an isolated fake module tree.
             (temp / "modules.list").write_text("good\n")
             (temp / "modules/good.sh").write_text('#!/bin/sh\n. "$HMG_SEOGAEMO_BASE/lib/common.sh"\nsg_print "action=$1" "base=$HMG_SEOGAEMO_BASE" "state=$HMG_SEOGAEMO_STATE" "module_dir=$HMG_SEOGAEMO_MODULE_DIR"\n')
+            (temp / "modules/good.sh").chmod(0o644)
+            assert not os.access(temp / "bin/hmg-seogaemo-root", os.X_OK)
+            assert not os.access(temp / "modules/good.sh", os.X_OK)
             command = [SHELL, str(temp / "bin/hmg-seogaemo-root")]
             result = subprocess.run(command + ["good", "status"], capture_output=True, text=True)
             expected = f"action=status\nbase={temp}\nstate=/data/nemesis/backup/hmg-seogaemo/modules/good\nmodule_dir={temp}/modules/good.d\n"
@@ -162,6 +176,23 @@ def run():
                 result = subprocess.run([SHELL, str(temp / "bin/install-apk.sh")], env=env, capture_output=True)
                 assert (result.returncode == 0) == succeeds
                 assert state.read_text() == "1"
+            # Root postinstall must explicitly install native client mode, even
+            # when its source and all package bin files start non-executable.
+            native = temp / "fake-nemesis"
+            native.write_bytes(b"native-client")
+            native.chmod(0o644)
+            (fake / "getprop").write_text(
+                '#!/bin/sh\ncase "$1" in ro.build.product) echo NEEV.KOR.0000.V039.001.260902;; *) echo 0;; esac\n')
+            hook = temp / "scripts/postinstall.sh"
+            hook.write_text(host_shell_script(package.read("scripts/postinstall.sh").decode())
+                            .replace("/system/xbin/nemesis", str(native)))
+            result = subprocess.run([SHELL, str(hook)], env=env, capture_output=True)
+            assert result.returncode == 0, result.stderr
+            client = temp / "bin/nemesis-client"
+            assert client.read_bytes() == native.read_bytes()
+            assert client.stat().st_mode & 0o777 == 0o755
+            for name in ("hmg-seogaemo-root", "open.sh", "install-apk.sh"):
+                assert (temp / "bin" / name).stat().st_mode & 0o777 == 0o755
         with tempfile.NamedTemporaryFile(suffix=".apk") as temp:
             temp.write(package.read("app/hmg-seogaemo.apk"))
             temp.flush()
@@ -183,7 +214,7 @@ def run():
             incoming = fake_root / "download"
             updater = updater.replace("state=/data/nemesis/backup/hmg-seogaemo", "state=" + str(state))
             updater = updater.replace("input=/data/data/com.seogaemo.hmg/files/update", "input=" + str(incoming))
-            (package_root / "core/update.sh").write_text(updater)
+            (package_root / "core/update.sh").write_text(host_shell_script(updater))
             incoming.mkdir()
             for name in ("hmg-seogaemo-0.1.1-manifest.json", "hmg-seogaemo-0.1.1-manifest.json.sig", "hmg-seogaemo-0.1.1-ota.zip"):
                 (incoming / name).write_bytes(b"test")

@@ -116,7 +116,7 @@ cat > "$T/base/bin/hmg-seogaemo-root" <<'SH'
     [ ! -f "$TEST_STATE/map-off" ] || { sg_print "state=incompatible"; exit 4; }
 sg_print "state=on"
 SH
-chmod +x "$T/base/bin/hmg-seogaemo-root"
+chmod 644 "$T/base/bin/hmg-seogaemo-root"
 chmod +x "$T/bin"/*
 export PATH=$T/bin:$PATH
 sg_write "NEEV.KOR.0000.V039.001.260902" > "$T/props/ro.build.product"
@@ -133,7 +133,8 @@ done
 sg_print "stock-app-process" > "$T/root/system/bin/app_process"
 sg_print "boot-one" > "$T/root/proc/sys/kernel/random/boot_id"
 sg_print '-/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml' '-/system/etc/permissions/com.hkmc.software.connectivity.androidauto_wireless.xml' '-/system/etc/permissions/com.hkmc.software.wifihotspot.xml' > "$T/root/system/onebin/neev_kr/featurexml.cfg"
-SCRIPT=$HERE/root/wireless-carplay-and-aa.sh
+SCRIPT=$T/wireless-carplay-and-aa.sh
+sed "s|/system/bin/sh|$car_shell|g" "$HERE/root/wireless-carplay-and-aa.sh" > "$SCRIPT"
 run() { "$car_shell" "$SCRIPT" "$1" > "$T/output"; }
 fail() { echo "FAIL: $1" >&2; cat "$T/output" >&2; exit 1; }
 sg_write "OTHER.KOR.0000.V039.001.260902" > "$T/props/ro.build.product"
