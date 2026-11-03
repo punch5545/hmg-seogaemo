@@ -253,6 +253,8 @@ sg_remount() { case "$1" in rw|ro) nemesis remount "$1";; *) return 2;; esac; }
 # change: warn, keep the ledger consistent, and let the next restart mount it ro.
 sg_remount_ro() {
     sg_remount ro && return 0
+    # remount ro would have flushed the write; a car can lose power at ignition off.
+    sync || :
     sg_log 'warning: /system stays read-write until restart (remount ro failed)' || :
     return 0
 }
