@@ -13,6 +13,7 @@ import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -98,13 +99,15 @@ public final class UpdateVerifier {
         String version = verify(directory, installed, key);
         if (dest.exists() || !dest.mkdir()) throw new IOException("destination must be new");
         ZipInputStream zip = new ZipInputStream(new FileInputStream(new File(directory, "hmg-seogaemo-" + version + "-ota.zip")));
+        TreeMap<String, String> md5s = new TreeMap<String, String>();
         try {
             Set<String> names = new HashSet<String>();
             long total = 0;
+            int entries = 0;
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 String name = entry.getName();
-                if (!names.add(name) || !name.matches("(?:VERSION|modules\\.list|modules\\.graph|app/Seogaemo\\.apk|(?:bin|lib|modules|core|svc)/[A-Za-z0-9_./-]+)") || name.contains("..") || name.startsWith("/")) throw new IOException("unsafe ZIP entry");
+                if (++entries > 2048 || name.length() > 160 || !names.add(name) || !name.matches("(?:VERSION|modules\\.list|modules\\.graph|app/Seogaemo\\.apk|(?:bin|lib|modules|core|svc)/[A-Za-z0-9_./-]+)") || name.contains("..") || name.startsWith("/")) throw new IOException("unsafe ZIP entry");
                 File out = new File(dest, name);
                 if (entry.isDirectory()) { if (!out.isDirectory() && !out.mkdirs()) throw new IOException("mkdir failed"); continue; }
                 if (!out.getParentFile().isDirectory() && !out.getParentFile().mkdirs()) throw new IOException("mkdir failed");
@@ -113,17 +116,54 @@ public final class UpdateVerifier {
                     byte[] buffer = new byte[8192];
                     int count;
                     long entrySize = 0;
+                    MessageDigest md5 = MessageDigest.getInstance("MD5");
                     while ((count = zip.read(buffer)) != -1) {
                         entrySize += count;
                         total += count;
                         if (entrySize > MAX_ENTRY || total > MAX_ZIP) throw new IOException("ZIP expansion too large");
                         stream.write(buffer, 0, count);
+                        md5.update(buffer, 0, count);
                     }
                     stream.getFD().sync();
+                    md5s.put(name, hex(md5.digest()));
                 } finally { stream.close(); }
             }
         } finally { zip.close(); }
         if (!new File(dest, "VERSION").isFile() || !version.equals(new String(readBounded(new File(dest, "VERSION"), 64), UTF8).trim()) || !new File(dest, "app/Seogaemo.apk").isFile() || !new File(dest, "modules.graph").isFile()) throw new IOException("incomplete OTA payload");
+        FileOutputStream list = new FileOutputStream(new File(dest, "files.md5"));
+        try {
+            for (java.util.Map.Entry<String, String> item : md5s.entrySet()) list.write((item.getValue() + "|" + item.getKey() + "\n").getBytes(UTF8));
+            list.getFD().sync();
+        } finally { list.close(); }
+    }
+
+    public static void copyIncoming(File input, File dest) throws Exception {
+        if (!input.isDirectory() || dest.exists() || !dest.mkdir()) throw new IOException("invalid download copy");
+        File[] files = input.listFiles();
+        if (files == null) throw new IOException("download missing");
+        int count = 0;
+        for (File file : files) {
+            String name = file.getName();
+            if ("payload".equals(name) && file.isDirectory()) continue;
+            if (!file.isFile() || !name.matches("hmg-seogaemo-" + VERSION + "-(?:manifest\\.json(?:\\.sig)?|ota\\.zip)")) throw new IOException("unexpected download file");
+            long limit = name.endsWith("-ota.zip") ? MAX_ZIP : name.endsWith(".sig") ? 1024 : 16384;
+            if (file.length() > limit) throw new IOException("download too large");
+            InputStream in = new FileInputStream(file);
+            FileOutputStream out = new FileOutputStream(new File(dest, name));
+            try {
+                byte[] buffer = new byte[8192];
+                long size = 0;
+                int n;
+                while ((n = in.read(buffer)) != -1) {
+                    size += n;
+                    if (size > limit) throw new IOException("download too large");
+                    out.write(buffer, 0, n);
+                }
+                out.getFD().sync();
+            } finally { in.close(); out.close(); }
+            count++;
+        }
+        if (count != 3) throw new IOException("incomplete download");
     }
 
     public static boolean isNewer(String a, String b) {
@@ -182,6 +222,7 @@ public final class UpdateVerifier {
             else if ("switch".equals(args[0]) && args.length == 3) {
                 if (!new File(args[1]).renameTo(new File(args[2]))) throw new IOException("pointer rename failed");
             }
+            else if ("copy".equals(args[0]) && args.length == 3) copyIncoming(new File(args[1]), new File(args[2]));
             else throw new IOException("usage");
         } catch (Exception e) { System.err.println(e.getMessage()); System.exit(1); }
     }

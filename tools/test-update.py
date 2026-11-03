@@ -79,6 +79,14 @@ def run():
         result = java(dest=out)
         assert result.returncode == 0, result.stderr
         assert (out / "VERSION").read_text().strip() == version
+        for line in (out / "files.md5").read_text().splitlines():
+            digest, relative = line.split("|", 1)
+            assert hashlib.md5((out / relative).read_bytes()).hexdigest() == digest
+        (stage / "payload").mkdir()
+        copied = temp / "copied"
+        result = subprocess.run(["java", "-cp", str(classes), "com.seogaemo.app.core.update.UpdateVerifier", "copy", str(stage), str(copied)], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert (copied / name).read_bytes() == (stage / name).read_bytes()
         old_dir, new_dir = temp / "old", temp / "new"
         old_dir.mkdir(); new_dir.mkdir()
         current, next_link = temp / "current", temp / "next"
@@ -86,7 +94,7 @@ def run():
         next_link.symlink_to(new_dir, target_is_directory=True)
         result = subprocess.run(["java", "-cp", str(classes), "com.seogaemo.app.core.update.UpdateVerifier", "switch", str(next_link), str(current)], capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
-        assert current.resolve() == new_dir
+        assert current.resolve() == new_dir.resolve(), (current.resolve(), next_link.exists(), result.stdout, result.stderr)
         assert java(installed=version).returncode != 0
         bad = bytearray(signature.read_bytes()); bad[0] ^= 1; signature.write_bytes(bad)
         assert java().returncode != 0

@@ -3,8 +3,11 @@ umask 077
 base=${0%/*}
 base=${base%/svc}
 journal=/data/nemesis/backup/seogaemo/update/journal
-if [ "${SEOGAEMO_UPDATE_HEALTH:-}" != 1 ] && [ -f "$journal" ] && grep -Eq '^phase=(applying|auto-rollback|rollback)$' "$journal"; then
-    sh "$base/core/update.sh" rollback || exit 1
+if [ "${SEOGAEMO_UPDATE_HEALTH:-}" != 1 ] && [ -f "$journal" ]; then
+    IFS= read -r phase < "$journal" || :
+    case "$phase" in phase=applying|phase=auto-rollback|phase=rollback)
+        sh "$base/core/update.sh" rollback || exit 1 ;;
+    esac
 fi
 current=/data/nemesis/backup/seogaemo/update/current
 if [ "$base" != "$current" ] && [ -L "$current" ]; then

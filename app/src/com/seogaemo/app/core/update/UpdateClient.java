@@ -57,7 +57,7 @@ public final class UpdateClient {
         File dir = new File(context.getFilesDir(), "update");
         if (dir.exists()) {
             File[] old = dir.listFiles();
-            if (old != null) for (File file : old) if (!file.delete()) throw new IOException("cannot clear old download");
+            if (old != null) for (File file : old) deleteTree(file);
         } else if (!dir.mkdir()) throw new IOException("cannot create download directory");
         byte[] metadata = fetch(API, API_LIMIT, null);
         JSONObject release = new JSONObject(new String(metadata, "UTF-8"));
@@ -83,7 +83,17 @@ public final class UpdateClient {
             fetch(url, limits[i], new File(dir, wanted[i]));
         }
         progress.changed(R.string.update_verifying);
-        return UpdateVerifier.verify(dir, installed);
+        String verified = UpdateVerifier.verify(dir, installed);
+        UpdateVerifier.extract(dir, installed, new File(dir, "payload"));
+        return verified;
+    }
+
+    private static void deleteTree(File file) throws IOException {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) for (File child : children) deleteTree(child);
+        }
+        if (!file.delete()) throw new IOException("cannot clear old download");
     }
 
     private byte[] fetch(String address, int limit, File destination) throws Exception {
