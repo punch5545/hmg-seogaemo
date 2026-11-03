@@ -1,7 +1,7 @@
 # Wi-Fi client module implementation
 
 Implemented against `.agents/module-runtime-contract.md`, including the
-2026-11-03 applied-file marker revision. This is an independent implementation
+2026-11-03 package mutation API. This is an independent implementation
 of the observed feature-file behavior; no upstream source was copied.
 
 On `NEEV.KOR.*.260902`, apply changes exactly one active line in
@@ -10,6 +10,10 @@ On `NEEV.KOR.*.260902`, apply changes exactly one active line in
 `#-/system/etc/permissions/android.hardware.wifi.xml`. It adds
 `/system/etc/permissions/android.hardware.wifi.xml` with the standard
 `android.hardware.wifi` feature declaration. No property changes are made.
+The XML ships in `modules/wifi-client/payload/`; the module calls
+`sg_file_put` and `sg_file_replace_line`, and `sg_revert_all` performs
+guarded exact restore. The module reads files directly but never writes
+system files itself.
 In particular, `persist.wifi.state=3` remains a later experiment; see
 `.agents/research-wifi-client.md` and `.agents/research-wifi-enable.md`.
 
@@ -33,7 +37,7 @@ awaiting a reboot from an observed feature. The module cannot infer actual
 Settings menu visibility from the feature list.
 
 `modules/wifi-client/test/run.sh` uses a private fake `common.sh`, fake
-`getprop`/`pm`/`ifconfig`/`wpa_cli`, and fake system/sys roots. It covers
+`getprop`/`setprop`/`pm`/`ifconfig`/`wpa_cli`, and fake system/sys roots. It covers
 off/apply/reapply/on/revert, exact config restore and XML absence, IP,
 warning, firmware/chip/owner gates, and drift conflict. The current top-level
 `make test` does not discover module tests; the runtime owner should add

@@ -7,25 +7,14 @@ cfg=/system/onebin/neev_kr/featurexml.cfg
 xml=/system/etc/permissions/android.hardware.wifi.xml
 stock='-/system/etc/permissions/android.hardware.wifi.xml'
 enabled='#-/system/etc/permissions/android.hardware.wifi.xml'
-marker=$SEOGAEMO_STATE/applied
 
 result() { sg_status "$1" "$2" "$3"; exit $?; }
-expected_xml() {
-    cat <<'EOF'
-<permissions>
-    <feature name="android.hardware.wifi" />
-</permissions>
-EOF
-}
 count_line() { grep -Fxc -e "$1" "$cfg" 2>/dev/null || :; }
 cfg_stock() { [ "$(count_line "$stock")" = 1 ] && [ "$(count_line "$enabled")" = 0 ]; }
 cfg_enabled() { [ "$(count_line "$stock")" = 0 ] && [ "$(count_line "$enabled")" = 1 ]; }
-xml_enabled() { [ -f "$xml" ] && expected_xml | cmp - "$xml" >/dev/null 2>&1; }
-applied_intact() {
-    [ -f "$SEOGAEMO_STATE/applied.cfg" ] &&
-        [ -f "$SEOGAEMO_STATE/applied.xml" ] &&
-        cmp "$SEOGAEMO_STATE/applied.cfg" "$cfg" >/dev/null 2>&1 &&
-        cmp "$SEOGAEMO_STATE/applied.xml" "$xml" >/dev/null 2>&1
+xml_enabled() {
+    [ -f "$xml" ] &&
+        cmp "$SEOGAEMO_MODULE_DIR/android.hardware.wifi.xml" "$xml" >/dev/null 2>&1
 }
 pm_wifi() { pm list features 2>/dev/null | grep -Fxq 'feature:android.hardware.wifi'; }
 
@@ -72,14 +61,20 @@ precheck() {
 
 status() {
     print_ip
-    if cfg_enabled && xml_enabled; then
-        [ -f "$marker" ] || result conflict none 'Wi-Fi files changed outside this module'
-        applied_intact || result conflict none 'Wi-Fi files differ from applied state'
+    if sg_applied "$cfg" && sg_applied "$xml"; then
         if pm_wifi; then result on none ''; fi
         result pending-restart head_unit 'Wi-Fi feature awaits head-unit restart'
     fi
-    [ -f "$marker" ] && result conflict none 'Wi-Fi files differ from applied state'
+    if sg_applied "$cfg" || sg_applied "$xml"; then
+        result conflict none 'Wi-Fi files are only partly applied'
+    fi
+    if cfg_enabled && xml_enabled; then
+        result conflict none 'Wi-Fi files changed outside this module'
+    fi
     if cfg_stock; then
+        if [ -e "$xml" ] && ! xml_enabled; then
+            result conflict none 'Existing Wi-Fi feature XML differs'
+        fi
         if pm_wifi; then result pending-restart head_unit 'Wi-Fi feature awaits removal at restart'; fi
         result off none ''
     fi
@@ -98,70 +93,32 @@ compatible() {
     fi
 }
 
-restore_files() {
-    rc=0
-    sg_file_restore "$cfg" || rc=1
-    sg_file_restore "$xml" || rc=1
-    return "$rc"
-}
-
 apply() {
     compatible
     if external_owner; then result conflict none 'Another package owns Wi-Fi feature files'; fi
-    if [ -f "$marker" ]; then
-        if cfg_enabled && xml_enabled && applied_intact; then status; fi
-        result conflict none 'Applied Wi-Fi files changed externally'
+    if sg_applied "$cfg" && sg_applied "$xml"; then status; fi
+    if sg_applied "$cfg" || sg_applied "$xml" || cfg_enabled; then
+        result conflict none 'Wi-Fi feature files are partly applied or externally changed'
     fi
     cfg_stock || result incompatible none 'Expected stock Wi-Fi removal line missing or duplicated'
     if [ -e "$xml" ] && ! xml_enabled; then result conflict none 'Existing Wi-Fi feature XML differs'; fi
-
-    sg_file_baseline "$cfg" || result failed none 'Could not save feature config baseline'
-    sg_file_baseline "$xml" || result failed none 'Could not save Wi-Fi XML baseline'
-    sg_remount rw || result failed none 'Could not remount system writable'
-    tmp=$cfg.sg-wifi-client.$$
-    edited=$tmp.edited
-    xtmp=$xml.sg-wifi-client.$$
-    ok=1
-    if sed 's|^-/system/etc/permissions/android\.hardware\.wifi\.xml$|#-/system/etc/permissions/android.hardware.wifi.xml|' "$cfg" > "$edited" &&
-       cp -p "$cfg" "$tmp" && cat "$edited" > "$tmp" &&
-       mv "$tmp" "$cfg" && sg_file_mark_applied "$cfg" &&
-       expected_xml > "$xtmp" &&
-       chmod 644 "$xtmp" && mv "$xtmp" "$xml" &&
-       sg_file_mark_applied "$xml" &&
-       cfg_enabled && xml_enabled; then ok=0; fi
-    rm -f "$tmp" "$edited" "$xtmp"
-    if [ "$ok" -ne 0 ]; then
-        restore_files || :
-        sg_remount ro || :
-        result failed none 'Could not apply and verify Wi-Fi files'
+    sg_file_put "$xml" android.hardware.wifi.xml 0644 root:root ||
+        result failed none 'Could not apply Wi-Fi feature XML'
+    if ! sg_file_replace_line "$cfg" "$stock" "$enabled"; then
+        sg_revert_all || :
+        result failed none 'Could not apply Wi-Fi feature config'
     fi
-    if ! ( cp -p "$cfg" "$SEOGAEMO_STATE/applied.cfg" &&
-           cp -p "$xml" "$SEOGAEMO_STATE/applied.xml" &&
-           : > "$marker" ); then
-        sg_remount rw || :
-        restore_files || :
-        sg_remount ro || :
-        result failed none 'Could not record applied state'
+    if ! sg_applied "$cfg" || ! sg_applied "$xml"; then
+        result failed none 'Could not verify applied Wi-Fi files'
     fi
-    if ! sg_remount ro; then result failed none 'Could not remount system read-only'; fi
     sg_log 'Wi-Fi client feature files applied; head-unit restart required'
     result pending-restart head_unit 'Wi-Fi feature awaits head-unit restart'
 }
 
 revert() {
-    if [ ! -f "$marker" ]; then status; fi
-    # The helper accepts either our marked bytes or the already restored
-    # baseline, allowing a retry after a partial restore without masking drift.
-    sg_remount rw || result failed none 'Could not remount system writable'
-    if ! restore_files; then
-        sg_remount ro || :
+    if ! sg_revert_all; then
         result conflict none 'Wi-Fi files changed; baselines retained'
     fi
-    if ! sg_remount ro; then result failed none 'Could not remount system read-only'; fi
-    # sg_file_restore verifies exact bytes, original mode/owner, or absence.
-    sg_baseline_clear || result failed none 'Could not clear restored baselines'
-    rm -f "$marker" "$SEOGAEMO_STATE/applied.cfg" "$SEOGAEMO_STATE/applied.xml" ||
-        result failed none 'Could not clear applied state'
     if pm_wifi; then result pending-restart head_unit 'Wi-Fi feature awaits removal at restart'; fi
     result off none ''
 }

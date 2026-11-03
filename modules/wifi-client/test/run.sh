@@ -5,6 +5,7 @@ repo=$(CDPATH= cd "$(dirname "$0")/../../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/wifi-client-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 mkdir -p "$work/base/lib" "$work/bin" "$work/system/onebin/neev_kr" \
+    "$work/base/bin" \
     "$work/system/etc/permissions" "$work/sys/bus/sdio/devices" \
     "$work/sys/class/net" "$work/state"
 cfg=$work/system/onebin/neev_kr/featurexml.cfg
@@ -18,36 +19,50 @@ printf '%s\n' NEEV.KOR.0000.V039.001.260902 > "$work/product"
 
 cat > "$work/base/lib/common.sh" <<'EOF'
 sg_log() { :; }
-sg_file_baseline() {
+sg_snapshot() {
     name=${1##*/}
     if [ ! -e "$SEOGAEMO_STATE/$name.saved" ] && [ ! -e "$SEOGAEMO_STATE/$name.absent" ]; then
         if [ -e "$1" ]; then cp -p "$1" "$SEOGAEMO_STATE/$name.saved";
         else : > "$SEOGAEMO_STATE/$name.absent"; fi
     fi
 }
-sg_file_mark_applied() {
+sg_mark() {
     name=${1##*/}
     cp -p "$1" "$SEOGAEMO_STATE/$name.applied"
     printf '%s\n' "$name" >> "$TEST_WORK/marks"
 }
-sg_file_restore() {
+sg_applied() {
     name=${1##*/}
-    if [ -e "$SEOGAEMO_STATE/$name.saved" ] && [ -e "$1" ] &&
-       cmp -s "$1" "$SEOGAEMO_STATE/$name.saved"; then return 0; fi
-    if [ -e "$SEOGAEMO_STATE/$name.absent" ] && [ ! -e "$1" ]; then return 0; fi
-    if [ -e "$1" ] && [ -e "$SEOGAEMO_STATE/$name.applied" ]; then
-        cmp -s "$1" "$SEOGAEMO_STATE/$name.applied" || return 1
-    fi
-    if [ -e "$SEOGAEMO_STATE/$name.absent" ]; then
-        rm -f "$1"
-        [ ! -e "$1" ]
-    else
-        cp -p "$SEOGAEMO_STATE/$name.saved" "$1"
-        cmp -s "$SEOGAEMO_STATE/$name.saved" "$1"
-    fi
+    [ -f "$SEOGAEMO_STATE/$name.applied" ] && [ -f "$1" ] &&
+        cmp -s "$SEOGAEMO_STATE/$name.applied" "$1"
 }
-sg_remount() { printf '%s\n' "$1" >> "$TEST_WORK/remounts"; }
-sg_baseline_clear() {
+sg_file_put() {
+    [ "$3" = 0644 ] && [ "$4" = root:root ] || return 1
+    sg_snapshot "$1" || return 1
+    cp -p "$SEOGAEMO_MODULE_DIR/$2" "$1" || return 1
+    sg_mark "$1"
+}
+sg_file_replace_line() {
+    [ "$(grep -Fxc -e "$2" "$1")" = 1 ] || return 1
+    sg_snapshot "$1" || return 1
+    sed 's|^-/system/etc/permissions/android\.hardware\.wifi\.xml$|#-/system/etc/permissions/android.hardware.wifi.xml|' "$1" > "$1.tmp" || return 1
+    cat "$1.tmp" > "$1" || return 1
+    rm "$1.tmp"
+    sg_mark "$1"
+}
+sg_revert_all() {
+    for path in "$TEST_WORK/system/onebin/neev_kr/featurexml.cfg" "$TEST_WORK/system/etc/permissions/android.hardware.wifi.xml"; do
+        name=${path##*/}
+        [ -f "$SEOGAEMO_STATE/$name.saved" ] || [ -f "$SEOGAEMO_STATE/$name.absent" ] || continue
+        if [ -f "$SEOGAEMO_STATE/$name.saved" ] && [ -f "$path" ] && cmp -s "$path" "$SEOGAEMO_STATE/$name.saved"; then continue; fi
+        if [ -f "$SEOGAEMO_STATE/$name.absent" ] && [ ! -e "$path" ]; then continue; fi
+        sg_applied "$path" || return 1
+    done
+    for path in "$TEST_WORK/system/onebin/neev_kr/featurexml.cfg" "$TEST_WORK/system/etc/permissions/android.hardware.wifi.xml"; do
+        name=${path##*/}
+        if [ -f "$SEOGAEMO_STATE/$name.saved" ]; then cp -p "$SEOGAEMO_STATE/$name.saved" "$path";
+        elif [ -f "$SEOGAEMO_STATE/$name.absent" ]; then rm -f "$path"; fi
+    done
     [ ! -e "$TEST_WORK/fail-clear" ] || return 1
     rm -f "$SEOGAEMO_STATE"/*.saved "$SEOGAEMO_STATE"/*.absent "$SEOGAEMO_STATE"/*.applied
 }
@@ -80,7 +95,14 @@ cat > "$work/bin/wpa_cli" <<'EOF'
 #!/bin/sh
 cat "$TEST_WORK/wpa-status" 2>/dev/null || :
 EOF
+cat > "$work/base/bin/seogaemo-root" <<'EOF'
+#!/bin/sh
+[ "$1 $2" = 'wireless-carplay-and-aa status' ] || exit 2
+if [ -f "$TEST_WORK/projection-on" ]; then printf 'state=on\n';
+else printf 'state=off\n'; fi
+EOF
 chmod +x "$work/bin/"*
+chmod +x "$work/base/bin/seogaemo-root"
 
 # Rewrite only fixed filesystem roots in a private copy; featurexml entries
 # remain the actual absolute paths used on the car.
@@ -91,7 +113,8 @@ sed -e "s|^cfg=/system/|cfg=$work/system/|" \
     -e "s|/sys/class/net/wlan0|$work/sys/class/net/wlan0|" \
     "$repo/modules/wifi-client/root/wifi-client.sh" > "$work/wifi-client.sh"
 
-export TEST_WORK=$work SEOGAEMO_BASE=$work/base SEOGAEMO_STATE=$work/state
+cp "$repo/modules/wifi-client/payload/android.hardware.wifi.xml" "$work/base/android.hardware.wifi.xml"
+export TEST_WORK=$work SEOGAEMO_BASE=$work/base SEOGAEMO_STATE=$work/state SEOGAEMO_MODULE_DIR=$work/base
 PATH=$work/bin:$PATH
 export PATH
 run() { sh "$work/wifi-client.sh" "$1" > "$work/output"; }
@@ -105,7 +128,7 @@ cmp -s "$work/original.cfg" "$cfg" && exit 1
 grep -Fqx '#-/system/etc/permissions/android.hardware.wifi.xml' "$cfg"
 [ -f "$xml" ]
 run apply; assert_state pending-restart
-[ "$(grep -c '^rw$' "$work/remounts")" -eq 1 ]
+[ "$(wc -l < "$work/marks")" -eq 2 ]
 printf 'yes\n' > "$work/pm-feature"
 run status; assert_state on
 : > "$work/sys/class/net/wlan0"
@@ -118,7 +141,7 @@ if grep -q '^info.client_ip=' "$work/output"; then exit 1; fi
 run revert; assert_state pending-restart
 cmp -s "$work/original.cfg" "$cfg"
 [ ! -e "$xml" ]
-[ ! -e "$work/state/applied" ]
+[ ! -e "$work/state/featurexml.cfg.applied" ]
 : > "$work/pm-feature"
 run status; assert_state off
 
@@ -141,18 +164,21 @@ run precheck; assert_line warn.carplay_active=1
 : > "$work/hostapd"
 run precheck
 if grep -q '^warn\.' "$work/output"; then exit 1; fi
+: > "$work/projection-on"
+run precheck; assert_line warn.carplay_active=1
+rm "$work/projection-on"
 
 run apply; assert_state pending-restart
 printf 'drift\n' >> "$cfg"
 if run revert; then exit 1; fi
 assert_state conflict
-[ -e "$work/state/applied" ]
+[ -e "$work/state/featurexml.cfg.applied" ]
 
 # A cleanup failure after exact restore must be retryable.
-cp "$work/state/applied.cfg" "$cfg"
+cp "$work/state/featurexml.cfg.applied" "$cfg"
 : > "$work/fail-clear"
 if run revert; then exit 1; fi
-assert_state failed
+assert_state conflict
 cmp -s "$work/original.cfg" "$cfg"
 [ ! -e "$xml" ]
 rm "$work/fail-clear"
