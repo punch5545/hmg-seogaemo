@@ -25,6 +25,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [research-wifi-client.md](research-wifi-client.md) | Partly superseded | Upstream STA/AP research and updated HMG-Seogaemo module test plan. |
 | [research-wifi-enable.md](research-wifi-enable.md) | Historical research | Superseded core Wi-Fi proposal; use `wifi-client.md` for current behavior. |
 | [research-adb-wireless-module.md](research-adb-wireless-module.md) | Partly superseded | Upstream ADB research; design inferences predate `wireless-adb.md`. |
+| [car-session-followups.md](car-session-followups.md) | Current | Real-car USB reinstall and status/export corrections. |
 | [README.md](README.md) | Current | This index and reading order. |
 
 The target is Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (package glob `NEEV.KOR.*.260902`), onebin `neev_kr`, Android 4.4.2. Installation is NEMESIS plus HMG-Seogaemo only. Off-car tests do not establish physical-car behavior.

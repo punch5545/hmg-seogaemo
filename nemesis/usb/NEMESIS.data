@@ -1,4 +1,4 @@
 [nemesis]
 version=1.0
-type=install
-path=packages/hmg-seogaemo.zip
+type=execute
+path=install.sh
