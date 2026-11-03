@@ -55,4 +55,30 @@ public final class ModulePlanner {
             }
         }
     }
+
+    /** Modules linked to id through depends/excludes in either direction, including id. */
+    public static Set<String> related(String id, String[] order,
+            Map<String, String[]> dependencies, Map<String, String[]> exclusions) {
+        Set<String> seen = new HashSet<String>();
+        List<String> queue = new ArrayList<String>();
+        seen.add(id); queue.add(id);
+        while (!queue.isEmpty()) {
+            String current = queue.remove(queue.size() - 1);
+            for (String candidate : order) {
+                if (seen.contains(candidate)) continue;
+                if (linked(current, candidate, dependencies) || linked(current, candidate, exclusions) ||
+                        linked(candidate, current, dependencies) || linked(candidate, current, exclusions)) {
+                    seen.add(candidate); queue.add(candidate);
+                }
+            }
+        }
+        return seen;
+    }
+
+    private static boolean linked(String from, String to, Map<String, String[]> edges) {
+        String[] values = edges.get(from);
+        if (values == null) return false;
+        for (String value : values) if (to.equals(value)) return true;
+        return false;
+    }
 }

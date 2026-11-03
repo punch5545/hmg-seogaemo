@@ -16,21 +16,28 @@ public final class ModuleManager {
     public ModulePlan plan(String id, boolean enable) {
         ModuleRegistry.depends(id);
         String[] order = ModuleRegistry.orderedIds();
-        Set<String> on = new HashSet<String>();
-        for (String candidate : order) {
-            RootResult status = RootClient.run(candidate, "status");
-            if (status.exitCode != 0 || !("off".equals(status.state) ||
-                    "on".equals(status.state) || "pending-restart".equals(status.state)))
-                throw new IllegalStateException("Could not read " + candidate + " state: " + status.detail);
-            if ("on".equals(status.state) ||
-                    ("pending-restart".equals(status.state) && !"off".equals(status.info.get("desired"))))
-                on.add(candidate);
-        }
         Map<String, String[]> dependencies = new HashMap<String, String[]>();
         Map<String, String[]> exclusions = new HashMap<String, String[]>();
         for (String candidate : order) {
             dependencies.put(candidate, ModuleRegistry.depends(candidate));
             exclusions.put(candidate, ModuleRegistry.excludes(candidate));
+        }
+        Set<String> related = ModulePlanner.related(id, order, dependencies, exclusions);
+        Set<String> on = new HashSet<String>();
+        for (String candidate : order) {
+            RootResult status = RootClient.run(candidate, "status");
+            if (status.exitCode != 0 || !("off".equals(status.state) ||
+                    "on".equals(status.state) || "pending-restart".equals(status.state))) {
+                // An unrelated module blocked by its own conflict cannot change this plan.
+                boolean blocked = ("conflict".equals(status.state) && status.exitCode == 3) ||
+                        ("incompatible".equals(status.state) && status.exitCode == 4) ||
+                        "not-implemented".equals(status.state);
+                if (blocked && !related.contains(candidate)) continue;
+                throw new IllegalStateException("Could not read " + candidate + " state: " + status.detail);
+            }
+            if ("on".equals(status.state) ||
+                    ("pending-restart".equals(status.state) && !"off".equals(status.info.get("desired"))))
+                on.add(candidate);
         }
         return ModulePlanner.plan(id, enable, order, dependencies, exclusions, on);
     }
