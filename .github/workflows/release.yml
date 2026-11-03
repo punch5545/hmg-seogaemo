@@ -55,5 +55,5 @@ jobs:
           find out/dist -maxdepth 1 -type f -printf '%f\n' | sort > "$secret_dir/expected-assets"
           gh release view "$tag" --json assets --jq '.assets[].name' | sort > "$secret_dir/uploaded-assets"
           diff -u "$secret_dir/expected-assets" "$secret_dir/uploaded-assets"
-          test "$(wc -l < "$secret_dir/uploaded-assets")" -eq 6
+          test "$(wc -l < "$secret_dir/uploaded-assets")" -eq 7
           gh release edit "$tag" --draft=false

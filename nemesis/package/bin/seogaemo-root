@@ -4,12 +4,19 @@ if [ "$#" -ne 2 ]; then
     echo 'usage: seogaemo-root <id> apply|revert|status|precheck' >&2
     exit 2
 fi
+if [ "$1" = update ]; then
+    case "$2" in stage|apply|rollback|status) ;; *) exit 2 ;; esac
+    base=${0%/*}
+    base=${base%/bin}
+    exec sh "$base/core/update.sh" "$2"
+fi
 case "$1" in
     ''|*[!a-z0-9-]*|-*|*--*|*-) exit 2 ;;
 esac
 case "$2" in apply|revert|status|precheck) ;; *) exit 2 ;; esac
 base=${0%/*}
 base=${base%/bin}
+[ -L /data/nemesis/backup/seogaemo/update/current ] && base=/data/nemesis/backup/seogaemo/update/current
 [ "$base" != "$0" ] || exit 2
 [ -f "$base/modules.list" ] || exit 2
 grep -Fxq "$1" "$base/modules.list" || exit 2

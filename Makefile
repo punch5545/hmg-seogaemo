@@ -43,6 +43,7 @@ verify-dist:
 test: package
 	sh tools/test-gen-modules.sh
 	python3 tools/test-package.py --aapt $(BT)/aapt
+	python3 tools/test-update.py
 
 clean:
 	rm -rf out
