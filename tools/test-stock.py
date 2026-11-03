@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""Stock restore and real preuninstall entry points against an isolated root."""
+import os
+from pathlib import Path
+import shutil
+import signal
+import subprocess
+import tempfile
+import time
+from testlib import car_env, SHELL
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def script(path, body):
+    path.write_text('#!/bin/sh\n. "$FAKE_COMMON"\n' + body)
+    path.chmod(0o755)
+
+
+class Car:
+    def __init__(self, folder):
+        self.base = folder / 'package'
+        shutil.copytree(ROOT / 'nemesis/package', self.base)
+        self.state = folder / 'data'
+        self.fake = folder / 'fake'
+        self.fake.mkdir()
+        self.live = folder / 'live'
+        self.live.mkdir()
+        self.backing = folder / 'property'
+        self.backing.mkdir()
+        self.calls = folder / 'calls'
+        self.calls.touch()
+        self.apk = folder / 'apk'
+        self.apk.touch()
+        self.env = car_env(dict(os.environ, SG_DATA_ROOT=str(self.state),
+            SG_PROPERTY_ROOT=str(self.backing), FAKE_COMMON=str(self.base / 'lib/common.sh'),
+            FAKE_LIVE=str(self.live), FAKE_CALLS=str(self.calls),
+            FAKE_APK=str(self.apk), FAKE_FAIL='',
+            PATH=str(self.fake) + ':' + os.environ['PATH']))
+        (self.live / 'ro.build.product').write_text('NEEV.KOR.0000.V039.001.260902')
+        (self.live / 'sys.boot_completed').write_text('1')
+        script(self.fake / 'cat', '''
+if [ "$1" = /proc/sys/kernel/random/boot_id ]; then echo test-boot; else /bin/cat "$@"; fi
+''')
+        script(self.fake / 'getprop', 'cat "$FAKE_LIVE/$1" 2>/dev/null || true\n')
+        script(self.fake / 'setprop', 'sg_write "$2" > "$FAKE_LIVE/$1"\n')
+        script(self.fake / 'pm', '''
+case "$1" in
+    path) [ ! -f "$FAKE_APK" ] || echo package:fake ;;
+    uninstall) rm -f "$FAKE_APK"; echo Success ;;
+esac
+''')
+        (self.base / 'modules').mkdir()
+        (self.base / 'modules.list').write_text('a\nb\nc\n')
+        (self.base / 'modules.graph').write_text(
+            'a\tdepends=\texcludes=\nb\tdepends=a\texcludes=\nc\tdepends=\texcludes=\n')
+        for name in 'abc':
+            (self.base / f'modules/{name}.properties').write_text(
+                f'owns_props=demo.{name}\nwatch=boot,screen_on\n' +
+                ('restore=reboot\n' if name == 'c' else ''))
+            script(self.base / f'modules/{name}.sh', '''
+id=${HMG_SEOGAEMO_STATE##*/}
+case "$1" in
+    apply)
+        sg_prop_set "demo.$id" ours || exit 1
+        sg_status on none enabled ;;
+    revert)
+        sg_print "$id revert" >> "$FAKE_CALLS"
+        [ "$FAKE_FAIL" != "$id" ] || { sg_status failed none injected; exit 1; }
+        if [ -f "$HMG_SEOGAEMO_STATE/build" ]; then
+            sg_revert_all || { sg_status conflict none drift; exit 3; }
+        fi
+        [ "$FAKE_FAIL" != "late-$id" ] || { sg_status failed none service; exit 1; }
+        if [ "$id" = c ]; then
+            sg_print info.desired=off
+            sg_status pending-restart head_unit transient
+        else sg_status off none restored; fi ;;
+    status) sg_status off none restored ;;
+    watch) sg_print "$id watch $2" >> "$FAKE_CALLS"; sg_status on none called ;;
+esac
+''')
+        self.root = self.base / 'bin/hmg-seogaemo-root'
+
+    def run(self, *args, ok=True):
+        result = subprocess.run([SHELL, str(self.root), *args], env=self.env,
+            capture_output=True, text=True, timeout=30)
+        assert (result.returncode == 0) == ok, (args, result.stdout, result.stderr)
+        return result
+
+    def enable(self):
+        for name in 'abc':
+            self.run(name, 'apply')
+
+    def hook(self, ok=True):
+        result = subprocess.run([SHELL, str(self.base / 'scripts/preuninstall.sh')],
+            env=self.env, capture_output=True, text=True, timeout=30)
+        assert (result.returncode == 0) == ok, (result.stdout, result.stderr)
+        return result
+
+
+def test_restore(folder):
+    car = Car(folder)
+    car.enable()
+    # Interrupted apply: snapshots still need restoring even with desired off.
+    (car.state / 'desired/b').write_text('off')
+    result = car.run('stock', 'restore')
+    assert 'state=pending-restart' in result.stdout
+    assert 'restart=head_unit' in result.stdout
+    for name in 'abc':
+        assert f'info.module_{name}=reverted' in result.stdout
+        assert (car.state / f'desired/{name}').read_text() == 'off'
+        assert (car.live / f'demo.{name}').read_text() == ''
+        assert not list((car.state / f'modules/{name}').glob('prop.*'))
+    assert car.calls.read_text().splitlines() == ['c revert', 'b revert', 'a revert']
+    car.run('a', 'watch', 'screen_on', ok=False)
+    assert 'watch' not in car.calls.read_text()
+    # Repeated restore preserves pending framework restart, including hook retry.
+    assert 'state=pending-restart' in car.run('stock', 'restore').stdout
+    status = car.run('stock', 'status').stdout
+    receipt = (car.state / 'stock/result').read_bytes()
+    assert 'info.module_a=reverted' in status
+    assert (car.state / 'stock/result').read_bytes() == receipt
+    # After a kernel boot, read-only status no longer claims a pending restart.
+    (car.state / 'stock/boot').write_text('earlier-boot')
+    assert 'state=off' in car.run('stock', 'status').stdout
+    ledger = car.state / 'ledger/ledger.tsv'
+    assert 'stock_start' in ledger.read_text() and 'stock_finish' in ledger.read_text()
+    assert not list((car.state / 'stock').glob('recovery.*'))
+    for name in 'abc':
+        assert 'stock_module' in ledger.read_text()
+        assert f'\\t{name}\n' in ledger.read_text() or f'\t{name}\n' in ledger.read_text()
+    car.env['SG_EXPORT_ROOT'] = str(folder / 'hmg-seogaemo-export')
+    car.run('export', 'adb')
+    exported = next((folder / 'hmg-seogaemo-export').glob('*/ledger/ledger.tsv'))
+    assert exported.read_bytes() == ledger.read_bytes()
+    # A fresh explicit apply resumes operation; stale receipt is invalidated.
+    car.run('a', 'apply')
+    assert not (car.state / 'stock/paused').exists()
+    assert not (car.state / 'stock/result').exists()
+    for args in [('stock', 'restore', 'extra'), ('stock', 'bad'),
+                 ('package', 'uninstall', '/evil'), ('package', 'force')]:
+        car.run(*args, ok=False)
+
+
+def test_conflict(folder):
+    car = Car(folder)
+    car.enable()
+    (car.live / 'demo.a').write_text('external')
+    result = car.run('stock', 'restore', ok=False)
+    assert 'state=conflict' in result.stdout and 'info.module_a=conflict' in result.stdout
+    assert 'info.module_b=not_attempted' in result.stdout
+    assert car.calls.read_text() == ''  # ALL preflight before any restore
+    for name in 'abc':
+        assert (car.state / f'desired/{name}').read_text() == 'on'
+        assert (car.state / f'modules/{name}/prop.demo.{name}/ready').exists()
+    # Paused even though desired on remains after failure, including on boot.
+    car.run('a', 'watch', 'boot', ok=False)
+    subprocess.run([SHELL, str(car.base / 'svc/reconcile.sh')], env=car.env, check=True)
+    car.env['HMG_SEOGAEMO_RECONCILE'] = '1'
+    car.run('a', 'apply', ok=False)
+    car.run('a', 'revert', ok=False)
+    del car.env['HMG_SEOGAEMO_RECONCILE']
+    car.run('package', 'uninstall', ok=False)
+    assert not (car.state / 'uninstall').exists()
+    car.hook(ok=False)
+    assert car.apk.exists()
+    assert car.calls.read_text() == ''
+
+
+def test_failure_and_hook(folder):
+    car = Car(folder)
+    car.enable()
+    car.env['FAKE_FAIL'] = 'b'
+    result = car.run('package', 'uninstall', ok=False)
+    assert 'info.module_c=reverted' in result.stdout
+    assert 'info.module_b=failed' in result.stdout
+    assert 'info.module_a=not_attempted' in result.stdout
+    assert (car.state / 'desired/c').read_text() == 'off'
+    assert (car.state / 'desired/b').read_text() == 'on'
+    assert (car.state / 'modules/b/prop.demo.b/ready').exists()
+    assert not (car.state / 'uninstall').exists()
+    car.calls.write_text('')
+    car.env['FAKE_FAIL'] = ''
+    car.hook()
+    assert car.calls.read_text().splitlines() == ['c revert', 'b revert', 'a revert']
+    assert not car.apk.exists()
+    assert not (car.state / 'modules').exists()
+    assert (car.state / 'ledger/ledger.tsv').exists()
+    assert 'info.module_a=reverted' in (car.state / 'stock/result').read_text()
+
+
+def test_detached(folder):
+    car = Car(folder)
+    car.enable()
+    # The fake NEMESIS deletes the caller's package and APK, like the real hook.
+    script(car.fake / 'nemesis', '''
+[ "$#" -eq 2 ] && [ "$1" = uninstall ] && [ "$2" = hmg-seogaemo ] || exit 90
+sg_print "nemesis $*" >> "$FAKE_CALLS"
+while [ ! -f "$FAKE_RELEASE" ]; do sleep 1; done
+sh "$FAKE_PACKAGE/scripts/preuninstall.sh" || exit 5
+rm -rf "$FAKE_PACKAGE"
+''')
+    car.env['FAKE_PACKAGE'] = str(car.base)
+    release = folder / 'release'
+    car.env['FAKE_RELEASE'] = str(release)
+    # A pipe left attached by the runner would keep communicate() blocked.
+    result = car.run('package', 'uninstall')
+    assert 'info.uninstall=queued' in result.stdout
+    car.run('a', 'apply', ok=False)
+    car.run('package', 'uninstall', ok=False)
+    job = car.state / 'uninstall'
+    pid = int((job / 'pending').read_text())
+    os.kill(pid, signal.SIGHUP)  # ignored across exec, survives parent loss
+    release.touch()
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and (job / 'pending').exists():
+        time.sleep(0.05)
+    assert not (job / 'pending').exists(), (job / 'log').read_text()
+    assert (job / 'result').read_text() == 'removed', (job / 'log').read_text()
+    assert (job / 'exit-code').read_text() == '0'
+    assert not car.base.exists() and not car.apk.exists()
+    assert 'nemesis uninstall hmg-seogaemo' in car.calls.read_text()
+    assert 'package_uninstall' in (car.state / 'ledger/ledger.tsv').read_text()
+
+
+def test_late_failure(folder):
+    car = Car(folder)
+    car.enable()
+    car.env['FAKE_FAIL'] = 'late-b'
+    result = car.run('stock', 'restore', ok=False)
+    assert 'info.module_b=failed' in result.stdout
+    assert (car.state / 'desired/b').read_text() == 'on'
+    copies = list((car.state / 'stock').glob('recovery.*/b/prop.demo.b/ready'))
+    assert copies, 'late service failure lost recovery material'
+    assert (car.live / 'demo.b').read_text() == ''
+
+
+def test_detached_failure(folder):
+    car = Car(folder)
+    car.enable()
+    script(car.fake / 'nemesis', 'sg_print "nemesis $*" >> "$FAKE_CALLS"; exit 9\n')
+    result = car.run('package', 'uninstall')
+    assert 'info.uninstall=queued' in result.stdout
+    job = car.state / 'uninstall'
+    deadline = time.monotonic() + 10
+    while (job / 'pending').exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert (job / 'result').read_text() == 'failed'
+    assert (job / 'exit-code').read_text() == '9'
+    assert car.apk.exists() and car.base.exists()
+    assert 'info.uninstall=failed' in car.run('stock', 'status').stdout
+    car.run('a', 'apply')  # completed failure releases the pending block
+
+
+def test_missing_handoff(folder):
+    car = Car(folder)
+    job = car.state / 'uninstall'
+    job.mkdir(parents=True)
+    shutil.copy(car.base / 'core/uninstall-detached.sh', job / 'run.sh')
+    shutil.copy(car.base / 'lib/common.sh', job / 'common.sh')
+    script(car.fake / 'sleep', 'exit 0\n')  # bounded expiry without waiting 30s
+    script(car.fake / 'nemesis', 'sg_print unexpected >> "$FAKE_CALLS"\n')
+    (job / 'ready').write_text('wrong-pid')
+    result = subprocess.run([SHELL, str(job / 'run.sh')], env=car.env,
+        capture_output=True, text=True, timeout=10)
+    assert result.returncode != 0
+    assert (job / 'result').read_text() == 'failed'
+    assert car.calls.read_text() == '' and car.apk.exists()
+
+
+with tempfile.TemporaryDirectory() as directory:
+    for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
+                 test_late_failure, test_detached_failure, test_missing_handoff):
+        folder = Path(directory) / test.__name__
+        folder.mkdir()
+        test(folder)
+print('stock restore, shared hook, and detached uninstall passed')

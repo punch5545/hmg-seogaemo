@@ -9,6 +9,13 @@ base=${0%/*}
 base=${base%/bin}
 SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 . "$base/lib/common.sh"
+if [ "$1" = stock ] || [ "$1" = package ]; then
+    [ "$#" -eq 2 ] || exit 2
+    case "$1:$2" in stock:restore|stock:status) stock_verb=$2;;
+        package:uninstall) stock_verb=uninstall;; *) exit 2;; esac
+    export SG_DATA_ROOT
+    exec sh "$base/core/stock.sh" "$stock_verb"
+fi
 if [ "$1" = export ]; then
     case "$2" in usb|adb) ;; *) exit 2;; esac
     [ -f "$SG_DATA_ROOT/ledger/ledger.tsv" ] || {
@@ -108,7 +115,11 @@ while ! mkdir "$lock" 2>/dev/null; do
 done
 sg_write "$$" > "$lock/pid"
 trap 'rm -rf "$lock"' EXIT HUP INT TERM
+if [ "${HMG_SEOGAEMO_RECONCILE:-0}" = 1 ]; then
+    [ ! -f "$SG_DATA_ROOT/stock/paused" ] || exit 3
+fi
 if [ "$2" = watch ]; then
+    [ ! -f "$SG_DATA_ROOT/stock/paused" ] || exit 3
     [ "$(cat "$SG_DATA_ROOT/desired/$1" 2>/dev/null)" = on ] || exit 3
     watch_events=
     while IFS='=' read -r field value; do
@@ -131,6 +142,7 @@ relation() {
 }
 desired_on() { [ -f "$SG_DATA_ROOT/desired/$1" ] && [ "$(cat "$SG_DATA_ROOT/desired/$1")" = on ]; }
 if [ "$2" = apply ]; then
+    [ ! -f "$SG_DATA_ROOT/uninstall/pending" ] || { echo 'uninstall pending' >&2; exit 1; }
     [ -f "$base/modules.graph" ] || exit 1
     old_ifs=$IFS; IFS=,
     for dep in $(relation "$1" depends); do
@@ -175,6 +187,9 @@ if [ "$code" -eq 0 ]; then
     case "$2" in apply) value=on;; revert) value=off;; esac
     sg_write "$value" > "$SG_DATA_ROOT/desired/$1.tmp.$$" &&
         mv -f "$SG_DATA_ROOT/desired/$1.tmp.$$" "$SG_DATA_ROOT/desired/$1" || code=1
+    if [ "$code" -eq 0 ] && [ "$2" = apply ]; then
+        rm -f "$SG_DATA_ROOT/stock/paused" "$SG_DATA_ROOT/stock/result"
+    fi
 fi
 rm -f "$result"
 exit "$code"

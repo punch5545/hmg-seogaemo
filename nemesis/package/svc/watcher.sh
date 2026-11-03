@@ -30,6 +30,7 @@ while :; do
     boot_ids=
     screen_ids=
     for id in $(cat "$base/modules.list" 2>/dev/null); do
+        [ ! -f "$state/stock/paused" ] || continue
         [ "$(cat "$state/desired/$id" 2>/dev/null)" = on ] || continue
         [ -f "$base/modules/$id.properties" ] || continue
         while IFS='=' read -r field value; do

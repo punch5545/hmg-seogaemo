@@ -37,6 +37,7 @@ def run():
         required = {"NEMESIS.data", "app/hmg-seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
                     "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
                     "svc/reconcile.sh", "svc/watcher.sh", "lib/common.sh", "modules.list", "modules.graph",
+                    "core/stock.sh", "lib/stock.sh", "core/uninstall-detached.sh",
                     "core/map/hmg-seogaemo-mapper.jar", "core/hmg-seogaemo-map.sh", "hookpoints/framework.json",
                     "hookpoints.required/wireless-carplay-and-aa",
                     "maps/hyundai/ioniq5/kor/260902/map.json",

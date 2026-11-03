@@ -17,6 +17,9 @@ state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 root=$base/bin/hmg-seogaemo-root
 log=$state/reconcile.log
 mkdir -p "$state" || exit 1
+# A failed stock restore retains desired on for the failed module, but must
+# never automatically reapply it on the next boot.
+[ ! -f "$state/stock/paused" ] || exit 0
 boot=0
 while [ "$(getprop sys.boot_completed)" != 1 ]; do
     boot=$((boot + 1))
@@ -29,6 +32,7 @@ failed=0
 missing_apk=0
 case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) missing_apk=1; echo 'APK missing: reverting modules' >> "$log";; esac
 for id in $reverse; do
+    [ ! -f "$state/stock/paused" ] || exit "$failed"
     desired=$(cat "$state/desired/$id" 2>/dev/null)
     [ "$desired" = on ] && [ "$missing_apk" -eq 0 ] && continue
     baseline=0
@@ -36,14 +40,15 @@ for id in $reverse; do
         [ -f "$item" ] && baseline=1
     done
     [ "$baseline" -eq 1 ] || continue
-    if sh "$root" "$id" revert >> "$log" 2>&1; then
+    if HMG_SEOGAEMO_RECONCILE=1 sh "$root" "$id" revert >> "$log" 2>&1; then
         echo "reverted $id" >> "$log"
     else echo "revert failed: $id" >> "$log"; failed=1; fi
 done
 for id in $(cat "$base/modules.list"); do
+    [ ! -f "$state/stock/paused" ] || exit "$failed"
     [ "$missing_apk" -eq 0 ] || continue
     [ "$(cat "$state/desired/$id" 2>/dev/null)" = on ] || continue
-    if sh "$root" "$id" apply >> "$log" 2>&1; then
+    if HMG_SEOGAEMO_RECONCILE=1 sh "$root" "$id" apply >> "$log" 2>&1; then
         echo "applied $id" >> "$log"
     else echo "apply failed: $id" >> "$log"; failed=1; fi
 done

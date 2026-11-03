@@ -374,7 +374,7 @@ sg_service_call_this_boot
     run(check, env=env, ok=False)
 
 
-def test_reconcile_and_uninstall(temp):
+def test_reconcile(temp):
     base = temp / "lifecycle"
     for folder in ("bin", "svc", "scripts", "lib"):
         (base / folder).mkdir(parents=True)
@@ -418,28 +418,6 @@ echo detail=
     run(base / "svc/reconcile.sh", env=env)
     assert log.read_text().splitlines() == ["b revert", "a revert"]
     log.write_text("")
-    shutil.rmtree(state / "modules")
-    backup = state / "modules/b/backup-kept"
-    backup.parent.mkdir(parents=True)
-    backup.write_text("saved")
-    for name in ("a", "b"):
-        (state / "desired" / name).write_text("on")
-    conflict = state / "modules/a"
-    (conflict / "prop.test").mkdir(parents=True)
-    (conflict / "prop.test/ready").write_text("1")
-    (conflict / "build").write_text("OTHER.BUILD")
-    run(base / "scripts/preuninstall.sh", env=env, ok=False)
-    assert not log.exists() or log.read_text() == ""
-    shutil.rmtree(conflict)
-    env["FAKE_FAIL"] = "b:revert"
-    run(base / "scripts/preuninstall.sh", env=env, ok=False)
-    assert log.read_text().splitlines() == ["b revert"]
-    assert backup.exists()
-    log.write_text("")
-    env["FAKE_FAIL"] = ""
-    (state / "desired/b").write_text("on")
-    run(base / "scripts/preuninstall.sh", env=env)
-    assert log.read_text().splitlines() == ["b revert", "b status", "a revert", "a status"]
 
 
 def test_watch_dispatch(temp):
@@ -636,7 +614,7 @@ with tempfile.TemporaryDirectory() as directory:
     test_root(root)
     test_mutation_api_and_export(root)
     test_service_call_api(root)
-    test_reconcile_and_uninstall(root)
+    test_reconcile(root)
     test_watch_dispatch(root)
     test_reconcile_does_not_watch(root)
     test_lint(root)
