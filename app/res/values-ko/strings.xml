@@ -24,6 +24,9 @@
     <string name="icon_settings">SET</string>
     <string name="cat_general">일반</string>
     <string name="cat_general_sub">언어</string>
+    <string name="cat_modules">모듈 관리</string>
+    <string name="cat_modules_sub">기본 모듈 설정</string>
+    <string name="module_settings">모듈 설정</string>
     <string name="cat_wireless">무선 연결</string>
     <string name="cat_wireless_sub">CarPlay / Android Auto</string>
     <string name="cat_logs">로그</string>
@@ -86,4 +89,12 @@
     <string name="radio_selected">●</string>
     <string name="radio_unselected">○</string>
     <string name="nav_back_label">‹  홈으로</string>
+    <string name="module_loading">모듈 상태 확인 중…</string>
+    <string name="module_state">확인된 상태</string>
+    <string name="module_unavailable">확인 불가</string>
+    <string name="module_restart">이 변경을 적용하려면 헤드 유닛을 재시작해야 합니다</string>
+    <string name="module_confirm">모듈 변경을 적용할까요?</string>
+    <string name="module_no_changes">변경할 내용이 없습니다.</string>
+    <string name="export_changes_usb">변경 내역을 USB로 내보내기</string>
+    <string name="export_changes_hint">변경 기록과 원본 파일을 연결된 USB 드라이브에 복사합니다.</string>
 </resources>

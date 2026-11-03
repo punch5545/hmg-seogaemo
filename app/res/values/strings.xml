@@ -24,6 +24,9 @@
     <string name="icon_settings">SET</string>
     <string name="cat_general">General</string>
     <string name="cat_general_sub">Language</string>
+    <string name="cat_modules">Modules</string>
+    <string name="cat_modules_sub">Manage built-in modules</string>
+    <string name="module_settings">Module settings</string>
     <string name="cat_wireless">Wireless projection</string>
     <string name="cat_wireless_sub">CarPlay / Android Auto</string>
     <string name="cat_logs">Logs</string>
@@ -86,4 +89,12 @@
     <string name="radio_selected">●</string>
     <string name="radio_unselected">○</string>
     <string name="nav_back_label">‹  Home</string>
+    <string name="module_loading">Loading module status…</string>
+    <string name="module_state">Observed state</string>
+    <string name="module_unavailable">Unavailable</string>
+    <string name="module_restart">Head unit restart required for this change</string>
+    <string name="module_confirm">Apply module changes?</string>
+    <string name="module_no_changes">No changes needed.</string>
+    <string name="export_changes_usb">Export changes to USB</string>
+    <string name="export_changes_hint">Copy the change ledger and original files to a mounted USB drive.</string>
 </resources>

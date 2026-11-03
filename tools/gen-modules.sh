@@ -42,6 +42,7 @@ while IFS= read -r props; do
     requires_root=$(property "$props" requires_root)
     depends=$(property "$props" depends)
     excludes=$(property "$props" excludes)
+    services=$(property "$props" services)
     module_version=$(property "$props" version)
     if [ "$module_version" != '@VERSION@' ]; then
         echo "gen-modules: version must be @VERSION@ in $props" >&2
@@ -72,6 +73,16 @@ while IFS= read -r props; do
     if [ "$requires_root" = true ] && [ ! -f "$dir/root/$id.sh" ]; then
         echo "gen-modules: root script missing: $dir/root/$id.sh" >&2
         exit 1
+    fi
+    if [ -n "$services" ]; then
+        old_ifs=$IFS; IFS=,
+        for service in $services; do
+            if ! printf '%s\n' "$service" | grep -Eq '^[a-zA-Z0-9_]+([.-][a-zA-Z0-9_]+)*$'; then
+                echo "gen-modules: malformed service '$service' in $props" >&2
+                exit 1
+            fi
+        done
+        IFS=$old_ifs
     fi
 
     prefix=$(printf '%s' "$id" | tr - _)_
@@ -244,4 +255,7 @@ for props in modules/*/module.properties; do
     id=${props%/module.properties}
     id=${id##*/}
     sed "s/^version=@VERSION@$/version=$version/" "$props" > "$OUT_DIR/package/modules/$id.properties"
+    if ! grep -q '^services=' "$OUT_DIR/package/modules/$id.properties"; then
+        printf 'services=\n' >> "$OUT_DIR/package/modules/$id.properties"
+    fi
 done

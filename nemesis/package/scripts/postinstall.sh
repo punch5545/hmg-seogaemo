@@ -8,6 +8,11 @@ case "$(getprop ro.build.product)" in
     NEEV.KOR.*.260902) ;;
     *) echo 'Unsupported firmware' >&2; exit 1 ;;
 esac
+# The packaged APK must use the daemon path. A SUID invocation can inherit
+# the app process's limited capability bounding set and fail remount/restore.
+cp /system/xbin/nemesis "$base/bin/nemesis-client.tmp.$$" || exit 1
+chmod 755 "$base/bin/nemesis-client.tmp.$$" || exit 1
+mv -f "$base/bin/nemesis-client.tmp.$$" "$base/bin/nemesis-client" || exit 1
 if [ "$(getprop sys.boot_completed)" = 1 ]; then
     exec /system/bin/sh "$base/bin/install-apk.sh"
 fi
