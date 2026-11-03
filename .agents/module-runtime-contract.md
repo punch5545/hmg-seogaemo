@@ -161,3 +161,18 @@ Stock userland is **toolbox + mksh only** (`tmp/hmg_nemesis/01-DSP-OTA-troubleSh
 `find`, `stat`, `readlink -f`, `sha256sum`/`sha1sum`, `tar`, `unzip`, `busybox`, `toybox`.
 Parse with `while read`, `case` and parameter expansion. Hashing on the unit: `md5` only.
 `make test` lints root scripts (package and modules) for the unavailable tools.
+
+## Settings layout and module pages
+
+- Sidebar, top to bottom: core categories (General first, then e.g. "Modules", Logs, About),
+  a divider, then one entry per module ("module settings"), in generated module order.
+- **Modules** (working name; KO "모듈 관리"): one large row per module with ON/OFF toggle, observed
+  state and restart banner; toggling goes through `ModuleManager.plan` + confirmation dialog.
+- **Module settings pages**: each module gets its own page. Reusable components live in the core app
+  (`com.seogaemo.app.ui.settings`): `SettingsPage` builder with `section(titleRes)`,
+  `info(labelRes, infoKey)`, `toggle(labelRes, settingKey)`, `choice(labelRes, settingKey, valuesRes)`,
+  `action(labelRes, ModuleAction)`, `note(textRes)`, `warning(textRes)`, `statusHeader()`.
+  Modules compose their page in `Module.buildSettingsPage(SettingsPage page)`; they never create
+  Android views themselves. Default implementation (in `RootBackedModule`) renders
+  `statusHeader()` + `infoRows()` + `notes()` + `actions()`, so declarative modules need no code.
+- Components follow `ui-guidelines.md` (NEMESIS-scale rows, EN/KO).
