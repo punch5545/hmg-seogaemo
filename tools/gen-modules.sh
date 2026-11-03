@@ -4,6 +4,9 @@ set -eu
 PROJECT_ROOT=${PROJECT_ROOT:-$(CDPATH= cd "$(dirname "$0")/.." && pwd)}
 OUT_DIR=${OUT_DIR:-$PROJECT_ROOT/out}
 cd "$PROJECT_ROOT"
+if [ -d core/hookpoints ]; then
+    python3 tools/validate-maps.py catalogue
+fi
 VERSION_FILE=${VERSION_FILE:-$PROJECT_ROOT/VERSION}
 version=$(python3 "${VERSION_TOOL:-$PROJECT_ROOT/tools/version.py}" --version-file "$VERSION_FILE")
 LC_ALL=C

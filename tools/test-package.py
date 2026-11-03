@@ -36,12 +36,19 @@ def run():
         entries = set(package.namelist())
         required = {"NEMESIS.data", "app/hmg-seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
                     "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
-                    "svc/reconcile.sh", "lib/common.sh", "modules.list", "modules.graph"}
+                    "svc/reconcile.sh", "lib/common.sh", "modules.list", "modules.graph",
+                    "core/map/hmg-seogaemo-mapper.jar", "core/hmg-seogaemo-map.sh", "hookpoints/framework.json",
+                    "hookpoints.required/wireless-carplay-and-aa",
+                    "maps/hyundai/ioniq5/kor/260902/map.json",
+                    "maps/hyundai/ioniq5/kor/260902/car.json"}
         assert required <= entries, required - entries
+        for map_name in ("map.json", "car.json", "README.md"):
+            source = ROOT / "maps/hyundai/ioniq5/kor/260902" / map_name
+            assert package.read(f"maps/hyundai/ioniq5/kor/260902/{map_name}") == source.read_bytes()
         preuninstall = package.read("scripts/preuninstall.sh").decode()
         assert "id=hmg-seogaemo" in preuninstall
         assert "/data/local/tmp/nemesis/stage/hmg-seogaemo/NEMESIS.data" in preuninstall
-        for script_name in ("core/update.sh", "svc/reconcile.sh"):
+        for script_name in ("core/update.sh", "core/hmg-seogaemo-map.sh", "svc/reconcile.sh"):
             body = package.read(script_name).decode()
             assert not re.search(r"\b(?:awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|sha256sum|sha1sum|tar|unzip|busybox|toybox)\b", body), script_name
         assert set(usb.namelist()) == {"NEMESIS.data", "packages/hmg-seogaemo.zip"}
@@ -50,7 +57,7 @@ def run():
         assert ota.read("app/hmg-seogaemo.apk") == package.read("app/hmg-seogaemo.apk")
         assert ota.read("update_roots.pem") == (ROOT / "app/res/raw/update_roots.pem").read_bytes()
         for name in ota.namelist():
-            assert name in ("VERSION", "update_roots.pem", "app/hmg-seogaemo.apk", "modules.list", "modules.graph") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/"))
+            assert name in ("VERSION", "update_roots.pem", "app/hmg-seogaemo.apk", "modules.list", "modules.graph") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/"))
             if name in entries:
                 assert ota.read(name) == package.read(name)
         usb_meta = descriptor(usb.read("NEMESIS.data"))

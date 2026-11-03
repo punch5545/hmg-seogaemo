@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate car maps and required hook points
+        run: python3 tools/validate-maps.py all
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

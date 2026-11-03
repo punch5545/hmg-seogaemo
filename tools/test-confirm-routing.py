@@ -32,6 +32,10 @@ assert "confirmCheckUpdate()" in method("showUpdate")
 assert "ConfirmDialog.show" in method("confirmInstall")
 assert "ConfirmDialog.show" in method("confirmRollback")
 assert "ConfirmDialog.show" in method("showSettings")  # USB export
+assert "ConfirmDialog.show" in method("confirmMapRun")
+assert "ConfirmDialog.show" in method("confirmMapExport")
+assert "mapOperation(\"run\", dialog)" in method("confirmMapRun")
+assert "mapOperation(\"export\", dialog)" in method("confirmMapExport")
 assert "setCanceledOnTouchOutside(false)" in dialog
 assert "confirm.setEnabled(false)" in dialog
 assert "cancel.requestFocus()" in dialog

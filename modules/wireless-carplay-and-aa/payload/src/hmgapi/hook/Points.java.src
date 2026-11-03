@@ -1,4 +1,4 @@
-// Modified by HMG-Seogaemo: fixed car-map loading without HMG-API engine.
+// Modified by HMG-Seogaemo: consume the core-published verified car map.
 package hmgapi.hook;
 
 import org.json.JSONObject;
@@ -28,7 +28,7 @@ import java.util.Map;
 public final class Points {
     private Points() {}
 
-    // Modified by HMG-Seogaemo: only the bundled car map is accepted.
+    // The zygote entry validates the core-published map before this adapter reads points.
     static final Map<String, Map<String, Object>> points = new HashMap<String, Map<String, Object>>();
     static void use(JSONObject map) throws Exception {
         JSONObject all = map.getJSONObject("points");

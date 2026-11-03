@@ -1,0 +1,80 @@
+{
+  "_origin": "Follows HMG-API core/hookpoints/btsettings.json@4fab437",
+  "captures": {
+    "phone_projection_menu": {
+      "description": "Settings > Phone Projection: wireless features -> wireless page; else US/Canada (REGION 1/4) with Device Connections -> it; else the other page",
+      "expression": "const-string v0, \"com\\.hkmc\\.software\\.connectivity\\.carplay_wireless\"\\ninvoke-static \\{v0\\}, Lcom/hkmc/Feature;->hasFeature\\(Ljava/lang/String;\\)Z\\nmove-result v0\\nif-nez v0, (?P<l1>:cond_\\w+)\\nconst-string v0, \"com\\.hkmc\\.software\\.connectivity\\.androidauto_wireless\"\\ninvoke-static \\{v0\\}, Lcom/hkmc/Feature;->hasFeature\\(Ljava/lang/String;\\)Z\\nmove-result v0\\nif-eqz v0, (?P<l2>:cond_\\w+)\\n(?P=l1)\\ninvoke-virtual \\{p0\\}, Lcom/android/settings2/bluetooth/BluetoothSettings;->getApplicationContext\\(\\)Landroid/content/Context;\\nmove-result-object v0\\ninvoke-static \\{v0\\}, Lcom/android/settings2/bluetooth/(?P<helper>\\w+);->(?P<wireless>\\w+)\\(Landroid/content/Context;\\)V\\ngoto/16 :goto_\\w+\\n(?P=l2)\\nsget v0, Lcom/hkmc/BuildInfo;->REGION:I\\nif-eq v0, v2, (?P<l3>:cond_\\w+)\\nsget v0, Lcom/hkmc/BuildInfo;->REGION:I\\nconst/4 v1, 0x4\\nif-ne v0, v1, (?P<l4>:cond_\\w+)\\n(?P=l3)\\ninvoke-static \\{\\}, Lcom/android/settings2/bluetooth/(?P=helper);->(?P<available>\\w+)\\(\\)Z\\nmove-result v0\\nif-eqz v0, (?P=l4)\\ninvoke-virtual \\{p0\\}, Lcom/android/settings2/bluetooth/BluetoothSettings;->getApplicationContext\\(\\)Landroid/content/Context;\\nmove-result-object v0\\ninvoke-static \\{v0, v2\\}, Lcom/android/settings2/bluetooth/(?P=helper);->(?P<dc>\\w+)\\(Landroid/content/Context;I\\)V\\ngoto/16 :goto_\\w+\\n(?P=l4)\\ninvoke-virtual \\{p0\\}, Lcom/android/settings2/bluetooth/BluetoothSettings;->getApplicationContext\\(\\)Landroid/content/Context;\\nmove-result-object v0\\ninvoke-static \\{v0\\}, Lcom/android/settings2/bluetooth/(?P=helper);->(?P<other>\\w+)\\(Landroid/content/Context;\\)V\\n",
+      "within": "com.android.settings2.bluetooth.BluetoothSettings"
+    }
+  },
+  "files": [
+    "/system/app/HKMC_BtSettings.odex"
+  ],
+  "group": "btsettings",
+  "namespace": "com.android.btsettings",
+  "points": {
+    "btsettings.projection_helper": {
+      "about": "BtSettings' static helper that opens the Phone Projection pages",
+      "match": {
+        "class_group": "helper",
+        "namespace": "com.android.settings2.bluetooth",
+        "smali_pattern": "phone_projection_menu"
+      },
+      "type": "class"
+    },
+    "btsettings.projection_helper.device_connections_available": {
+      "match": {
+        "class_member": true,
+        "group": "available",
+        "parameters": [],
+        "returns": "boolean",
+        "smali_pattern": "phone_projection_menu"
+      },
+      "owner": "btsettings.projection_helper",
+      "type": "method"
+    },
+    "btsettings.projection_helper.open_device_connections": {
+      "match": {
+        "class_member": true,
+        "group": "dc",
+        "parameters": [
+          "android.content.Context",
+          "int"
+        ],
+        "returns": "void",
+        "smali_pattern": "phone_projection_menu"
+      },
+      "owner": "btsettings.projection_helper",
+      "type": "method"
+    },
+    "btsettings.projection_helper.open_other_page": {
+      "match": {
+        "class_member": true,
+        "group": "other",
+        "parameters": [
+          "android.content.Context"
+        ],
+        "returns": "void",
+        "smali_pattern": "phone_projection_menu"
+      },
+      "owner": "btsettings.projection_helper",
+      "type": "method"
+    },
+    "btsettings.projection_helper.open_wireless_page": {
+      "about": "opens the wireless projection page (its only caller is the Phone Projection menu)",
+      "match": {
+        "class_member": true,
+        "group": "wireless",
+        "parameters": [
+          "android.content.Context"
+        ],
+        "returns": "void",
+        "smali_pattern": "phone_projection_menu",
+        "sole_caller": true
+      },
+      "owner": "btsettings.projection_helper",
+      "type": "method"
+    }
+  },
+  "schema": 1
+}

@@ -67,6 +67,13 @@ def build(aapt):
     for source in (ROOT / "out/package").rglob("*"):
         if source.is_file():
             files[source.relative_to(ROOT / "out/package").as_posix()] = source
+    for source in (ROOT / "core/hookpoints").glob("*.json"):
+        files[f"hookpoints/{source.name}"] = source
+    for source in (ROOT / "modules").glob("*/hookpoints.required"):
+        files[f"hookpoints.required/{source.parent.name}"] = source
+    for source in (ROOT / "maps").rglob("*"):
+        if source.is_file():
+            files[f"maps/{source.relative_to(ROOT / 'maps').as_posix()}"] = source
     for module in sorted((ROOT / "modules").iterdir()):
         payload = module / "payload"
         if payload.is_dir():
@@ -83,7 +90,7 @@ def build(aapt):
     ota_files = {"app/hmg-seogaemo.apk": apk, "VERSION": (version + "\n").encode(),
                  "update_roots.pem": ROOT / "app/res/raw/update_roots.pem"}
     for name, source in files.items():
-        if name.startswith(("bin/", "lib/", "modules/", "core/", "svc/")) or name in ("modules.list", "modules.graph"):
+        if name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/")) or name in ("modules.list", "modules.graph"):
             ota_files[name] = source
     add_zip(ota_zip, ota_files)
     assets = [apk_asset, package_zip, usb_zip, ota_zip]

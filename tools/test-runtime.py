@@ -232,6 +232,8 @@ sg_revert_all
     assert (base / "data/ledger/after").is_dir()
     assert (base / "remounts").read_text().splitlines() == ["remount rw", "remount ro"]
     export_root = base / "hmg-seogaemo-export"
+    (base / "lib").mkdir(exist_ok=True)
+    shutil.copy(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
     env["SG_EXPORT_ROOT"] = str(export_root)
     result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
     assert "state=on" in result.stdout

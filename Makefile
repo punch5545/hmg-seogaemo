@@ -5,11 +5,19 @@ OUT := out/hmg-seogaemo.apk
 SOURCES := $(shell find app/src modules -name '*.java' | sort)
 INPUTS := $(shell find app/res modules -type f | sort)
 
-.PHONY: all clean generate module-build test package verify-dist
+.PHONY: all clean generate module-build map-build test package verify-dist
 all: $(OUT)
 
 module-build:
 	@set -eu; for hook in modules/*/build/build.sh; do test ! -f "$$hook" || sh "$$hook"; done
+
+map-build:
+	mkdir -p out/map-classes out/map-dex out/package/core/map
+	javac -source 1.7 -target 1.7 -bootclasspath $(ANDROID_JAR) -cp $(ANDROID_JAR) -d out/map-classes $$(find core/map/src -name '*.java' | sort)
+	$(BT)/d8 --min-api 19 --lib $(ANDROID_JAR) --release --output out/map-dex $$(find out/map-classes -name '*.class' | sort)
+	touch -t 198001010000 out/map-dex/classes.dex
+	rm -f out/package/core/map/hmg-seogaemo-mapper.jar
+	cd out/map-dex && zip -q -X ../package/core/map/hmg-seogaemo-mapper.jar classes.dex
 
 generate:
 	sh tools/gen-modules.sh
@@ -37,7 +45,7 @@ $(OUT): VERSION app/AndroidManifest.xml app/allow-sha1.security $(SOURCES) $(INP
 	$(BT)/zipalign -f 4 out/unsigned.apk $(OUT)
 	$(BT)/apksigner verify --verbose --min-sdk-version 19 $(OUT)
 
-package: $(OUT)
+package: $(OUT) map-build
 	python3 tools/package.py build --aapt $(BT)/aapt
 
 verify-dist:
@@ -45,6 +53,12 @@ verify-dist:
 
 test: export PATH := $(CURDIR)/tools/testlib/fakebin:$(PATH)
 test: package
+	python3 tools/validate-maps.py all
+	python3 tools/test-validate-maps.py
+	python3 tools/test-map-scanner.py
+	python3 tools/test-map-car.py
+	./tools/verify-map maps/hyundai/ioniq5/kor/260902
+	python3 tools/test-map-root.py
 	python3 tools/test-confirm-routing.py
 	sh tools/test-gen-modules.sh
 	python3 tools/test-package.py --aapt $(BT)/aapt

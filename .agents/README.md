@@ -15,7 +15,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [wifi-client.md](wifi-client.md) | Current | Implemented Wi-Fi client file edits, status, tests, and on-car checklist. |
 | [wireless-adb.md](wireless-adb.md) | Current | Implemented ADB property behavior, network observations, and on-car checklist. |
 | [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) | Current | Implemented AGPL projection port, owned changes, recovery, and on-car checklist. |
-| [research-car-mapping.md](research-car-mapping.md) | Research/design | KOR car map evidence, US EV6 comparison, and proposed on-car HMG-Seogaemo mapper. |
+| [research-car-mapping.md](research-car-mapping.md) | Implemented plus historical research | KOR evidence, core mapper design, and remaining on-car validation. |
 | [research-nemesis-packaging.md](research-nemesis-packaging.md) | Partly superseded | NEMESIS source research and current package layout; older proposal marked historical. |
 | [research-ota-update.md](research-ota-update.md) | Partly superseded | Upstream OTA research and historical design choices, with current release notes. |
 | [research-wifi-client.md](research-wifi-client.md) | Partly superseded | Upstream STA/AP research and updated HMG-Seogaemo module test plan. |
@@ -26,3 +26,5 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 The target is Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (package glob `NEEV.KOR.*.260902`), onebin `neev_kr`, Android 4.4.2. Installation is NEMESIS plus HMG-Seogaemo only. Off-car tests do not establish physical-car behavior.
 
 Home now collects `Module.homeTiles()` from enabled modules and keeps Settings first. The current three modules provide no Home tiles, so Settings is the only card.
+
+Core mapping uses `core/hookpoints/`, `core/map/`, and `maps/`. The operational workflow is `docs/mapping-new-firmware.md`; `UPSTREAM.md` pins HMG-API reference paths and `tools/upstream-diff.sh` reports later changes. Settings → Car mapping is the core status, mapping, and PR export page.

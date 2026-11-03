@@ -1,0 +1,122 @@
+{
+  "_origin": "Follows HMG-API core/hookpoints/launcher.json@4fab437",
+  "files": [
+    "/system/app/Launcher_WP3.odex"
+  ],
+  "group": "launcher",
+  "namespace": "com.android.launcher3",
+  "points": {
+    "launcher.menu_entry": {
+      "about": "one menu entry: package, activity, enabled/disabled icon and title resource ids",
+      "match": {
+        "constructors": [
+          [
+            "@launcher.menu_list",
+            "android.content.Context",
+            "java.lang.String",
+            "java.lang.String",
+            "int",
+            "int",
+            "int"
+          ]
+        ],
+        "namespace": "com.android.launcher3"
+      },
+      "type": "class"
+    },
+    "launcher.menu_entry.new": {
+      "match": {
+        "parameters": [
+          "@launcher.menu_list",
+          "android.content.Context",
+          "java.lang.String",
+          "java.lang.String",
+          "int",
+          "int",
+          "int"
+        ]
+      },
+      "owner": "launcher.menu_entry",
+      "type": "ctor"
+    },
+    "launcher.menu_list": {
+      "about": "the all-apps menu's list of built-in entries (the launcher drops saved entries not in it)",
+      "match": {
+        "constructors": [
+          [
+            "android.content.Context"
+          ]
+        ],
+        "field_shapes": [
+          {
+            "type": "java.util.List"
+          },
+          {
+            "name": "mContext",
+            "type": "android.content.Context"
+          },
+          {
+            "name": "mLock",
+            "type": "java.lang.Object"
+          }
+        ],
+        "method_shapes": [
+          {
+            "name": "getContext",
+            "parameters": [],
+            "returns": "android.content.Context"
+          },
+          {
+            "name": "load",
+            "parameters": [],
+            "returns": "boolean"
+          },
+          {
+            "name": "getCount",
+            "parameters": [],
+            "returns": "int"
+          }
+        ],
+        "namespace": "com.android.launcher3",
+        "parent": "java.lang.Object"
+      },
+      "type": "class"
+    },
+    "launcher.menu_list.get_context": {
+      "match": {
+        "name": "getContext",
+        "parameters": [],
+        "returns": "android.content.Context"
+      },
+      "owner": "launcher.menu_list",
+      "type": "method"
+    },
+    "launcher.menu_list.items": {
+      "match": {
+        "class_member": false,
+        "type": "java.util.List"
+      },
+      "owner": "launcher.menu_list",
+      "type": "field"
+    },
+    "launcher.menu_list.load": {
+      "about": "fills the list; HMG-API adds mod entries after it",
+      "match": {
+        "name": "load",
+        "parameters": [],
+        "returns": "boolean"
+      },
+      "owner": "launcher.menu_list",
+      "type": "method"
+    },
+    "launcher.menu_list.lock": {
+      "match": {
+        "name": "mLock",
+        "type": "java.lang.Object"
+      },
+      "owner": "launcher.menu_list",
+      "type": "field"
+    }
+  },
+  "schema": 1
+}

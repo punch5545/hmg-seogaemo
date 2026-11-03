@@ -9,6 +9,8 @@
     <string name="settings">Settings</string>
     <string name="cat_general">General</string>
     <string name="cat_general_sub">Language</string>
+    <string name="cat_mapping">Car mapping</string>
+    <string name="cat_mapping_sub">Firmware hook points</string>
     <string name="cat_modules">Modules</string>
     <string name="cat_modules_sub">Manage built-in modules</string>
     <string name="module_settings">Module settings</string>
@@ -110,4 +112,28 @@
     <string name="update_no_update">No newer release is available</string>
     <string name="plan_step_enable">Turn on: %1$s</string>
     <string name="plan_step_disable">Turn off: %1$s</string>
+    <string name="mapping_state">Map status</string>
+    <string name="mapping_state_hint">Verified for this boot and firmware</string>
+    <string name="mapping_loading">Checking…</string>
+    <string name="mapping_ready">Verified</string>
+    <string name="mapping_verification_needed">Verification needed</string>
+    <string name="mapping_needed">Mapping needed</string>
+    <string name="mapping_unavailable">Unavailable</string>
+    <string name="mapping_progress">Mapping in progress…</string>
+    <string name="mapping_product">Product</string>
+    <string name="mapping_product_hint">ro.build.product</string>
+    <string name="mapping_source">Map source</string>
+    <string name="mapping_source_hint">Selected map</string>
+    <string name="mapping_source_bundled">Bundled</string>
+    <string name="mapping_source_generated">Generated</string>
+    <string name="mapping_source_none">None</string>
+    <string name="mapping_points">Points</string>
+    <string name="mapping_points_hint">Mapped / verified / failed</string>
+    <string name="mapping_failing_ids">Failing IDs</string>
+    <string name="mapping_run">Map this car</string>
+    <string name="mapping_run_confirm">Scan the stock firmware and verify its hook points? This can take several minutes. Keep the head unit powered on.</string>
+    <string name="mapping_run_done">The verified map is active. Export it and submit the maps folder to the repository in a Pull Request.</string>
+    <string name="mapping_export">Export map for PR</string>
+    <string name="mapping_export_confirm">Copy the verified map to USB, or to the adb export directory when USB is unavailable?</string>
+    <string name="mapping_pr_hint">To support this firmware in future builds, submit the exported maps folder through a GitHub Pull Request.</string>
 </resources>

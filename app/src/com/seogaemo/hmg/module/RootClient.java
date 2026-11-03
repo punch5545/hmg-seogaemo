@@ -22,7 +22,18 @@ public final class RootClient {
         return invoke("/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb");
     }
 
+    public static RootResult map(String verb) {
+        if (!("status".equals(verb) || "run".equals(verb) ||
+                "verify".equals(verb) || "export".equals(verb))) return failure("invalid map verb");
+        String command = "/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root map " + verb;
+        return invoke(command, "run".equals(verb) ? 600000 : "verify".equals(verb) ? 180000 : 30000);
+    }
+
     private static RootResult invoke(String command) {
+        return invoke(command, 15000);
+    }
+
+    private static RootResult invoke(String command, long timeoutMs) {
         Process process = null;
         try {
             process = new ProcessBuilder(
@@ -49,7 +60,7 @@ public final class RootClient {
             }, "hmg-seogaemo-root-output");
             reader.setDaemon(true);
             reader.start();
-            long deadline = System.currentTimeMillis() + 15000;
+            long deadline = System.currentTimeMillis() + timeoutMs;
             int exit;
             while (true) {
                 try { exit = process.exitValue(); break; }

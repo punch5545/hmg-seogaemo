@@ -1,0 +1,301 @@
+{
+  "_origin": "Follows HMG-API core/hookpoints/buttonsettings.json@4fab437",
+  "files": [
+    "/system/app/ButtonSettings.odex"
+  ],
+  "group": "buttonsettings",
+  "namespace": "com.android.buttonsettings",
+  "points": {
+    "buttonsettings.adapter": {
+      "match": {
+        "name": "com.android.buttonsettings.util.IconTextListAdapter"
+      },
+      "type": "class"
+    },
+    "buttonsettings.adapter.set_boolean_list": {
+      "match": {
+        "name": "setBooleanList",
+        "parameters": [
+          "boolean[]"
+        ],
+        "returns": "void"
+      },
+      "owner": "buttonsettings.adapter",
+      "type": "method"
+    },
+    "buttonsettings.adapter.set_list_items": {
+      "match": {
+        "name": "setListItems",
+        "parameters": [
+          "java.util.List"
+        ],
+        "returns": "void"
+      },
+      "owner": "buttonsettings.adapter",
+      "type": "method"
+    },
+    "buttonsettings.head_screen": {
+      "about": "the head unit ★ key's list of choices",
+      "match": {
+        "name": "com.android.buttonsettings.CustomButtonSetting",
+        "parent": "android.app.ListActivity"
+      },
+      "type": "class"
+    },
+    "buttonsettings.head_screen.adapter": {
+      "match": {
+        "class_member": false,
+        "name": "adapter",
+        "type": "@buttonsettings.adapter"
+      },
+      "owner": "buttonsettings.head_screen",
+      "type": "field"
+    },
+    "buttonsettings.head_screen.checked_list": {
+      "match": {
+        "class_member": false,
+        "name": "mCheckedList",
+        "type": "boolean[]"
+      },
+      "owner": "buttonsettings.head_screen",
+      "type": "field"
+    },
+    "buttonsettings.head_screen.cur_list": {
+      "match": {
+        "class_member": false,
+        "name": "mCurList",
+        "type": "java.util.List"
+      },
+      "owner": "buttonsettings.head_screen",
+      "type": "field"
+    },
+    "buttonsettings.head_screen.init_custom_key": {
+      "match": {
+        "name": "initCustomKey",
+        "parameters": [],
+        "returns": "void"
+      },
+      "owner": "buttonsettings.head_screen",
+      "type": "method"
+    },
+    "buttonsettings.head_screen.init_list": {
+      "match": {
+        "name": "initList",
+        "parameters": [],
+        "returns": "void"
+      },
+      "owner": "buttonsettings.head_screen",
+      "type": "method"
+    },
+    "buttonsettings.head_screen.keycode": {
+      "match": {
+        "class_member": true,
+        "name": "mKeycode",
+        "type": "java.lang.String"
+      },
+      "owner": "buttonsettings.head_screen",
+      "type": "field"
+    },
+    "buttonsettings.head_screen.list_item": {
+      "match": {
+        "name": "getListItem",
+        "parameters": [
+          "int",
+          "java.lang.String",
+          "int"
+        ],
+        "returns": "@buttonsettings.row"
+      },
+      "owner": "buttonsettings.head_screen",
+      "type": "method"
+    },
+    "buttonsettings.head_screen.menu_list": {
+      "match": {
+        "class_member": false,
+        "name": "mMenuList",
+        "type": "java.util.ArrayList"
+      },
+      "owner": "buttonsettings.head_screen",
+      "type": "field"
+    },
+    "buttonsettings.head_screen.set_selected": {
+      "match": {
+        "name": "setSelectedIdem",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "buttonsettings.head_screen",
+      "type": "method"
+    },
+    "buttonsettings.head_screen.title_list": {
+      "match": {
+        "class_member": false,
+        "name": "mCustomKeyTitleList",
+        "type": "int[]"
+      },
+      "owner": "buttonsettings.head_screen",
+      "type": "field"
+    },
+    "buttonsettings.item": {
+      "about": "one ★ key choice: title, summary and icon resource ids, and the action it stores",
+      "match": {
+        "name": "com.android.buttonsettings.customviews.CustomItem"
+      },
+      "type": "class"
+    },
+    "buttonsettings.item.get_shortcut": {
+      "match": {
+        "name": "getShortCut",
+        "parameters": [],
+        "returns": "java.lang.String"
+      },
+      "owner": "buttonsettings.item",
+      "type": "method"
+    },
+    "buttonsettings.item.new": {
+      "match": {
+        "parameters": [
+          "int",
+          "int",
+          "int",
+          "java.lang.String"
+        ]
+      },
+      "owner": "buttonsettings.item",
+      "type": "ctor"
+    },
+    "buttonsettings.row": {
+      "match": {
+        "name": "com.android.buttonsettings.util.IconTextItem"
+      },
+      "type": "class"
+    },
+    "buttonsettings.row.is_check": {
+      "match": {
+        "name": "isCheck",
+        "parameters": [],
+        "returns": "boolean"
+      },
+      "owner": "buttonsettings.row",
+      "type": "method"
+    },
+    "buttonsettings.row.set_check": {
+      "match": {
+        "name": "setCheck",
+        "parameters": [
+          "boolean"
+        ],
+        "returns": "void"
+      },
+      "owner": "buttonsettings.row",
+      "type": "method"
+    },
+    "buttonsettings.wheel_screen": {
+      "about": "the steering wheel ★ key's list of choices",
+      "match": {
+        "name": "com.android.buttonsettings.CustomButtonSettingSWRC",
+        "parent": "android.app.ListActivity"
+      },
+      "type": "class"
+    },
+    "buttonsettings.wheel_screen.adapter": {
+      "match": {
+        "class_member": false,
+        "name": "adapter",
+        "type": "@buttonsettings.adapter"
+      },
+      "owner": "buttonsettings.wheel_screen",
+      "type": "field"
+    },
+    "buttonsettings.wheel_screen.checked_list": {
+      "match": {
+        "class_member": false,
+        "name": "mCheckedList",
+        "type": "boolean[]"
+      },
+      "owner": "buttonsettings.wheel_screen",
+      "type": "field"
+    },
+    "buttonsettings.wheel_screen.cur_list": {
+      "match": {
+        "class_member": false,
+        "name": "mCurList",
+        "type": "java.util.List"
+      },
+      "owner": "buttonsettings.wheel_screen",
+      "type": "field"
+    },
+    "buttonsettings.wheel_screen.init_custom_key": {
+      "match": {
+        "name": "initCustomKey",
+        "parameters": [],
+        "returns": "void"
+      },
+      "owner": "buttonsettings.wheel_screen",
+      "type": "method"
+    },
+    "buttonsettings.wheel_screen.init_list": {
+      "match": {
+        "name": "initList",
+        "parameters": [],
+        "returns": "void"
+      },
+      "owner": "buttonsettings.wheel_screen",
+      "type": "method"
+    },
+    "buttonsettings.wheel_screen.keycode": {
+      "match": {
+        "class_member": true,
+        "name": "mKeycode",
+        "type": "java.lang.String"
+      },
+      "owner": "buttonsettings.wheel_screen",
+      "type": "field"
+    },
+    "buttonsettings.wheel_screen.list_item": {
+      "match": {
+        "name": "getListItem",
+        "parameters": [
+          "int",
+          "java.lang.String",
+          "int"
+        ],
+        "returns": "@buttonsettings.row"
+      },
+      "owner": "buttonsettings.wheel_screen",
+      "type": "method"
+    },
+    "buttonsettings.wheel_screen.menu_list": {
+      "match": {
+        "class_member": false,
+        "name": "mMenuList",
+        "type": "java.util.ArrayList"
+      },
+      "owner": "buttonsettings.wheel_screen",
+      "type": "field"
+    },
+    "buttonsettings.wheel_screen.set_selected": {
+      "match": {
+        "name": "setSelectedIdem",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "buttonsettings.wheel_screen",
+      "type": "method"
+    },
+    "buttonsettings.wheel_screen.title_list": {
+      "match": {
+        "class_member": false,
+        "name": "mCustomKeyTitleList",
+        "type": "int[]"
+      },
+      "owner": "buttonsettings.wheel_screen",
+      "type": "field"
+    }
+  },
+  "schema": 1
+}

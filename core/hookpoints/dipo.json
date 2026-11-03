@@ -1,0 +1,317 @@
+{
+  "_origin": "Follows HMG-API core/hookpoints/dipo.json@4fab437",
+  "captures": {
+    "iap2_notify_flag": {
+      "description": "on connect DiPO's iAP2 listener turns its manager's notification flag on, through a static setter",
+      "expression": "\\.method public final connected\\(ILjava/lang/String;\\)V\\n(?:.*\\n)*?invoke-static \\{v\\d+, v\\d+\\}, L[\\w/$]+;->(?P<set>\\w+)\\(L[\\w/$]+;Z\\)Z\\n",
+      "within": "@dipo.iap2_listener"
+    },
+    "session_bt_address": {
+      "description": "onSessionDetails reads the iAP2 manager's Bluetooth address and upper-cases it",
+      "expression": "invoke-virtual \\{v\\d+\\}, L[\\w/$]+;->(?P<address>\\w+)\\(\\)Ljava/lang/String;\\nmove-result-object v\\d+\\ninvoke-virtual \\{v\\d+\\}, Ljava/lang/String;->toUpperCase\\(\\)Ljava/lang/String;\\n",
+      "within": "@dipo.session_listener"
+    }
+  },
+  "files": [
+    "/system/app/HKMC_DiPO.odex",
+    "/system/framework/com.tcc.iap2.odex",
+    "/system/framework/com.broadcom.bt.jar"
+  ],
+  "group": "dipo",
+  "namespace": "com.daudio.app.dipo",
+  "points": {
+    "dipo.bt": {
+      "about": "DiPO's Bluetooth manager",
+      "match": {
+        "literals": [
+          "setCarPlayBtAddress() deviceID is null"
+        ],
+        "namespace": "com.daudio.app.dipo"
+      },
+      "type": "class"
+    },
+    "dipo.bt.set_carplay_bt_address": {
+      "about": "stores the CarPlay phone's Bluetooth address (null: kept)",
+      "match": {
+        "literals": [
+          "setCarPlayBtAddress()"
+        ],
+        "parameters": [
+          "java.lang.String"
+        ],
+        "returns": "void"
+      },
+      "owner": "dipo.bt",
+      "type": "method"
+    },
+    "dipo.btcm": {
+      "about": "Broadcom's Bluetooth connection manager (library com.broadcom.bt, one per process)",
+      "match": {
+        "name": "com.broadcom.bt.hfdevice.hfbtcm.HfDeviceBTCMManager"
+      },
+      "type": "class"
+    },
+    "dipo.btcm.register_listener": {
+      "about": "a status listener is registered (DiPO does once the Bluetooth service is connected)",
+      "match": {
+        "name": "registerHfDeviceStatusListener",
+        "parameters": [
+          "com.broadcom.bt.hfdevice.hfbtcm.HfDeviceStatusListener"
+        ],
+        "returns": "void"
+      },
+      "owner": "dipo.btcm",
+      "type": "method"
+    },
+    "dipo.carplay": {
+      "about": "DiPO's CarPlay session service: the CarPlay library's callbacks (readable names)",
+      "match": {
+        "name": "com.daudio.app.dipo.telechips.CarPlayService"
+      },
+      "type": "class"
+    },
+    "dipo.carplay.iap_message": {
+      "about": "iAP2 bytes the phone sent over the CarPlay session's own channel",
+      "match": {
+        "name": "oniAPSendMessage",
+        "parameters": [
+          "byte[]",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "dipo.carplay",
+      "type": "method"
+    },
+    "dipo.carplay.native_iap_send": {
+      "about": "sends iAP2 bytes to the phone over the CarPlay session's channel (0: sent)",
+      "match": {
+        "name": "TccCarPlayNativeMethod_iAPSendMessage",
+        "parameters": [
+          "byte[]",
+          "int"
+        ],
+        "returns": "int"
+      },
+      "owner": "dipo.carplay",
+      "type": "method"
+    },
+    "dipo.carplay.session_created": {
+      "about": "a CarPlay session was created",
+      "match": {
+        "name": "onSessionCreated",
+        "parameters": [],
+        "returns": "void"
+      },
+      "owner": "dipo.carplay",
+      "type": "method"
+    },
+    "dipo.carplay.session_finalized": {
+      "about": "a CarPlay session ended",
+      "match": {
+        "name": "onSessionFinalized",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "dipo.carplay",
+      "type": "method"
+    },
+    "dipo.carplay.session_started": {
+      "about": "a CarPlay session started (argument: transport, 1 wireless)",
+      "match": {
+        "name": "onSessionStarted",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "dipo.carplay",
+      "type": "method"
+    },
+    "dipo.iap2": {
+      "about": "DiPO's iAP2 manager (binds the iAP2 server, starts and stops route guidance)",
+      "match": {
+        "literals": [
+          "sendStartRouteGuidanceUpdate() RemoteException: "
+        ],
+        "namespace": "com.daudio.app.dipo"
+      },
+      "type": "class"
+    },
+    "dipo.iap2.bt_address": {
+      "about": "the phone's Bluetooth address from iAP2 identification (null after an iAP2 drop)",
+      "match": {
+        "group": "address",
+        "parameters": [],
+        "returns": "java.lang.String",
+        "smali_pattern": "session_bt_address"
+      },
+      "owner": "dipo.iap2",
+      "type": "method"
+    },
+    "dipo.iap2.set_notify_on": {
+      "about": "static setter (manager, on): DiPO takes iAP2 notifications while on (set on connect, cleared on disconnect)",
+      "match": {
+        "class_member": true,
+        "group": "set",
+        "parameters": [
+          "@dipo.iap2",
+          "boolean"
+        ],
+        "returns": "boolean",
+        "smali_pattern": "iap2_notify_flag"
+      },
+      "owner": "dipo.iap2",
+      "type": "method"
+    },
+    "dipo.iap2_client": {
+      "about": "the class that owns DiPO's iAP2 listener",
+      "match": {
+        "field_shapes": [
+          {
+            "type": "com.tcc.iap2.IIap2Listener$Stub"
+          }
+        ],
+        "namespace": "com.daudio.app.dipo"
+      },
+      "type": "class"
+    },
+    "dipo.iap2_client.manager": {
+      "about": "the iAP2 manager the listener belongs to",
+      "match": {
+        "type": "@dipo.iap2"
+      },
+      "owner": "dipo.iap2_client",
+      "type": "field"
+    },
+    "dipo.iap2_listener": {
+      "about": "DiPO's own iAP2 listener (connected, disconnected, notify from the iAP2 server)",
+      "match": {
+        "namespace": "com.daudio.app.dipo",
+        "parent": "com.tcc.iap2.IIap2Listener$Stub"
+      },
+      "type": "class"
+    },
+    "dipo.iap2_listener.connected": {
+      "about": "an iAP2 session is up (component: 1 USB, 4 Bluetooth CarPlay, 5 the CarPlay session's channel)",
+      "match": {
+        "name": "connected",
+        "parameters": [
+          "int",
+          "java.lang.String"
+        ],
+        "returns": "void"
+      },
+      "owner": "dipo.iap2_listener",
+      "type": "method"
+    },
+    "dipo.iap2_listener.disconnected": {
+      "about": "an iAP2 session ended (component)",
+      "match": {
+        "name": "disconnected",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "dipo.iap2_listener",
+      "type": "method"
+    },
+    "dipo.iap2_listener.notify": {
+      "about": "an iAP2 notification (what, arg1, arg2, message)",
+      "match": {
+        "name": "notify",
+        "parameters": [
+          "int",
+          "int",
+          "int",
+          "com.tcc.iap2.Iap2NotiMsg"
+        ],
+        "returns": "void"
+      },
+      "owner": "dipo.iap2_listener",
+      "type": "method"
+    },
+    "dipo.iap2_listener.owner": {
+      "about": "the listener's owner",
+      "match": {
+        "type": "@dipo.iap2_client"
+      },
+      "owner": "dipo.iap2_listener",
+      "type": "field"
+    },
+    "dipo.iap2_proxy": {
+      "about": "the iAP2 server's binder proxy (library com.tcc.iap2)",
+      "match": {
+        "name": "com.tcc.iap2.IIap2Service$Stub$Proxy"
+      },
+      "type": "class"
+    },
+    "dipo.iap2_proxy.stop_route_guidance": {
+      "about": "stop the phone's route guidance updates (DiPO: the car's navigation took turn-by-turn back)",
+      "match": {
+        "name": "Iap2SvcStopRouteGuidanceUpdate",
+        "parameters": [
+          "java.lang.String[]"
+        ],
+        "returns": "boolean"
+      },
+      "owner": "dipo.iap2_proxy",
+      "type": "method"
+    },
+    "dipo.session_listener": {
+      "about": "DipoService's CarPlay session listener",
+      "match": {
+        "literals": [
+          "onSessionDetails() return mDipoBTManager: null"
+        ],
+        "namespace": "com.daudio.app.dipo"
+      },
+      "type": "class"
+    },
+    "dipo.session_listener.session_details": {
+      "about": "onSessionDetails(device id, ...): saves the CarPlay phone's Bluetooth address",
+      "match": {
+        "literals": [
+          "onSessionDetails()"
+        ],
+        "parameters": [
+          "java.lang.String",
+          "java.lang.String",
+          "java.lang.String",
+          "java.lang.String"
+        ],
+        "returns": "void"
+      },
+      "owner": "dipo.session_listener",
+      "type": "method"
+    },
+    "dipo.utils": {
+      "about": "DiPO's utilities (region and feature checks)",
+      "match": {
+        "method_shapes": [
+          {
+            "name": "isSupportWirelessCarPlay",
+            "parameters": [],
+            "returns": "boolean"
+          }
+        ],
+        "namespace": "com.daudio.app.dipo"
+      },
+      "type": "class"
+    },
+    "dipo.utils.is_support_wireless_carplay": {
+      "about": "DiPO's own wireless CarPlay (Hyundai's): the feature file com.hkmc.software.connectivity.carplay_wireless",
+      "match": {
+        "name": "isSupportWirelessCarPlay",
+        "parameters": [],
+        "returns": "boolean"
+      },
+      "owner": "dipo.utils",
+      "type": "method"
+    }
+  },
+  "schema": 1
+}

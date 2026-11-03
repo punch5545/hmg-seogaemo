@@ -4,7 +4,6 @@ set -eu
 . "$HMG_SEOGAEMO_BASE/lib/common.sh"
 umask 077
 
-PRODUCT=NEEV.KOR.0000.V039.001.260902
 FEATURE=/system/onebin/neev_kr/featurexml.cfg
 ASSET=/system/etc/hmg-seogaemo/wireless-carplay-and-aa
 
@@ -15,22 +14,10 @@ fail() { sg_status failed none "$1"; }
 conflict() { sg_status conflict none "$1"; }
 incompatible() { sg_status incompatible none "$1"; }
 
-stock_hashes() {
-    # Four files needed by this mod, recorded in the 2026-11-02 pre-install Car Report.
-    while read -r expected logical; do
-        hash_line=$(md5 "$(path "$logical")" 2>/dev/null) || hash_line=
-        actual=${hash_line%% *}
-        [ "$actual" = "$expected" ] || { incompatible "stock hash mismatch: $logical"; return 4; }
-    done <<'HASHES'
-ffe86fa1540c8dea3b5499b1191bb727 /system/framework/framework.odex
-3b26cdcbf3c43f75623311f2bdfc3471 /system/app/HKMC_DiPO.odex
-a672fd0e0070414f2eb70a2807117a6f /system/app/Iap2ServerApp.odex
-c38a7fd61f90973625401501215375db /system/app/HKMC_GPM.odex
-HASHES
-}
-
 compatibility() {
-    [ "$(value ro.build.product)" = "$PRODUCT" ] || { incompatible 'unsupported firmware'; return 4; }
+    map_state=$("$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state=
+    printf '%s\n' "$map_state" | grep -Fxq 'state=on' ||
+        { incompatible 'verified car map required'; return 4; }
     [ "$(value ro.mobis.onebindir)" = neev_kr ] || { incompatible 'unsupported onebin'; return 4; }
     [ "$(value ro.build.version.release)" = 4.4.2 ] || { incompatible 'requires Android 4.4.2'; return 4; }
     for owner in hmgapi leafia nemesis-adb-tcp; do
@@ -40,7 +27,6 @@ compatibility() {
     if exists /system/bin/app_process.hmg-seogaemo-stock && ! sg_applied /system/bin/app_process; then
         conflict 'orphaned app_process backup'; return 3
     fi
-    if ! sg_applied /system/bin/app_process; then stock_hashes || return $?; fi
     exists "$FEATURE" || { incompatible 'featurexml.cfg absent'; return 4; }
     for name in com.hkmc.software.connectivity.carplay_wireless com.hkmc.software.connectivity.androidauto_wireless com.hkmc.software.wifihotspot; do
         target=/system/etc/permissions/$name.xml
@@ -53,7 +39,7 @@ compatibility() {
         [ "$((active + inactive))" -le 1 ] || { incompatible "featurexml line mismatch: $name"; return 4; }
     done
     exists /system/bin/app_process || { incompatible 'app_process absent'; return 4; }
-    for name in app_process libhmg_seogaemo_wireless_hook.so hmg-seogaemo-wireless-hook.jar libleafiaaac.so car-map.json; do
+    for name in app_process libhmg_seogaemo_wireless_hook.so hmg-seogaemo-wireless-hook.jar libleafiaaac.so; do
         [ -s "$HMG_SEOGAEMO_MODULE_DIR/data/$name" ] || { fail "missing payload: $name"; return 1; }
     done
     case "$(value persist.service.adb.tcp.enable)" in
@@ -63,7 +49,6 @@ compatibility() {
 
 put_assets() {
     sg_file_put /system/lib/libleafiaaac.so data/libleafiaaac.so 644 0:0 || return 1
-    sg_file_put "$ASSET/car-map.json" data/car-map.json 644 0:0 || return 1
     for name in aa-tbt-48ee793a aa-tbt-a0bea1c4 carplay-core-wifi carplay-audio-formats carplay-utils-converter; do
         sg_file_put "$ASSET/recipes/$name.recipe" "recipes/$name.recipe" 644 0:0 || return 1
     done

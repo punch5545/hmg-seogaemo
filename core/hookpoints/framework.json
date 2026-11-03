@@ -1,0 +1,1898 @@
+{
+  "_origin": "Follows HMG-API core/hookpoints/framework.json@4fab437",
+  "files": [
+    "/system/framework/framework.odex",
+    "/system/framework/core.odex",
+    "/system/framework/framework2.odex",
+    "/system/framework/automotive.odex",
+    "/system/framework/com.hkmc.ext.hcan.odex",
+    "/system/framework/automotive-service.odex"
+  ],
+  "group": "framework",
+  "namespace": null,
+  "points": {
+    "framework.activity_thread": {
+      "about": "Android's per-process main thread; every app's start goes through it",
+      "match": {
+        "name": "android.app.ActivityThread"
+      },
+      "type": "class"
+    },
+    "framework.activity_thread.handle_bind_application": {
+      "about": "an app process starts: HMG-API gives mods the app (LoadedApp)",
+      "match": {
+        "name": "handleBindApplication",
+        "parameters": [
+          "@framework.app_bind_data"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.activity_thread",
+      "type": "method"
+    },
+    "framework.activity_thread.initial_application": {
+      "match": {
+        "name": "mInitialApplication",
+        "type": "android.app.Application"
+      },
+      "owner": "framework.activity_thread",
+      "type": "field"
+    },
+    "framework.app_bind_data": {
+      "match": {
+        "name": "android.app.ActivityThread$AppBindData"
+      },
+      "type": "class"
+    },
+    "framework.app_bind_data.app_info": {
+      "match": {
+        "name": "appInfo",
+        "type": "android.content.pm.ApplicationInfo"
+      },
+      "owner": "framework.app_bind_data",
+      "type": "field"
+    },
+    "framework.app_bind_data.process_name": {
+      "match": {
+        "name": "processName",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.app_bind_data",
+      "type": "field"
+    },
+    "framework.bcm_listener": {
+      "match": {
+        "name": "com.hkmc.bcm.IBCMListener"
+      },
+      "type": "class"
+    },
+    "framework.bcm_listener_stub": {
+      "about": "HMG-API answers its callbacks with a plain binder (only the ones it reads)",
+      "match": {
+        "name": "com.hkmc.bcm.IBCMListener$Stub"
+      },
+      "type": "class"
+    },
+    "framework.bcm_listener_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.bcm_listener"
+      },
+      "owner": "framework.bcm_listener_stub",
+      "type": "method"
+    },
+    "framework.bcm_listener_stub.heating": {
+      "about": "onRemoteTeleHeatingStatusChanged(steering wheel heat state, rear defogger state): sent on registration and on change; no getter has it",
+      "match": {
+        "class_member": true,
+        "name": "TRANSACTION_onRemoteTeleHeatingStatusChanged",
+        "type": "int"
+      },
+      "owner": "framework.bcm_listener_stub",
+      "type": "field"
+    },
+    "framework.bcm_service": {
+      "about": "body control (doors, lights)",
+      "match": {
+        "name": "com.hkmc.bcm.IBCMService"
+      },
+      "type": "class"
+    },
+    "framework.bcm_service.ast_seat_heat_option": {
+      "match": {
+        "name": "getAstSeatHeatOption",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service.ast_seat_heat_state": {
+      "match": {
+        "name": "getAstSeatHeatState",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service.charge_door": {
+      "about": "the charge door, as Kia Connect's remote command (false opens, per Charge Port Button)",
+      "match": {
+        "name": "requestChargeLockDoor",
+        "parameters": [
+          "boolean"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service.drv_seat_heat_option": {
+      "about": "what the seat has: 1 heater with 2 levels (HEATER_ONLY_2STEP), 2 heater with 3, 6 heater and ventilation (EV6 front)",
+      "match": {
+        "name": "getDrvSeatHeatOption",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service.drv_seat_heat_state": {
+      "about": "driver seat climate step: 2 off, 3-5 ventilation low-high, 6-8 heater low-high (BCMConstants DrvSeatHeatState; the settings service answers -1 on the EV6)",
+      "match": {
+        "name": "getDrvSeatHeatState",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service.register_listener": {
+      "match": {
+        "name": "registerBCMListener",
+        "parameters": [
+          "@framework.bcm_listener",
+          "android.os.IBinder"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service.rl_seat_heat_option": {
+      "about": "1 on the EV6: 2 levels, no ventilation",
+      "match": {
+        "name": "getRLSeatHeatOption",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service.rl_seat_heat_state": {
+      "match": {
+        "name": "getRLSeatHeatState",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service.rr_seat_heat_option": {
+      "match": {
+        "name": "getRRSeatHeatOption",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service.rr_seat_heat_state": {
+      "match": {
+        "name": "getRRSeatHeatState",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service_stub": {
+      "match": {
+        "name": "com.hkmc.bcm.IBCMService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.bcm_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.bcm_service"
+      },
+      "owner": "framework.bcm_service_stub",
+      "type": "method"
+    },
+    "framework.build_info": {
+      "about": "Hyundai/Kia's build info",
+      "match": {
+        "name": "com.hkmc.BuildInfo"
+      },
+      "type": "class"
+    },
+    "framework.build_info.region": {
+      "about": "the head unit's region code (1 US, 4 Canada; see Car.region)",
+      "match": {
+        "class_member": true,
+        "name": "REGION",
+        "type": "int"
+      },
+      "owner": "framework.build_info",
+      "type": "field"
+    },
+    "framework.car_services": {
+      "about": "the car services' registered names",
+      "match": {
+        "name": "com.hkmc.Service"
+      },
+      "type": "class"
+    },
+    "framework.car_services.bcm": {
+      "match": {
+        "class_member": true,
+        "name": "BCM_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
+    "framework.car_services.datc": {
+      "match": {
+        "class_member": true,
+        "name": "DATC_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
+    "framework.car_services.factory": {
+      "match": {
+        "class_member": true,
+        "name": "FACTORY_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
+    "framework.car_services.hev": {
+      "match": {
+        "class_member": true,
+        "name": "HEV_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
+    "framework.car_services.micom_data": {
+      "match": {
+        "class_member": true,
+        "name": "MICOMDATA_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
+    "framework.car_services.pgs": {
+      "match": {
+        "class_member": true,
+        "name": "PGS_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
+    "framework.car_services.regulation": {
+      "match": {
+        "class_member": true,
+        "name": "REGULATION_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
+    "framework.car_services.system": {
+      "match": {
+        "class_member": true,
+        "name": "SYSTEM_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
+    "framework.car_services.usm": {
+      "match": {
+        "class_member": true,
+        "name": "USM_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
+    "framework.car_services.vr": {
+      "match": {
+        "class_member": true,
+        "name": "VR_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
+    "framework.context_impl": {
+      "match": {
+        "name": "android.app.ContextImpl"
+      },
+      "type": "class"
+    },
+    "framework.context_impl.start_service": {
+      "about": "an app starts a service (the Wireless mod: no wired Android Auto for USB drives)",
+      "match": {
+        "name": "startService",
+        "parameters": [
+          "android.content.Intent"
+        ],
+        "returns": "android.content.ComponentName"
+      },
+      "owner": "framework.context_impl",
+      "type": "method"
+    },
+    "framework.crossroad_name": {
+      "match": {
+        "name": "com.hkmc.cluster.NavigationCluster$CrossroadName"
+      },
+      "type": "class"
+    },
+    "framework.crossroad_name.name": {
+      "match": {
+        "name": "name",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.crossroad_name",
+      "type": "field"
+    },
+    "framework.crossroad_name.new": {
+      "match": {
+        "parameters": []
+      },
+      "owner": "framework.crossroad_name",
+      "type": "ctor"
+    },
+    "framework.datc_listener": {
+      "match": {
+        "name": "com.hkmc.datc.IDATCListener"
+      },
+      "type": "class"
+    },
+    "framework.datc_listener_stub": {
+      "match": {
+        "name": "com.hkmc.datc.IDATCListener$Stub"
+      },
+      "type": "class"
+    },
+    "framework.datc_listener_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.datc_listener"
+      },
+      "owner": "framework.datc_listener_stub",
+      "type": "method"
+    },
+    "framework.datc_listener_stub.status": {
+      "about": "onDatcStatus(DatcStatus): the climate status, sent on registration and on change",
+      "match": {
+        "class_member": true,
+        "name": "TRANSACTION_onDatcStatus",
+        "type": "int"
+      },
+      "owner": "framework.datc_listener_stub",
+      "type": "field"
+    },
+    "framework.datc_service": {
+      "about": "climate control",
+      "match": {
+        "name": "com.hkmc.datc.IDATCService"
+      },
+      "type": "class"
+    },
+    "framework.datc_service.register_listener": {
+      "match": {
+        "name": "registerDATCListener",
+        "parameters": [
+          "@framework.datc_listener",
+          "android.os.IBinder"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.datc_service",
+      "type": "method"
+    },
+    "framework.datc_service_stub": {
+      "match": {
+        "name": "com.hkmc.datc.IDATCService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.datc_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.datc_service"
+      },
+      "owner": "framework.datc_service_stub",
+      "type": "method"
+    },
+    "framework.datc_status": {
+      "match": {
+        "name": "com.hkmc.datc.DatcStatus"
+      },
+      "type": "class"
+    },
+    "framework.datc_status.ambient_c": {
+      "match": {
+        "name": "getAmbientTempC",
+        "parameters": [],
+        "returns": "float"
+      },
+      "owner": "framework.datc_status",
+      "type": "method"
+    },
+    "framework.datc_status.ambient_f": {
+      "about": "outside temperature, Fahrenheit (what the cluster shows on a US car: 73.0 for 73 F)",
+      "match": {
+        "name": "getAmbientTempF",
+        "parameters": [],
+        "returns": "float"
+      },
+      "owner": "framework.datc_status",
+      "type": "method"
+    },
+    "framework.datc_status.ambient_state_c": {
+      "about": "255: the Celsius value isn't valid (a US car fills Fahrenheit)",
+      "match": {
+        "name": "getAmbientTempStateC",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.datc_status",
+      "type": "method"
+    },
+    "framework.datc_status.creator": {
+      "match": {
+        "class_member": true,
+        "name": "CREATOR",
+        "type": "android.os.Parcelable$Creator"
+      },
+      "owner": "framework.datc_status",
+      "type": "field"
+    },
+    "framework.destination_name": {
+      "match": {
+        "name": "com.hkmc.cluster.NavigationCluster$DestinationName"
+      },
+      "type": "class"
+    },
+    "framework.destination_name.name": {
+      "match": {
+        "name": "name",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.destination_name",
+      "type": "field"
+    },
+    "framework.destination_name.new": {
+      "match": {
+        "parameters": []
+      },
+      "owner": "framework.destination_name",
+      "type": "ctor"
+    },
+    "framework.destination_name.type": {
+      "match": {
+        "name": "type",
+        "type": "int"
+      },
+      "owner": "framework.destination_name",
+      "type": "field"
+    },
+    "framework.dipo_manager": {
+      "about": "CarPlay's (DiPO) API; Context.getSystemService(\"dipo\")",
+      "match": {
+        "name": "android.dipo.DiPOManager"
+      },
+      "type": "class"
+    },
+    "framework.dipo_manager.current_mode": {
+      "match": {
+        "name": "getCurrentDiPOMode",
+        "parameters": [],
+        "returns": "@framework.dipo_mode"
+      },
+      "owner": "framework.dipo_manager",
+      "type": "method"
+    },
+    "framework.dipo_manager.current_stat": {
+      "about": "1: CarPlay is connected",
+      "match": {
+        "name": "getCurrentDiPOStat",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.dipo_manager",
+      "type": "method"
+    },
+    "framework.dipo_manager.is_turn_by_turn": {
+      "about": "CarPlay is guiding",
+      "match": {
+        "name": "isDiPOTurnByTurnMode",
+        "parameters": [],
+        "returns": "boolean"
+      },
+      "owner": "framework.dipo_manager",
+      "type": "method"
+    },
+    "framework.dipo_mode": {
+      "about": "CarPlay's current resources (speech, phone call)",
+      "match": {
+        "name": "android.dipo.DiPOMode"
+      },
+      "type": "class"
+    },
+    "framework.dipo_mode.phone_call": {
+      "about": "not 0: a CarPlay call",
+      "match": {
+        "name": "getPhoneCall",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.dipo_mode",
+      "type": "method"
+    },
+    "framework.dipo_mode.speech": {
+      "about": "1: Siri is open (the voice button then goes to CarPlay only)",
+      "match": {
+        "name": "getSpeech",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.dipo_mode",
+      "type": "method"
+    },
+    "framework.factory_service": {
+      "about": "factory functions (Engineering Mode)",
+      "match": {
+        "name": "com.hkmc.factory.IMicomFactoryService"
+      },
+      "type": "class"
+    },
+    "framework.factory_service.hide_consent_screen": {
+      "about": "hides the startup notice; no known inverse",
+      "match": {
+        "name": "hideConsentScreen",
+        "parameters": [],
+        "returns": "void"
+      },
+      "owner": "framework.factory_service",
+      "type": "method"
+    },
+    "framework.factory_service_stub": {
+      "match": {
+        "name": "com.hkmc.factory.IMicomFactoryService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.factory_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.factory_service"
+      },
+      "owner": "framework.factory_service_stub",
+      "type": "method"
+    },
+    "framework.gpm_manager": {
+      "about": "the Android Auto (GPM) service's API",
+      "match": {
+        "name": "com.hkmc.gpm.GpmManager"
+      },
+      "type": "class"
+    },
+    "framework.gpm_manager.is_activated": {
+      "about": "Android Auto is connected",
+      "match": {
+        "name": "isGpmActivated",
+        "parameters": [],
+        "returns": "boolean"
+      },
+      "owner": "framework.gpm_manager",
+      "type": "method"
+    },
+    "framework.gpm_manager.is_call": {
+      "about": "an Android Auto call",
+      "match": {
+        "name": "isGpmCall",
+        "parameters": [],
+        "returns": "boolean"
+      },
+      "owner": "framework.gpm_manager",
+      "type": "method"
+    },
+    "framework.gpm_manager.is_navi_guidance": {
+      "about": "Android Auto is guiding",
+      "match": {
+        "name": "isGpmNaviGuidance",
+        "parameters": [],
+        "returns": "boolean"
+      },
+      "owner": "framework.gpm_manager",
+      "type": "method"
+    },
+    "framework.gpm_manager.is_vr": {
+      "about": "Android Auto's assistant is open (the voice button then goes to Android Auto only)",
+      "match": {
+        "name": "isGpmVR",
+        "parameters": [],
+        "returns": "boolean"
+      },
+      "owner": "framework.gpm_manager",
+      "type": "method"
+    },
+    "framework.gpm_manager.new": {
+      "match": {
+        "parameters": [
+          "android.content.Context"
+        ]
+      },
+      "owner": "framework.gpm_manager",
+      "type": "ctor"
+    },
+    "framework.hev_flag": {
+      "about": "names of the HEV values",
+      "match": {
+        "name": "com.hkmc.hev.HEVManager$HEVFlag"
+      },
+      "type": "class"
+    },
+    "framework.hev_flag.battery_conditioning": {
+      "match": {
+        "class_member": true,
+        "name": "EV_BATTERYCONDITIONING",
+        "type": "int"
+      },
+      "owner": "framework.hev_flag",
+      "type": "field"
+    },
+    "framework.hev_flag.display_soc": {
+      "about": "state of charge as shown, 0.5% steps",
+      "match": {
+        "class_member": true,
+        "name": "DISPLAY_SOC",
+        "type": "int"
+      },
+      "owner": "framework.hev_flag",
+      "type": "field"
+    },
+    "framework.hev_flag.ev_ready": {
+      "match": {
+        "class_member": true,
+        "name": "EV_RDY",
+        "type": "int"
+      },
+      "owner": "framework.hev_flag",
+      "type": "field"
+    },
+    "framework.hev_flag.odometer": {
+      "about": "0.1 km",
+      "match": {
+        "class_member": true,
+        "name": "ODOMETER",
+        "type": "int"
+      },
+      "owner": "framework.hev_flag",
+      "type": "field"
+    },
+    "framework.hev_service": {
+      "about": "the EV/hybrid service (com.hkmc.micom.hev)",
+      "match": {
+        "name": "com.hkmc.hev.IHEVService"
+      },
+      "type": "class"
+    },
+    "framework.hev_service.batt_cond_remain_time": {
+      "match": {
+        "name": "setBattCondRemainTime",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.hev_service",
+      "type": "method"
+    },
+    "framework.hev_service.batt_cond_route_distance": {
+      "match": {
+        "name": "setBattCondRouteDis",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.hev_service",
+      "type": "method"
+    },
+    "framework.hev_service.batt_cond_station": {
+      "about": "battery conditioning: \"routed to a charging station\" (2,3 start; 0,0 stop), as the navigation sends",
+      "match": {
+        "name": "setBattCondEvStation",
+        "parameters": [
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.hev_service",
+      "type": "method"
+    },
+    "framework.hev_service.hev_status": {
+      "about": "one HEV value by its HEVFlag",
+      "match": {
+        "name": "getHEVStatus",
+        "parameters": [
+          "int"
+        ],
+        "returns": "int"
+      },
+      "owner": "framework.hev_service",
+      "type": "method"
+    },
+    "framework.hev_service_stub": {
+      "match": {
+        "name": "com.hkmc.hev.IHEVService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.hev_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.hev_service"
+      },
+      "owner": "framework.hev_service_stub",
+      "type": "method"
+    },
+    "framework.hkmc_loader": {
+      "about": "loads the car's own framework jars in system_server",
+      "match": {
+        "name": "com.hkmc.internal.Loader"
+      },
+      "type": "class"
+    },
+    "framework.hkmc_loader.automotive_service": {
+      "about": "system_server's loader for automotive-service.jar (the car services, key dispatch)",
+      "match": {
+        "class_member": true,
+        "name": "getAutomotiveServiceJar",
+        "parameters": [
+          "android.content.Context"
+        ],
+        "returns": "@framework.hkmc_loader"
+      },
+      "owner": "framework.hkmc_loader",
+      "type": "method"
+    },
+    "framework.hkmc_loader.class_loader": {
+      "match": {
+        "name": "mClassLoader",
+        "type": "java.lang.ClassLoader"
+      },
+      "owner": "framework.hkmc_loader",
+      "type": "field"
+    },
+    "framework.hscan_adapter": {
+      "match": {
+        "name": "com.hkmc.telematics.hscan.tm_interface.TM_HSCANAdapter"
+      },
+      "type": "class"
+    },
+    "framework.hscan_adapter.service_name": {
+      "about": "tm_hscan_service",
+      "match": {
+        "class_member": true,
+        "name": "TM_HSCAN_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.hscan_adapter",
+      "type": "field"
+    },
+    "framework.hscan_service": {
+      "about": "the telematics CAN readings (tm_hscan_service, com.hkmc.ext.hcan library)",
+      "match": {
+        "name": "com.hkmc.telematics.hscan.tm_interface.ITM_HSCANService"
+      },
+      "type": "class"
+    },
+    "framework.hscan_service.accel_pedal": {
+      "match": {
+        "name": "getAccelPdlVal",
+        "parameters": [],
+        "returns": "float"
+      },
+      "owner": "framework.hscan_service",
+      "type": "method"
+    },
+    "framework.hscan_service.battery_12v_soc": {
+      "about": "12V battery state of charge, %",
+      "match": {
+        "name": "getBatSoc",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.hscan_service",
+      "type": "method"
+    },
+    "framework.hscan_service.brake_pressure": {
+      "match": {
+        "name": "getCylPrsrVal",
+        "parameters": [],
+        "returns": "float"
+      },
+      "owner": "framework.hscan_service",
+      "type": "method"
+    },
+    "framework.hscan_service.car_speed": {
+      "about": "speed; argument 0 = km/h",
+      "match": {
+        "name": "getCarSpeed",
+        "parameters": [
+          "byte"
+        ],
+        "returns": "float"
+      },
+      "owner": "framework.hscan_service",
+      "type": "method"
+    },
+    "framework.hscan_service.charging_status": {
+      "match": {
+        "name": "getChargingStatus",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.hscan_service",
+      "type": "method"
+    },
+    "framework.hscan_service.hv_health": {
+      "match": {
+        "name": "getXEV_Bms_GDS_SOH",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.hscan_service",
+      "type": "method"
+    },
+    "framework.hscan_service.moving": {
+      "match": {
+        "name": "IsCarMoving",
+        "parameters": [],
+        "returns": "boolean"
+      },
+      "owner": "framework.hscan_service",
+      "type": "method"
+    },
+    "framework.hscan_service.steering_angle": {
+      "about": "raw steering angle: signed 16-bit, 0.1 degree (Steering Arcade's, checked on a car; getSasAngleVal gives degrees but its left-turn form is unseen)",
+      "match": {
+        "name": "navi_getSasAngleVal",
+        "parameters": [],
+        "returns": "float"
+      },
+      "owner": "framework.hscan_service",
+      "type": "method"
+    },
+    "framework.hscan_service_stub": {
+      "match": {
+        "name": "com.hkmc.telematics.hscan.tm_interface.ITM_HSCANService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.hscan_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.hscan_service"
+      },
+      "owner": "framework.hscan_service_stub",
+      "type": "method"
+    },
+    "framework.io_bridge": {
+      "match": {
+        "name": "libcore.io.IoBridge"
+      },
+      "type": "class"
+    },
+    "framework.io_bridge.connect": {
+      "about": "a socket connects (HMG-API's over-the-air update block)",
+      "match": {
+        "class_member": true,
+        "name": "connect",
+        "parameters": [
+          "java.io.FileDescriptor",
+          "java.net.InetAddress",
+          "int"
+        ],
+        "returns": "boolean"
+      },
+      "owner": "framework.io_bridge",
+      "type": "method"
+    },
+    "framework.io_bridge.connect_timeout": {
+      "match": {
+        "class_member": true,
+        "name": "connect",
+        "parameters": [
+          "java.io.FileDescriptor",
+          "java.net.InetAddress",
+          "int",
+          "int"
+        ],
+        "returns": "boolean"
+      },
+      "owner": "framework.io_bridge",
+      "type": "method"
+    },
+    "framework.micomdata_callback_stub": {
+      "about": "HMG-API's MICOM watch extends it (compiled against core/runtime/stubs)",
+      "match": {
+        "name": "com.hkmc.micom.IMicomDataCallback$Stub"
+      },
+      "type": "class"
+    },
+    "framework.micomdata_service": {
+      "about": "the car's raw MICOM data service: per-category frame callbacks (HMG-API only listens; its send method isn't mapped)",
+      "match": {
+        "name": "com.hkmc.micom.IMicomDataService"
+      },
+      "type": "class"
+    },
+    "framework.micomdata_service.register": {
+      "about": "frames of one category (CID) to a callback: onEvent(cid, funcH, funcL, data)",
+      "match": {
+        "name": "registerCallback",
+        "parameters": [
+          "java.lang.String",
+          "byte",
+          "com.hkmc.micom.IMicomDataCallback"
+        ],
+        "returns": "boolean"
+      },
+      "owner": "framework.micomdata_service",
+      "type": "method"
+    },
+    "framework.micomdata_service.unregister": {
+      "match": {
+        "name": "unregisterCallback",
+        "parameters": [
+          "java.lang.String",
+          "byte",
+          "com.hkmc.micom.IMicomDataCallback"
+        ],
+        "returns": "boolean"
+      },
+      "owner": "framework.micomdata_service",
+      "type": "method"
+    },
+    "framework.micomdata_service_stub": {
+      "match": {
+        "name": "com.hkmc.micom.IMicomDataService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.micomdata_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.micomdata_service"
+      },
+      "owner": "framework.micomdata_service_stub",
+      "type": "method"
+    },
+    "framework.mode_key_dispatcher": {
+      "about": "the car's key dispatcher (automotive-service.jar, in system_server): WindowManagerService.interceptKey hands it every key",
+      "match": {
+        "name": "com.hkmc.micom.ModeKeyDispatcher"
+      },
+      "type": "class"
+    },
+    "framework.mode_key_dispatcher.intercept_key": {
+      "about": "every key once Android is up, from the key policy's dispatch step (the queueing step calls it only before boot): (focus, action, flags, deviceId, keyCode, scanCode, metaState, repeatCount, 0); negative: the key is used up. ModeManagerService.interceptKeyBefore* aren't called on 260507",
+      "match": {
+        "name": "interceptKeyFromAndroid",
+        "parameters": [
+          "android.view.InputChannel",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "int"
+      },
+      "owner": "framework.mode_key_dispatcher",
+      "type": "method"
+    },
+    "framework.mode_manager_service": {
+      "about": "the car's mode and key service (automotive-service.jar, in system_server)",
+      "match": {
+        "name": "com.hkmc.micom.ModeManagerService"
+      },
+      "type": "class"
+    },
+    "framework.mode_manager_service.intercept_key_dispatching": {
+      "match": {
+        "name": "interceptKeyBeforeDispatching",
+        "parameters": [
+          "android.view.InputChannel",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "int"
+      },
+      "owner": "framework.mode_manager_service",
+      "type": "method"
+    },
+    "framework.mode_manager_service.intercept_key_queueing": {
+      "about": "every key, first: (focus, action, flags, deviceId, keyCode, scanCode, metaState, repeatCount, policyFlags); -1 drops it",
+      "match": {
+        "name": "interceptKeyBeforeQueueing",
+        "parameters": [
+          "android.view.InputChannel",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "int"
+      },
+      "owner": "framework.mode_manager_service",
+      "type": "method"
+    },
+    "framework.navigation_cluster": {
+      "about": "Hyundai/Kia's API to the instrument cluster and HUD (navigation data)",
+      "match": {
+        "name": "com.hkmc.cluster.NavigationCluster"
+      },
+      "type": "class"
+    },
+    "framework.navigation_cluster.new": {
+      "match": {
+        "parameters": [
+          "android.content.Context"
+        ]
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "ctor"
+    },
+    "framework.navigation_cluster.update_lane_info": {
+      "about": "lanes to the cluster/HUD as raw bytes (Android Auto's lane format)",
+      "match": {
+        "name": "updateLaneInfo",
+        "parameters": [
+          "byte[]"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_remain_dis": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateRemainDis",
+        "parameters": [
+          "int",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tbt_info": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTBTInfo",
+        "parameters": [
+          "int",
+          "int",
+          "float",
+          "float",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tbt_sub_info": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTBTSubInfo",
+        "parameters": [
+          "float",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "float",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tbt_sub_info2": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTBTSubInfo2",
+        "parameters": [
+          "float",
+          "int",
+          "float",
+          "int",
+          "float",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tbt_sub_info2_b": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTBTSubInfo2",
+        "parameters": [
+          "float",
+          "int",
+          "int",
+          "float",
+          "int",
+          "int",
+          "float",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tbt_sub_info_2c": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTBTSubInfo2C",
+        "parameters": [
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tbt_sub_info_b": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTBTSubInfo",
+        "parameters": [
+          "float",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "float",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tp_crossroad_name": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTPCrossroadName",
+        "parameters": [
+          "com.hkmc.cluster.NavigationCluster$CrossroadName"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tp_destination_name": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTPFlexibleDestinationName",
+        "parameters": [
+          "com.hkmc.cluster.NavigationCluster$DestinationName"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tp_lane_info": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTPLaneInfo",
+        "parameters": [
+          "com.hkmc.cluster.NavigationCluster$LaneInformation"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tp_turn_list": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTPTurnList",
+        "parameters": [
+          "com.hkmc.cluster.NavigationCluster$TurnList[]"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tp_turn_list_new": {
+      "about": "turn-by-turn to the cluster/HUD",
+      "match": {
+        "name": "updateTPTurnListNew",
+        "parameters": [
+          "byte[]"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.pgs_service": {
+      "about": "parking guidance (cameras)",
+      "match": {
+        "name": "com.hkmc.pgs.IPgsService"
+      },
+      "type": "class"
+    },
+    "framework.pgs_service.guide_lines": {
+      "match": {
+        "name": "getRvmGuideLineState",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.pgs_service",
+      "type": "method"
+    },
+    "framework.pgs_service.request_guide_lines": {
+      "about": "rear camera guide lines: 1 off, 2 on",
+      "match": {
+        "name": "requestGuideLineState",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.pgs_service",
+      "type": "method"
+    },
+    "framework.pgs_service_stub": {
+      "match": {
+        "name": "com.hkmc.pgs.IPgsService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.pgs_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.pgs_service"
+      },
+      "owner": "framework.pgs_service_stub",
+      "type": "method"
+    },
+    "framework.regulation_manager": {
+      "about": "the car's driving restriction (video and the like while moving)",
+      "match": {
+        "name": "com.hkmc.regulation.RegulationActivityManager"
+      },
+      "type": "class"
+    },
+    "framework.regulation_manager.get_instance": {
+      "match": {
+        "class_member": true,
+        "name": "getInstance",
+        "parameters": [
+          "android.content.Context"
+        ],
+        "returns": "@framework.regulation_manager"
+      },
+      "owner": "framework.regulation_manager",
+      "type": "method"
+    },
+    "framework.regulation_manager.show_popup": {
+      "about": "the car's own \"not while driving\" popup",
+      "match": {
+        "name": "showRegulationPopup",
+        "parameters": [
+          "java.lang.String"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.regulation_manager",
+      "type": "method"
+    },
+    "framework.regulation_manager.status": {
+      "about": "1 while the driving restriction is on",
+      "match": {
+        "name": "getStatus",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.regulation_manager",
+      "type": "method"
+    },
+    "framework.regulation_service": {
+      "match": {
+        "name": "com.hkmc.regulation.IRegulationManager"
+      },
+      "type": "class"
+    },
+    "framework.regulation_service.status": {
+      "about": "1 while the driving restriction is on",
+      "match": {
+        "name": "getStatus",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.regulation_service",
+      "type": "method"
+    },
+    "framework.regulation_service_stub": {
+      "match": {
+        "name": "com.hkmc.regulation.IRegulationManager$Stub"
+      },
+      "type": "class"
+    },
+    "framework.regulation_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.regulation_service"
+      },
+      "owner": "framework.regulation_service_stub",
+      "type": "method"
+    },
+    "framework.resources": {
+      "match": {
+        "name": "android.content.res.Resources"
+      },
+      "type": "class"
+    },
+    "framework.resources.get_drawable": {
+      "about": "HMG-API answers its own resource ids (launcher tile icons)",
+      "match": {
+        "name": "getDrawable",
+        "parameters": [
+          "int"
+        ],
+        "returns": "android.graphics.drawable.Drawable"
+      },
+      "owner": "framework.resources",
+      "type": "method"
+    },
+    "framework.resources.get_text": {
+      "match": {
+        "name": "getText",
+        "parameters": [
+          "int"
+        ],
+        "returns": "java.lang.CharSequence"
+      },
+      "owner": "framework.resources",
+      "type": "method"
+    },
+    "framework.runtime": {
+      "about": "the VM's runtime: native library loading",
+      "match": {
+        "name": "java.lang.Runtime"
+      },
+      "type": "class"
+    },
+    "framework.runtime.load": {
+      "about": "System.load(path) lands here",
+      "match": {
+        "name": "load",
+        "parameters": [
+          "java.lang.String",
+          "java.lang.ClassLoader"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.runtime",
+      "type": "method"
+    },
+    "framework.runtime.load_library": {
+      "about": "System.loadLibrary(name) lands here, with the caller's class loader (its dependencies load too)",
+      "match": {
+        "name": "loadLibrary",
+        "parameters": [
+          "java.lang.String",
+          "java.lang.ClassLoader"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.runtime",
+      "type": "method"
+    },
+    "framework.service_manager": {
+      "match": {
+        "name": "android.os.ServiceManager"
+      },
+      "type": "class"
+    },
+    "framework.service_manager.get_service": {
+      "about": "a system service by its registered name",
+      "match": {
+        "class_member": true,
+        "name": "getService",
+        "parameters": [
+          "java.lang.String"
+        ],
+        "returns": "android.os.IBinder"
+      },
+      "owner": "framework.service_manager",
+      "type": "method"
+    },
+    "framework.system_properties": {
+      "match": {
+        "name": "android.os.SystemProperties"
+      },
+      "type": "class"
+    },
+    "framework.system_properties.get_int": {
+      "about": "reads a system property (HMG-API never sets ro.* ones)",
+      "match": {
+        "class_member": true,
+        "name": "getInt",
+        "parameters": [
+          "java.lang.String",
+          "int"
+        ],
+        "returns": "int"
+      },
+      "owner": "framework.system_properties",
+      "type": "method"
+    },
+    "framework.system_service": {
+      "about": "the car system service (com.hkmc.micom.system)",
+      "match": {
+        "name": "com.hkmc.micom.ISystemService"
+      },
+      "type": "class"
+    },
+    "framework.system_service.gear_p_status": {
+      "about": "1 when the gear is in P",
+      "match": {
+        "name": "getGearPStatus",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.system_service",
+      "type": "method"
+    },
+    "framework.system_service.parking_brake_status": {
+      "about": "electronic parking brake status (2 with it on, EV6 2026-10-31; getParkingBrakeStatus stays 0 on the EV6)",
+      "match": {
+        "name": "getEPBStatus",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.system_service",
+      "type": "method"
+    },
+    "framework.system_service.sml_configuration": {
+      "about": "ambient light setting (5: brightness)",
+      "match": {
+        "name": "setSMLConfiguration",
+        "parameters": [
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.system_service",
+      "type": "method"
+    },
+    "framework.system_service.sml_rgb": {
+      "about": "ambient light colour: {0,r},{0,g},{0,b}",
+      "match": {
+        "name": "setSMLRGB",
+        "parameters": [
+          "byte[]",
+          "byte[]",
+          "byte[]"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.system_service",
+      "type": "method"
+    },
+    "framework.system_service.sml_status": {
+      "match": {
+        "name": "requestSMLStatus",
+        "parameters": [],
+        "returns": "void"
+      },
+      "owner": "framework.system_service",
+      "type": "method"
+    },
+    "framework.system_service_stub": {
+      "match": {
+        "name": "com.hkmc.micom.ISystemService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.system_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.system_service"
+      },
+      "owner": "framework.system_service_stub",
+      "type": "method"
+    },
+    "framework.turn_list": {
+      "about": "one upcoming turn in the cluster's turn list",
+      "match": {
+        "name": "com.hkmc.cluster.NavigationCluster$TurnList"
+      },
+      "type": "class"
+    },
+    "framework.turn_list.direction": {
+      "match": {
+        "name": "direction",
+        "type": "int"
+      },
+      "owner": "framework.turn_list",
+      "type": "field"
+    },
+    "framework.turn_list.distance": {
+      "match": {
+        "name": "distance",
+        "type": "float"
+      },
+      "owner": "framework.turn_list",
+      "type": "field"
+    },
+    "framework.turn_list.exit_number": {
+      "match": {
+        "name": "exitNumber",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.turn_list",
+      "type": "field"
+    },
+    "framework.turn_list.name": {
+      "match": {
+        "name": "name",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.turn_list",
+      "type": "field"
+    },
+    "framework.turn_list.new": {
+      "match": {
+        "parameters": []
+      },
+      "owner": "framework.turn_list",
+      "type": "ctor"
+    },
+    "framework.turn_list.no": {
+      "match": {
+        "name": "no",
+        "type": "int"
+      },
+      "owner": "framework.turn_list",
+      "type": "field"
+    },
+    "framework.turn_list.traffic": {
+      "match": {
+        "name": "traffic",
+        "type": "int"
+      },
+      "owner": "framework.turn_list",
+      "type": "field"
+    },
+    "framework.turn_list.type": {
+      "match": {
+        "name": "type",
+        "type": "int"
+      },
+      "owner": "framework.turn_list",
+      "type": "field"
+    },
+    "framework.turn_list.unit": {
+      "match": {
+        "name": "unit",
+        "type": "int"
+      },
+      "owner": "framework.turn_list",
+      "type": "field"
+    },
+    "framework.usm_manager": {
+      "about": "the owner's settings (USM): units and the like",
+      "match": {
+        "name": "com.hkmc.usm.USMManager"
+      },
+      "type": "class"
+    },
+    "framework.usm_manager.distance_speed_unit": {
+      "about": "the owner's distance unit: 0 km, 1 miles",
+      "match": {
+        "name": "getDistanceSpeedUnit",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.usm_manager",
+      "type": "method"
+    },
+    "framework.usm_manager.new": {
+      "match": {
+        "parameters": [
+          "android.content.Context"
+        ]
+      },
+      "owner": "framework.usm_manager",
+      "type": "ctor"
+    },
+    "framework.usm_service": {
+      "about": "the owner's vehicle settings (USM)",
+      "match": {
+        "name": "com.hkmc.usm.IUSMService"
+      },
+      "type": "class"
+    },
+    "framework.usm_service.seat_heat_driver": {
+      "about": "driver seat heat step: 2 off, 6 low, 7 medium, 8 high (Cold-start Heat, on a car)",
+      "match": {
+        "name": "setFrontSeatHeatDrvStep",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.usm_service",
+      "type": "method"
+    },
+    "framework.usm_service.seat_heat_driver_option": {
+      "match": {
+        "name": "getFrontSeatHeat_DrvOption",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.usm_service",
+      "type": "method"
+    },
+    "framework.usm_service.seat_heat_driver_state": {
+      "match": {
+        "name": "getFrontSeatHeat_DrvState",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.usm_service",
+      "type": "method"
+    },
+    "framework.usm_service.seat_heat_passenger": {
+      "match": {
+        "name": "setFrontSeatHeatAstStep",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.usm_service",
+      "type": "method"
+    },
+    "framework.usm_service.seat_heat_passenger_option": {
+      "match": {
+        "name": "getFrontSeatHeat_AstOption",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.usm_service",
+      "type": "method"
+    },
+    "framework.usm_service.seat_heat_passenger_state": {
+      "match": {
+        "name": "getFrontSeatHeat_AstState",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.usm_service",
+      "type": "method"
+    },
+    "framework.usm_service.seat_heat_rear_left": {
+      "about": "rear left seat climate step (as the front ones)",
+      "match": {
+        "name": "setRearSeatHeatLeftStep",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.usm_service",
+      "type": "method"
+    },
+    "framework.usm_service.seat_heat_rear_right": {
+      "match": {
+        "name": "setRearSeatHeatRightStep",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.usm_service",
+      "type": "method"
+    },
+    "framework.usm_service_stub": {
+      "match": {
+        "name": "com.hkmc.usm.IUSMService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.usm_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.usm_service"
+      },
+      "owner": "framework.usm_service_stub",
+      "type": "method"
+    },
+    "framework.vr_service": {
+      "about": "voice commands' vehicle path",
+      "match": {
+        "name": "com.hkmc.vr.IVRService"
+      },
+      "type": "class"
+    },
+    "framework.vr_service.wheel_heat": {
+      "about": "steering wheel heat, 1 on 0 off: what \"turn on the heated steering wheel\" sends",
+      "match": {
+        "name": "set_StrgWhlHeated_Cmd_AVN",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.vr_service",
+      "type": "method"
+    },
+    "framework.vr_service_stub": {
+      "match": {
+        "name": "com.hkmc.vr.IVRService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.vr_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.vr_service"
+      },
+      "owner": "framework.vr_service_stub",
+      "type": "method"
+    },
+    "framework.window_manager_service": {
+      "about": "Android's window manager (services.jar, in system_server)",
+      "match": {
+        "name": "com.android.server.wm.WindowManagerService"
+      },
+      "type": "class"
+    },
+    "framework.window_manager_service.intercept_key": {
+      "about": "HKMC's key entry: the key policy's dispatch step hands it every key once Android is up and it passes the key to the car's key dispatcher; negative: the key is used up. A key put back with InputManager.injectInputEvent comes through here again",
+      "match": {
+        "name": "interceptKey",
+        "parameters": [
+          "android.view.KeyEvent"
+        ],
+        "returns": "int"
+      },
+      "owner": "framework.window_manager_service",
+      "type": "method"
+    }
+  },
+  "schema": 1
+}

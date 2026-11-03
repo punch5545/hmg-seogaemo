@@ -34,7 +34,6 @@ public final class WirelessCarplayAndAaModule extends RootBackedModule {
         "/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml",
         "/system/etc/permissions/com.hkmc.software.connectivity.androidauto_wireless.xml",
         "/system/etc/permissions/com.hkmc.software.wifihotspot.xml",
-        "/system/etc/hmg-seogaemo/wireless-carplay-and-aa/car-map.json",
         "/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/aa-tbt-48ee793a.recipe",
         "/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/aa-tbt-a0bea1c4.recipe",
         "/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/carplay-core-wifi.recipe",

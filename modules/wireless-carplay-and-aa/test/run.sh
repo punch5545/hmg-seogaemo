@@ -102,18 +102,15 @@ cat > "$T/bin/setprop" <<'SH'
 #!/bin/sh
 printf '%s' "$2" > "$TEST_PROPS/$1"
 SH
-cat > "$T/bin/md5" <<'SH'
+mkdir -p "$T/base/bin"
+cat > "$T/base/bin/hmg-seogaemo-root" <<'SH'
 #!/bin/sh
-[ -f "$1" ] || exit 1
-[ ! -f "$TEST_STATE/bad-md5" ] || { printf '00000000000000000000000000000000  %s\n' "$1"; exit 0; }
-case "$1" in
-    */framework.odex) printf 'ffe86fa1540c8dea3b5499b1191bb727  %s\n' "$1";;
-    */HKMC_DiPO.odex) printf '3b26cdcbf3c43f75623311f2bdfc3471  %s\n' "$1";;
-    */Iap2ServerApp.odex) printf 'a672fd0e0070414f2eb70a2807117a6f  %s\n' "$1";;
-    */HKMC_GPM.odex) printf 'c38a7fd61f90973625401501215375db  %s\n' "$1";;
-    *) exit 1;;
-esac
+[ "$1" = map ] && [ "$2" = status ] || exit 2
+[ "$(cat "$TEST_PROPS/ro.build.product")" = NEEV.KOR.0000.V039.001.260902 ] &&
+    [ ! -f "$TEST_STATE/map-off" ] || { printf 'state=incompatible\n'; exit 4; }
+printf 'state=on\n'
 SH
+chmod +x "$T/base/bin/hmg-seogaemo-root"
 chmod +x "$T/bin"/*
 export PATH=$T/bin:$PATH
 printf 'NEEV.KOR.0000.V039.001.260902' > "$T/props/ro.build.product"
@@ -141,10 +138,10 @@ printf 'wrong_onebin' > "$T/props/ro.mobis.onebindir"
 run precheck && fail wrong-onebin-accepted
 grep -q '^state=incompatible$' "$T/output" || fail onebin-state
 printf 'neev_kr' > "$T/props/ro.mobis.onebindir"
-touch "$T/state/bad-md5"
-run precheck && fail stock-hash-mismatch-accepted
-grep -q '^state=incompatible$' "$T/output" || fail stock-hash-state
-rm -f "$T/state/bad-md5"
+touch "$T/state/map-off"
+run precheck && fail unverified-map-accepted
+grep -q '^state=incompatible$' "$T/output" || fail unverified-map-state
+rm -f "$T/state/map-off"
 touch "$T/state/owner-hmgapi"
 run precheck && fail owner-accepted
 grep -q '^state=conflict$' "$T/output" || fail owner-state

@@ -9,6 +9,8 @@
     <string name="settings">설정</string>
     <string name="cat_general">일반</string>
     <string name="cat_general_sub">언어</string>
+    <string name="cat_mapping">차량 매핑</string>
+    <string name="cat_mapping_sub">펌웨어 훅 지점</string>
     <string name="cat_modules">모듈 관리</string>
     <string name="cat_modules_sub">기본 모듈 설정</string>
     <string name="module_settings">모듈 설정</string>
@@ -110,4 +112,28 @@
     <string name="update_no_update">새 릴리스가 없습니다</string>
     <string name="plan_step_enable">켜기: %1$s</string>
     <string name="plan_step_disable">끄기: %1$s</string>
+    <string name="mapping_state">매핑 상태</string>
+    <string name="mapping_state_hint">현재 부팅과 펌웨어에서 검증</string>
+    <string name="mapping_loading">확인 중…</string>
+    <string name="mapping_ready">검증됨</string>
+    <string name="mapping_verification_needed">검증 필요</string>
+    <string name="mapping_needed">매핑 필요</string>
+    <string name="mapping_unavailable">확인 불가</string>
+    <string name="mapping_progress">매핑 진행 중…</string>
+    <string name="mapping_product">제품 ID</string>
+    <string name="mapping_product_hint">ro.build.product</string>
+    <string name="mapping_source">매핑 출처</string>
+    <string name="mapping_source_hint">선택한 매핑</string>
+    <string name="mapping_source_bundled">앱에 포함</string>
+    <string name="mapping_source_generated">차량에서 생성</string>
+    <string name="mapping_source_none">없음</string>
+    <string name="mapping_points">지점 수</string>
+    <string name="mapping_points_hint">매핑 / 검증 / 실패</string>
+    <string name="mapping_failing_ids">실패한 ID</string>
+    <string name="mapping_run">이 차량 매핑</string>
+    <string name="mapping_run_confirm">기본 펌웨어를 검사하고 훅 지점을 검증할까요? 몇 분이 걸릴 수 있습니다. 헤드 유닛 전원을 유지하세요.</string>
+    <string name="mapping_run_done">검증된 매핑이 적용되었습니다. 매핑을 내보내고 maps 폴더를 GitHub Pull Request로 제출해 주세요.</string>
+    <string name="mapping_export">PR용 매핑 내보내기</string>
+    <string name="mapping_export_confirm">검증된 매핑을 USB로 복사할까요? USB가 없으면 adb 내보내기 폴더로 복사합니다.</string>
+    <string name="mapping_pr_hint">이 펌웨어를 다음 버전에서 지원하려면 내보낸 maps 폴더를 GitHub Pull Request로 제출해 주세요.</string>
 </resources>
