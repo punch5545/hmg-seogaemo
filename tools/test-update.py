@@ -11,7 +11,7 @@ import zipfile
 from package import ROOT
 
 JAVA = r'''
-import com.seogaemo.app.core.update.UpdateVerifier;
+import com.seogaemo.hmg.core.update.UpdateVerifier;
 import java.io.File;
 import java.nio.file.Files;
 import java.security.KeyFactory;
@@ -39,7 +39,7 @@ def run():
         classes = temp / "classes"
         classes.mkdir()
         (temp / "TestUpdate.java").write_text(JAVA)
-        subprocess.run(["javac", "-source", "7", "-target", "7", "-d", str(classes), str(ROOT / "app/src/com/seogaemo/app/core/update/UpdateVerifier.java"), str(temp / "TestUpdate.java")], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(["javac", "-source", "7", "-target", "7", "-d", str(classes), str(ROOT / "app/src/com/seogaemo/hmg/core/update/UpdateVerifier.java"), str(temp / "TestUpdate.java")], check=True, stdout=subprocess.DEVNULL)
         version = "1.2.3"
         name = f"hmg-seogaemo-{version}-ota.zip"
         stage = temp / "stage"
@@ -84,7 +84,7 @@ def run():
             assert hashlib.md5((out / relative).read_bytes()).hexdigest() == digest
         (stage / "payload").mkdir()
         copied = temp / "copied"
-        result = subprocess.run(["java", "-cp", str(classes), "com.seogaemo.app.core.update.UpdateVerifier", "copy", str(stage), str(copied)], capture_output=True, text=True)
+        result = subprocess.run(["java", "-cp", str(classes), "com.seogaemo.hmg.core.update.UpdateVerifier", "copy", str(stage), str(copied)], capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
         assert (copied / name).read_bytes() == (stage / name).read_bytes()
         old_dir, new_dir = temp / "old", temp / "new"
@@ -92,7 +92,7 @@ def run():
         current, next_link = temp / "current", temp / "next"
         current.symlink_to(old_dir, target_is_directory=True)
         next_link.symlink_to(new_dir, target_is_directory=True)
-        result = subprocess.run(["java", "-cp", str(classes), "com.seogaemo.app.core.update.UpdateVerifier", "switch", str(next_link), str(current)], capture_output=True, text=True)
+        result = subprocess.run(["java", "-cp", str(classes), "com.seogaemo.hmg.core.update.UpdateVerifier", "switch", str(next_link), str(current)], capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
         assert current.resolve() == new_dir.resolve(), (current.resolve(), next_link.exists(), result.stdout, result.stderr)
         assert java(installed=version).returncode != 0

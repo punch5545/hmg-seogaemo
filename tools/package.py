@@ -27,14 +27,14 @@ def add_zip(path, files):
         for name, source in sorted(files.items()):
             info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
-            mode = 0o755 if name.endswith("/") or name.endswith(".sh") or name.endswith("/seogaemo-root") else 0o644
+            mode = 0o755 if name.endswith("/") or name.endswith(".sh") or name.endswith("/hmg-seogaemo-root") else 0o644
             info.external_attr = (mode << 16) | (0x10 if name.endswith("/") else 0)
             archive.writestr(info, source if isinstance(source, bytes) else source.read_bytes())
 
 
 def apk_version(apk, aapt):
     output = subprocess.check_output([aapt, "dump", "badging", str(apk)], text=True)
-    match = re.search(r"^package: name='com\.seogaemo\.app' versionCode='([0-9]+)' versionName='([^']+)'", output, re.M)
+    match = re.search(r"^package: name='com\.seogaemo\.hmg' versionCode='([0-9]+)' versionName='([^']+)'", output, re.M)
     if not match:
         raise ValueError("APK package/version not found by aapt")
     return match.group(2), int(match.group(1))
@@ -78,7 +78,7 @@ def build(aapt):
     add_zip(package_zip, files)
     add_zip(usb_zip, {
         "NEMESIS.data": ROOT / "nemesis/usb/NEMESIS.data",
-        "packages/seogaemo.zip": package_zip,
+        "packages/hmg-seogaemo.zip": package_zip,
     })
     ota_files = {"app/Seogaemo.apk": apk, "VERSION": (version + "\n").encode(),
                  "update_roots.pem": ROOT / "app/res/raw/update_roots.pem"}

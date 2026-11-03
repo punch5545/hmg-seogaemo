@@ -12,11 +12,11 @@ Compatibility is checked both before enabling and at root execution: Android/API
 
 ## State, privilege, and recovery
 
-The root side owns `/data/nemesis/backup/seogaemo/` (mode 0700): atomic, versioned desired-state/settings records, per-module baseline snapshots, operation journal, and bounded logs. APK preferences keep only UI choices such as language; they are never the authority for enabled state. Before the first mutation of an enable session, snapshot each owned persistent property's **live value and `/data/property/<key>` existence/content**, including the difference between absent and empty; snapshot any owned file's bytes, existence, mode, and ownership. Wireless ADB changes no stock file. Never overwrite the baseline on reapply or update. On successful revert, restore the saved values and backing-file absence/content; clear the baseline only after verification. If a property was originally absent, clear its live value and remove its persistent backing file; a reboot may be needed for exact boot-state restoration (compare HMG-API's unset path at `tmp/HMG-API/core/runtime/java/hmgapi/engine/Engine.java:2007-2013`).
+The root side owns `/data/nemesis/backup/hmg-seogaemo/` (mode 0700): atomic, versioned desired-state/settings records, per-module baseline snapshots, operation journal, and bounded logs. APK preferences keep only UI choices such as language; they are never the authority for enabled state. Before the first mutation of an enable session, snapshot each owned persistent property's **live value and `/data/property/<key>` existence/content**, including the difference between absent and empty; snapshot any owned file's bytes, existence, mode, and ownership. Wireless ADB changes no stock file. Never overwrite the baseline on reapply or update. On successful revert, restore the saved values and backing-file absence/content; clear the baseline only after verification. If a property was originally absent, clear its live value and remove its persistent backing file; a reboot may be needed for exact boot-state restoration (compare HMG-API's unset path at `tmp/HMG-API/core/runtime/java/hmgapi/engine/Engine.java:2007-2013`).
 
 Operations take one root-side lock and journal intent before mutation. Apply changes only differing values, verifies readback, and commits desired state after success; repeated apply/revert is harmless. Failure rolls back to the baseline when safe, otherwise retains the snapshot and reports an error. If an external owner or unexpected drift appears, stop rather than overwrite its changes. At boot, a NEMESIS root `kind=sh,mode=once` service waits until properties are available, checks compatibility/ownership, and reconciles enabled modules. The APK has no `BootReceiver`. On package update, the old `preuninstall` recognizes a valid staged Seogaemo update and preserves state/baselines; the new `postinstall` migrates them and reconciles. On real NEMESIS uninstall, `preuninstall` reverts every enabled module and verifies restoration **before** permitting package removal, then removes package-owned state and the APK. Failed restoration leaves backups and aborts normal uninstall. NEMESIS runs the old hook on update and stops services before uninstall (`tmp/hmg_nemesis/Sources/native/pkg.c:630-680,851-880`); backup cleanup is the package's responsibility (`tmp/hmg_nemesis/04-Packages.md:184-186,241-249`). Direct `pm uninstall` of only the APK bypasses that hook: the root boot service must detect the missing APK and revert on the next boot; the UI should direct users to NEMESIS package uninstall.
 
-The UI is an ordinary, unprivileged APK. It calls a fixed root entry point through NEMESIS: `seogaemo-root <id> apply|revert|status` (later settings: `set <id> <known-key> <validated-value>`). The root script accepts only registered IDs, verbs, and typed values; uses fixed paths/commands, no caller-supplied shell fragments or arbitrary file paths; limits output; and sets `umask 077`. The app constructs a constant command for each action and parses bounded machine-readable status. NEMESIS's root socket is accessible to any UID, so this limits **Seogaemo's own interface**, not NEMESIS's global root capability (`tmp/hmg_nemesis/Sources/native/su.c:64-103,229-258`).
+The UI is an ordinary, unprivileged APK. It calls a fixed root entry point through NEMESIS: `hmg-seogaemo-root <id> apply|revert|status` (later settings: `set <id> <known-key> <validated-value>`). The root script accepts only registered IDs, verbs, and typed values; uses fixed paths/commands, no caller-supplied shell fragments or arbitrary file paths; limits output; and sets `umask 077`. The app constructs a constant command for each action and parses bounded machine-readable status. NEMESIS's root socket is accessible to any UID, so this limits **Seogaemo's own interface**, not NEMESIS's global root capability (`tmp/hmg_nemesis/Sources/native/su.c:64-103,229-258`).
 
 ## Source and package layout
 
@@ -28,7 +28,7 @@ tools/gen-modules.sh                # POSIX sh + awk: modules/*/module.propertie
 app/                                # module-independent shell
   AndroidManifest.xml
   res/values*/strings.xml           # shared UI strings (EN default, KO)
-  src/com/seogaemo/app/
+  src/com/seogaemo/hmg/
     ui/                             # Home, Settings, sidebar, shared row views
     module/                         # Module, ModuleStatus, ModuleRegistry, RootClient
 modules/
@@ -37,14 +37,14 @@ modules/
   wireless-carplay-and-aa/          # future behavior; stub only
     module.properties               # id, class, version, requires_root, restart,
                                     # owns_props, owns_files, depends, excludes, conflicts
-    src/com/seogaemo/modules/wirelessadb/WirelessAdbModule.java
+    src/com/seogaemo/hmg/modules/wirelessadb/WirelessAdbModule.java
     res/values/strings.xml          # wireless_adb_* strings (EN)
     res/values-ko/strings.xml       # (KO)
     root/wireless-adb.sh            # apply | revert | status, run as root
     test/                           # off-car script tests
 nemesis/                            # module-independent package parts
   package/NEMESIS.data              # descriptor 1.1 template
-  package/bin/seogaemo-root         # validated dispatcher, only ids in modules.list
+  package/bin/hmg-seogaemo-root         # validated dispatcher, only ids in modules.list
   package/bin/open.sh               # Manager Launch / APK recovery
   package/scripts/postinstall.sh, preuninstall.sh
   package/svc/reconcile.sh          # one-shot boot reconciliation
@@ -52,19 +52,19 @@ nemesis/                            # module-independent package parts
 out/                                # build output (gitignored)
 ```
 
-Naming: module ID and directory use kebab-case (`[a-z0-9]+(-[a-z0-9]+)*`); Java package drops the hyphens (`com.seogaemo.modules.wirelessadb`); string resource names use the snake_case ID as prefix (`wireless_adb_*`); the root script is `<id>.sh`.
+Naming: module ID and directory use kebab-case (`[a-z0-9]+(-[a-z0-9]+)*`); Java package drops the hyphens (`com.seogaemo.hmg.modules.wirelessadb`); string resource names use the snake_case ID as prefix (`wireless_adb_*`); the root script is `<id>.sh`.
 
 Build-time module list (`tools/gen-modules.sh`, run by `make` before aapt/javac):
 
 1. Scan `modules/*/module.properties` in sorted order. Fail the build if `id` ≠ directory name, an ID is duplicated or malformed, `class` is missing from that module's `src/`, `root/<id>.sh` is missing while `requires_root=true`, or a resource name lacks the module prefix.
 2. Parse `depends=` and `excludes=` as comma-separated built-in IDs (empty allowed). Reject unknown IDs, self-reference, dependency cycles, and any dependency closure containing an excluded pair. Symmetrize `excludes` from either declaration. Emit a topological order, choosing the lowest ID whenever multiple modules are ready.
-3. Generate `out/gen/com/seogaemo/app/module/GeneratedModules.java`: static Java 1.7 arrays that instantiate each class and expose ordered IDs, dependencies, and symmetric exclusions. `ModuleRegistry` provides read-only relation copies; no runtime switch logic is implemented yet.
-4. Generate `out/package/modules.list` in dependency order and `out/package/modules.graph` with tab-separated `id`, `depends=<csv>`, `excludes=<csv>` fields. Copy scripts to `out/package/modules/<id>.sh`, and render each `module.properties` with the project `VERSION`. The packaged `seogaemo-root` accepts only listed IDs and fixed verbs; module behavior and reconciliation remain stubs.
-5. Compile with `javac` over `app/src`, `modules/*/src` and `out/gen`; link resources with `aapt package -S app/res -S modules/<id>/res … --auto-add-overlay` and a single `R` package `com.seogaemo.app`.
+3. Generate `out/gen/com/seogaemo/hmg/module/GeneratedModules.java`: static Java 1.7 arrays that instantiate each class and expose ordered IDs, dependencies, and symmetric exclusions. `ModuleRegistry` provides read-only relation copies; no runtime switch logic is implemented yet.
+4. Generate `out/package/modules.list` in dependency order and `out/package/modules.graph` with tab-separated `id`, `depends=<csv>`, `excludes=<csv>` fields. Copy scripts to `out/package/modules/<id>.sh`, and render each `module.properties` with the project `VERSION`. The packaged `hmg-seogaemo-root` accepts only listed IDs and fixed verbs; module behavior and reconciliation remain stubs.
+5. Compile with `javac` over `app/src`, `modules/*/src` and `out/gen`; link resources with `aapt package -S app/res -S modules/<id>/res … --auto-add-overlay` and a single `R` package `com.seogaemo.hmg`.
 
 Adding a module = adding a directory; removing it = deleting the directory. No hand-edited list exists anywhere.
 
-`MainActivity` currently holds both screens and in-memory mock toggles; its Wireless pane is not live (`app/src/com/seogaemo/app/MainActivity.java:40-49,257-285,374-390`). Implementation later splits views without changing API 19/framework-View constraints. `make package` now assembles the NEMESIS descriptor 1.1 with the root shell app entry, a one-shot service, the API 19 v1-signed APK, and the USB wrapper. Both archive names start with `hmg-seogaemo-<version>`; the USB wrapper points to `packages/seogaemo.zip`. Release builds require the stable keystore; debug builds use a throwaway key. See `.agents/research-nemesis-packaging.md` for the current package behavior and remaining car validation.
+`MainActivity` currently holds both screens and in-memory mock toggles; its Wireless pane is not live (`app/src/com/seogaemo/hmg/MainActivity.java:40-49,257-285,374-390`). Implementation later splits views without changing API 19/framework-View constraints. `make package` now assembles the NEMESIS descriptor 1.1 with the root shell app entry, a one-shot service, the API 19 v1-signed APK, and the USB wrapper. Both archive names start with `hmg-seogaemo-<version>`; the USB wrapper points to `packages/hmg-seogaemo.zip`. Release builds require the stable keystore; debug builds use a throwaway key. See `.agents/research-nemesis-packaging.md` for the current package behavior and remaining car validation.
 
 ## Wi-Fi client module (`wifi-client`)
 

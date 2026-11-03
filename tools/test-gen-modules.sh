@@ -39,7 +39,7 @@ expect_failure() {
 reset_fixture
 PROJECT_ROOT="$fixture" VERSION_TOOL="$repo/tools/version.py" sh "$repo/tools/gen-modules.sh"
 grep -Fxq 'version=0.1.0' "$fixture/out/package/modules/alpha.properties"
-grep -Fq 'new com.example.Alpha()' "$fixture/out/gen/com/seogaemo/app/module/GeneratedModules.java"
+grep -Fq 'new com.example.Alpha()' "$fixture/out/gen/com/seogaemo/hmg/module/GeneratedModules.java"
 grep -Fxq alpha "$fixture/out/package/modules.list"
 cmp "$fixture/modules/alpha/root/alpha.sh" "$fixture/out/package/modules/alpha.sh"
 mkdir -p "$fixture/modules/zeta/src/com/example" "$fixture/modules/zeta/res/values"
@@ -63,7 +63,7 @@ printf 'beta\nzed\nalpha\n' > "$scratch/expected-ids"
 cmp "$scratch/expected-ids" "$fixture/out/package/modules.list"
 grep -Fq 'alpha' "$fixture/out/package/modules.graph"
 grep -Fq 'zed' "$fixture/out/package/modules.graph"
-grep -Fq '"beta"' "$fixture/out/gen/com/seogaemo/app/module/GeneratedModules.java"
+grep -Fq '"beta"' "$fixture/out/gen/com/seogaemo/hmg/module/GeneratedModules.java"
 grep -Fq 'excludes=beta' "$fixture/out/package/modules.graph"
 
 reset_fixture

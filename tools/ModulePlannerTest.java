@@ -1,5 +1,5 @@
-import com.seogaemo.app.module.ModulePlan;
-import com.seogaemo.app.module.ModulePlanner;
+import com.seogaemo.hmg.module.ModulePlan;
+import com.seogaemo.hmg.module.ModulePlanner;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;

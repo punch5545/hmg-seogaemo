@@ -8,27 +8,27 @@ Ownership:
 
 | Area | Owner worktree |
 |---|---|
-| `app/src/com/seogaemo/app/module/` (RootClient, ModuleManager, RootBackedModule), `nemesis/package/lib/common.sh`, `seogaemo-root` dependency/exclusion enforcement, payload packaging in `Makefile`, generic module rows in Settings UI | module runtime |
+| `app/src/com/seogaemo/hmg/module/` (RootClient, ModuleManager, RootBackedModule), `nemesis/package/lib/common.sh`, `hmg-seogaemo-root` dependency/exclusion enforcement, payload packaging in `Makefile`, generic module rows in Settings UI | module runtime |
 | `modules/wifi-client/**` | wifi-client |
 | `modules/wireless-adb/**` | wireless-adb |
 | `modules/wireless-carplay-and-aa/**` | wireless-carplay-and-aa |
-| `app/src/com/seogaemo/app/core/update/**`, `nemesis/package/core/update.sh`, the `update` verb in `seogaemo-root`, `.github/workflows/release.yml` OTA parts | updater |
+| `app/src/com/seogaemo/hmg/core/update/**`, `nemesis/package/core/update.sh`, the `update` verb in `hmg-seogaemo-root`, `.github/workflows/release.yml` OTA parts | updater |
 
 Module worktrees touch only their own `modules/<id>/` directory (plus their own `.agents/<id>.md`
 notes). Anything outside needs a note in the final report instead of an edit.
 
 ## Root side
 
-`seogaemo-root <id> apply|revert|status|precheck` runs `modules/<id>.sh <verb>` as root with:
+`hmg-seogaemo-root <id> apply|revert|status|precheck` runs `modules/<id>.sh <verb>` as root with:
 
 - `SEOGAEMO_BASE`: installed package root (contains `lib/`, `modules/`, `modules.list`, `modules.graph`).
 - `SEOGAEMO_MODULE_DIR`: `$SEOGAEMO_BASE/modules/<id>.d` = packaged copy of `modules/<id>/payload/`
   (extra files: jars, `.so`, XML, APK patches). Absent if the module has no payload.
-- `SEOGAEMO_STATE`: `/data/nemesis/backup/seogaemo/modules/<id>` (mode 0700, survives updates,
+- `SEOGAEMO_STATE`: `/data/nemesis/backup/hmg-seogaemo/modules/<id>` (mode 0700, survives updates,
   removed only after a verified uninstall restore).
 - `umask 077`, Android 4.4 mksh/toolbox only (no bash-isms, no `tail`, no `readlink -f`).
 
-Dependencies and exclusions are enforced by `seogaemo-root`/`ModuleManager`, never inside a
+Dependencies and exclusions are enforced by `hmg-seogaemo-root`/`ModuleManager`, never inside a
 module script. A module script must assume its dependencies are already applied.
 
 Module scripts start with `. "$SEOGAEMO_BASE/lib/common.sh"`.
@@ -60,7 +60,7 @@ Read/report helpers: `sg_log <msg>`, `sg_owner_present <name>` (`nemesis-adb-tcp
 `leafia`), `sg_applied <path|key>` (0 if our applied state is current), `sg_status <state> <restart> [detail]`.
 Internal (not for modules): baseline capture, applied-copy marking, remount, ledger writes.
 
-**Change ledger.** `/data/nemesis/backup/seogaemo/ledger/` holds an append-only `ledger.tsv`
+**Change ledger.** `/data/nemesis/backup/hmg-seogaemo/ledger/` holds an append-only `ledger.tsv`
 (`time, module, op, target, before-ref, after-ref, result`) plus, per change, the original bytes
 (`before/`), the bytes we wrote (`after/`), file metadata, and property before/after values. It is
 never pruned while any change is active; after a verified uninstall it is kept as a final
@@ -76,13 +76,13 @@ original bytes or absence. `sg_revert_all` checks every owned path for drift bef
 restore write. `make test` also runs optional `modules/<id>/build/build.sh` hooks before APK
 packaging and every `modules/<id>/test/run.sh`.
 
-**Export.** `seogaemo-root export usb|adb` copies the ledger, all original and modified files,
+**Export.** `hmg-seogaemo-root export usb|adb` copies the ledger, all original and modified files,
 property before/after values, `ro.build.product`, package version and module desired states into
 `HMG-Seogaemo-export/<timestamp>/` on the first mounted USB drive (`usb`) or into
 `/data/local/tmp/hmg-seogaemo-export/<timestamp>/` readable by the adb shell user (`adb pull`).
 Read-only for the system; bounded size; refuses if no target. Exposed in Settings (Logs) as
 "Export changes to USB" and documented for adb:
-`adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/seogaemo/bin/seogaemo-root export adb'`.
+`adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.
 
 Status block on stdout (one `key=value` per line, ASCII, detail ≤ 200 chars):
 
@@ -124,7 +124,7 @@ Module tests (`modules/<id>/test/*.sh`, run by `make test`) use a fake `common.s
     `OPEN_STOCK_WIFI_SETTINGS` (starts the stock Settings Wi-Fi screen).
 - Pre-enable warnings belong to the module being enabled: `Module.enableWarnings()` returns
   `Warning[]` (`checkKey`, `messageResId`); the runtime asks the root side
-  `seogaemo-root <id> precheck` and shows each warning whose `warn.<checkKey>=1` line is present,
+  `hmg-seogaemo-root <id> precheck` and shows each warning whose `warn.<checkKey>=1` line is present,
   inside the same confirmation dialog. `precheck` is read-only and uses the status-block format.
 
 ## Current module decisions
@@ -181,7 +181,7 @@ Parse with `while read`, `case` and parameter expansion. Hashing on the unit: `m
 - **Modules** (working name; KO "모듈 관리"): one large row per module with ON/OFF toggle, observed
   state and restart banner; toggling goes through `ModuleManager.plan` + confirmation dialog.
 - **Module settings pages**: each module gets its own page. Reusable components live in the core app
-  (`com.seogaemo.app.ui.settings`): `SettingsPage` builder with `section(titleRes)`,
+  (`com.seogaemo.hmg.ui.settings`): `SettingsPage` builder with `section(titleRes)`,
   `info(labelRes, infoKey)`, `toggle(labelRes, settingKey)`, `choice(labelRes, settingKey, valuesRes)`,
   `action(labelRes, ModuleAction)`, `note(textRes)`, `warning(textRes)`, `statusHeader()`.
   Modules compose their page in `Module.buildSettingsPage(SettingsPage page)`; they never create
@@ -189,12 +189,12 @@ Parse with `while read`, `case` and parameter expansion. Hashing on the unit: `m
   `statusHeader()` + `infoRows()` + `notes()` + `actions()`, so declarative modules need no code.
 - Components follow `ui-guidelines.md` (NEMESIS-scale rows, EN/KO).
 
-## Planned rename (applied once, after all feature branches are merged)
+## Applied rename (2026-11-03)
 
-Keep the current names inside feature branches; the integrator applies this in one commit:
-`com.seogaemo.app` → `com.seogaemo.hmg` (applicationId + Java packages),
-`com.seogaemo.modules.*` → `com.seogaemo.hmg.modules.*`, NEMESIS package id `seogaemo` →
-`hmg-seogaemo` (so `/data/nemesis/apps/hmg-seogaemo`, `/data/nemesis/backup/hmg-seogaemo`,
-`packages/hmg-seogaemo.zip`), dispatcher `seogaemo-root` → `hmg-seogaemo-root`, and every
-documented adb command accordingly (e.g.
-`adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`).
+The application ID and Java base package are `com.seogaemo.hmg`, built-in modules
+use `com.seogaemo.hmg.modules.*`, the NEMESIS package ID is `hmg-seogaemo`, and
+the root dispatcher is `hmg-seogaemo-root`. Installed files live under
+`/data/nemesis/apps/hmg-seogaemo`, state under
+`/data/nemesis/backup/hmg-seogaemo`, and the USB wrapper contains
+`packages/hmg-seogaemo.zip`. For example:
+`adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.

@@ -31,15 +31,18 @@ def run():
     ota_path = DIST / f"{prefix}-ota.zip"
     with zipfile.ZipFile(package_path) as package, zipfile.ZipFile(usb_path) as usb, zipfile.ZipFile(ota_path) as ota:
         entries = set(package.namelist())
-        required = {"NEMESIS.data", "app/Seogaemo.apk", "bin/seogaemo-root", "bin/install-apk.sh",
+        required = {"NEMESIS.data", "app/Seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
                     "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
                     "svc/reconcile.sh", "lib/common.sh", "modules.list", "modules.graph"}
         assert required <= entries, required - entries
+        preuninstall = package.read("scripts/preuninstall.sh").decode()
+        assert "id=hmg-seogaemo" in preuninstall
+        assert "/data/local/tmp/nemesis/stage/hmg-seogaemo/NEMESIS.data" in preuninstall
         for script_name in ("core/update.sh", "svc/reconcile.sh"):
             body = package.read(script_name).decode()
             assert not re.search(r"\b(?:awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|sha256sum|sha1sum|tar|unzip|busybox|toybox)\b", body), script_name
-        assert set(usb.namelist()) == {"NEMESIS.data", "packages/seogaemo.zip"}
-        assert usb.read("packages/seogaemo.zip") == package_path.read_bytes()
+        assert set(usb.namelist()) == {"NEMESIS.data", "packages/hmg-seogaemo.zip"}
+        assert usb.read("packages/hmg-seogaemo.zip") == package_path.read_bytes()
         assert ota.read("VERSION") == (version + "\n").encode()
         assert ota.read("app/Seogaemo.apk") == package.read("app/Seogaemo.apk")
         assert ota.read("update_roots.pem") == (ROOT / "app/res/raw/update_roots.pem").read_bytes()
@@ -48,10 +51,10 @@ def run():
             if name in entries:
                 assert ota.read(name) == package.read(name)
         usb_meta = descriptor(usb.read("NEMESIS.data"))
-        assert dict(usb_meta["nemesis"]) == {"version": "1.0", "type": "install", "path": "packages/seogaemo.zip"}
+        assert dict(usb_meta["nemesis"]) == {"version": "1.0", "type": "install", "path": "packages/hmg-seogaemo.zip"}
         meta = descriptor(package.read("NEMESIS.data"))
         assert dict(meta["nemesis"]) == {
-            "version": "1.1", "id": "seogaemo", "name": "HMG-Seogaemo", "type": "application,service",
+            "version": "1.1", "id": "hmg-seogaemo", "name": "HMG-Seogaemo", "type": "application,service",
             "package-version": version, "short-desc": '"Built-in controls for the Gen5W head unit."',
             "os": "NEEV.KOR.*.260902", "models": "neev_kr", "postinstall": "scripts/postinstall.sh",
             "preuninstall": "scripts/preuninstall.sh"}
@@ -104,7 +107,7 @@ def run():
         with tempfile.TemporaryDirectory() as temp:
             temp = Path(temp)
             for name in entries:
-                if name.endswith(".sh") or name == "bin/seogaemo-root":
+                if name.endswith(".sh") or name == "bin/hmg-seogaemo-root":
                     path = temp / name
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(package.read(name))
@@ -112,9 +115,9 @@ def run():
             # Run a copied dispatcher against an isolated fake module tree.
             (temp / "modules.list").write_text("good\n")
             (temp / "modules/good.sh").write_text("#!/bin/sh\nprintf 'action=%s\\nbase=%s\\nstate=%s\\nmodule_dir=%s\\n' \"$1\" \"$SEOGAEMO_BASE\" \"$SEOGAEMO_STATE\" \"$SEOGAEMO_MODULE_DIR\"\n")
-            command = ["sh", str(temp / "bin/seogaemo-root")]
+            command = ["sh", str(temp / "bin/hmg-seogaemo-root")]
             result = subprocess.run(command + ["good", "status"], capture_output=True, text=True)
-            expected = f"action=status\nbase={temp}\nstate=/data/nemesis/backup/seogaemo/modules/good\nmodule_dir={temp}/modules/good.d\n"
+            expected = f"action=status\nbase={temp}\nstate=/data/nemesis/backup/hmg-seogaemo/modules/good\nmodule_dir={temp}/modules/good.d\n"
             assert result.returncode == 0 and result.stdout == expected
             result = subprocess.run(command + ["good", "precheck"], capture_output=True, text=True)
             assert result.returncode == 0 and result.stdout == expected.replace("status", "precheck")
@@ -130,7 +133,7 @@ def run():
             for name, script in {
                 "getprop": '#!/bin/sh\ncat "$FAKE_STATE"\n',
                 "setprop": '#!/bin/sh\nprintf %s "$2" > "$FAKE_STATE"\n',
-                "pm": '#!/bin/sh\ncase "$1" in install) echo "$FAKE_PM_RESULT";; path) echo package:/data/app/seogaemo.apk;; esac\n',
+                "pm": '#!/bin/sh\ncase "$1" in install) echo "$FAKE_PM_RESULT";; path) echo package:/data/app/hmg-seogaemo.apk;; esac\n',
             }.items():
                 path = fake / name
                 path.write_text(script)
@@ -159,8 +162,8 @@ def run():
             updater = package.read("core/update.sh").decode()
             state = fake_root / "state"
             incoming = fake_root / "download"
-            updater = updater.replace("state=/data/nemesis/backup/seogaemo", "state=" + str(state))
-            updater = updater.replace("input=/data/data/com.seogaemo.app/files/update", "input=" + str(incoming))
+            updater = updater.replace("state=/data/nemesis/backup/hmg-seogaemo", "state=" + str(state))
+            updater = updater.replace("input=/data/data/com.seogaemo.hmg/files/update", "input=" + str(incoming))
             (package_root / "core/update.sh").write_text(updater)
             incoming.mkdir()
             for name in ("hmg-seogaemo-0.1.1-manifest.json", "hmg-seogaemo-0.1.1-manifest.json.sig", "hmg-seogaemo-0.1.1-ota.zip"):
@@ -176,7 +179,7 @@ def run():
 case "$3" in
   copy) mkdir "$5"; cp "$4"/hmg-seogaemo-* "$5/";;
   verify) echo 0.1.1;;
-  extract) mkdir -p "$6/app" "$6/bin" "$6/svc"; echo 0.1.1 > "$6/VERSION"; echo graph > "$6/modules.graph"; echo list > "$6/modules.list"; echo apk > "$6/app/Seogaemo.apk"; echo '#!/bin/sh' > "$6/bin/install-apk.sh"; echo 'exit 0' >> "$6/bin/install-apk.sh"; echo '#!/bin/sh' > "$6/bin/seogaemo-root"; echo 'exit 0' >> "$6/bin/seogaemo-root"; echo '#!/bin/sh' > "$6/svc/reconcile.sh"; echo 'exit 0' >> "$6/svc/reconcile.sh"; printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|VERSION\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|app/Seogaemo.apk\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|modules.list\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|modules.graph\n' > "$6/files.md5";;
+  extract) mkdir -p "$6/app" "$6/bin" "$6/svc"; echo 0.1.1 > "$6/VERSION"; echo graph > "$6/modules.graph"; echo list > "$6/modules.list"; echo apk > "$6/app/Seogaemo.apk"; echo '#!/bin/sh' > "$6/bin/install-apk.sh"; echo 'exit 0' >> "$6/bin/install-apk.sh"; echo '#!/bin/sh' > "$6/bin/hmg-seogaemo-root"; echo 'exit 0' >> "$6/bin/hmg-seogaemo-root"; echo '#!/bin/sh' > "$6/svc/reconcile.sh"; echo 'exit 0' >> "$6/svc/reconcile.sh"; printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|VERSION\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|app/Seogaemo.apk\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|modules.list\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|modules.graph\n' > "$6/files.md5";;
   switch) python3 -c 'import os,sys; os.replace(sys.argv[1],sys.argv[2])' "$4" "$5";;
 esac
 """)

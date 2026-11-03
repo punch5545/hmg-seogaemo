@@ -1,6 +1,6 @@
 #!/system/bin/sh
-# Root-only helpers; seogaemo-root holds the operation lock.
-SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/seogaemo}
+# Root-only helpers; hmg-seogaemo-root holds the operation lock.
+SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 SG_PROPERTY_ROOT=${SG_PROPERTY_ROOT:-/data/property}
 sg_ready() { mkdir -p "$SEOGAEMO_STATE" && chmod 700 "$SEOGAEMO_STATE"; }
 sg_copy() { cp "$1" "$2.tmp.$$" && mv -f "$2.tmp.$$" "$2"; }

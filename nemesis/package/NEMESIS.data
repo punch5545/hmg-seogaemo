@@ -1,6 +1,6 @@
 [nemesis]
 version=1.1
-id=seogaemo
+id=hmg-seogaemo
 name=HMG-Seogaemo
 type=application,service
 package-version=@VERSION@

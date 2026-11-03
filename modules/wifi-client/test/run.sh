@@ -102,14 +102,14 @@ cat > "$work/bin/wpa_cli" <<'EOF'
 #!/bin/sh
 cat "$TEST_WORK/wpa-status" 2>/dev/null || :
 EOF
-cat > "$work/base/bin/seogaemo-root" <<'EOF'
+cat > "$work/base/bin/hmg-seogaemo-root" <<'EOF'
 #!/bin/sh
 [ "$1 $2" = 'wireless-carplay-and-aa status' ] || exit 2
 if [ -f "$TEST_WORK/projection-on" ]; then printf 'state=on\n';
 else printf 'state=off\n'; fi
 EOF
 chmod +x "$work/bin/"*
-chmod +x "$work/base/bin/seogaemo-root"
+chmod +x "$work/base/bin/hmg-seogaemo-root"
 
 # Rewrite only fixed filesystem roots in a private copy; featurexml entries
 # remain the actual absolute paths used on the car.

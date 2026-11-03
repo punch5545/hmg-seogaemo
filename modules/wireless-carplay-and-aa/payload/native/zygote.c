@@ -5,10 +5,10 @@
  *
  * For the zygote only (argv has --zygote), it adds LD_PRELOAD=libseogaemo_wireless_hook.so
  * when all of these hold, so the hook runtime loads into every app:
- *   /data/nemesis/backup/seogaemo/modules/wireless-carplay-and-aa/enable exists      (step 2 creates it)
- *   /data/nemesis/backup/seogaemo/modules/wireless-carplay-and-aa/disable is absent  (manual off switch)
+ *   /data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/enable exists      (step 2 creates it)
+ *   /data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/disable is absent  (manual off switch)
  *   /system/lib/libseogaemo_wireless_hook.so exists
- *   /data/nemesis/backup/seogaemo/modules/wireless-carplay-and-aa/starts < 3         (boot guard)
+ *   /data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/starts < 3         (boot guard)
  * Boot guard reset: with hooks on, a watcher (double-forked, so init adopts it
  * and the zygote never sees it exit) waits GUARD_DELAY seconds and writes 0 to
  * starts if this zygote pid is still alive. On 4.4 a system_server crash kills
@@ -32,7 +32,7 @@ typedef unsigned long ul;
 #define KMSG "/dev/kmsg"
 #endif
 #ifndef HOOKDIR
-#define HOOKDIR "/data/nemesis/backup/seogaemo/modules/wireless-carplay-and-aa"
+#define HOOKDIR "/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa"
 #endif
 #ifndef HOOKLIB
 #define HOOKLIB "/system/lib/libseogaemo_wireless_hook.so"

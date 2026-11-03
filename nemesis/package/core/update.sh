@@ -4,9 +4,9 @@ set -eu
 umask 077
 base=${0%/*}
 base=${base%/core}
-state=/data/nemesis/backup/seogaemo
+state=/data/nemesis/backup/hmg-seogaemo
 root=$state/update
-input=/data/data/com.seogaemo.app/files/update
+input=/data/data/com.seogaemo.hmg/files/update
 descriptor=$base/NEMESIS.data
 trusted=$base/app/Seogaemo.apk
 verb=${1:-}
@@ -47,7 +47,7 @@ mkdir "$lock" 2>/dev/null || { echo 'another root operation is active' >&2; exit
 trap 'rmdir "$lock"' 0
 trap 'exit 1' 1 2 3 15
 java_update() {
-    CLASSPATH="$trusted" app_process /system/bin com.seogaemo.app.core.update.UpdateVerifier "$@"
+    CLASSPATH="$trusted" app_process /system/bin com.seogaemo.hmg.core.update.UpdateVerifier "$@"
 }
 switch_to() {
     rm -f "$root/next"
@@ -95,7 +95,7 @@ if [ "$verb" = stage ]; then
     [ ! -e "$dest" ] || { echo 'version already staged' >&2; exit 1; }
     java_update extract "$root/incoming" "$installed" "$dest" || { rm -rf "$dest"; exit 1; }
     check_md5 "$dest" || { rm -rf "$dest"; exit 1; }
-    [ -s "$dest/modules.list" ] && [ -s "$dest/modules.graph" ] && [ -f "$dest/bin/install-apk.sh" ] && [ -f "$dest/bin/seogaemo-root" ] && [ -f "$dest/svc/reconcile.sh" ] || exit 1
+    [ -s "$dest/modules.list" ] && [ -s "$dest/modules.graph" ] && [ -f "$dest/bin/install-apk.sh" ] && [ -f "$dest/bin/hmg-seogaemo-root" ] && [ -f "$dest/svc/reconcile.sh" ] || exit 1
     sync
     printf '%s\n' "$version" > "$root/staged"
     echo 'phase=staged' > "$root/journal"
@@ -133,7 +133,7 @@ printf '%s\n' "$installed" > "$root/previous-version"
 echo 'phase=applying' > "$root/journal"
 sync
 switch_to "$new"
-if ! sh "$root/current/bin/install-apk.sh" || ! grep -Fxq "$version" "$root/current/VERSION" || ! [ -s "$root/current/modules.graph" ] || ! dumpsys package com.seogaemo.app | grep -Fq "versionName=$version" || ! SEOGAEMO_UPDATE_HEALTH=1 sh "$root/current/svc/reconcile.sh"; then
+if ! sh "$root/current/bin/install-apk.sh" || ! grep -Fxq "$version" "$root/current/VERSION" || ! [ -s "$root/current/modules.graph" ] || ! dumpsys package com.seogaemo.hmg | grep -Fq "versionName=$version" || ! SEOGAEMO_UPDATE_HEALTH=1 sh "$root/current/svc/reconcile.sh"; then
     echo 'phase=auto-rollback' > "$root/journal"
     switch_to "$old"
     sh "$root/current/bin/install-apk.sh" || true

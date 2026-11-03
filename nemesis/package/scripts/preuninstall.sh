@@ -5,14 +5,14 @@ caller=$(cat "/proc/$PPID/cmdline" 2>/dev/null)
 case "$caller" in
     *uninstall*) ;;
     *install*)
-        if grep -Fxq 'id=seogaemo' /data/local/tmp/nemesis/stage/seogaemo/NEMESIS.data 2>/dev/null; then
+        if grep -Fxq 'id=hmg-seogaemo' /data/local/tmp/nemesis/stage/hmg-seogaemo/NEMESIS.data 2>/dev/null; then
             echo 'Seogaemo update: retaining APK and app data'
             exit 0
         fi ;;
 esac
 base=${0%/*}
 base=${base%/scripts}
-state=${SG_DATA_ROOT:-/data/nemesis/backup/seogaemo}
+state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 reverse=
 for id in $(cat "$base/modules.list"); do reverse="$id $reverse"; done
 # Preflight every snapshot before changing any module. A changed firmware or
@@ -41,11 +41,11 @@ for id in $reverse; do
         [ -f "$item" ] && baseline=1
     done
     [ "$active" = on ] || [ "$baseline" -eq 1 ] || continue
-    sh "$base/bin/seogaemo-root" "$id" revert || {
+    sh "$base/bin/hmg-seogaemo-root" "$id" revert || {
         echo "Seogaemo uninstall blocked: $id revert failed; backups retained" >&2
         exit 1
     }
-    status=$(sh "$base/bin/seogaemo-root" "$id" status) || exit 1
+    status=$(sh "$base/bin/hmg-seogaemo-root" "$id" status) || exit 1
     case "$status" in *'state=off'*) ;; *)
         echo "Seogaemo uninstall blocked: $id did not verify off" >&2; exit 1 ;;
     esac
@@ -56,10 +56,10 @@ for id in $reverse; do
         }
     done
 done
-case "$(pm path com.seogaemo.app 2>/dev/null)" in
+case "$(pm path com.seogaemo.hmg 2>/dev/null)" in
     package:*)
-        result=$(pm uninstall com.seogaemo.app 2>&1) || { echo "$result" >&2; exit 1; }
+        result=$(pm uninstall com.seogaemo.hmg 2>&1) || { echo "$result" >&2; exit 1; }
         case "$result" in *Success*) ;; *) echo "$result" >&2; exit 1 ;; esac
-        case "$(pm path com.seogaemo.app 2>/dev/null)" in package:*) echo 'APK remains installed' >&2; exit 1 ;; esac ;;
+        case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) echo 'APK remains installed' >&2; exit 1 ;; esac ;;
 esac
 rm -rf "$state/desired" "$state/modules" "$state/journal" "$state/reconcile.log"

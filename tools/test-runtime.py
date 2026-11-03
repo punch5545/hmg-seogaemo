@@ -112,7 +112,7 @@ def test_root(temp):
     (base / "bin").mkdir(parents=True)
     (base / "modules").mkdir()
     (base / "lib").mkdir()
-    shutil.copy(ROOT / "nemesis/package/bin/seogaemo-root", base / "bin/seogaemo-root")
+    shutil.copy(ROOT / "nemesis/package/bin/hmg-seogaemo-root", base / "bin/hmg-seogaemo-root")
     shutil.copy(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
     (base / "modules.list").write_text("a\nb\nc\n")
     (base / "modules.graph").write_text(
@@ -125,7 +125,7 @@ def test_root(temp):
                'status) echo state=off;; esac\necho restart=none\necho detail=\n')
     state = base / "state"
     env = dict(os.environ, SG_DATA_ROOT=str(state))
-    root = base / "bin/seogaemo-root"
+    root = base / "bin/hmg-seogaemo-root"
     run(root, "b", "apply", env=env, ok=False)
     run(root, "a", "apply", env=env)
     run(root, "b", "apply", env=env)
@@ -173,7 +173,7 @@ printf 'bind %s ext4 rw 0 0\n' "$4" > "$SG_MOUNTS_FILE"
     (base / "payload/bind").write_text("overlay")
     (base / "modules/test.properties").write_text(
         f"owns_props=demo\nowns_files={put},{replace},{deleted},{bound}\nservices=adbd\n")
-    shutil.copy(ROOT / "nemesis/package/bin/seogaemo-root", base / "bin/seogaemo-root")
+    shutil.copy(ROOT / "nemesis/package/bin/hmg-seogaemo-root", base / "bin/hmg-seogaemo-root")
     (base / "NEMESIS.data").write_text("package-version=1.2.3\n")
     mounts = base / "mounts"
     mounts.write_text("")
@@ -220,7 +220,7 @@ sg_revert_all
     assert (base / "remounts").read_text().splitlines() == ["remount rw", "remount ro"]
     export_root = base / "hmg-seogaemo-export"
     env["SG_EXPORT_ROOT"] = str(export_root)
-    result = run(base / "bin/seogaemo-root", "export", "adb", env=env)
+    result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
     assert "state=on" in result.stdout
     exported = next(export_root.glob("*/ledger/ledger.tsv"))
     assert exported.read_bytes() == ledger.read_bytes()
@@ -229,7 +229,7 @@ sg_revert_all
     usb.mkdir()
     mounts.write_text(f"/dev/sda1 {usb} vfat rw 0 0\n")
     env["SG_USB_DIRS"] = str(usb)
-    result = run(base / "bin/seogaemo-root", "export", "usb", env=env)
+    result = run(base / "bin/hmg-seogaemo-root", "export", "usb", env=env)
     assert "state=on" in result.stdout
     assert list(usb.glob("HMG-Seogaemo-export/*/ledger/ledger.tsv"))
 
@@ -251,7 +251,7 @@ def test_reconcile_and_uninstall(temp):
     log = base / "calls"
     marker = base / "apk-installed"
     marker.write_text("1")
-    script(base / "bin/seogaemo-root", '''
+    script(base / "bin/hmg-seogaemo-root", '''
 echo "$1 $2" >> "$FAKE_CALLS"
 case "$2" in
     revert) printf off > "$SG_DATA_ROOT/desired/$1"; echo state=off ;;
@@ -328,7 +328,7 @@ def test_module_build_hook(temp):
 
 def test_zygote_and_dex(temp):
     base = temp / "zygote"
-    state = base / "data/nemesis/backup/seogaemo/modules/wireless-carplay-and-aa"
+    state = base / "data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa"
     target = base / "target"
     payload = base / "payload"
     manifest = base / "modules/wireless-carplay-and-aa.properties"
@@ -357,7 +357,7 @@ def test_zygote_and_dex(temp):
     cache.write_bytes(b"previous-cache")
     app_dir = target / "data/data/com.daudio.app.dipo/app_seogaemo-wireless-dex"
     env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
-               SG_DATA_ROOT=str(base / "data/nemesis/backup/seogaemo"),
+               SG_DATA_ROOT=str(base / "data/nemesis/backup/hmg-seogaemo"),
                SG_TARGET_ROOT=str(target), SEOGAEMO_STATE=str(state),
                SEOGAEMO_BASE=str(base), SEOGAEMO_MODULE_DIR=str(payload),
                FAKE_LIVE=str(live))
@@ -383,7 +383,7 @@ sg_revert_all
 [ ! -e "{app_dir}" ]
 ''')
     run(runner, env=env)
-    ledger = base / "data/nemesis/backup/seogaemo/ledger/ledger.tsv"
+    ledger = base / "data/nemesis/backup/hmg-seogaemo/ledger/ledger.tsv"
     assert "zygote_starts" in ledger.read_text()
     assert "dex_generated" in ledger.read_text()
     # A failure at the final wrapper copy must leave stock executable intact.

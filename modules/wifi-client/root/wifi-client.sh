@@ -78,8 +78,8 @@ ap_active() {
 
 projection_desired() {
     # The sibling module status reflects the runtime-owned desired state.
-    [ -x "$SEOGAEMO_BASE/bin/seogaemo-root" ] || return 1
-    "$SEOGAEMO_BASE/bin/seogaemo-root" wireless-carplay-and-aa status 2>/dev/null |
+    [ -x "$SEOGAEMO_BASE/bin/hmg-seogaemo-root" ] || return 1
+    "$SEOGAEMO_BASE/bin/hmg-seogaemo-root" wireless-carplay-and-aa status 2>/dev/null |
         grep -Eq '^state=(on|pending-restart)$'
 }
 

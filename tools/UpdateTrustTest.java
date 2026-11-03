@@ -1,4 +1,4 @@
-package com.seogaemo.app.core.update;
+package com.seogaemo.hmg.core.update;
 
 import java.io.FileInputStream;
 import java.security.cert.Certificate;

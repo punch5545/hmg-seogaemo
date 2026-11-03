@@ -23,7 +23,7 @@ final class HmgApi {
             Class<?> prop = Class.forName("android.os.SystemProperties");
             String product = (String) prop.getMethod("get", String.class).invoke(null, "ro.build.product");
             if (!"NEEV.KOR.0000.V039.001.260902".equals(product)) { i("hooks off: firmware " + product); return; }
-            File enabled = new File("/data/nemesis/backup/seogaemo/modules/wireless-carplay-and-aa/enabled");
+            File enabled = new File("/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/enabled");
             if (!enabled.isFile()) { i("hooks off: module disabled"); return; }
             File mapFile = new File("/system/etc/seogaemo/wireless-carplay-and-aa/car-map.json");
             FileInputStream in = new FileInputStream(mapFile);

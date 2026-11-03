@@ -22,4 +22,4 @@ setprop sys.boot_completed 0 || exit 1
 result=$(pm install -r "$apk" 2>&1) || { echo "$result" >&2; exit 1; }
 restore || exit 1
 case "$result" in *Success*) ;; *) echo "$result" >&2; exit 1 ;; esac
-case "$(pm path com.seogaemo.app 2>/dev/null)" in package:*) ;; *) echo 'APK install did not register' >&2; exit 1 ;; esac
+case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) echo 'APK install did not register' >&2; exit 1 ;; esac

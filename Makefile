@@ -18,7 +18,7 @@ $(OUT): VERSION app/AndroidManifest.xml app/allow-sha1.security $(SOURCES) $(INP
 	rm -rf out/classes out/dex
 	mkdir -p out/gen out/classes out/dex
 	python3 tools/version.py --manifest out/AndroidManifest.xml
-	$(BT)/aapt package -f -M out/AndroidManifest.xml -S app/res $(foreach res,$(sort $(wildcard modules/*/res)),-S $(res)) --auto-add-overlay -I $(ANDROID_JAR) -F out/resources.ap_ -J out/gen --custom-package com.seogaemo.app
+	$(BT)/aapt package -f -M out/AndroidManifest.xml -S app/res $(foreach res,$(sort $(wildcard modules/*/res)),-S $(res)) --auto-add-overlay -I $(ANDROID_JAR) -F out/resources.ap_ -J out/gen --custom-package com.seogaemo.hmg
 	javac -source 1.7 -target 1.7 -bootclasspath $(ANDROID_JAR) -cp $(ANDROID_JAR) -d out/classes $$(find app/src modules out/gen -name '*.java' | sort)
 	$(BT)/d8 --min-api 19 --lib $(ANDROID_JAR) --release --output out/dex $$(find out/classes -name '*.class' | sort -u)
 	cp out/resources.ap_ out/unsigned.apk
@@ -50,12 +50,12 @@ test: package
 	python3 tools/lint-module-root.py
 	@for t in modules/*/test/run.sh; do test ! -f "$$t" || sh "$$t"; done
 	mkdir -p out/planner-test
-	javac -d out/planner-test app/src/com/seogaemo/app/module/ModulePlan.java app/src/com/seogaemo/app/module/ModulePlanner.java app/src/com/seogaemo/app/module/Warning.java tools/ModulePlannerTest.java
+	javac -d out/planner-test app/src/com/seogaemo/hmg/module/ModulePlan.java app/src/com/seogaemo/hmg/module/ModulePlanner.java app/src/com/seogaemo/hmg/module/Warning.java tools/ModulePlannerTest.java
 	java -cp out/planner-test ModulePlannerTest
 	python3 tools/test-update.py
 	mkdir -p out/trust-test
-	javac -source 7 -target 7 -d out/trust-test app/src/com/seogaemo/app/core/update/UpdateTrust.java tools/UpdateTrustTest.java
-	java -cp out/trust-test com.seogaemo.app.core.update.UpdateTrustTest app/res/raw/update_roots.pem tools/fixtures/tls/api.github.com.pem tools/fixtures/tls/objects.githubusercontent.com.pem
+	javac -source 7 -target 7 -d out/trust-test app/src/com/seogaemo/hmg/core/update/UpdateTrust.java tools/UpdateTrustTest.java
+	java -cp out/trust-test com.seogaemo.hmg.core.update.UpdateTrustTest app/res/raw/update_roots.pem tools/fixtures/tls/api.github.com.pem tools/fixtures/tls/objects.githubusercontent.com.pem
 
 clean:
 	rm -rf out

@@ -53,7 +53,7 @@ printf 'no\n' | ANDROID_AVD_HOME=/private/tmp/hmg_avd ~/Library/Android/sdk/cmdl
 # and hw.initialOrientation=landscape in config.ini.
 ANDROID_AVD_HOME=/private/tmp/hmg_avd ~/Library/Android/sdk/emulator/emulator -avd hmg_1920x720 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -ports 5580,5581
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 install -r out/seogaemo.apk
-~/Library/Android/sdk/platform-tools/adb -s emulator-5580 shell am start -n com.seogaemo.app/.MainActivity
+~/Library/Android/sdk/platform-tools/adb -s emulator-5580 shell am start -n com.seogaemo.hmg/.MainActivity
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 exec-out screencap -p > tmp/screens/home-en.png
 # Tap Settings (1440,565), then 한국어 in General (1080,550).
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 shell input tap 1440 565
