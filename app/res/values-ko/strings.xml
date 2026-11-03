@@ -154,4 +154,7 @@
     <string name="stock_not_attempted">시도하지 않음</string>
     <string name="stock_restart">순정 복원을 완료하려면 헤드 유닛을 재시작하세요.</string>
     <string name="stock_uninstall_failed">NEMESIS가 제거를 완료하지 못했습니다. HMG-Seogaemo는 설치된 상태로 유지됩니다. 변경 기록을 내보내고 문제를 해결한 뒤 다시 시도하세요.</string>
+    <string name="device_reboot">헤드 유닛 재시작</string>
+    <string name="device_reboot_confirm">헤드 유닛을 지금 재시작할까요? 현재 연결이 끊어집니다.</string>
+    <string name="device_reboot_failed">헤드 유닛을 재시작하지 못했습니다.</string>
 </resources>

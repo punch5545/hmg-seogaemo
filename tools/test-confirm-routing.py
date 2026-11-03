@@ -47,6 +47,11 @@ assert "getString(R.string.cancel), uninstall, new ConfirmDialog.Action()" in st
 assert stock.index("ConfirmDialog.show") < stock.index(".edit().clear().commit()")
 assert stock.index("ConfirmDialog.show") < stock.index("RootClient.uninstallPackage()")
 assert stock.index("ConfirmDialog.show") < stock.index('RootClient.stock("restore")')
+reboot = method("confirmReboot")
+assert "confirmReboot()" in method("showStock")
+assert "RootClient.rebootDevice()" not in method("showStock")
+assert "getString(R.string.cancel), true, new ConfirmDialog.Action()" in reboot
+assert reboot.index("ConfirmDialog.show") < reboot.index("RootClient.rebootDevice()")
 assert "setCanceledOnTouchOutside(false)" in dialog
 assert "confirm.setEnabled(false)" in dialog
 assert "cancel.requestFocus()" in dialog

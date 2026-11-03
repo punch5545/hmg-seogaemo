@@ -93,6 +93,18 @@ created by OTA extraction; no archive mode metadata is required.
 
 ## Root side
 
+### Head-unit restart
+
+Fixed command `hmg-seogaemo-root device reboot` accepts exactly two arguments,
+no paths or free-form input. The dispatcher runs toolbox `sync` then the KitKat `reboot` binary,
+stopping if sync fails. `RootClient.rebootDevice()` exposes only that literal
+command. Settings → General offers Restart head unit (KO 헤드 유닛 재시작),
+with the shared destructive/error ConfirmDialog and Cancel focused on the left.
+Only confirmation starts the background root call; failure is localized in UI.
+Pinned AOSP `android-4.4.2_r1` implements reboot in `system/core/reboot/reboot.c`
+(a standalone binary, not a toolbox applet); its no-argument form requests the
+normal init reboot and waits for it to occur. The shell profile permits that form.
+
 ### Stock restore and package removal
 
 Fixed commands `hmg-seogaemo-root stock restore|status` and

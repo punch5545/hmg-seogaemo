@@ -244,6 +244,21 @@ echo detail=
     state = base / "state"
     env = dict(os.environ, SG_DATA_ROOT=str(state))
     root = base / "bin/hmg-seogaemo-root"
+    fake = base / "fake"
+    fake.mkdir()
+    for command in ("sync", "reboot"):
+        script(fake / command, 'echo ' + command + ' >> "$FAKE_DEVICE_CALLS"\n' +
+               ('[ "${FAKE_SYNC_FAIL:-0}" = 0 ]\n' if command == "sync" else 'exit 0\n'))
+    calls = base / "device-calls"
+    device_env = dict(env, PATH=str(fake) + ":" + os.environ["PATH"], FAKE_DEVICE_CALLS=str(calls))
+    for args in [("device", "bad"), ("device", "reboot", "extra")]:
+        run(root, *args, env=device_env, ok=False)
+    assert not calls.exists()
+    run(root, "device", "reboot", env=device_env)
+    assert calls.read_text() == "sync\nreboot\n"
+    calls.write_text("")
+    run(root, "device", "reboot", env=dict(device_env, FAKE_SYNC_FAIL="1"), ok=False)
+    assert calls.read_text() == "sync\n"
     run(root, "b", "apply", env=env, ok=False)
     run(root, "a", "apply", env=env)
     run(root, "b", "apply", env=env)

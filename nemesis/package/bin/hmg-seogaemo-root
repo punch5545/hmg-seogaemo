@@ -9,6 +9,11 @@ base=${0%/*}
 base=${base%/bin}
 SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 . "$base/lib/common.sh"
+if [ "$1" = device ]; then
+    [ "$#" -eq 2 ] && [ "$2" = reboot ] || exit 2
+    sync && reboot
+    exit $?
+fi
 if [ "$1" = stock ] || [ "$1" = package ]; then
     [ "$#" -eq 2 ] || exit 2
     case "$1:$2" in stock:restore|stock:status) stock_verb=$2;;

@@ -34,7 +34,7 @@ def run():
     ota_path = DIST / f"{prefix}-ota.zip"
     with zipfile.ZipFile(package_path) as package, zipfile.ZipFile(usb_path) as usb, zipfile.ZipFile(ota_path) as ota:
         # Every Java root command must explicitly select the device interpreter.
-        for source, expected_count in (("module/RootClient.java", 5),
+        for source, expected_count in (("module/RootClient.java", 6),
                                        ("core/update/UpdateClient.java", 1)):
             java = (ROOT / "app/src/com/seogaemo/hmg" / source).read_text()
             commands = re.findall(r'"([^"\n]*bin/hmg-seogaemo-root [^"\n]*)"', java)
