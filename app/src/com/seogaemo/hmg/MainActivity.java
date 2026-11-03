@@ -824,6 +824,9 @@ public final class MainActivity extends Activity {
 
     private void openNemesis() {
         Intent launch = getPackageManager().getLaunchIntentForPackage("com.nemesis.manager");
+        // NEMESIS Manager declares MAIN without LAUNCHER, so name its activity directly.
+        if (launch == null) launch = new Intent(Intent.ACTION_MAIN).setClassName(
+                "com.nemesis.manager", "com.nemesis.manager.MainActivity");
         if (launch != null) {
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try {
