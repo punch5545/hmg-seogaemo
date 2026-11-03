@@ -1,5 +1,5 @@
 <resources>
-    <string name="user_button_shortcut_name">사용자 버튼</string>
+    <string name="user_button_shortcut_name">스티어링 휠 사용자 버튼</string>
     <string name="user_button_shortcut_description">스티어링 휠 사용자 버튼으로 HMG-Seogaemo를 엽니다.</string>
     <string name="user_button_shortcut_note">켜져 있는 동안 스티어링 휠 사용자 버튼의 현재 기능(예: gohome)을 HMG-Seogaemo 열기로 바꿉니다. 설정이 변경되지 않았다면 끌 때 이전 값을 정확히 복원합니다. 순정 버튼 설정에서 다른 기능을 선택하면 이 단축키를 덮어쓰며 충돌로 표시됩니다. HMG-Seogaemo는 새 선택과 백업을 유지합니다. 순정 버튼 설정 목록에는 이 항목이 표시되지 않습니다.</string>
 </resources>
