@@ -1,4 +1,8 @@
 <resources>
     <string name="wifi_client_name">Wi-Fi client</string>
     <string name="wifi_client_description">Join a network through stock Wi-Fi Settings</string>
+    <string name="wifi_client_ip">Client IP address</string>
+    <string name="wifi_client_note">After restarting the head unit, choose a network in the vehicle Wi-Fi settings.</string>
+    <string name="wifi_client_open_settings">Open Wi-Fi settings</string>
+    <string name="wifi_client_carplay_warning">Wireless CarPlay or Android Auto may disconnect while switching to Wi-Fi client mode.</string>
 </resources>
