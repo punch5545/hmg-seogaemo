@@ -43,3 +43,7 @@ make package
 ### Logs
 
 ![Logs](assets/settings-logs.png)
+
+## License
+
+HMG-Seogaemo is licensed under [GNU AGPL-3.0](LICENSE). See [NOTICE.md](NOTICE.md) for upstream credits.
