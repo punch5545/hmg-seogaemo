@@ -137,6 +137,9 @@ SCRIPT=$T/wireless-carplay-and-aa.sh
 sed "s|/system/bin/sh|$car_shell|g" "$HERE/root/wireless-carplay-and-aa.sh" > "$SCRIPT"
 run() { "$car_shell" "$SCRIPT" "$1" > "$T/output"; }
 fail() { echo "FAIL: $1" >&2; cat "$T/output" >&2; exit 1; }
+# The zygote starts seconds after boot, before this boot's map verification can finish,
+# so the hook gate must not depend on the boot ID (the car-map seal's third line).
+if grep -q 'boot_id' "$HERE/payload/src/hmgapi/hook/HmgApi.java.src"; then fail 'zygote hook gate must not require the boot id'; fi
 sg_write "OTHER.KOR.0000.V039.001.260902" > "$T/props/ro.build.product"
 run precheck && fail wrong-firmware-accepted
 grep -q '^state=incompatible$' "$T/output" || fail firmware-state
