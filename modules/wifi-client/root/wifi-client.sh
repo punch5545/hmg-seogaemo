@@ -153,8 +153,9 @@ apply() {
     if ! sg_applied "$xml" || ! sg_applied "$prop"; then
         result failed none 'Could not verify applied Wi-Fi client changes'
     fi
-    sg_log 'Wi-Fi client feature applied; head-unit restart required'
-    result pending-restart head_unit 'Wi-Fi feature awaits head-unit restart'
+    sg_log 'Wi-Fi client feature applied'
+    # PackageManager may already report the feature (e.g. reapply before a restart).
+    status
 }
 
 revert() {
