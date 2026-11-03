@@ -68,7 +68,14 @@ public final class MapTool {
         return id.toString();
     }
     private String seal(Map<String,Object> car) throws Exception {return product+"\n"+hashId(car)+"\n"+boot+"\n";}
-    private File active(String filename) {return new File(stateRoot,"car-maps/active/"+filename);}
+    private File active(String filename) throws Exception {
+        File pointer=new File(stateRoot,"car-maps/active");
+        if(!pointer.isFile())return new File(stateRoot,"car-maps/none/"+filename);
+        String relative=MapFiles.read(pointer).trim();
+        if(!relative.matches("[A-Za-z0-9._-]+/[0-9a-f]{32}/[0-9a-f]{32}"))
+            throw new IllegalStateException("invalid active map pointer");
+        return new File(stateRoot,"car-maps/"+relative+"/"+filename);
+    }
     private boolean verified(Map<String,Object> car) throws Exception {
         return !boot.isEmpty()&&active("verified").isFile()&&seal(car).equals(MapFiles.read(active("verified")))&&
             sameCar(JsonIO.object(MapFiles.read(active("car.json"))));
@@ -83,6 +90,7 @@ public final class MapTool {
         Map<String,Object> activeMap=ready?JsonIO.object(MapFiles.read(active("map.json"))):null;
         int verifiedCount=ready?((Map<String,Object>)activeMap.get("points")).size():0;
         String source=selected==null?"none":selected.getAbsolutePath().startsWith(new File(packageRoot,"maps").getAbsolutePath())?"bundled":"generated";
+        if(ready)source=MapFiles.read(active("source")).trim();
         System.out.println("state="+(ready?"on":selected==null?"incompatible":"off"));
         System.out.println("restart=none");
         System.out.println("detail="+(ready?"map verified":selected==null?"mapping needed":"verification needed"));
@@ -122,7 +130,19 @@ public final class MapTool {
         MapFiles.write(new File(scratch,"car.json"),JsonIO.encode(car)+"\n");
         MapFiles.write(new File(scratch,"verified"),seal(car));
         MapFiles.write(new File(scratch,"hash-id"),hashId(car)+"\n");
+        MessageDigest mapDigest=MessageDigest.getInstance("MD5");
+        mapDigest.update(JsonIO.encode(published).getBytes("UTF-8"));
+        mapDigest.update(seal(car).getBytes("UTF-8"));
+        StringBuilder mapId=new StringBuilder();
+        for(byte b:mapDigest.digest()){int value=b&255;if(value<16)mapId.append('0');mapId.append(Integer.toHexString(value));}
+        MapFiles.write(new File(scratch,"map-id"),mapId+"\n");
         MapFiles.write(new File(scratch,"source"),source+"\n");
+        if(source.equals("bundled")) {
+            String root=new File(packageRoot,"maps").getCanonicalPath()+File.separator;
+            String path=directory.getCanonicalPath();
+            if(!path.startsWith(root))throw new IllegalStateException("bundle path");
+            MapFiles.write(new File(scratch,"layout"),"maps/"+path.substring(root.length()).replace(File.separatorChar,'/')+"\n");
+        }
         System.out.println("state=on\nrestart=none\ndetail=map verified");
         System.out.println("info.source="+source);
         System.out.println("info.product="+product);

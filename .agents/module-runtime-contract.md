@@ -205,3 +205,29 @@ the root dispatcher is `hmg-seogaemo-root`. Installed files live under
 `/data/nemesis/backup/hmg-seogaemo`, and the USB wrapper contains
 `packages/hmg-seogaemo.zip`. For example:
 `adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.
+
+## Core car mapping (2026-11-03)
+
+`hmg-seogaemo-root map status|run|verify|export` accepts exactly these fixed verbs.
+`status` hashes the catalogue's stock files and compares product, onebin, Android version,
+and every stock MD5 with bundled or generated `car.json`; it is read-only.
+`run` scans the full catalogue in a separate root `app_process` and reflects over the
+mapped classes and members. `verify` repeats the reflection check for a matching map.
+Both write only to package-allocated private scratch, then call `sg_map_publish`.
+`export` writes `maps/<make>/<model>/<region>/<firmware>/map.json` and `car.json`
+to USB when mounted, otherwise the adb export directory. The existing `export usb|adb`
+also includes the active PR-ready map folder.
+
+The package API owns `sg_map_work`, `sg_map_publish`, `sg_map_work_cleanup`, and
+`sg_map_export`. Publish validates fixed scratch filenames, product and hash IDs,
+copies the verified map to an immutable directory under
+`/data/nemesis/backup/hmg-seogaemo/car-maps/<product>/<stock-hash-id>/<map-id>/`,
+records pointer and content changes in the ledger, then atomically replaces the
+`car-maps/active` pointer file. The pointer is the only path consumers select;
+there is no write to a stock file. A failed publish leaves the previous pointer.
+The boot ID is included in the map ID and verification seal, so a new boot needs
+reflection verification again. Module `hookpoints.required` IDs must all survive
+resolution and reflection before publish. `map.json` exposes only verified points.
+Generated maps and the ledger are package-local state retained for export until
+package removal; module revert never removes them. The app invokes map commands
+through `RootClient.map` on a worker thread, with fixed arguments and bounded output.

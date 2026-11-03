@@ -37,7 +37,7 @@ def run():
         required = {"NEMESIS.data", "app/Seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
                     "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
                     "svc/reconcile.sh", "lib/common.sh", "modules.list", "modules.graph",
-                    "core/map/mapper.jar", "hookpoints/framework.json",
+                    "core/map/mapper.jar", "core/map.sh", "hookpoints/framework.json",
                     "hookpoints.required/wireless-carplay-and-aa",
                     "maps/hyundai/ioniq5/kor/260902/map.json",
                     "maps/hyundai/ioniq5/kor/260902/car.json"}
@@ -48,7 +48,7 @@ def run():
         preuninstall = package.read("scripts/preuninstall.sh").decode()
         assert "id=hmg-seogaemo" in preuninstall
         assert "/data/local/tmp/nemesis/stage/hmg-seogaemo/NEMESIS.data" in preuninstall
-        for script_name in ("core/update.sh", "svc/reconcile.sh"):
+        for script_name in ("core/update.sh", "core/map.sh", "svc/reconcile.sh"):
             body = package.read(script_name).decode()
             assert not re.search(r"\b(?:awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|sha256sum|sha1sum|tar|unzip|busybox|toybox)\b", body), script_name
         assert set(usb.namelist()) == {"NEMESIS.data", "packages/hmg-seogaemo.zip"}

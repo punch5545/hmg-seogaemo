@@ -56,6 +56,7 @@ test: package
 	python3 tools/validate-maps.py all
 	python3 tools/test-validate-maps.py
 	python3 tools/test-map-scanner.py
+	python3 tools/test-map-root.py
 	python3 tools/test-confirm-routing.py
 	sh tools/test-gen-modules.sh
 	python3 tools/test-package.py --aapt $(BT)/aapt
