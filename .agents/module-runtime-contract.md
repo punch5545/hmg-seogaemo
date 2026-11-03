@@ -5,6 +5,68 @@ Status: partly superseded — the former parallel-work ownership table is histor
 Implemented interface between the shared module runtime, modules, and updater.
 The ownership table records the original parallel-work split; it no longer assigns active worktrees.
 
+## Shared text-file line ownership (2026-11-03)
+
+`owns_files=` grants exclusive whole-file ownership. No other module may claim
+that path through either `owns_files` or `owns_lines`, even with exclusions.
+Put, delete, bind mounts and zygote installation require `owns_files`.
+
+Declare one `owns_lines.N=/absolute/path:<exact stock line>` per entry, with a
+unique positive decimal N (no leading zero). Split at the first colon only:
+commas, colons, equals signs, backslashes, leading/trailing spaces and an empty
+stock line are literal, without escaping or trimming. Paths use letters, digits
+and `/._+-`, with no `..` or `//`. Lines contain no control characters (including
+NUL, CR, LF and tab). Duplicate keys and duplicate `(path, stock line)` claims
+fail generation, including within one module. `restore=reboot` cannot own lines.
+The generator emits `modules.lines`, a graph companion in generated module order:
+tab-separated module ID, entry number, and literal `path:stock`. Packaged manifests
+retain these declarations.
+
+`sg_file_replace_line <path> <stock line> <new line>` requires that exact claim
+or exclusive whole-file ownership. New text has the same control-character
+restrictions. For line ownership, old always means the stock line on repeat
+apply. Each claimed stock line must occur exactly once in the baseline. Match
+patches against stock input, never another patch's output; compose in generated
+module order. Preserve each input line's newline, including an unterminated last
+line. Reapplying the same patch is harmless. Exclusive whole-file callers retain
+their existing baseline/restore behavior.
+
+Shared state is `shared-lines/<MD5-of-path>/` under the runtime data root: immutable
+stock `bytes`, `meta` (mode, numeric UID/GID), `existence=present`, `path`, `build`;
+immutable `versions/` snapshots with composed bytes and per-module patches; an
+atomic `active` pointer; and a `pending` journal naming a fully prepared next
+snapshot. A missing file has no matching line and is refused. Module-local
+`line.<MD5-of-path>/ready` markers expose partial applies to lifecycle recovery.
+Existing whole-file baselines must be reverted before using line ownership; never
+adopt their applied bytes as stock. This expands the pre-deployment interface;
+it does not convert active whole-file baselines.
+
+Before apply/revert, product, current bytes and metadata must match the recorded
+build and last composed state (stock when no snapshot is active). External edits
+and firmware changes return conflict (3) and retain backups. Runtime also rejects
+a claim held by a different enabled module or an active patch for the same stock
+line, independently of generator validation.
+
+Prepare next bytes, patches and audit events before atomic target replacement.
+Interrupted preparation/write leaves stock or the previous composed file intact.
+Recovery accepts only previous or fully prepared next bytes with stock metadata:
+previous cancels the uncommitted transaction; next completes ledger/pointer
+publication. Unknown bytes fail closed. Ledger publication is at least once across
+interruption (audit rows can repeat). There is no force/adopt-external-content path.
+
+Revert preflights every module target before its first restore. Recompose without
+that module's patches, retaining other modules' patches. After the last patch,
+verify stock bytes, mode and owner before clearing shared state. Line-only partial
+applies are reverted at boot and preflighted on uninstall. `sg_applied <path>`
+checks this module has active patches and the entire composed file matches.
+Ledger `line_patch`/`line_revert` rows reference exact old/new line text files;
+`line_compose` references before/after file bytes with toolbox MD5 hashes, product
+and stock metadata. Ordinary ledger export includes these records.
+
+Wi-Fi client and wireless projection claim different `featurexml.cfg` lines. Their
+mutual exclusion remains because STA and AP share a radio; file safety is
+independent of that exclusion.
+
 Ownership:
 
 | Area | Owner worktree |
