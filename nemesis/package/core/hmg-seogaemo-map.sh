@@ -6,9 +6,9 @@ case "$1" in status|run|verify|export) ;; *) exit 2;; esac
 base=${0%/*}
 base=${base%/core}
 SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
-SEOGAEMO_BASE=$base
-SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
-export SG_DATA_ROOT SEOGAEMO_BASE SEOGAEMO_STATE
+HMG_SEOGAEMO_BASE=$base
+HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
+export SG_DATA_ROOT HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE
 . "$base/lib/common.sh"
 mapper() {
     CLASSPATH="$base/core/map/hmg-seogaemo-mapper.jar" app_process /system/bin com.seogaemo.hmg.core.map.HmgSeogaemoMapTool \

@@ -41,7 +41,7 @@ Settings sidebar sections use short, non-focusable sans-serif labels (App / 앱 
 
 ## API 19 compatibility
 
-Build with the installed `platforms/android-19/android.jar`: `aapt` links resources against it, `javac` uses `-source 1.7 -target 1.7 -bootclasspath`, and `d8` uses `--min-api 19 --lib` (`tmp/hmg_nemesis/Sources/manager/Makefile:24-36`). Keep Java compilation and dex generation in one recipe to avoid a stale dex (`Makefile`). The final APK is SHA1withRSA/SHA1 **v1 JAR signed**, then zipaligned, using the same JDK algorithm override (`app/allow-sha1.security:1-2`). Check with `apksigner verify --verbose --min-sdk-version 19 out/seogaemo.apk`.
+Build with the installed `platforms/android-19/android.jar`: `aapt` links resources against it, `javac` uses `-source 1.7 -target 1.7 -bootclasspath`, and `d8` uses `--min-api 19 --lib` (`tmp/hmg_nemesis/Sources/manager/Makefile:24-36`). Keep Java compilation and dex generation in one recipe to avoid a stale dex (`Makefile`). The final APK is SHA1withRSA/SHA1 **v1 JAR signed**, then zipaligned, using the same JDK algorithm override (`app/allow-sha1.security:1-2`). Check with `apksigner verify --verbose --min-sdk-version 19 out/hmg-seogaemo.apk`.
 
 The manifest uses `minSdkVersion=19`, `targetSdkVersion=19`, `GET_TASKS`, `allowBackup=false`, `singleTask`, and a style inheriting `Theme.NoTitleBar.Fullscreen` (`tmp/hmg_nemesis/Sources/manager/AndroidManifest.xml:6-23`; `res/values/styles.xml:3-6`). The close button catches `SecurityException` from `finish()` and falls back to `moveTaskToBack(true)`, matching NEMESIS's `Ui.java:23-35`. Do not add AndroidX, Compose, `VectorDrawable`, ripple, `setLetterSpacing`, or framework APIs above 19. Keep locale selection on `Configuration.locale` plus `Resources.updateConfiguration()` before rebuilding views.
 
@@ -56,7 +56,7 @@ printf 'no\n' | ANDROID_AVD_HOME=/private/tmp/hmg_avd ~/Library/Android/sdk/cmdl
 # Set hw.lcd.width=1920, hw.lcd.height=720, hw.lcd.density=240,
 # and hw.initialOrientation=landscape in config.ini.
 ANDROID_AVD_HOME=/private/tmp/hmg_avd ~/Library/Android/sdk/emulator/emulator -avd hmg_1920x720 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -ports 5580,5581
-~/Library/Android/sdk/platform-tools/adb -s emulator-5580 install -r out/seogaemo.apk
+~/Library/Android/sdk/platform-tools/adb -s emulator-5580 install -r out/hmg-seogaemo.apk
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 shell am start -n com.seogaemo.hmg/.MainActivity
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 exec-out screencap -p > tmp/screens/home-en.png
 # Historical taps; inspect the current Settings layout before reusing these coordinates.
@@ -102,7 +102,7 @@ Result: `SettingsUi` now supplies shared row, pill, button, and action geometry.
 
 ## Confirm before action (2026-11-03)
 
-Use `com.seogaemo.hmg.ui.ConfirmDialog.show(...)` before a tap can change app preferences, module or head-unit state, export files, check/download/install an update, roll back, or start other long work. Module toggles and `ENABLE_MODULE` actions use `ModuleManager.plan` and read-only `precheck` first; list every planned enable/disable step and active warning in the dialog. `OPEN_STOCK_WIFI_SETTINGS` and navigation are direct because they do not change Seogaemo state. A previously confirmed OTA resume or restoration may continue after an Activity restart.
+Use `com.seogaemo.hmg.ui.ConfirmDialog.show(...)` before a tap can change app preferences, module or head-unit state, export files, check/download/install an update, roll back, or start other long work. Module toggles and `ENABLE_MODULE` actions use `ModuleManager.plan` and read-only `precheck` first; list every planned enable/disable step and active warning in the dialog. `OPEN_STOCK_WIFI_SETTINGS` and navigation are direct because they do not change HMG-Seogaemo state. A previously confirmed OTA resume or restoration may continue after an Activity restart.
 
 The helper uses the dark surface and hairline tokens, 8/12/16/24/32dp spacing, 60dp-high buttons, and a dimmed background. Cancel is the left, initially focused button. Outside taps cannot dismiss it; Back or Cancel can. Use the error color for destructive actions. A submitted confirm button becomes disabled immediately. Call `showProgress()` for long work and dismiss the dialog when it finishes. Keep EN/KO text in resources and proper nouns unchanged.
 

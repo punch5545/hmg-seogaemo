@@ -2,7 +2,7 @@ Status: current — index of the agent notes, reviewed against local main on 202
 
 # Agent notes
 
-Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`, and `ota-implementation.md` first. Then read the module implementation notes relevant to your change. The research notes retain upstream evidence and explicitly mark older Seogaemo proposals as historical.
+Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`, and `ota-implementation.md` first. Then read the module implementation notes relevant to your change. The research notes retain upstream evidence and explicitly mark older HMG-Seogaemo proposals as historical.
 
 | Document | Status | Purpose |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [research-car-mapping.md](research-car-mapping.md) | Implemented plus historical research | KOR evidence, core mapper design, and remaining on-car validation. |
 | [research-nemesis-packaging.md](research-nemesis-packaging.md) | Partly superseded | NEMESIS source research and current package layout; older proposal marked historical. |
 | [research-ota-update.md](research-ota-update.md) | Partly superseded | Upstream OTA research and historical design choices, with current release notes. |
-| [research-wifi-client.md](research-wifi-client.md) | Partly superseded | Upstream STA/AP research and updated Seogaemo module test plan. |
+| [research-wifi-client.md](research-wifi-client.md) | Partly superseded | Upstream STA/AP research and updated HMG-Seogaemo module test plan. |
 | [research-wifi-enable.md](research-wifi-enable.md) | Historical research | Superseded core Wi-Fi proposal; use `wifi-client.md` for current behavior. |
 | [research-adb-wireless-module.md](research-adb-wireless-module.md) | Partly superseded | Upstream ADB research; design inferences predate `wireless-adb.md`. |
 | [README.md](README.md) | Current | This index and reading order. |

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Wi-Fi client feature exposure for the verified NEEV Korean firmware.
 set -u
-. "$SEOGAEMO_BASE/lib/common.sh"
+. "$HMG_SEOGAEMO_BASE/lib/common.sh"
 
 cfg=/system/onebin/neev_kr/featurexml.cfg
 xml=/system/etc/permissions/android.hardware.wifi.xml
@@ -14,7 +14,7 @@ cfg_stock() { [ "$(count_line "$stock")" = 1 ] && [ "$(count_line "$enabled")" =
 cfg_enabled() { [ "$(count_line "$stock")" = 0 ] && [ "$(count_line "$enabled")" = 1 ]; }
 xml_enabled() {
     [ -f "$xml" ] &&
-        cmp "$SEOGAEMO_MODULE_DIR/android.hardware.wifi.xml" "$xml" >/dev/null 2>&1
+        cmp "$HMG_SEOGAEMO_MODULE_DIR/android.hardware.wifi.xml" "$xml" >/dev/null 2>&1
 }
 pm_wifi() { pm list features 2>/dev/null | grep -Fxq 'feature:android.hardware.wifi'; }
 
@@ -78,8 +78,8 @@ ap_active() {
 
 projection_desired() {
     # The sibling module status reflects the runtime-owned desired state.
-    [ -x "$SEOGAEMO_BASE/bin/hmg-seogaemo-root" ] || return 1
-    "$SEOGAEMO_BASE/bin/hmg-seogaemo-root" wireless-carplay-and-aa status 2>/dev/null |
+    [ -x "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" ] || return 1
+    "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" wireless-carplay-and-aa status 2>/dev/null |
         grep -Eq '^state=(on|pending-restart)$'
 }
 

@@ -8,7 +8,7 @@
  *      libnativehelper; LD_PRELOAD wins the lookup). After the real one returns,
  *      the JNIEnv's CallStaticVoidMethodV is swapped once, so the next call --
  *      AndroidRuntime::start calling ZygoteInit.main, after the framework's
- *      natives are registered -- first loads /system/framework/seogaemo-wireless-hook.jar
+ *      natives are registered -- first loads /system/framework/hmg-seogaemo-wireless-hook.jar
  *      and runs hmgapi.hook.Bridge.init(), then puts the table back.
  *   2. Bridge.hookMethodNative makes a Java method native: the original Method
  *      struct is copied into a HookInfo, and nativeFunc points at
@@ -51,13 +51,13 @@ void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off);
 int mprotect(const void *addr, size_t len, int prot);
 int cacheflush(long start, long end, long flags);
 
-#define TAG "Seogaemo-Wireless"
+#define TAG "HMG-Seogaemo-Wireless"
 #define LOG_INFO 4
 #define LOG_ERROR 6
 #define LOGI(...) __android_log_print(LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(LOG_ERROR, TAG, __VA_ARGS__)
 
-#define JAR "/system/framework/seogaemo-wireless-hook.jar"
+#define JAR "/system/framework/hmg-seogaemo-wireless-hook.jar"
 #define BRIDGE "hmgapi.hook.Bridge"
 
 /* ---- Dalvik 4.4 layouts (offsets checked on the EV6 libdvm) ---- */

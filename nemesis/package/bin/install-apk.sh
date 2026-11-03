@@ -2,8 +2,8 @@
 umask 077
 base=${0%/*}
 base=${base%/bin}
-apk=$base/app/Seogaemo.apk
-[ -f "$apk" ] || { echo 'Seogaemo APK missing' >&2; exit 1; }
+apk=$base/app/hmg-seogaemo.apk
+[ -f "$apk" ] || { echo 'HMG-Seogaemo APK missing' >&2; exit 1; }
 old=$(getprop sys.boot_completed)
 restored=0
 restore() {

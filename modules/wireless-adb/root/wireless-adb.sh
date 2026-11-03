@@ -2,7 +2,7 @@
 set -efu
 # The package runtime supplies this file at a fixed path.
 # shellcheck disable=SC1091
-. "$SEOGAEMO_BASE/lib/common.sh"
+. "$HMG_SEOGAEMO_BASE/lib/common.sh"
 
 STOCK_PROP=persist.service.adb.tcp.enable
 PORT_PROP=persist.adb.tcp.port
@@ -124,7 +124,7 @@ wa_status() {
     if sg_applied "$PORT_PROP"; then port_applied=1; fi
     if [ "$stock_applied" -eq 1 ] && [ "$port_applied" -eq 1 ]; then
         if ! wa_observed; then
-            wa_report conflict none 'ADB properties changed outside Seogaemo'; return $?
+            wa_report conflict none 'ADB properties changed outside HMG-Seogaemo'; return $?
         fi
         if wa_old_eth_address; then
             wa_report pending-restart head_unit 'Restart head unit to clear old eth0 address'
@@ -150,7 +150,7 @@ wa_apply_failed() {
     else
         restore_code=$?
         if [ "$restore_code" -eq 3 ]; then
-            wa_report conflict none 'ADB properties changed outside Seogaemo; baseline kept'
+            wa_report conflict none 'ADB properties changed outside HMG-Seogaemo; baseline kept'
         else
             wa_report failed none "$reason; baseline restore failed"
         fi
@@ -184,7 +184,7 @@ wa_revert() {
     if sg_revert_all; then :; else
         restore_code=$?
         if [ "$restore_code" -eq 3 ]; then
-            wa_report conflict none 'ADB properties changed outside Seogaemo; baseline kept'
+            wa_report conflict none 'ADB properties changed outside HMG-Seogaemo; baseline kept'
         else
             wa_report failed none 'Could not restore ADB property baseline'
         fi

@@ -11,7 +11,7 @@ host=importlib.util.module_from_spec(spec)
 import sys
 sys.modules[spec.name]=host
 spec.loader.exec_module(host)
-with tempfile.TemporaryDirectory(prefix="seogaemo-smali-") as tmp:
+with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-smali-") as tmp:
     root=Path(tmp);stock=root/"stock";(stock/"app").mkdir(parents=True);(stock/"framework").mkdir()
     (stock/"app/Example.odex").write_bytes(b"synthetic")
     smali=root/"smali";smali.mkdir()

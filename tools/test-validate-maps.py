@@ -10,7 +10,7 @@ root=Path(__file__).resolve().parent.parent
 spec=importlib.util.spec_from_file_location("map_validation",root/"tools/validate-maps.py")
 module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 points,files,apps=module.catalogue();required=module.requirements(points)
-with tempfile.TemporaryDirectory(prefix="seogaemo-map-validation-") as tmp:
+with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-validation-") as tmp:
     base=Path(tmp);module.ROOT=base
     path=base/"maps/hyundai/ioniq5/kor/260902";path.mkdir(parents=True)
     source=root/"maps/hyundai/ioniq5/kor/260902"

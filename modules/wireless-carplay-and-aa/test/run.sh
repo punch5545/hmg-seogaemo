@@ -5,13 +5,13 @@ HERE=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 car_shell=$(command -v mksh || command -v sh)
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
-export SG_WIRELESS_TEST_ROOT=$T/root SEOGAEMO_BASE=$T/base SEOGAEMO_STATE=$T/state SEOGAEMO_MODULE_DIR=$HERE/payload
+export SG_WIRELESS_TEST_ROOT=$T/root HMG_SEOGAEMO_BASE=$T/base HMG_SEOGAEMO_STATE=$T/state HMG_SEOGAEMO_MODULE_DIR=$HERE/payload
 export TEST_PROPS=$T/props TEST_STATE=$T/state
 mkdir -p "$T/base/lib" "$T/bin" "$T/props" "$T/state" "$T/root/system/bin" "$T/root/system/app" "$T/root/system/framework" "$T/root/system/onebin/neev_kr" "$T/root/system/etc/permissions" "$T/root/proc/sys/kernel/random"
 cat > "$T/base/lib/common.sh" <<'SH'
 sg_log() { printf '%s\n' "$*" >&2; }
-sg_path() { case "$1" in "$SEOGAEMO_STATE"/*) printf '%s\n' "$1";; *) printf '%s%s\n' "$SG_WIRELESS_TEST_ROOT" "$1";; esac; }
-sg_key() { printf '%s/%s\n' "$SEOGAEMO_STATE" "$2$1"; }
+sg_path() { case "$1" in "$HMG_SEOGAEMO_STATE"/*) printf '%s\n' "$1";; *) printf '%s%s\n' "$SG_WIRELESS_TEST_ROOT" "$1";; esac; }
+sg_key() { printf '%s/%s\n' "$HMG_SEOGAEMO_STATE" "$2$1"; }
 sg_file_baseline() {
     key=$(sg_key "$1" baseline)
     [ ! -e "$key.present" ] || return 0
@@ -39,9 +39,9 @@ sg_file_put() {
     target=$1 source=$2
     sg_file_baseline "$target"
     dest=$(sg_path "$target"); mkdir -p "${dest%/*}"
-    cp "$SEOGAEMO_MODULE_DIR/$source" "$dest"
+    cp "$HMG_SEOGAEMO_MODULE_DIR/$source" "$dest"
     sg_file_mark_applied "$target"
-    printf 'file %s\n' "$target" >> "$SEOGAEMO_STATE/ops.list"
+    printf 'file %s\n' "$target" >> "$HMG_SEOGAEMO_STATE/ops.list"
 }
 sg_file_replace_line() {
     target=$1 old=$2 new=$3
@@ -51,47 +51,47 @@ sg_file_replace_line() {
     awk -v o="$old" -v n="$new" '{if ($0 == o) print n; else print}' "$dest" > "$dest.next"
     mv "$dest.next" "$dest"
     sg_file_mark_applied "$target"
-    printf 'file %s\n' "$target" >> "$SEOGAEMO_STATE/ops.list"
+    printf 'file %s\n' "$target" >> "$HMG_SEOGAEMO_STATE/ops.list"
 }
 sg_prop_set() {
     key=$1; val=$2
-    if [ ! -f "$SEOGAEMO_STATE/prop-baseline/$key.present" ]; then
-        mkdir -p "$SEOGAEMO_STATE/prop-baseline"
-        getprop "$key" > "$SEOGAEMO_STATE/prop-baseline/$key"
-        touch "$SEOGAEMO_STATE/prop-baseline/$key.present"
+    if [ ! -f "$HMG_SEOGAEMO_STATE/prop-baseline/$key.present" ]; then
+        mkdir -p "$HMG_SEOGAEMO_STATE/prop-baseline"
+        getprop "$key" > "$HMG_SEOGAEMO_STATE/prop-baseline/$key"
+        touch "$HMG_SEOGAEMO_STATE/prop-baseline/$key.present"
     fi
     setprop "$key" "$val"
-    printf '%s' "$val" > "$SEOGAEMO_STATE/prop-applied-$key"
-    printf 'prop %s\n' "$key" >> "$SEOGAEMO_STATE/ops.list"
+    printf '%s' "$val" > "$HMG_SEOGAEMO_STATE/prop-applied-$key"
+    printf 'prop %s\n' "$key" >> "$HMG_SEOGAEMO_STATE/ops.list"
 }
-sg_dex_cache_track() { printf '%s %s\n' "$1" "$2" > "$SEOGAEMO_STATE/dex-track"; }
+sg_dex_cache_track() { printf '%s %s\n' "$1" "$2" > "$HMG_SEOGAEMO_STATE/dex-track"; }
 sg_zygote_install() {
     [ "${SG_FAIL_ZYGOTE:-0}" != 1 ] || return 1
-    stock=/system/bin/app_process.seogaemo-stock
+    stock=/system/bin/app_process.hmg-seogaemo-stock
     sg_file_baseline "$stock"
     dest=$(sg_path "$stock")
     cp "$(sg_path /system/bin/app_process)" "$dest"
     sg_file_mark_applied "$stock"
-    printf 'file %s\n' "$stock" >> "$SEOGAEMO_STATE/ops.list"
+    printf 'file %s\n' "$stock" >> "$HMG_SEOGAEMO_STATE/ops.list"
     sg_file_put /system/bin/app_process "$1" 755 0:0
-    sg_file_put /system/lib/libseogaemo_wireless_hook.so "$2" 644 0:0
-    sg_file_put /system/framework/seogaemo-wireless-hook.jar "$3" 644 0:0
-    sg_file_put "$SEOGAEMO_STATE/enable" data/enable-marker 600 0:0
-    sg_file_put "$SEOGAEMO_STATE/enabled" data/enable-marker 600 0:0
+    sg_file_put /system/lib/libhmg_seogaemo_wireless_hook.so "$2" 644 0:0
+    sg_file_put /system/framework/hmg-seogaemo-wireless-hook.jar "$3" 644 0:0
+    sg_file_put "$HMG_SEOGAEMO_STATE/enable" data/enable-marker 600 0:0
+    sg_file_put "$HMG_SEOGAEMO_STATE/enabled" data/enable-marker 600 0:0
 }
 sg_revert_all() {
-    [ -f "$SEOGAEMO_STATE/ops.list" ] || return 0
+    [ -f "$HMG_SEOGAEMO_STATE/ops.list" ] || return 0
     while read -r kind target; do
         if [ "$kind" = file ]; then sg_applied "$target" || return 1
-        else [ "$(getprop "$target")" = "$(cat "$SEOGAEMO_STATE/prop-applied-$target")" ] || return 1; fi
-    done < "$SEOGAEMO_STATE/ops.list"
-    awk '{a[NR]=$0} END {for (i=NR;i>=1;i--) print a[i]}' "$SEOGAEMO_STATE/ops.list" | while read -r kind target; do
+        else [ "$(getprop "$target")" = "$(cat "$HMG_SEOGAEMO_STATE/prop-applied-$target")" ] || return 1; fi
+    done < "$HMG_SEOGAEMO_STATE/ops.list"
+    awk '{a[NR]=$0} END {for (i=NR;i>=1;i--) print a[i]}' "$HMG_SEOGAEMO_STATE/ops.list" | while read -r kind target; do
         if [ "$kind" = file ]; then sg_file_restore "$target" || exit 1
-        else setprop "$target" "$(cat "$SEOGAEMO_STATE/prop-baseline/$target")" || exit 1; fi
+        else setprop "$target" "$(cat "$HMG_SEOGAEMO_STATE/prop-baseline/$target")" || exit 1; fi
     done || return 1
-    rm -rf "$SEOGAEMO_STATE/baseline" "$SEOGAEMO_STATE/applied" "$SEOGAEMO_STATE/prop-baseline" "$SEOGAEMO_STATE"/prop-applied-* "$SEOGAEMO_STATE/ops.list" "$SEOGAEMO_STATE/dex-track"
+    rm -rf "$HMG_SEOGAEMO_STATE/baseline" "$HMG_SEOGAEMO_STATE/applied" "$HMG_SEOGAEMO_STATE/prop-baseline" "$HMG_SEOGAEMO_STATE"/prop-applied-* "$HMG_SEOGAEMO_STATE/ops.list" "$HMG_SEOGAEMO_STATE/dex-track"
 }
-sg_owner_present() { [ -f "$SEOGAEMO_STATE/owner-$1" ]; }
+sg_owner_present() { [ -f "$HMG_SEOGAEMO_STATE/owner-$1" ]; }
 sg_status() { printf 'state=%s\nrestart=%s\ndetail=%s\n' "$1" "$2" "${3:-}"; case "$1" in conflict) return 3;; incompatible) return 4;; failed) return 1;; esac; }
 SH
 cat > "$T/bin/getprop" <<'SH'
@@ -166,12 +166,12 @@ export SG_FAIL_ZYGOTE=1
 run apply && fail injected-zygote-failure-accepted
 cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail failed-apply-restoration
 [ "$(cat "$T/props/persist.ium.support")" = stock ] || fail failed-apply-property
-[ ! -e "$T/root/system/bin/app_process.seogaemo-stock" ] || fail failed-apply-wrapper
+[ ! -e "$T/root/system/bin/app_process.hmg-seogaemo-stock" ] || fail failed-apply-wrapper
 unset SG_FAIL_ZYGOTE
 run apply || fail apply
 grep -q '^state=pending-restart$' "$T/output" || fail apply-state
 [ "$(cat "$T/props/persist.ium.support")" = carplay ] || fail property
-[ -f "$T/root/system/bin/app_process.seogaemo-stock" ] || fail wrapper-backup
+[ -f "$T/root/system/bin/app_process.hmg-seogaemo-stock" ] || fail wrapper-backup
 [ -f "$T/state/dex-track" ] || fail dex-tracking
 [ -f "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file
 printf 'boot-two\n' > "$T/root/proc/sys/kernel/random/boot_id"
@@ -183,7 +183,7 @@ printf '%s\n' 'USER PID PPID VSIZE RSS WCHAN PC NAME' 'root 123 1 10000 2000 fff
 SH
 chmod +x "$T/bin/ps"
 mkdir -p "$T/root/proc/123"
-printf '%s\n' '/system/lib/libseogaemo_wireless_hook.so' > "$T/root/proc/123/maps"
+printf '%s\n' '/system/lib/libhmg_seogaemo_wireless_hook.so' > "$T/root/proc/123/maps"
 run status || fail loaded-status
 grep -q '^state=on$' "$T/output" || fail loaded-state
 rm -f "$T/bin/ps" "$T/root/proc/123/maps"
@@ -195,9 +195,9 @@ cp "$T/state/applied/system/onebin/neev_kr/featurexml.cfg" "$T/root/system/onebi
 run revert || fail revert
 cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail exact-feature-restore
 [ "$(cat "$T/root/system/bin/app_process")" = stock-app-process ] || fail exact-wrapper-restore
-[ ! -e "$T/root/system/bin/app_process.seogaemo-stock" ] || fail stock-copy-present
-[ ! -e "$T/root/system/lib/libseogaemo_wireless_hook.so" ] || fail hook-lib-present
-[ ! -e "$T/root/system/framework/seogaemo-wireless-hook.jar" ] || fail hook-jar-present
+[ ! -e "$T/root/system/bin/app_process.hmg-seogaemo-stock" ] || fail stock-copy-present
+[ ! -e "$T/root/system/lib/libhmg_seogaemo_wireless_hook.so" ] || fail hook-lib-present
+[ ! -e "$T/root/system/framework/hmg-seogaemo-wireless-hook.jar" ] || fail hook-jar-present
 [ ! -e "$T/root/system/lib/libleafiaaac.so" ] || fail audio-lib-present
 [ ! -e "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file-present
 [ "$(cat "$T/props/persist.ium.support")" = stock ] || fail exact-prop-restore

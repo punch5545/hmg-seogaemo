@@ -11,14 +11,14 @@ import java.util.List;
 
 public final class ModContext {
     public final String id = "wireless-carplay-and-aa";
-    public final File dir = new File("/system/etc/seogaemo/wireless-carplay-and-aa");
+    public final File dir = new File("/system/etc/hmg-seogaemo/wireless-carplay-and-aa");
     public java.lang.reflect.Member hook(ClassLoader cl, String point, MethodHook hook) { return Points.hook(cl, point, hook); }
     public boolean settingBoolean(String key, boolean fallback) { return fallback; }
     public Class<?> appPart(LoadedApp app, String className) throws Exception {
         String pkg = className.substring(0, className.lastIndexOf('.'));
         ClassLoader parent = new AppPartLoader(pkg, ModContext.class.getClassLoader(), app.classLoader);
-        File optimized = app.context.getDir("seogaemo-wireless-dex", 0);
-        DexClassLoader loader = new DexClassLoader("/system/framework/seogaemo-wireless-hook.jar", optimized.getPath(), null, parent);
+        File optimized = app.context.getDir("hmg-seogaemo-wireless-dex", 0);
+        DexClassLoader loader = new DexClassLoader("/system/framework/hmg-seogaemo-wireless-hook.jar", optimized.getPath(), null, parent);
         return loader.loadClass(className);
     }
     public void nativePatch(LoadedApp app, String lib) {

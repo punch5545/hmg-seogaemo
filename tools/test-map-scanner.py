@@ -12,7 +12,7 @@ ROOT=Path(__file__).resolve().parent.parent
 SDK=Path(os.environ.get("ANDROID_HOME",str(Path.home()/"Library/Android/sdk")))
 BT=SDK/"build-tools/34.0.0"
 ANDROID=SDK/"platforms/android-19/android.jar"
-with tempfile.TemporaryDirectory(prefix="seogaemo-map-test-") as tmp:
+with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-test-") as tmp:
     temp=Path(tmp)
     classes=temp/"classes";classes.mkdir()
     subprocess.run(["javac","-source","7","-target","7","-bootclasspath",str(ANDROID),"-d",str(classes),

@@ -14,8 +14,8 @@ import java.util.Iterator;
 
 final class HmgApi {
     private HmgApi() {}
-    static void i(String msg) { Log.i("Seogaemo-Wireless", msg); }
-    static void e(String msg, Throwable t) { Log.e("Seogaemo-Wireless", msg, t); }
+    static void i(String msg) { Log.i("HMG-Seogaemo-Wireless", msg); }
+    static void e(String msg, Throwable t) { Log.e("HMG-Seogaemo-Wireless", msg, t); }
     static final Wireless ENTRY = new Wireless();
     static final ModContext MOD = new ModContext();
 

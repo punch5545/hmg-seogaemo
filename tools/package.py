@@ -42,7 +42,7 @@ def apk_version(apk, aapt):
 
 def build(aapt):
     version, code = read_version(ROOT / "VERSION")
-    apk = ROOT / "out/seogaemo.apk"
+    apk = ROOT / "out/hmg-seogaemo.apk"
     if apk_version(apk, aapt) != (version, code):
         raise ValueError("APK version differs from VERSION")
     if DIST.exists():
@@ -54,7 +54,7 @@ def build(aapt):
     ota_zip = DIST / f"{prefix}-ota.zip"
     apk_asset = DIST / f"{prefix}.apk"
     shutil.copyfile(apk, apk_asset)
-    files = {"app/Seogaemo.apk": apk}
+    files = {"app/hmg-seogaemo.apk": apk}
     for source in (ROOT / "nemesis/package").rglob("*"):
         if source.is_file() and not source.name.startswith("."):
             name = source.relative_to(ROOT / "nemesis/package").as_posix()
@@ -87,7 +87,7 @@ def build(aapt):
         "NEMESIS.data": ROOT / "nemesis/usb/NEMESIS.data",
         "packages/hmg-seogaemo.zip": package_zip,
     })
-    ota_files = {"app/Seogaemo.apk": apk, "VERSION": (version + "\n").encode(),
+    ota_files = {"app/hmg-seogaemo.apk": apk, "VERSION": (version + "\n").encode(),
                  "update_roots.pem": ROOT / "app/res/raw/update_roots.pem"}
     for name, source in files.items():
         if name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/")) or name in ("modules.list", "modules.graph"):

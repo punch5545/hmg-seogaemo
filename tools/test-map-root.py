@@ -8,7 +8,7 @@ import tempfile
 
 ROOT=Path(__file__).resolve().parent.parent
 SHELL=os.environ.get("MKSH","sh")
-with tempfile.TemporaryDirectory(prefix="seogaemo-map-root-") as tmp:
+with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-root-") as tmp:
     t=Path(tmp);base=t/"package";state=t/"state";fake=t/"bin"
     for folder in (base/"bin",base/"core",base/"lib",fake,state):folder.mkdir(parents=True,exist_ok=True)
     for source,dest in (("nemesis/package/bin/hmg-seogaemo-root","bin/hmg-seogaemo-root"),

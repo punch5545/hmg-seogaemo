@@ -27,7 +27,7 @@ def lint(path):
             errors.append(f"{path}:{number}: direct mutation")
         for target in REDIRECT.findall(line) if "modules/" in str(path) else ():
             target = target.rstrip(";")
-            if target in ("&2", "/dev/null") or target.startswith("$SEOGAEMO_STATE"):
+            if target in ("&2", "/dev/null") or target.startswith("$HMG_SEOGAEMO_STATE"):
                 continue
             errors.append(f"{path}:{number}: direct output redirection")
     return errors

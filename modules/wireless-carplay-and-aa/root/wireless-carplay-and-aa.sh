@@ -1,11 +1,11 @@
 #!/bin/sh
 # Modified by HMG-Seogaemo: single-car port of HMG-API wireless projection.
 set -eu
-. "$SEOGAEMO_BASE/lib/common.sh"
+. "$HMG_SEOGAEMO_BASE/lib/common.sh"
 umask 077
 
 FEATURE=/system/onebin/neev_kr/featurexml.cfg
-ASSET=/system/etc/seogaemo/wireless-carplay-and-aa
+ASSET=/system/etc/hmg-seogaemo/wireless-carplay-and-aa
 
 path() { printf '%s%s\n' "${SG_WIRELESS_TEST_ROOT:-}" "$1"; }
 exists() { [ -f "$(path "$1")" ]; }
@@ -15,7 +15,7 @@ conflict() { sg_status conflict none "$1"; }
 incompatible() { sg_status incompatible none "$1"; }
 
 compatibility() {
-    map_state=$("$SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state=
+    map_state=$("$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state=
     printf '%s\n' "$map_state" | grep -Fxq 'state=on' ||
         { incompatible 'verified car map required'; return 4; }
     [ "$(value ro.mobis.onebindir)" = neev_kr ] || { incompatible 'unsupported onebin'; return 4; }
@@ -24,7 +24,7 @@ compatibility() {
         if sg_owner_present "$owner"; then conflict "external owner: $owner"; return 3; fi
     done
     if exists /system/bin/app_process.hmgapi-stock; then conflict 'HMG-API app_process backup present'; return 3; fi
-    if exists /system/bin/app_process.seogaemo-stock && ! sg_applied /system/bin/app_process; then
+    if exists /system/bin/app_process.hmg-seogaemo-stock && ! sg_applied /system/bin/app_process; then
         conflict 'orphaned app_process backup'; return 3
     fi
     exists "$FEATURE" || { incompatible 'featurexml.cfg absent'; return 4; }
@@ -39,8 +39,8 @@ compatibility() {
         [ "$((active + inactive))" -le 1 ] || { incompatible "featurexml line mismatch: $name"; return 4; }
     done
     exists /system/bin/app_process || { incompatible 'app_process absent'; return 4; }
-    for name in app_process libseogaemo_wireless_hook.so seogaemo-wireless-hook.jar libleafiaaac.so; do
-        [ -s "$SEOGAEMO_MODULE_DIR/data/$name" ] || { fail "missing payload: $name"; return 1; }
+    for name in app_process libhmg_seogaemo_wireless_hook.so hmg-seogaemo-wireless-hook.jar libleafiaaac.so; do
+        [ -s "$HMG_SEOGAEMO_MODULE_DIR/data/$name" ] || { fail "missing payload: $name"; return 1; }
     done
     case "$(value persist.service.adb.tcp.enable)" in
         1) conflict 'stock ADB switch conflicts with hotspot'; return 3 ;;
@@ -72,8 +72,8 @@ apply() {
        ! sg_prop_set persist.ium.support carplay ||
        ! sg_prop_set persist.sys.iap2.wifi t ||
        ! sg_prop_set persist.iap2.iden.wireless t ||
-       ! sg_dex_cache_track /system/framework/seogaemo-wireless-hook.jar com.daudio.app.dipo ||
-       ! sg_zygote_install data/app_process data/libseogaemo_wireless_hook.so data/seogaemo-wireless-hook.jar; then
+       ! sg_dex_cache_track /system/framework/hmg-seogaemo-wireless-hook.jar com.daudio.app.dipo ||
+       ! sg_zygote_install data/app_process data/libhmg_seogaemo_wireless_hook.so data/hmg-seogaemo-wireless-hook.jar; then
         sg_revert_all || sg_log 'rollback failed; ledger and baselines retained'
         fail 'apply failed; inspect change ledger'; return 1
     fi
@@ -107,7 +107,7 @@ $process
 EOF
     fi
     if [ -n "$pid" ] &&
-       grep -q 'libseogaemo_wireless_hook.so' "$(path "/proc/$pid/maps")" 2>/dev/null; then
+       grep -q 'libhmg_seogaemo_wireless_hook.so' "$(path "/proc/$pid/maps")" 2>/dev/null; then
         sg_status on none 'wireless projection hooks loaded'
     else
         sg_status pending-restart head_unit 'unit restart or hook recovery required'

@@ -231,7 +231,7 @@ def main():
     if len(options.output.parts)<4:parser.error("--output must end in make/model/region/firmware")
     if not (options.stock/"app").is_dir() or not (options.stock/"framework").is_dir():parser.error("stock tree needs app/ and framework/")
     groups=[json.loads(path.read_text()) for path in sorted((ROOT/"core/hookpoints").glob("*.json"))]
-    with tempfile.TemporaryDirectory(prefix="seogaemo-host-map-") as work:
+    with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-host-map-") as work:
         mapper=HostMapper(options.stock,Path(work),options.baksmali)
         mapped,missing,hashes,apps=mapper.scan(groups)
     if options.strict and missing:raise SystemExit(f"{len(missing)} points unresolved; no map written")

@@ -34,7 +34,7 @@ def run():
     ota_path = DIST / f"{prefix}-ota.zip"
     with zipfile.ZipFile(package_path) as package, zipfile.ZipFile(usb_path) as usb, zipfile.ZipFile(ota_path) as ota:
         entries = set(package.namelist())
-        required = {"NEMESIS.data", "app/Seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
+        required = {"NEMESIS.data", "app/hmg-seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
                     "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
                     "svc/reconcile.sh", "lib/common.sh", "modules.list", "modules.graph",
                     "core/map/hmg-seogaemo-mapper.jar", "core/hmg-seogaemo-map.sh", "hookpoints/framework.json",
@@ -54,10 +54,10 @@ def run():
         assert set(usb.namelist()) == {"NEMESIS.data", "packages/hmg-seogaemo.zip"}
         assert usb.read("packages/hmg-seogaemo.zip") == package_path.read_bytes()
         assert ota.read("VERSION") == (version + "\n").encode()
-        assert ota.read("app/Seogaemo.apk") == package.read("app/Seogaemo.apk")
+        assert ota.read("app/hmg-seogaemo.apk") == package.read("app/hmg-seogaemo.apk")
         assert ota.read("update_roots.pem") == (ROOT / "app/res/raw/update_roots.pem").read_bytes()
         for name in ota.namelist():
-            assert name in ("VERSION", "update_roots.pem", "app/Seogaemo.apk", "modules.list", "modules.graph") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/"))
+            assert name in ("VERSION", "update_roots.pem", "app/hmg-seogaemo.apk", "modules.list", "modules.graph") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/"))
             if name in entries:
                 assert ota.read(name) == package.read(name)
         usb_meta = descriptor(usb.read("NEMESIS.data"))
@@ -103,9 +103,9 @@ def run():
                 for verb in ("status", "precheck"):
                     result = subprocess.run([SHELL, str(script), verb],
                                             env=dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}",
-                                                     SEOGAEMO_BASE=str(module_root),
-                                                     SEOGAEMO_STATE=str(module_root / "state"),
-                                                     SEOGAEMO_MODULE_DIR=str(module_root / "payload"),
+                                                     HMG_SEOGAEMO_BASE=str(module_root),
+                                                     HMG_SEOGAEMO_STATE=str(module_root / "state"),
+                                                     HMG_SEOGAEMO_MODULE_DIR=str(module_root / "payload"),
                                                      SG_DATA_ROOT=str(module_root / "data")),
                                             capture_output=True, text=True)
                     assert result.returncode in (0, 1, 3, 4), result.stderr
@@ -124,7 +124,7 @@ def run():
                     subprocess.run([SHELL, "-n", str(path)], check=True)
             # Run a copied dispatcher against an isolated fake module tree.
             (temp / "modules.list").write_text("good\n")
-            (temp / "modules/good.sh").write_text("#!/bin/sh\nprintf 'action=%s\\nbase=%s\\nstate=%s\\nmodule_dir=%s\\n' \"$1\" \"$SEOGAEMO_BASE\" \"$SEOGAEMO_STATE\" \"$SEOGAEMO_MODULE_DIR\"\n")
+            (temp / "modules/good.sh").write_text("#!/bin/sh\nprintf 'action=%s\\nbase=%s\\nstate=%s\\nmodule_dir=%s\\n' \"$1\" \"$HMG_SEOGAEMO_BASE\" \"$HMG_SEOGAEMO_STATE\" \"$HMG_SEOGAEMO_MODULE_DIR\"\n")
             command = [SHELL, str(temp / "bin/hmg-seogaemo-root")]
             result = subprocess.run(command + ["good", "status"], capture_output=True, text=True)
             expected = f"action=status\nbase={temp}\nstate=/data/nemesis/backup/hmg-seogaemo/modules/good\nmodule_dir={temp}/modules/good.d\n"
@@ -136,7 +136,7 @@ def run():
             # A PackageManager text failure can exit zero. The boot property
             # still has to be restored in both outcomes.
             (temp / "app").mkdir()
-            (temp / "app/Seogaemo.apk").write_bytes(b"test")
+            (temp / "app/hmg-seogaemo.apk").write_bytes(b"test")
             fake = temp / "fake-bin"
             fake.mkdir()
             state = temp / "boot-property"
@@ -156,7 +156,7 @@ def run():
                 assert (result.returncode == 0) == succeeds
                 assert state.read_text() == "1"
         with tempfile.NamedTemporaryFile(suffix=".apk") as temp:
-            temp.write(package.read("app/Seogaemo.apk"))
+            temp.write(package.read("app/hmg-seogaemo.apk"))
             temp.flush()
             assert apk_version(Path(temp.name), args.aapt) == (version, code)
         # Exercise the fixed updater transaction against a fake root tree.
@@ -166,7 +166,7 @@ def run():
             (package_root / "core").mkdir(parents=True)
             (package_root / "bin").mkdir()
             (package_root / "app").mkdir()
-            (package_root / "app/Seogaemo.apk").write_bytes(b"old apk")
+            (package_root / "app/hmg-seogaemo.apk").write_bytes(b"old apk")
             (package_root / "NEMESIS.data").write_bytes(package.read("NEMESIS.data"))
             (package_root / "bin/install-apk.sh").write_text("#!/bin/sh\nexit 0\n")
             updater = package.read("core/update.sh").decode()
@@ -179,10 +179,10 @@ def run():
             for name in ("hmg-seogaemo-0.1.1-manifest.json", "hmg-seogaemo-0.1.1-manifest.json.sig", "hmg-seogaemo-0.1.1-ota.zip"):
                 (incoming / name).write_bytes(b"test")
             (incoming / "payload/app").mkdir(parents=True)
-            for name in ("VERSION", "app/Seogaemo.apk", "modules.list", "modules.graph"):
+            for name in ("VERSION", "app/hmg-seogaemo.apk", "modules.list", "modules.graph"):
                 (incoming / "payload" / name).write_text("test\n")
             (incoming / "payload/VERSION").write_text("0.1.1\n")
-            md5_lines = "".join(hashlib.md5((incoming / "payload" / name).read_bytes()).hexdigest() + "|" + name + "\n" for name in ("VERSION", "app/Seogaemo.apk", "modules.list", "modules.graph"))
+            md5_lines = "".join(hashlib.md5((incoming / "payload" / name).read_bytes()).hexdigest() + "|" + name + "\n" for name in ("VERSION", "app/hmg-seogaemo.apk", "modules.list", "modules.graph"))
             (incoming / "payload/files.md5").write_text(md5_lines)
             fake_bin = fake_root / "bin"
             fake_bin.mkdir()
@@ -190,7 +190,7 @@ def run():
 case "$3" in
   copy) mkdir "$5"; cp "$4"/hmg-seogaemo-* "$5/"; cp -R "$4/payload" "$5/";;
   verify) echo 0.1.1;;
-  extract) mkdir -p "$6/app" "$6/bin" "$6/svc"; cp "$4/payload/VERSION" "$6/VERSION"; cp "$4/payload/modules.graph" "$6/modules.graph"; cp "$4/payload/modules.list" "$6/modules.list"; cp "$4/payload/app/Seogaemo.apk" "$6/app/Seogaemo.apk"; echo '#!/bin/sh' > "$6/bin/install-apk.sh"; echo 'exit 0' >> "$6/bin/install-apk.sh"; echo '#!/bin/sh' > "$6/bin/hmg-seogaemo-root"; echo 'exit 0' >> "$6/bin/hmg-seogaemo-root"; echo '#!/bin/sh' > "$6/svc/reconcile.sh"; echo 'exit 0' >> "$6/svc/reconcile.sh"; cp "$4/payload/files.md5" "$6/files.md5";;
+  extract) mkdir -p "$6/app" "$6/bin" "$6/svc"; cp "$4/payload/VERSION" "$6/VERSION"; cp "$4/payload/modules.graph" "$6/modules.graph"; cp "$4/payload/modules.list" "$6/modules.list"; cp "$4/payload/app/hmg-seogaemo.apk" "$6/app/hmg-seogaemo.apk"; echo '#!/bin/sh' > "$6/bin/install-apk.sh"; echo 'exit 0' >> "$6/bin/install-apk.sh"; echo '#!/bin/sh' > "$6/bin/hmg-seogaemo-root"; echo 'exit 0' >> "$6/bin/hmg-seogaemo-root"; echo '#!/bin/sh' > "$6/svc/reconcile.sh"; echo 'exit 0' >> "$6/svc/reconcile.sh"; cp "$4/payload/files.md5" "$6/files.md5";;
   switch) python3 -c 'import os,sys; os.replace(sys.argv[1],sys.argv[2])' "$4" "$5";;
 esac
 """)

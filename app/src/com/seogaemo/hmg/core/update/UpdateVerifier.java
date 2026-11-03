@@ -107,7 +107,7 @@ public final class UpdateVerifier {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 String name = entry.getName();
-                if (++entries > 2048 || name.length() > 160 || !names.add(name) || !name.matches("(?:VERSION|update_roots\\.pem|modules\\.list|modules\\.graph|app/Seogaemo\\.apk|(?:bin|lib|modules|core|svc)/[A-Za-z0-9_./-]+)") || name.contains("..") || name.startsWith("/")) throw new IOException("unsafe ZIP entry");
+                if (++entries > 2048 || name.length() > 160 || !names.add(name) || !name.matches("(?:VERSION|update_roots\\.pem|modules\\.list|modules\\.graph|app/hmg-seogaemo\\.apk|(?:bin|lib|modules|core|svc)/[A-Za-z0-9_./-]+)") || name.contains("..") || name.startsWith("/")) throw new IOException("unsafe ZIP entry");
                 File out = new File(dest, name);
                 if (entry.isDirectory()) { if (!out.isDirectory() && !out.mkdirs()) throw new IOException("mkdir failed"); continue; }
                 if (!out.getParentFile().isDirectory() && !out.getParentFile().mkdirs()) throw new IOException("mkdir failed");
@@ -129,7 +129,7 @@ public final class UpdateVerifier {
                 } finally { stream.close(); }
             }
         } finally { zip.close(); }
-        if (!new File(dest, "VERSION").isFile() || !version.equals(new String(readBounded(new File(dest, "VERSION"), 64), UTF8).trim()) || !new File(dest, "app/Seogaemo.apk").isFile() || !new File(dest, "modules.graph").isFile()) throw new IOException("incomplete OTA payload");
+        if (!new File(dest, "VERSION").isFile() || !version.equals(new String(readBounded(new File(dest, "VERSION"), 64), UTF8).trim()) || !new File(dest, "app/hmg-seogaemo.apk").isFile() || !new File(dest, "modules.graph").isFile()) throw new IOException("incomplete OTA payload");
         FileOutputStream list = new FileOutputStream(new File(dest, "files.md5"));
         try {
             for (java.util.Map.Entry<String, String> item : md5s.entrySet()) list.write((item.getValue() + "|" + item.getKey() + "\n").getBytes(UTF8));

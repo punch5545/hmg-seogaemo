@@ -46,8 +46,8 @@ if [ "$1" = export ]; then
     done
     getprop ro.build.product > "$dest/ro.build.product"
     grep '^package-version=' "$base/NEMESIS.data" > "$dest/package-version"
-    SEOGAEMO_BASE=$base SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
-    export SEOGAEMO_BASE SEOGAEMO_STATE SG_DATA_ROOT
+    HMG_SEOGAEMO_BASE=$base HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
+    export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE SG_DATA_ROOT
     . "$base/lib/common.sh"
     hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
     chmod -R 755 "$dest" || exit 1
@@ -78,10 +78,10 @@ base=${base%/bin}
 grep -Fxq "$1" "$base/modules.list" || exit 2
 script=$base/modules/$1.sh
 [ -f "$script" ] || exit 2
-SEOGAEMO_BASE=$base
-SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$1
-SEOGAEMO_MODULE_DIR=$base/modules/$1.d
-export SEOGAEMO_BASE SEOGAEMO_STATE SEOGAEMO_MODULE_DIR SG_DATA_ROOT
+HMG_SEOGAEMO_BASE=$base
+HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$1
+HMG_SEOGAEMO_MODULE_DIR=$base/modules/$1.d
+export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE HMG_SEOGAEMO_MODULE_DIR SG_DATA_ROOT
 if [ "$2" = status ] || [ "$2" = precheck ]; then
     exec sh "$script" "$2"
 fi
