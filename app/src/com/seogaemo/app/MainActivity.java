@@ -78,6 +78,8 @@ public final class MainActivity extends Activity {
                     checkUpdate();
                 }
             } catch (Exception ignored) { }
+        } else if (getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
+            new Thread(new Runnable() { public void run() { if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending)); } }, "seogaemo-update-restore").start();
         }
     }
 
@@ -372,7 +374,7 @@ public final class MainActivity extends Activity {
 
     private void showUpdate(LinearLayout content) {
         addRow(content, R.string.update_current, R.string.update_current_hint, installedVersion(), -1);
-        updateStatus = text(getString(R.string.update_idle), 18, MUTED, sans);
+        updateStatus = text(getString(getSharedPreferences("update", MODE_PRIVATE).contains("restore") ? R.string.update_restore_pending : R.string.update_idle), 18, MUTED, sans);
         updateStatus.setPadding(dp(30), 0, dp(28), 0);
         content.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(48)));
         TextView check = action(getString(R.string.update_check), true);
@@ -416,8 +418,13 @@ public final class MainActivity extends Activity {
                     });
                     getSharedPreferences("update", MODE_PRIVATE).edit().putBoolean("resume", false).apply();
                     runOnUiThread(new Runnable() { public void run() { confirmInstall(version); } });
-                } catch (UpdateClient.NoUpdateException e) { updateMessage(getString(R.string.update_no_update)); restoreModules(); }
-                  catch (Exception e) { updateMessage(e.getMessage()); restoreModules(); }
+                } catch (UpdateClient.NoUpdateException e) {
+                    boolean restored = restoreModules();
+                    updateMessage(getString(R.string.update_no_update) + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
+                } catch (Exception e) {
+                    boolean restored = restoreModules();
+                    updateMessage(e.getMessage() + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
+                }
             }}, "seogaemo-update-check").start();
         } catch (Exception e) { updateMessage(e.getMessage()); }
     }
@@ -427,7 +434,7 @@ public final class MainActivity extends Activity {
             .setPositiveButton(R.string.update_install, new DialogInterface.OnClickListener() {
                 public void onClick(DialogInterface dialog, int which) { rootUpdate(true); }
             }).setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
-                public void onClick(DialogInterface dialog, int which) { new Thread(new Runnable() { public void run() { restoreModules(); } }).start(); }
+                public void onClick(DialogInterface dialog, int which) { new Thread(new Runnable() { public void run() { if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending)); } }).start(); }
             }).show();
     }
 
@@ -444,9 +451,11 @@ public final class MainActivity extends Activity {
                 if (install) { updateMessage(getString(R.string.update_staging)); UpdateClient.root("stage"); }
                 updateMessage(getString(install ? R.string.update_applying : R.string.update_rolling_back));
                 UpdateClient.root(install ? "apply" : "rollback");
-                restoreModules();
-                updateMessage(getString(R.string.update_complete));
-            } catch (Exception e) { updateMessage(e.getMessage()); restoreModules(); }
+                updateMessage(getString(restoreModules() ? R.string.update_complete : R.string.update_restore_pending));
+            } catch (Exception e) {
+                boolean restored = restoreModules();
+                updateMessage(e.getMessage() + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
+            }
         }}, "seogaemo-update-root").start();
     }
 
@@ -459,9 +468,9 @@ public final class MainActivity extends Activity {
         return enabled.toString();
     }
 
-    private void restoreModules() {
+    private boolean restoreModules() {
         SharedPreferences pending = getSharedPreferences("update", MODE_PRIVATE);
-        if (!pending.contains("restore")) return;
+        if (!pending.contains("restore")) return true;
         String desired = pending.getString("restore", "");
         ModuleManager manager = new ModuleManager();
         boolean success = true;
@@ -477,8 +486,13 @@ public final class MainActivity extends Activity {
             boolean active = "on".equals(observed) || "pending-restart".equals(observed);
             if (wanted && !active && manager.execute(manager.plan(module.id(), true)).exitCode != 0) success = false;
         }
+        for (Module module : ModuleRegistry.all()) {
+            boolean wanted = ("," + desired).contains("," + module.id() + ",");
+            String observed = RootClient.run(module.id(), "status").state;
+            if (wanted ? !"on".equals(observed) : !("off".equals(observed) || "not-implemented".equals(observed))) success = false;
+        }
         if (success) pending.edit().clear().apply();
-        else updateMessage(getString(R.string.update_restore_failed));
+        return success;
     }
 
     private void addCategory(LinearLayout parent, final int index) {

@@ -101,7 +101,7 @@
     <string name="update_applying">업데이트 적용 중…</string>
     <string name="update_rolling_back">이전 버전 복원 중…</string>
     <string name="update_complete">업데이트 작업 완료</string>
-    <string name="update_restore_failed">이전 모듈 설정을 복원하지 못했습니다</string>
+    <string name="update_restore_pending">이전 모듈 설정 복원 또는 헤드 유닛 재시작이 필요합니다</string>
     <string name="update_checking">릴리스 확인 중…</string>
     <string name="update_fetching_signature">서명 다운로드 중…</string>
     <string name="update_downloading">OTA 다운로드 중…</string>

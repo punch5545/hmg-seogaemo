@@ -101,7 +101,7 @@
     <string name="update_applying">Applying update…</string>
     <string name="update_rolling_back">Rolling back…</string>
     <string name="update_complete">Update operation complete</string>
-    <string name="update_restore_failed">Could not restore previous module settings</string>
+    <string name="update_restore_pending">Previous module settings need restoration or a head-unit restart</string>
     <string name="update_checking">Checking release…</string>
     <string name="update_fetching_signature">Downloading signature…</string>
     <string name="update_downloading">Downloading OTA…</string>
