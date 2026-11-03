@@ -2,6 +2,7 @@ package com.seogaemo.hmg;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -22,6 +23,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 import com.seogaemo.hmg.module.InfoRow;
 import com.seogaemo.hmg.module.HomeTile;
 import com.seogaemo.hmg.module.HomeTileCatalog;
@@ -779,6 +781,12 @@ public final class MainActivity extends Activity {
     }
 
     private void showStock(LinearLayout content) {
+        TextView nemesis = action(getString(R.string.open_nemesis), true);
+        nemesis.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) { openNemesis(); }
+        });
+        content.addView(nemesis, SettingsUi.contentAction(this));
+
         TextView restart = action(getString(R.string.device_reboot), false);
         restart.setTextColor(ERROR);
         restart.setOnClickListener(new View.OnClickListener() {
@@ -812,6 +820,22 @@ public final class MainActivity extends Activity {
                     target.setText(stockResultText(result));
             }});
         }}, "hmg-seogaemo-stock-status").start();
+    }
+
+    private void openNemesis() {
+        Intent launch = getPackageManager().getLaunchIntentForPackage("com.nemesis.manager");
+        if (launch != null) {
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                startActivity(launch);
+                return;
+            } catch (ActivityNotFoundException ignored) {
+                // Fall through to the same neutral message as an unresolved package.
+            } catch (SecurityException ignored) {
+                // Fall through to the same neutral message as an unresolved package.
+            }
+        }
+        Toast.makeText(this, R.string.nemesis_unavailable, Toast.LENGTH_SHORT).show();
     }
 
     private void confirmReboot() {

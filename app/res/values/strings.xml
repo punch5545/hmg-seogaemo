@@ -157,4 +157,6 @@
     <string name="device_reboot">Restart head unit</string>
     <string name="device_reboot_confirm">Restart the head unit now? Current connections will be interrupted.</string>
     <string name="device_reboot_failed">Could not restart the head unit.</string>
+    <string name="open_nemesis">Open NEMESIS</string>
+    <string name="nemesis_unavailable">NEMESIS is unavailable.</string>
 </resources>
