@@ -53,6 +53,13 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
   decided yet**; distribution must be AGPL-3.0-compatible. Everything else is our own code: do not
   copy upstream code elsewhere without an owner decision.
 - Commit messages: plain, no AI attribution / `Co-Authored-By` trailers.
+- **Confirm before anything non-trivial (car touch screens are easy to mis-tap).** Every action that
+  changes files/properties/state on the unit or the app's persistent settings, or that starts work
+  that does not finish instantly (module on/off, language change, export, update check/download/
+  install/rollback, head-unit restart, any root call that writes), must first show a confirmation
+  via the shared `ui.ConfirmDialog` helper (large, NEMESIS-scale buttons; Cancel is the default /
+  left button; destructive actions styled with the error color). Pure navigation and read-only
+  views need no confirm. Never call such an action directly from a tap handler.
 - **Never translate or transliterate proper nouns** in UI strings or docs, in any locale: keep
   `HMG-Seogaemo`, `NEMESIS`, `CarPlay`, `Android Auto`, `Wi-Fi`, `ADB`, `USB`, `GitHub`, `HMG-API`,
   `Hyundai`/`Kia`/`Genesis`, `Gen5W`, model/firmware ids as written (e.g. KO: "무선 CarPlay",
