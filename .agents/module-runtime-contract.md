@@ -147,3 +147,17 @@ Strings: modules add only `<snake_id>_*` resources in their own `res/values{,-ko
 - The runtime builds the tile list: the built-in **Settings tile is always first on page 1**; module
   tiles follow, sorted by `order` then module id; overflow continues on the next page with page dots
   and swipe/arrow navigation. Tiles per page is a layout constant (not per module).
+
+## Shell tools available on the head unit (hard rule)
+
+Stock userland is **toolbox + mksh only** (`tmp/hmg_nemesis/01-DSP-OTA-troubleShooter.md:121`,
+`05-Run-Scripts.md:101`). Root-side scripts may use: mksh builtins (`case`, `read`, `${var#…}`,
+`${var%…}`, `printf`, `echo`, `test`, arithmetic), toolbox commands (`cat`, `cmp`, `cp`, `dd`,
+`grep`, `ls`, `mkdir`, `mv`, `rm`, `rmdir`, `ln`, `chmod`, `chown`, `touch`, `sleep`, `ps`,
+`kill`, `md5`, `mount`, `umount`, `sync`, `date`, `id`, `ifconfig`, `netcfg`, `route`,
+`getprop`, `setprop`, `start`, `stop`, `log`, `dmesg`), and system binaries `pm`, `am`,
+`settings`, `logcat`, `dumpsys`, `wpa_cli`, `/system/xbin/nemesis`.
+**Not available:** `awk`, `sed`, `tail`, `head`, `cut`, `tr`, `wc`, `sort`, `uniq`, `xargs`,
+`find`, `stat`, `readlink -f`, `sha256sum`/`sha1sum`, `tar`, `unzip`, `busybox`, `toybox`.
+Parse with `while read`, `case` and parameter expansion. Hashing on the unit: `md5` only.
+`make test` lints root scripts (package and modules) for the unavailable tools.
