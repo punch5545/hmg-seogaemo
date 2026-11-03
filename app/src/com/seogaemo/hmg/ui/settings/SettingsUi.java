@@ -34,6 +34,14 @@ public final class SettingsUi {
         row.setGravity(Gravity.CENTER_VERTICAL);
     }
 
+    /** Title + subtitle stacked with the shared gap; use for every two-line label. */
+    public static void titleBlock(Context context, LinearLayout copy, TextView title, TextView subtitle) {
+        copy.addView(title);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.topMargin = dp(context, XS);
+        copy.addView(subtitle, params);
+    }
+
     public static void pill(Context context, TextView view, Drawable background) {
         view.setGravity(Gravity.CENTER);
         view.setSingleLine(true);
