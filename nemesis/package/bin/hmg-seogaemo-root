@@ -17,6 +17,7 @@ if [ "$1" = stock ] || [ "$1" = package ]; then
     exec /system/bin/sh "$base/core/stock.sh" "$stock_verb"
 fi
 if [ "$1" = export ]; then
+    export_mode=$2
     case "$2" in usb|adb) ;; *) exit 2;; esac
     [ -f "$SG_DATA_ROOT/ledger/ledger.tsv" ] || {
         echo 'state=failed'; echo 'restart=none'; echo 'detail=No change ledger'; exit 1;
@@ -60,6 +61,10 @@ if [ "$1" = export ]; then
     . "$base/lib/common.sh"
     hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
     chmod -R 755 "$dest" || exit 1
+    # umask 077 also protects mkdir -p parents; adb must traverse this root.
+    if [ "$export_mode" = adb ]; then
+        chmod 755 "$export_base" || exit 1
+    fi
     sg_print "state=on" "restart=none" "detail=$dest"
     exit 0
 fi

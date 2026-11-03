@@ -347,11 +347,16 @@ sg_revert_all
     export_root = base / "hmg-seogaemo-export"
     (base / "lib").mkdir(exist_ok=True)
     copy_shell_script(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
+    export_root.mkdir(mode=0o700)
     env["SG_EXPORT_ROOT"] = str(export_root)
     result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
     assert "state=on" in result.stdout
     exported = next(export_root.glob("*/ledger/ledger.tsv"))
     assert exported.read_bytes() == ledger.read_bytes()
+    assert export_root.stat().st_mode & 0o777 == 0o755
+    # Every exported ancestor is traversable and every file readable by shell.
+    for entry in export_root.rglob("*"):
+        assert entry.stat().st_mode & (0o005 if entry.is_dir() else 0o004) == (0o005 if entry.is_dir() else 0o004)
     assert (exported.parents[1] / "ro.build.product").read_text().strip() == "NEEV.KOR.260902"
     usb = base / "usb0"
     usb.mkdir()
