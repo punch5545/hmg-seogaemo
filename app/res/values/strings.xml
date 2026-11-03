@@ -108,4 +108,6 @@
     <string name="update_downloading">Downloading OTA…</string>
     <string name="update_verifying">Verifying signature and hash…</string>
     <string name="update_no_update">No newer release is available</string>
+    <string name="plan_step_enable">Turn on: %1$s</string>
+    <string name="plan_step_disable">Turn off: %1$s</string>
 </resources>

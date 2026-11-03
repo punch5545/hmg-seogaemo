@@ -555,8 +555,8 @@ public final class MainActivity extends Activity {
         StringBuilder message = new StringBuilder();
         if (forUpdate) message.append(getString(R.string.update_wifi_required)).append("\n\n");
         for (ModulePlan.Step step : plan.steps) {
-            message.append(step.enable ? "• + " : "• − ")
-                    .append(getString(ModuleRegistry.find(step.id).nameResId())).append('\n');
+            message.append("• ").append(getString(step.enable ? R.string.plan_step_enable : R.string.plan_step_disable,
+                    getString(ModuleRegistry.find(step.id).nameResId()))).append('\n');
         }
         if (plan.steps.isEmpty()) message.append(getString(R.string.module_no_changes));
         if (precheck != null) {

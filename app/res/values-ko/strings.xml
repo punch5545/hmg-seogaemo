@@ -108,4 +108,6 @@
     <string name="update_downloading">OTA 다운로드 중…</string>
     <string name="update_verifying">서명 및 해시 검증 중…</string>
     <string name="update_no_update">새 릴리스가 없습니다</string>
+    <string name="plan_step_enable">켜기: %1$s</string>
+    <string name="plan_step_disable">끄기: %1$s</string>
 </resources>
