@@ -283,11 +283,12 @@ public final class MainActivity extends Activity {
         side.setBackgroundColor(SURFACE);
         sideScroll.addView(side);
         body.addView(sideScroll, new LinearLayout.LayoutParams(0, -1, 1));
-        TextView sideTitle = text(getString(R.string.categories), 17, MUTED, mono);
-        sideTitle.setPadding(dp(22), 0, 0, 0);
-        side.addView(sideTitle, new LinearLayout.LayoutParams(-1, dp(52)));
+        addSidebarSection(side, R.string.app, 0);
         for (int i = 0; i < CATEGORIES.length; i++) addCategory(side, i);
-        divider(side, false);
+        View sectionDivider = new View(this);
+        sectionDivider.setBackgroundColor(0xFF555555);
+        side.addView(sectionDivider, new LinearLayout.LayoutParams(-1, dp(1)));
+        addSidebarSection(side, R.string.module_settings, 24);
         for (int i = 0; i < ModuleRegistry.all().length; i++)
             addModuleCategory(side, i, ModuleRegistry.all()[i]);
         sideScroll.post(new Runnable() {
@@ -701,6 +702,15 @@ public final class MainActivity extends Activity {
         }
         if (success) pending.edit().clear().apply();
         return success;
+    }
+
+    private void addSidebarSection(LinearLayout parent, int titleRes, int topSpacingDp) {
+        TextView header = text(getString(titleRes), 17, MUTED, mono);
+        header.setPadding(dp(22), dp(8), 0, 0);
+        header.setFocusable(false);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(44));
+        params.topMargin = dp(topSpacingDp);
+        parent.addView(header, params);
     }
 
     private void addCategory(LinearLayout parent, final int index) {

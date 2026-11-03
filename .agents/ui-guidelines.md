@@ -37,6 +37,8 @@ Paths below are relative to repository root. Dimensions are dp unless marked sp.
 
 Home demo cards have visual press states and no vehicle command; only Settings navigates. Settings category taps change the visible pane; module toggles execute through `ModuleManager` and the root dispatcher. Logs exports the change ledger to USB. General → Language persists: it stores `system`, `en`, or `ko` in SharedPreferences, updates `Configuration.locale` before rebuilding views, and recreates the Activity. Default strings are in `app/res/values/strings.xml`; Korean strings are in `app/res/values-ko/strings.xml`. The header and launcher draw the source logo proportions from `tmp/brand/logo-source.png`: two `#101016` squares on a white square, with no VectorDrawable.
 
+Settings sidebar sections use short, non-focusable monospace labels (App / 앱 and Module settings / 모듈 설정). A stronger full-width hairline and 24dp top gap distinguish module pages from core categories; clickable rows remain 70dp and retain the blue selected marker. The sidebar remains scrollable.
+
 ## API 19 compatibility
 
 Build with the installed `platforms/android-19/android.jar`: `aapt` links resources against it, `javac` uses `-source 1.7 -target 1.7 -bootclasspath`, and `d8` uses `--min-api 19 --lib` (`tmp/hmg_nemesis/Sources/manager/Makefile:24-36`). Keep Java compilation and dex generation in one recipe to avoid a stale dex (`Makefile`). The final APK is SHA1withRSA/SHA1 **v1 JAR signed**, then zipaligned, using the same JDK algorithm override (`app/allow-sha1.security:1-2`). Check with `apksigner verify --verbose --min-sdk-version 19 out/seogaemo.apk`.

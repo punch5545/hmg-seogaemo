@@ -7,7 +7,6 @@
     <string name="back">Home</string>
     <string name="close">Close</string>
     <string name="settings">Settings</string>
-    <string name="categories">CATEGORIES</string>
     <string name="cat_general">General</string>
     <string name="cat_general_sub">Language</string>
     <string name="cat_modules">Modules</string>
