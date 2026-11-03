@@ -83,6 +83,8 @@
     <string name="module_status_conflict">변경 내용이 저장된 원본과 충돌합니다</string>
     <string name="module_status_incompatible">이 헤드 유닛과 호환되지 않습니다</string>
     <string name="module_status_unsupported">상태 확인을 지원하지 않습니다</string>
+    <string name="module_pending_enable">모듈 켜기를 완료하려면 헤드 유닛을 재시작하세요</string>
+    <string name="module_pending_disable">모듈 끄기를 완료하려면 헤드 유닛을 재시작하세요</string>
     <string name="module_restart">이 변경을 적용하려면 헤드 유닛을 재시작해야 합니다</string>
     <string name="module_restore_reboot">끄고 나서 헤드 유닛을 재시작하면 기본 시작 안내 화면이 복원됩니다</string>
     <string name="module_confirm">모듈 변경을 적용할까요?</string>

@@ -133,7 +133,10 @@ status() {
     if [ -n "$(getprop "$prop" 2>/dev/null)" ]; then
         result conflict none 'persist.wifi.state is set outside this module'
     fi
-    if pm_wifi; then result pending-restart head_unit 'Wi-Fi feature awaits removal at restart'; fi
+    if pm_wifi; then
+        sg_print info.desired=off
+        result pending-restart head_unit 'Wi-Fi feature awaits removal at restart'
+    fi
     result off none ''
 }
 
@@ -162,7 +165,10 @@ revert() {
     if ! sg_revert_all; then
         result conflict none 'Wi-Fi client changes drifted; baselines retained'
     fi
-    if pm_wifi; then result pending-restart head_unit 'Wi-Fi feature awaits removal at restart'; fi
+    if pm_wifi; then
+        sg_print info.desired=off
+        result pending-restart head_unit 'Wi-Fi feature awaits removal at restart'
+    fi
     result off none ''
 }
 

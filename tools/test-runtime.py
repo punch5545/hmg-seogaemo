@@ -236,7 +236,7 @@ esac
 echo detail=
 ''')
     (base / "modules/a.properties").write_text("watch=boot,screen_on\n")
-    (base / "modules/c.properties").write_text("restore=reboot\n")
+    (base / "modules/c.properties").write_text("restore=exact\n")
     # All module entry points and the dispatcher are non-executable after extraction.
     for path in base.rglob("*"):
         if path.is_file():

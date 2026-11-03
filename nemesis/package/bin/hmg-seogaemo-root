@@ -176,8 +176,7 @@ if [ "$code" -eq 0 ]; then
         apply) grep -q '^state=on$' "$result" ||
             grep -q '^state=pending-restart$' "$result" || code=1 ;;
         revert) grep -q '^state=off$' "$result" || {
-            grep -Fxq 'restore=reboot' "$base/modules/$1.properties" &&
-                grep -q '^state=pending-restart$' "$result" &&
+            grep -q '^state=pending-restart$' "$result" &&
                 grep -q '^restart=head_unit$' "$result" &&
                 grep -q '^info.desired=off$' "$result" || code=1
         } ;;

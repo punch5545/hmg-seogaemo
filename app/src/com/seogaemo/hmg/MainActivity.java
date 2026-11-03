@@ -554,8 +554,8 @@ public final class MainActivity extends Activity {
         parent.addView(text(stateText, 18, MUTED, sans),
                 new LinearLayout.LayoutParams(-1, dp(40)));
         if ("pending-restart".equals(result.state)) {
-            TextView banner = text(getString(module.rebootRestore() && !enabled
-                    ? R.string.module_restore_reboot : R.string.module_restart), 20, WHITE, medium);
+            TextView banner = text(getString(!enabled
+                    ? R.string.module_pending_disable : R.string.module_pending_enable), 20, WHITE, medium);
             banner.setPadding(dp(SettingsUi.MD), 0, dp(SettingsUi.MD), 0);
             banner.setBackgroundDrawable(shape(0xFF263347, BLUE, 6));
             parent.addView(banner, new LinearLayout.LayoutParams(-1, dp(60)));
@@ -568,7 +568,7 @@ public final class MainActivity extends Activity {
         if ("on".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.on);
         if ("off".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.off);
         if ("pending-restart".equals(result.state)) return getString("off".equals(result.info.get("desired"))
-                ? R.string.module_restore_reboot : R.string.module_restart);
+                ? R.string.module_pending_disable : R.string.module_pending_enable);
         if ("conflict".equals(result.state)) return getString(R.string.module_status_conflict);
         if ("incompatible".equals(result.state)) return getString(R.string.module_status_incompatible);
         if ("not-implemented".equals(result.state)) return getString(R.string.module_status_unsupported);
