@@ -54,8 +54,9 @@ sg_bind_build() {
     fi
 }
 sg_check_build() {
-    [ -f "$HMG_SEOGAEMO_STATE/build" ] &&
-        [ "$(cat "$HMG_SEOGAEMO_STATE/build")" = "$(getprop ro.build.product)" ] ||
+    # No baseline is not a firmware mismatch; keep mutation guards closed.
+    [ -f "$HMG_SEOGAEMO_STATE/build" ] || return 1
+    [ "$(cat "$HMG_SEOGAEMO_STATE/build")" = "$(getprop ro.build.product)" ] ||
         { sg_log 'conflict: firmware build changed'; return 3; }
 }
 sg_log() {

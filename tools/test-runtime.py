@@ -87,6 +87,9 @@ def test_common(temp):
     script(runner, f'''
 set -eu
 . "{common}"
+# Fresh status probes must not create state or report a firmware conflict.
+if sg_applied absent; then exit 1; fi
+[ ! -e "$HMG_SEOGAEMO_STATE/module.log" ]
 sg_prop_baseline absent
 sg_prop_set absent changed
 sg_prop_restore absent
