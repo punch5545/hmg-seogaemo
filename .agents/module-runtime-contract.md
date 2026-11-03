@@ -138,3 +138,12 @@ Strings: modules add only `<snake_id>_*` resources in their own `res/values{,-ko
   from an older firmware; report conflict, keep backups, and let the uninstall fail closed.
 - Baselines are bound to `ro.build.product`; a different firmware build invalidates them (conflict).
 - Uninstall aborts (non-zero preuninstall) rather than leaving a half-restored system.
+
+## Home screen tiles
+
+- Home is a horizontally paged row of tall vertical cards (ccNC style), NEMESIS-scale touch targets.
+- `Module.homeTiles()` → `HomeTile[]` (`id`, `labelResId`, `iconResId` or glyph, `ModuleAction action`,
+  `int order`). Tiles appear only while their module is enabled (or always, if `alwaysVisible`).
+- The runtime builds the tile list: the built-in **Settings tile is always first on page 1**; module
+  tiles follow, sorted by `order` then module id; overflow continues on the next page with page dots
+  and swipe/arrow navigation. Tiles per page is a layout constant (not per module).
