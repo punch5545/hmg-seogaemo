@@ -2,7 +2,7 @@ SDK ?= $(if $(ANDROID_HOME),$(ANDROID_HOME),$(HOME)/Library/Android/sdk)
 BT := $(SDK)/build-tools/34.0.0
 ANDROID_JAR := $(SDK)/platforms/android-19/android.jar
 OUT := out/hmg-seogaemo.apk
-SOURCES := $(shell find app/src modules -name '*.java' | sort)
+SOURCES := $(shell find app/src modules -name '*.java' -not -path '*/test/*' | sort)
 INPUTS := $(shell find app/res modules -type f | sort)
 
 .PHONY: all clean generate module-build map-build test package verify-dist
@@ -27,7 +27,7 @@ $(OUT): VERSION app/AndroidManifest.xml app/allow-sha1.security $(SOURCES) $(INP
 	mkdir -p out/gen out/classes out/dex
 	python3 tools/version.py --manifest out/AndroidManifest.xml
 	$(BT)/aapt package -f -M out/AndroidManifest.xml -S app/res $(foreach res,$(sort $(wildcard modules/*/res)),-S $(res)) --auto-add-overlay -I $(ANDROID_JAR) -F out/resources.ap_ -J out/gen --custom-package com.seogaemo.hmg
-	javac -source 1.7 -target 1.7 -bootclasspath $(ANDROID_JAR) -cp $(ANDROID_JAR) -d out/classes $$(find app/src modules out/gen -name '*.java' | sort)
+	javac -source 1.7 -target 1.7 -bootclasspath $(ANDROID_JAR) -cp $(ANDROID_JAR) -d out/classes $$(find app/src modules out/gen -name '*.java' -not -path '*/test/*' | sort)
 	$(BT)/d8 --min-api 19 --lib $(ANDROID_JAR) --release --output out/dex $$(find out/classes -name '*.class' | sort -u)
 	cp out/resources.ap_ out/unsigned.apk
 	cd out/dex && zip -q -u ../unsigned.apk classes.dex
