@@ -1,0 +1,221 @@
+#!/bin/sh
+set -eu
+
+module_dir=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+tmp=$(mktemp -d "$module_dir/test/.tmp.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+mkdir -p "$tmp/base/lib" "$tmp/bin" "$tmp/props" "$tmp/state" "$tmp/baseline" "$tmp/applied" "$tmp/interfaces"
+
+cat > "$tmp/base/lib/common.sh" <<'EOF'
+sg_log() { :; }
+sg_prop_baseline() {
+    key=$1
+    if [ -f "$FAKE_ROOT/baseline/build-product" ]; then
+        [ "$(cat "$FAKE_ROOT/baseline/build-product")" = "$(getprop ro.build.product)" ] || return 3
+    else
+        getprop ro.build.product > "$FAKE_ROOT/baseline/build-product"
+    fi
+    [ -f "$FAKE_ROOT/baseline/$key.saved" ] && return 0
+    if [ -f "$FAKE_ROOT/props/$key" ]; then
+        cp "$FAKE_ROOT/props/$key" "$FAKE_ROOT/baseline/$key.value"
+        printf 'present' > "$FAKE_ROOT/baseline/$key.saved"
+    else
+        printf 'absent' > "$FAKE_ROOT/baseline/$key.saved"
+    fi
+}
+sg_prop_set() {
+    sg_prop_baseline "$1" || return $?
+    setprop "$1" "$2"
+    [ "$(getprop "$1")" = "$2" ] || return 1
+    printf '%s' "$2" > "$FAKE_ROOT/applied/$1"
+}
+sg_applied() {
+    [ -f "$FAKE_ROOT/applied/$1" ] &&
+        [ "$(getprop "$1")" = "$(cat "$FAKE_ROOT/applied/$1")" ]
+}
+sg_revert_all() {
+    [ -f "$FAKE_ROOT/baseline/build-product" ] || return 0
+    [ "$(cat "$FAKE_ROOT/baseline/build-product")" = "$(getprop ro.build.product)" ] || return 3
+    for key in persist.adb.tcp.port persist.service.adb.tcp.enable; do
+        [ -f "$FAKE_ROOT/baseline/$key.saved" ] || continue
+        live=$(getprop "$key")
+        applied=$(cat "$FAKE_ROOT/applied/$key" 2>/dev/null) || applied=
+        case "$(cat "$FAKE_ROOT/baseline/$key.saved")" in
+            present) original=$(cat "$FAKE_ROOT/baseline/$key.value") ;;
+            absent) original= ;;
+        esac
+        [ "$live" = "$applied" ] || [ "$live" = "$original" ] || return 3
+    done
+    for key in persist.adb.tcp.port persist.service.adb.tcp.enable; do
+        [ -f "$FAKE_ROOT/baseline/$key.saved" ] || continue
+        case "$(cat "$FAKE_ROOT/baseline/$key.saved")" in
+            present) cp "$FAKE_ROOT/baseline/$key.value" "$FAKE_ROOT/props/$key" ;;
+            absent) rm -f "$FAKE_ROOT/props/$key" ;;
+        esac
+    done
+    rm -f "$FAKE_ROOT/baseline/build-product" \
+        "$FAKE_ROOT/baseline/persist.adb.tcp.port.saved" \
+        "$FAKE_ROOT/baseline/persist.adb.tcp.port.value" \
+        "$FAKE_ROOT/baseline/persist.service.adb.tcp.enable.saved" \
+        "$FAKE_ROOT/baseline/persist.service.adb.tcp.enable.value" \
+        "$FAKE_ROOT/applied/persist.adb.tcp.port" \
+        "$FAKE_ROOT/applied/persist.service.adb.tcp.enable"
+}
+sg_service_restart() {
+    [ "$1" = adbd ] || return 1
+    setprop ctl.restart "$1"
+}
+sg_owner_present() { [ -f "$FAKE_ROOT/owner-$1" ]; }
+sg_status() {
+    case "$1" in
+        conflict) code=3 ;; incompatible) code=4 ;; failed) code=1 ;; *) code=0 ;;
+    esac
+    printf 'state=%s\nrestart=%s\ndetail=%s\n' "$1" "$2" "${3:-}"
+    return "$code"
+}
+EOF
+cat > "$tmp/bin/getprop" <<'EOF'
+#!/bin/sh
+[ -f "$FAKE_ROOT/props/$1" ] && cat "$FAKE_ROOT/props/$1"
+exit 0
+EOF
+cat > "$tmp/bin/setprop" <<'EOF'
+#!/bin/sh
+printf '%s %s\n' "$1" "$2" >> "$FAKE_ROOT/calls"
+if [ "$1" = ctl.restart ] && [ -f "$FAKE_ROOT/fail-restart" ]; then exit 1; fi
+if [ "$1" != ctl.restart ]; then printf '%s' "$2" > "$FAKE_ROOT/props/$1"; fi
+EOF
+cat > "$tmp/bin/ifconfig" <<'EOF'
+#!/bin/sh
+[ -f "$FAKE_ROOT/interfaces/$1" ] || exit 1
+cat "$FAKE_ROOT/interfaces/$1"
+EOF
+cat > "$tmp/bin/netcfg" <<'EOF'
+#!/bin/sh
+cat "$FAKE_ROOT/netcfg" 2>/dev/null || true
+EOF
+chmod +x "$tmp/bin/"*
+
+# The child module sees only KitKat-available commands. Forbidden names are
+# present as failing stubs so a swallowed command failure is still detected.
+mkdir -p "$tmp/restricted-bin"
+for name in getprop setprop ifconfig netcfg; do
+    ln -s "$tmp/bin/$name" "$tmp/restricted-bin/$name"
+done
+for name in cat cp rm; do
+    ln -s "$(command -v "$name")" "$tmp/restricted-bin/$name"
+done
+cat > "$tmp/bin/forbidden" <<'EOF'
+#!/bin/sh
+printf '%s\n' "${0##*/}" >> "$FAKE_ROOT/forbidden-calls"
+exit 99
+EOF
+chmod +x "$tmp/bin/forbidden"
+for name in awk sed tail head cut tr wc sort uniq xargs find stat readlink \
+    sha256sum sha1sum tar unzip busybox toybox; do
+    ln -s "$tmp/bin/forbidden" "$tmp/restricted-bin/$name"
+done
+export FAKE_ROOT="$tmp" SEOGAEMO_BASE="$tmp/base" SEOGAEMO_STATE="$tmp/state"
+script="$module_dir/root/wireless-adb.sh"
+
+run() { PATH="$tmp/restricted-bin" /bin/sh "$script" "$1" > "$tmp/output"; }
+has() { rg -q -F "$1" "$tmp/output" || { cat "$tmp/output"; exit 1; }; }
+restarts() { count=$(rg -c '^ctl.restart adbd$' "$tmp/calls" 2>/dev/null) || count=0; printf '%s' "$count"; }
+assert_count() { [ "$(restarts)" = "$1" ] || { cat "$tmp/calls"; exit 1; }; }
+reset() {
+    rm -f "$tmp/props/"* "$tmp/baseline/"* "$tmp/applied/"* "$tmp/state/"* "$tmp/interfaces/"* \
+        "$tmp/owner-"* "$tmp/fail-restart" "$tmp/calls" "$tmp/netcfg"
+    : > "$tmp/calls"
+    printf 19 > "$tmp/props/ro.build.version.sdk"
+    printf NEEV.KOR.0000.V039.001.260902 > "$tmp/props/ro.build.product"
+}
+
+reset
+printf 'wlan0 Link encap:Ethernet inet addr:192.168.0.1 Bcast:192.168.0.255\n' > "$tmp/interfaces/wlan0"
+run status
+has 'state=off'
+has 'info.hotspot_ip=192.168.0.1'
+has 'info.adb_endpoint=192.168.0.1:5555'
+! rg -q 'info.hotspot_ssid=' "$tmp/output"
+run precheck
+! rg -q '^warn\.' "$tmp/output"
+run apply
+has 'state=on'
+[ "$(cat "$tmp/props/persist.service.adb.tcp.enable")" = 0 ]
+[ "$(cat "$tmp/props/persist.adb.tcp.port")" = 5555 ]
+assert_count 1
+run apply
+assert_count 1
+run revert
+has 'state=off'
+[ ! -e "$tmp/props/persist.service.adb.tcp.enable" ]
+[ ! -e "$tmp/props/persist.adb.tcp.port" ]
+assert_count 2
+
+reset
+run apply
+printf NEEV.KOR.0000.V039.001.270101 > "$tmp/props/ro.build.product"
+if run revert; then exit 1; fi
+has 'state=conflict'
+[ "$(cat "$tmp/props/persist.adb.tcp.port")" = 5555 ]
+[ -f "$tmp/baseline/build-product" ]
+
+reset
+printf '' > "$tmp/props/persist.service.adb.tcp.enable"
+printf 5555 > "$tmp/props/persist.adb.tcp.port"
+run apply
+assert_count 0
+run revert
+[ -f "$tmp/props/persist.service.adb.tcp.enable" ]
+[ ! -s "$tmp/props/persist.service.adb.tcp.enable" ]
+[ "$(cat "$tmp/props/persist.adb.tcp.port")" = 5555 ]
+assert_count 0
+
+reset
+: > "$tmp/owner-nemesis-adb-tcp"
+if run apply; then exit 1; fi
+has 'state=conflict'
+[ ! -e "$tmp/props/persist.adb.tcp.port" ]
+
+reset
+run apply
+printf 6000 > "$tmp/props/persist.adb.tcp.port"
+if run revert; then exit 1; fi
+has 'state=conflict'
+[ -f "$tmp/baseline/persist.adb.tcp.port.saved" ]
+[ "$(cat "$tmp/props/persist.adb.tcp.port")" = 6000 ]
+
+reset
+printf 20 > "$tmp/props/ro.build.version.sdk"
+if run apply; then exit 1; fi
+has 'state=incompatible'
+[ ! -e "$tmp/props/persist.adb.tcp.port" ]
+
+reset
+printf 'eth0 inet addr:192.168.0.123 Mask:255.255.255.0\n' > "$tmp/interfaces/eth0"
+run apply
+has 'state=pending-restart'
+has 'restart=head_unit'
+run revert
+
+reset
+printf 7777 > "$tmp/props/service.adb.tcp.port"
+if run apply; then exit 1; fi
+has 'state=conflict'
+
+reset
+: > "$tmp/fail-restart"
+if run apply; then exit 1; fi
+has 'state=failed'
+[ ! -e "$tmp/props/persist.adb.tcp.port" ]
+rm -f "$tmp/fail-restart"
+run revert
+
+reset
+printf 'wlan0 UP 10.0.0.23/24 0x00001043 00:00:00:00:00:00\n' > "$tmp/netcfg"
+run status
+has 'info.client_ip=10.0.0.23'
+has 'info.client_adb_endpoint=10.0.0.23:5555'
+[ ! -e "$tmp/forbidden-calls" ] || { cat "$tmp/forbidden-calls"; exit 1; }
+
+printf 'wireless-adb tests passed\n'

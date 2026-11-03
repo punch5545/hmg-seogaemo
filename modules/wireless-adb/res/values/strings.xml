@@ -1,4 +1,13 @@
 <resources>
     <string name="wireless_adb_name">Wireless ADB</string>
     <string name="wireless_adb_description">ADB connection through the car hotspot</string>
+    <string name="wireless_adb_hotspot_ssid">Car hotspot SSID</string>
+    <string name="wireless_adb_hotspot_ip">Hotspot IP</string>
+    <string name="wireless_adb_adb_endpoint">ADB endpoint</string>
+    <string name="wireless_adb_client_ip">Client IP</string>
+    <string name="wireless_adb_client_adb_endpoint">Client ADB endpoint</string>
+    <string name="wireless_adb_connect_note">Join the car\'s hotspot from a computer and run adb connect &lt;endpoint&gt;.</string>
+    <string name="wireless_adb_security_note">Stock ADB does not require a key. Anyone who can reach port 5555 can connect.</string>
+    <string name="wireless_adb_restore_note">Disabling restores the original ADB switch. If it was on, the car hotspot may stop giving IP addresses.</string>
+    <string name="wireless_adb_connect_other_wifi">Connect to another Wi-Fi</string>
 </resources>
