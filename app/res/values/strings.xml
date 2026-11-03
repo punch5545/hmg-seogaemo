@@ -137,4 +137,19 @@
     <string name="mapping_export">Export map for PR</string>
     <string name="mapping_export_confirm">Copy the verified map to USB, or to the adb export directory when USB is unavailable?</string>
     <string name="mapping_pr_hint">To support this firmware in future builds, submit the exported maps folder through a GitHub Pull Request.</string>
+    <string name="stock_restore">Restore stock state</string>
+    <string name="stock_uninstall">Uninstall HMG-Seogaemo</string>
+    <string name="stock_hint">Restore every module while keeping HMG-Seogaemo installed, or remove it through NEMESIS.</string>
+    <string name="stock_restore_confirm">Turn off every module and restore its saved stock state. HMG-Seogaemo stays installed. Automatic module calls and any saved update resume will stop. A head-unit restart may be required. If a conflict or failure occurs, restoration stops and backups are kept. Cancel leaves everything unchanged.</string>
+    <string name="stock_uninstall_confirm">First turn off every module and restore its saved stock state. Only after successful restore, ask NEMESIS to remove HMG-Seogaemo and its app data. The app will close. A head-unit restart may be required. A restore conflict or failure keeps HMG-Seogaemo installed and retains backups. Cancel leaves everything unchanged.</string>
+    <string name="stock_working">Restoring modules…</string>
+    <string name="stock_complete">Stock restore complete. HMG-Seogaemo remains installed.</string>
+    <string name="stock_failed">Operation stopped. HMG-Seogaemo remains installed. Backups are kept and automatic module calls are paused. Export the change ledger for diagnosis.</string>
+    <string name="stock_queued">Restore succeeded. NEMESIS uninstall is queued; the app will close when removed. This is not yet a removal confirmation.</string>
+    <string name="stock_reverted">Restored</string>
+    <string name="stock_conflict">Conflict — backups kept</string>
+    <string name="stock_module_failed">Failed — backups kept</string>
+    <string name="stock_not_attempted">Not attempted</string>
+    <string name="stock_restart">Restart the head unit to complete stock restoration.</string>
+    <string name="stock_uninstall_failed">NEMESIS could not finish removal. HMG-Seogaemo remains installed; export the change ledger and retry after resolving the problem.</string>
 </resources>

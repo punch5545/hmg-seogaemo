@@ -22,6 +22,15 @@ public final class RootClient {
         return invoke("/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb");
     }
 
+    public static RootResult stock(String verb) {
+        if (!("restore".equals(verb) || "status".equals(verb))) return failure("invalid stock verb");
+        return invoke("/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root stock " + verb, 180000);
+    }
+
+    public static RootResult uninstallPackage() {
+        return invoke("/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root package uninstall", 180000);
+    }
+
     public static RootResult map(String verb) {
         if (!("status".equals(verb) || "run".equals(verb) ||
                 "verify".equals(verb) || "export".equals(verb))) return failure("invalid map verb");
