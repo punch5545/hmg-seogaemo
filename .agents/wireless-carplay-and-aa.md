@@ -1,3 +1,5 @@
+Status: current — implemented AGPL port; physical-car boot and projection remain unverified.
+
 # Wireless CarPlay and Android Auto: NEEV.KOR.260902 port
 
 Review date: 2026-11-03. Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902`, onebin `neev_kr` (`ro.mobis.onebindir`), Android 4.4.2. Owner confirms HMG-API 1.0.0-beta.5 with its mapping and wireless mod worked on this car (hotspot and wireless CarPlay). The pre-install Car Report at `tmp/car-reports/car-report-neev-kor-260902-20261102-2115.json` has 324 mapped points, 12 by reference, one unrelated ThemeSettings point missing. Its `map.status=none` and `wifi_chip=false` are pre-install observations, not a negation of the owner's working test.

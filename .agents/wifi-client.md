@@ -1,3 +1,5 @@
+Status: current — implemented off-car; physical-car behavior remains unverified.
+
 # Wi-Fi client module implementation
 
 Implemented against `.agents/module-runtime-contract.md`, including the
@@ -42,13 +44,9 @@ Settings menu visibility from the feature list.
 off/apply/reapply/on/revert, exact config restore and XML absence, IP,
 warning, firmware/chip/owner gates, and drift conflict. It runs module
 commands with a restricted PATH that supplies only the documented head-unit
-tools and failing stubs for unavailable tools. The current top-level
-`make test` does not discover module tests; the runtime owner should add
-`sh modules/wifi-client/test/run.sh` to that target (or general discovery).
-The current `tools/test-package.py:63-76` also assumes every module is still
-`not-implemented`; it fails when this module correctly returns an observed
-state. The runtime owner needs to replace that stub assertion with module
-tests or a generic status-block check.
+tools and failing stubs for unavailable tools. `make test` discovers and runs `modules/*/test/run.sh`, including this test.
+`tools/test-package.py` checks package metadata and layout without the former
+shared `not-implemented` assertion.
 
 On the car: capture both original files (including mode/owner),
 `pm list features`, `getprop ro.build.product`, and SDIO/WLAN evidence.

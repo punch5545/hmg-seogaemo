@@ -1,3 +1,5 @@
+Status: historical research (decisions superseded; see wifi-client.md and module-architecture.md).
+
 The core-feature design below is superseded by the `wifi-client` module in `.agents/module-architecture.md`; verified upstream history remains useful.
 
 # Wi-Fi enablement on NEEV.KOR.260902

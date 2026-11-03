@@ -1,3 +1,5 @@
+Status: partly superseded — upstream size research remains useful; the project decision below reflects the current standalone UI.
+
 # Display size support in upstream (NEMESIS / HMG-API / HMG-Leafia-Plus)
 
 Analysis of the upstream clones in `tmp/` (2026-11-03). Paths are relative to `tmp/`.
@@ -74,10 +76,10 @@ hooks/patches against firmware, not layout against the panel.
 ## Project decision
 
 **This project targets the wide screen (1920x720, density 1.5), the same as upstream.**
-Multi-size support is out of scope. Build UI against upstream's existing conventions:
+Multi-size support is out of scope. Build the standalone UI for this panel:
 
-- HMG-API app sizes: go through `Ui.dp()` (fixed `K = 0.66f`), as upstream does.
-- NEMESIS-style tiles: stock Setup hdpi geometry (204x166dp).
-- Android Auto: stock 240 DPI on this screen; `aa_density` only if a mod needs it.
+- Use framework dp conversion without HMG-API's fixed `K = 0.66f` factor.
+- Use NEMESIS-scale touch targets. Current Home has six portrait cards per page; Settings is the first card.
+- Android Auto density remains stock; this project has no `aa_density` module.
 
 The gaps in section 5 only matter if another panel size is added later.

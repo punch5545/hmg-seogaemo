@@ -1,3 +1,5 @@
+Status: current — off-car runtime and host-test findings; physical-car behavior remains unverified.
+
 # Shared runtime implementation findings
 
 - Android 4.4 toolbox `ls -ln` omits the link-count field printed by desktop `ls`.

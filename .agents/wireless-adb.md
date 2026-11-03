@@ -1,3 +1,5 @@
+Status: current — implemented off-car; physical-car behavior remains unverified.
+
 # Wireless ADB module findings
 
 The module owns only `persist.service.adb.tcp.enable` and
@@ -28,12 +30,9 @@ Run the off-car tests with `sh modules/wireless-adb/test/run.sh`. The fake
 helpers, properties and interface tools live under a disposable directory in
 `modules/wireless-adb/test/`. The module runs with a restricted PATH containing
 only head-unit-available commands, plus failing stubs for unavailable tools;
-the test fails if any stub is invoked. The shared `Makefile` currently calls
-`tools/test-package.py`, which assumes every module's `status` and `precheck`
-still return `not-implemented`. The runtime owner should replace that
-assertion with contract validation and add
-`sh modules/wireless-adb/test/run.sh` to `make test` (or discover all
-`modules/*/test/*.sh`), without changing this module's status behavior.
+the test fails if any stub is invoked. `make test` now discovers and runs `modules/*/test/run.sh`, including this test.
+`tools/test-package.py` verifies package metadata and layout without the old
+`not-implemented` assertion.
 
 On the car, save the original two live properties and their `/data/property/`
 backing file presence/content, plus `ro.build.product`. Check that the

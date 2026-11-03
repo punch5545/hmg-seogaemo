@@ -1,8 +1,9 @@
+Status: partly superseded — the former parallel-work ownership table is historical, and Home tile wiring is still pending; runtime APIs and module decisions reflect current code.
+
 # Module runtime contract (parallel-work interface)
 
-Fixed interface between the shared module runtime and individual modules, so that
-`modules/*`, the runtime and the updater can be built in parallel worktrees.
-Change it only through the runtime owner; record any change here.
+Implemented interface between the shared module runtime, modules, and updater.
+The ownership table records the original parallel-work split; it no longer assigns active worktrees.
 
 Ownership:
 
@@ -152,6 +153,8 @@ Strings: modules add only `<snake_id>_*` resources in their own `res/values{,-ko
 - Uninstall aborts (non-zero preuninstall) rather than leaving a half-restored system.
 
 ## Home screen tiles
+
+The `Module.homeTiles()` metadata API exists, but current `HomeView` uses a static demo array and does not render module-provided tiles. The layout rules below describe the intended live wiring; Settings is first in the current demo.
 
 - Home is a horizontally paged row of tall vertical cards (ccNC style), NEMESIS-scale touch targets.
 - `Module.homeTiles()` → `HomeTile[]` (`id`, `labelResId`, `iconResId` or glyph, `ModuleAction action`,

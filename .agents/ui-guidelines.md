@@ -1,3 +1,5 @@
+Status: partly superseded — visual measurements remain useful; the old mock controls and emulator capture recipe are historical.
+
 # Gen5W UI guidelines
 
 Target one screen: 1920×720 px at 240 dpi (1280×480 dp), landscape. Use framework Java views and API 19 methods. `dp()` applies display density only; do not apply HMG-API's extra `K = 0.66` scale.
@@ -21,19 +23,19 @@ Use only Android `sans-serif`, `sans-serif-medium`, and `monospace`; do not bund
 
 Paths below are relative to repository root. Dimensions are dp unless marked sp.
 
-| Element | NEMESIS reference | This mock |
+| Element | NEMESIS reference | Current UI/design reference |
 | --- | --- | --- |
 | Header | 60dp; `tmp/hmg_nemesis/Sources/manager/res/layout/title_bar.xml:5` | 60dp |
 | Header button | 72×60dp; `tmp/hmg_nemesis/Sources/manager/res/layout/title_bar.xml:47` | 132×60dp Home back button / 72×60dp close |
 | Header text | 28sp; `tmp/hmg_nemesis/Sources/manager/res/values/styles.xml:18` | 28sp |
 | List row | min 70dp; `tmp/hmg_nemesis/Sources/manager/res/layout/list_row.xml:5`; 26sp/22sp at `:15`, `:21` | 70dp sidebar rows, 75dp content rows; 23–24sp titles |
-| Tile grid | 4 columns × 2 rows; `tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/MainActivity.java:35-36` | 4×2 |
-| Tile | 204×166dp; `tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/MainActivity.java:244-286` | 204×166dp |
+| Tile grid | 4 columns × 2 rows; `tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/MainActivity.java:35-36` | Six portrait cards per Home page |
+| Tile | 204×166dp; `tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/MainActivity.java:244-286` | About 174dp wide portrait Home card at target size |
 | Tile icon / label | 66dp icon, 25sp label; `tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/MainActivity.java:264-280` | 66dp monogram, 21–24sp labels to fit long action names |
 | Bottom bar / buttons | 60dp bar and buttons, 21sp label; `tmp/hmg_nemesis/Sources/manager/res/layout/activity_list.xml:40-61` | 60dp buttons, 21sp labels |
 | Density conversion | plain `TypedValue.applyDimension()`; `tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/Ui.java:94-97` | same, no extra scale |
 
-Home action buttons have visual press states and no vehicle command. Settings category taps change the visible pane; toggles change UI state in memory only. Apply, Cancel, and Export logs are visual controls only. General → Language is the sole persisted setting: it stores `system`, `en`, or `ko` in SharedPreferences, updates `Configuration.locale` before rebuilding views, and recreates the Activity. Default strings are in `app/res/values/strings.xml`; Korean strings are in `app/res/values-ko/strings.xml`. The header and launcher draw the source logo proportions from `tmp/brand/logo-source.png`: two `#101016` squares on a white square, with no VectorDrawable.
+Home demo cards have visual press states and no vehicle command; only Settings navigates. Settings category taps change the visible pane; module toggles execute through `ModuleManager` and the root dispatcher. Logs exports the change ledger to USB. General → Language persists: it stores `system`, `en`, or `ko` in SharedPreferences, updates `Configuration.locale` before rebuilding views, and recreates the Activity. Default strings are in `app/res/values/strings.xml`; Korean strings are in `app/res/values-ko/strings.xml`. The header and launcher draw the source logo proportions from `tmp/brand/logo-source.png`: two `#101016` squares on a white square, with no VectorDrawable.
 
 ## API 19 compatibility
 
@@ -41,9 +43,9 @@ Build with the installed `platforms/android-19/android.jar`: `aapt` links resour
 
 The manifest uses `minSdkVersion=19`, `targetSdkVersion=19`, `GET_TASKS`, `allowBackup=false`, `singleTask`, and a style inheriting `Theme.NoTitleBar.Fullscreen` (`tmp/hmg_nemesis/Sources/manager/AndroidManifest.xml:6-23`; `res/values/styles.xml:3-6`). The close button catches `SecurityException` from `finish()` and falls back to `moveTaskToBack(true)`, matching NEMESIS's `Ui.java:23-35`. Do not add AndroidX, Compose, `VectorDrawable`, ripple, `setLetterSpacing`, or framework APIs above 19. Keep locale selection on `Configuration.locale` plus `Resources.updateConfiguration()` before rebuilding views.
 
-Intentional differences: our package name, launcher category, and fixed landscape orientation serve this standalone mock; NEMESIS's network, storage, boot, receiver, and service declarations are omitted because no corresponding behavior exists here. Our dark background uses `#111111` within NEMESIS's fullscreen theme parent. `<meta-data android:name="android.max_aspect" android:value="2.7" />` avoids Android 28 emulator letterboxing at 1920×720; Android 4.4 ignores this later-platform compatibility metadata. Android 19 resource linking and Java compilation passed, and the APK installed on Android 28. A physical Gen5W and an Android 19 runtime remain untested.
+Our package name, launcher category, and fixed landscape orientation serve the standalone app; NEMESIS service and package hooks live in `nemesis/package/`. The app has network permission for GitHub Releases updates. Our dark background uses `#111111` within NEMESIS's fullscreen theme parent. `<meta-data android:name="android.max_aspect" android:value="2.7" />` avoids Android 28 emulator letterboxing at 1920×720; Android 4.4 ignores this later-platform compatibility metadata. Android 19 resource linking and Java compilation passed, and the APK installed on Android 28. A physical Gen5W and an Android 19 runtime remain untested.
 
-## Build and capture
+## Historical Android 28 emulator capture recipe (screen coordinates may no longer match)
 
 ```sh
 make
@@ -55,14 +57,14 @@ ANDROID_AVD_HOME=/private/tmp/hmg_avd ~/Library/Android/sdk/emulator/emulator -a
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 install -r out/seogaemo.apk
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 shell am start -n com.seogaemo.hmg/.MainActivity
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 exec-out screencap -p > tmp/screens/home-en.png
-# Tap Settings (1440,565), then 한국어 in General (1080,550).
+# Historical taps; inspect the current Settings layout before reusing these coordinates.
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 shell input tap 1440 565
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 shell input tap 1080 550
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 exec-out screencap -p > assets/settings-general.png
 # Tap the header Home button (1820,45), then capture Korean Home.
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 shell input tap 1820 45
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 exec-out screencap -p > assets/home.png
-# Tap Settings, Wireless (160,330), then Logs (155,440).
+# Historical Wireless-category taps; the current sidebar uses General, Modules, Logs, About, then module pages.
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 shell input tap 1440 565
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 shell input tap 160 330
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 exec-out screencap -p > assets/settings-wireless.png
@@ -75,4 +77,4 @@ The PNGs come from the Android 28 arm64 emulator at the requested pixel size/den
 
 ## Portrait Home mock (2026-11-03)
 
-The new Home uses six portrait tiles per page in a horizontal `HorizontalScrollView` pager, with swipe, arrow buttons, and page dots. The visual demo list lives in `HomeView`; only Settings navigates. `HomeTile` and the empty `Module.homeTiles()` implementations establish the module metadata seam without displaying disabled modules as live actions. At 1920×720, the pager viewport is about 1104dp wide and each card is about 174dp wide. Page widths must be synchronized after the view is laid out: `onSizeChanged()` can run before pages are appended, leaving one-pixel or screen-width pages when Home is recreated after the language change. The Korean screenshots in `assets/home.png`, `assets/home-page2.png`, and `assets/home-pressed.png` were captured on the Android 28 AVD; the last holds Restart early in the touch, before Android clears long-press feedback.
+The current Home uses six portrait tiles per page in a horizontal `HorizontalScrollView` pager, with swipe, arrow buttons, and page dots. The static demo list lives in `HomeView`; only Settings navigates. `HomeTile` and `Module.homeTiles()` establish the metadata seam, but `HomeView` does not yet consume module tiles. At 1920×720, the pager viewport is about 1104dp wide and each card is about 174dp wide. Page widths must be synchronized after the view is laid out: `onSizeChanged()` can run before pages are appended, leaving one-pixel or screen-width pages when Home is recreated after the language change. The Korean screenshots in `assets/home.png`, `assets/home-page2.png`, and `assets/home-pressed.png` were captured on the Android 28 AVD; the last holds Restart early in the touch, before Android clears long-press feedback.
