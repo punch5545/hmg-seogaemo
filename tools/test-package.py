@@ -63,7 +63,7 @@ def run():
             assert not re.search(r"\b(?:printf|awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|sha256sum|sha1sum|tar|unzip|busybox|toybox)\b", body), script_name
         assert set(usb.namelist()) == {"NEMESIS.data", "install.sh", "packages/hmg-seogaemo.zip"}
         assert usb.read("packages/hmg-seogaemo.zip") == package_path.read_bytes()
-        assert b'install --update "$PWD/packages/hmg-seogaemo.zip"' in usb.read("install.sh")
+        assert b'install --update "${0%/*}/packages/hmg-seogaemo.zip"' in usb.read("install.sh")
         assert ota.read("VERSION") == (version + "\n").encode()
         assert ota.read("app/hmg-seogaemo.apk") == package.read("app/hmg-seogaemo.apk")
         assert ota.read("update_roots.pem") == (ROOT / "app/res/raw/update_roots.pem").read_bytes()
