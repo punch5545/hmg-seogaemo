@@ -15,7 +15,7 @@ Target one screen: 1920×720 px at 240 dpi (1280×480 dp), landscape. Use framew
 | `colors.link` `#0070f3` | Selected sidebar, enabled toggle, primary action |
 | `colors.error` `#ee0000` | Destructive Restart head unit tile only |
 | `rounded.sm` / `rounded.md` | 6dp buttons and 8dp tiles |
-| `typography.display-*` / `caption-mono` | Medium sans headings with slightly condensed `textScaleX`; mono for system labels and values |
+| `typography.display-*` / `caption-mono` | Medium sans headings and localized labels at natural width; mono only for technical identifiers and numbers |
 
 Use only Android `sans-serif`, `sans-serif-medium`, and `monospace`; do not bundle fonts. Avoid `TextView.setLetterSpacing()` because it is newer than API 19. Hairline borders supply depth without a heavy shadow. Colors and controls are visually scaled for a dark car display, not copied at web sizes.
 
@@ -37,7 +37,7 @@ Paths below are relative to repository root. Dimensions are dp unless marked sp.
 
 Home demo cards have visual press states and no vehicle command; only Settings navigates. Settings category taps change the visible pane; module toggles execute through `ModuleManager` and the root dispatcher. Logs exports the change ledger to USB. General → Language persists: it stores `system`, `en`, or `ko` in SharedPreferences, updates `Configuration.locale` before rebuilding views, and recreates the Activity. Default strings are in `app/res/values/strings.xml`; Korean strings are in `app/res/values-ko/strings.xml`. The header and launcher draw the source logo proportions from `tmp/brand/logo-source.png`: two `#101016` squares on a white square, with no VectorDrawable.
 
-Settings sidebar sections use short, non-focusable monospace labels (App / 앱 and Module settings / 모듈 설정). A stronger full-width hairline and 24dp top gap distinguish module pages from core categories; clickable rows remain 70dp and retain the blue selected marker. The sidebar remains scrollable.
+Settings sidebar sections use short, non-focusable sans-serif labels (App / 앱 and Module settings / 모듈 설정). A stronger full-width hairline and 24dp top gap distinguish module pages from core categories; clickable rows remain 70dp and retain the blue selected marker. The sidebar remains scrollable.
 
 ## API 19 compatibility
 
@@ -80,3 +80,22 @@ The PNGs come from the Android 28 arm64 emulator at the requested pixel size/den
 ## Home pager (2026-11-03)
 
 Home uses six portrait tiles per page in a horizontal `HorizontalScrollView` pager, with swipe, arrow buttons, and page dots when there is more than one page. The built-in Settings tile appears first. Runtime tiles come from `Module.homeTiles()` while their module is enabled, or when marked `alwaysVisible`; the current modules supply none. At 1920×720, the pager viewport is about 1104dp wide and each card is about 174dp wide. Page widths are synchronized after the view is laid out so Home recreation after a language change keeps the correct width. The Korean `assets/home.png` screenshot was captured on the Android 28 AVD.
+
+## Polish audit (2026-11-03)
+
+Baseline captures: `tmp/ui-audit/before/` at 1920×720, Korean locale.
+
+| Screen | Observed issue |
+| --- | --- |
+| Home | Header and tile labels use horizontal text compression, which also affects Korean text. |
+| General (top and scrolled) | Language choices and update actions are large enough to touch, but content insets repeat ad-hoc 30/28dp pairs. |
+| Module management | Unavailable pills are only 96dp wide, use monospace for Korean, and have cramped text. The status line exposes `failed · IOException`. |
+| Logs | Export action has sufficient height, but uses the same ad-hoc 30/28dp margins. |
+| About | Values are monospace even for `HMG-Seogaemo`; labels are horizontally compressed. Row insets differ in implementation from other pages. |
+| Wi-Fi client | Same pill and exception issues. Card and action text use inconsistent inner insets. |
+| Wireless ADB (top and scrolled) | Same pill and exception issues. Long guidance wraps inside a fixed 60dp row with too little vertical padding. |
+| Wireless CarPlay and Android Auto | Same pill and exception issues. Long card description needs a stable gap before the status pill. |
+
+Use an 8/12/16/24/32dp spacing scale for settings controls, a fixed state-pill width sized for both locales, readable sans-serif Korean, a short localized unavailable state, consistent 8dp cards and 6dp controls, and at least 48dp touch targets. Keep diagnostic detail out of the visible status line.
+
+Result: `SettingsUi` now supplies shared row, pill, button, and action geometry. Status pills are 144×54dp with 16dp inner horizontal padding and a 16dp gap after the card copy. Status lines use localized human messages; unknown status details go to Android logcat under `HMG-Seogaemo`. Wrapped module notes grow with content. Text compression was removed from Home and Settings labels. Final Korean captures are in `tmp/ui-audit/after/`; the seven README images in `assets/` were taken from the same final build and emulator session. An English General and Modules pass confirmed the fixed pill width fits `Unavailable`. Physical-car behavior remains unverified.

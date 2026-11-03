@@ -75,6 +75,10 @@
     <string name="module_loading">Loading module status…</string>
     <string name="module_state">Observed state</string>
     <string name="module_unavailable">Unavailable</string>
+    <string name="module_status_unknown">Status could not be checked</string>
+    <string name="module_status_conflict">Changes conflict with the saved original</string>
+    <string name="module_status_incompatible">This head unit is not compatible</string>
+    <string name="module_status_unsupported">Status is not supported</string>
     <string name="module_restart">Head unit restart required for this change</string>
     <string name="module_confirm">Apply module changes?</string>
     <string name="module_no_changes">No changes needed.</string>

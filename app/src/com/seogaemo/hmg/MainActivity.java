@@ -16,6 +16,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
 import android.util.TypedValue;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -34,6 +35,7 @@ import com.seogaemo.hmg.module.RootClient;
 import com.seogaemo.hmg.module.RootResult;
 import com.seogaemo.hmg.module.Warning;
 import com.seogaemo.hmg.ui.settings.SettingsPage;
+import com.seogaemo.hmg.ui.settings.SettingsUi;
 import java.util.ArrayList;
 import java.util.List;
 import com.seogaemo.hmg.ui.HomeView;
@@ -58,7 +60,6 @@ public final class MainActivity extends Activity {
         R.string.cat_logs_sub, R.string.cat_about_sub};
     private Typeface sans;
     private Typeface medium;
-    private Typeface mono;
     private int category = 0;
     private int sidebarOffset;
     private ScrollView sidebarScroll;
@@ -73,7 +74,6 @@ public final class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(5894 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         sans = Typeface.create("sans-serif", Typeface.NORMAL);
         medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
-        mono = Typeface.MONOSPACE;
         if (state != null && state.getBoolean("settings", false)) {
             category = state.getInt("category", 0);
             sidebarOffset = state.getInt("sidebarOffset", 0);
@@ -197,11 +197,10 @@ public final class MainActivity extends Activity {
         View gap = new View(this);
         bar.addView(gap, new LinearLayout.LayoutParams(dp(12), dp(60)));
         TextView brand = text(getString(R.string.app_name), 28, WHITE, medium);
-        brand.setTextScaleX(0.97f);
         bar.addView(brand, new LinearLayout.LayoutParams(dp(256), dp(60)));
         if (back) {
             TextView section = text(getString(R.string.settings), 22, MUTED, sans);
-            section.setPadding(dp(16), 0, 0, 0);
+            section.setPadding(dp(SettingsUi.MD), 0, 0, 0);
             bar.addView(section, new LinearLayout.LayoutParams(dp(130), dp(60)));
         }
         View spacer = new View(this);
@@ -300,8 +299,7 @@ public final class MainActivity extends Activity {
         int titleRes = category < CATEGORIES.length ? CATEGORIES[category]
                 : ModuleRegistry.all()[category - CATEGORIES.length].nameResId();
         TextView paneTitle = text(getString(titleRes), 26, WHITE, medium);
-        paneTitle.setPadding(dp(30), 0, 0, 0);
-        paneTitle.setTextScaleX(0.97f);
+        paneTitle.setPadding(dp(SettingsUi.PAGE), 0, 0, 0);
         content.addView(paneTitle, new LinearLayout.LayoutParams(-1, dp(52)));
         divider(content, false);
         if (category == 0) {
@@ -317,12 +315,10 @@ public final class MainActivity extends Activity {
             return;
         } else if (category == 2) {
             TextView explanation = text(getString(R.string.export_changes_hint), 19, MUTED, sans);
-            explanation.setPadding(dp(30), 0, dp(28), 0);
+            explanation.setPadding(dp(SettingsUi.PAGE), 0, dp(SettingsUi.PAGE), 0);
             content.addView(explanation, new LinearLayout.LayoutParams(-1, dp(85)));
             TextView export = action(getString(R.string.export_changes_usb), true);
-            LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(-1, dp(60));
-            ep.leftMargin = dp(30);
-            ep.rightMargin = dp(28);
+            LinearLayout.LayoutParams ep = SettingsUi.contentAction(this);
             content.addView(export, ep);
             export.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
@@ -355,20 +351,21 @@ public final class MainActivity extends Activity {
 
     private void showLanguage(LinearLayout content) {
         TextView label = text(getString(R.string.language), 24, WHITE, medium);
-        label.setPadding(dp(30), 0, 0, 0);
+        label.setPadding(dp(SettingsUi.PAGE), 0, 0, 0);
         content.addView(label, new LinearLayout.LayoutParams(-1, dp(48)));
         addLanguageOption(content, R.string.language_system, "system");
         addLanguageOption(content, R.string.language_english, "en");
         addLanguageOption(content, R.string.language_korean, "ko");
         TextView hint = text(getString(R.string.language_scope), 18, MUTED, sans);
-        hint.setPadding(dp(30), 0, 0, 0);
+        hint.setPadding(dp(SettingsUi.PAGE), 0, 0, 0);
         content.addView(hint, new LinearLayout.LayoutParams(-1, dp(40)));
     }
 
     private void showModules(final LinearLayout content) {
         final ScrollView scroll = new ScrollView(this);
         final LinearLayout rows = vertical();
-        rows.setPadding(dp(30), dp(10), dp(28), dp(20));
+        rows.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.SM),
+                dp(SettingsUi.PAGE), dp(SettingsUi.LG));
         scroll.addView(rows);
         content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         rows.addView(text(getString(R.string.module_loading), 20, MUTED, sans),
@@ -397,7 +394,7 @@ public final class MainActivity extends Activity {
         final boolean enabled = "on".equals(result.state) || "pending-restart".equals(result.state);
         final boolean observed = enabled || "off".equals(result.state);
         LinearLayout row = horizontal();
-        row.setPadding(dp(18), 0, dp(18), 0);
+        SettingsUi.cardRow(this, row);
         row.setBackgroundDrawable(selectable(RAISED, HAIRLINE, 8, false));
         LinearLayout copy = vertical();
         copy.setGravity(Gravity.CENTER_VERTICAL);
@@ -405,35 +402,48 @@ public final class MainActivity extends Activity {
         copy.addView(text(getString(module.descriptionResId()), 17, MUTED, sans));
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
         TextView toggle = text(getString(observed ? (enabled ? R.string.on : R.string.off)
-                : R.string.module_unavailable), 20, enabled ? BLUE : MUTED, mono);
-        toggle.setGravity(Gravity.CENTER);
-        toggle.setBackgroundDrawable(shape(enabled ? 0xFF17283A : SURFACE,
+                : R.string.module_unavailable), 20, enabled ? BLUE : MUTED, medium);
+        SettingsUi.pill(this, toggle, shape(enabled ? 0xFF17283A : SURFACE,
                 enabled ? BLUE : HAIRLINE, 6));
-        row.addView(toggle, new LinearLayout.LayoutParams(dp(96), dp(54)));
+        LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(
+                dp(SettingsUi.STATUS_WIDTH), dp(SettingsUi.STATUS_HEIGHT));
+        toggleParams.leftMargin = dp(SettingsUi.MD);
+        row.addView(toggle, toggleParams);
         if (observed) row.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) { prepareModuleChange(module, !enabled); }
         });
         LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, dp(82));
-        rp.bottomMargin = dp(8);
+        rp.bottomMargin = dp(SettingsUi.XS);
         parent.addView(row, rp);
-        String stateText = getString(R.string.module_state) + ": " + result.state;
-        if (result.detail.length() > 0) stateText += " · " + result.detail;
+        String stateText = moduleStateText(result);
         parent.addView(text(stateText, 18, MUTED, sans),
-                new LinearLayout.LayoutParams(-1, dp(34)));
+                new LinearLayout.LayoutParams(-1, dp(40)));
         if ("pending-restart".equals(result.state)) {
             TextView banner = text(getString(R.string.module_restart), 20, WHITE, medium);
-            banner.setPadding(dp(18), 0, dp(18), 0);
+            banner.setPadding(dp(SettingsUi.MD), 0, dp(SettingsUi.MD), 0);
             banner.setBackgroundDrawable(shape(0xFF263347, BLUE, 6));
             parent.addView(banner, new LinearLayout.LayoutParams(-1, dp(60)));
         }
         View gap = new View(this);
-        parent.addView(gap, new LinearLayout.LayoutParams(-1, dp(12)));
+        parent.addView(gap, new LinearLayout.LayoutParams(-1, dp(SettingsUi.SM)));
+    }
+
+    private String moduleStateText(RootResult result) {
+        if ("on".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.on);
+        if ("off".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.off);
+        if ("pending-restart".equals(result.state)) return getString(R.string.module_restart);
+        if ("conflict".equals(result.state)) return getString(R.string.module_status_conflict);
+        if ("incompatible".equals(result.state)) return getString(R.string.module_status_incompatible);
+        if ("not-implemented".equals(result.state)) return getString(R.string.module_status_unsupported);
+        if (result.detail.length() > 0) Log.w("HMG-Seogaemo", "Module status: " + result.detail);
+        return getString(R.string.module_status_unknown);
     }
 
     private void showModulePage(final LinearLayout content, final Module module) {
         final ScrollView scroll = new ScrollView(this);
         final LinearLayout rows = vertical();
-        rows.setPadding(dp(30), dp(10), dp(28), dp(20));
+        rows.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.SM),
+                dp(SettingsUi.PAGE), dp(SettingsUi.LG));
         scroll.addView(rows);
         content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         rows.addView(text(getString(R.string.module_loading), 20, MUTED, sans),
@@ -477,7 +487,9 @@ public final class MainActivity extends Activity {
             case WARNING:
                 TextView note = text(getString(item.labelResId), 18,
                         item.type == SettingsPage.Type.WARNING ? 0xFFFFB366 : MUTED, sans);
-                rows.addView(note, new LinearLayout.LayoutParams(-1, dp(60)));
+                note.setMinHeight(dp(60));
+                note.setPadding(0, dp(SettingsUi.XS), 0, dp(SettingsUi.XS));
+                rows.addView(note, new LinearLayout.LayoutParams(-1, -2));
                 break;
             case TOGGLE:
             case CHOICE:
@@ -488,7 +500,7 @@ public final class MainActivity extends Activity {
                 final ModuleAction action = item.action;
                 TextView button = action(getString(item.labelResId), false);
                 LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-1, dp(60));
-                ap.bottomMargin = dp(8);
+                ap.bottomMargin = dp(SettingsUi.XS);
                 rows.addView(button, ap);
                 button.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View view) {
@@ -563,7 +575,7 @@ public final class MainActivity extends Activity {
     private void addLanguageOption(LinearLayout content, int labelRes, final String choice) {
         boolean selected = choice.equals(preferences().getString("language", "system"));
         LinearLayout row = horizontal();
-        row.setPadding(dp(30), 0, dp(28), 0);
+        SettingsUi.contentRow(this, row);
         row.setBackgroundDrawable(selectable(selected ? 0xFF1C2938 : CANVAS,
                 Color.TRANSPARENT, 0, false));
         TextView title = text(getString(labelRes), 24, WHITE, medium);
@@ -584,17 +596,16 @@ public final class MainActivity extends Activity {
     private void showUpdate(LinearLayout content) {
         addRow(content, R.string.update_current, R.string.update_current_hint, installedVersion(), -1);
         updateStatus = text(getString(getSharedPreferences("update", MODE_PRIVATE).contains("restore") ? R.string.update_restore_pending : R.string.update_idle), 18, MUTED, sans);
-        updateStatus.setPadding(dp(30), 0, dp(28), 0);
+        updateStatus.setPadding(dp(SettingsUi.PAGE), 0, dp(SettingsUi.PAGE), 0);
         content.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(48)));
         TextView check = action(getString(R.string.update_check), true);
         check.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { checkUpdate(); } });
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1, dp(60));
-        cp.leftMargin = dp(30); cp.rightMargin = dp(28);
+        LinearLayout.LayoutParams cp = SettingsUi.contentAction(this);
         content.addView(check, cp);
         TextView rollback = action(getString(R.string.update_rollback), false);
         rollback.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmRollback(); } });
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, dp(60));
-        rp.leftMargin = dp(30); rp.rightMargin = dp(28); rp.topMargin = dp(10);
+        LinearLayout.LayoutParams rp = SettingsUi.contentAction(this);
+        rp.topMargin = dp(SettingsUi.SM);
         content.addView(rollback, rp);
     }
 
@@ -705,8 +716,8 @@ public final class MainActivity extends Activity {
     }
 
     private void addSidebarSection(LinearLayout parent, int titleRes, int topSpacingDp) {
-        TextView header = text(getString(titleRes), 17, MUTED, mono);
-        header.setPadding(dp(22), dp(8), 0, 0);
+        TextView header = text(getString(titleRes), 17, MUTED, sans);
+        header.setPadding(dp(SettingsUi.LG), dp(SettingsUi.XS), 0, 0);
         header.setFocusable(false);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(44));
         params.topMargin = dp(topSpacingDp);
@@ -715,7 +726,7 @@ public final class MainActivity extends Activity {
 
     private void addCategory(LinearLayout parent, final int index) {
         LinearLayout row = horizontal();
-        row.setPadding(dp(22), 0, dp(16), 0);
+        row.setPadding(dp(SettingsUi.LG), 0, dp(SettingsUi.MD), 0);
         row.setBackgroundDrawable(selectable(index == category ? 0xFF1C2938 : SURFACE,
                 Color.TRANSPARENT, 0, false));
         View marker = new View(this);
@@ -723,12 +734,11 @@ public final class MainActivity extends Activity {
         row.addView(marker, new LinearLayout.LayoutParams(dp(4), dp(56)));
         LinearLayout copy = vertical();
         copy.setGravity(Gravity.CENTER_VERTICAL);
-        copy.setPadding(dp(16), 0, 0, 0);
+        copy.setPadding(dp(SettingsUi.MD), 0, 0, 0);
         TextView name = text(getString(CATEGORIES[index]), 23, index == category ? WHITE : 0xFFD0D0D0, medium);
-        name.setTextScaleX(0.98f);
         TextView sub = text(getString(CATEGORY_SUBS[index]), 17, MUTED, sans);
         LinearLayout.LayoutParams subp = new LinearLayout.LayoutParams(-1, -2);
-        subp.topMargin = dp(4);
+        subp.topMargin = dp(SettingsUi.XS);
         copy.addView(name);
         copy.addView(sub, subp);
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
@@ -742,7 +752,7 @@ public final class MainActivity extends Activity {
     private void addModuleCategory(LinearLayout parent, int moduleIndex, Module module) {
         final int index = CATEGORIES.length + moduleIndex;
         LinearLayout row = horizontal();
-        row.setPadding(dp(22), 0, dp(16), 0);
+        row.setPadding(dp(SettingsUi.LG), 0, dp(SettingsUi.MD), 0);
         row.setBackgroundDrawable(selectable(index == category ? 0xFF1C2938 : SURFACE,
                 Color.TRANSPARENT, 0, false));
         View marker = new View(this);
@@ -750,7 +760,7 @@ public final class MainActivity extends Activity {
         row.addView(marker, new LinearLayout.LayoutParams(dp(4), dp(56)));
         LinearLayout copy = vertical();
         copy.setGravity(Gravity.CENTER_VERTICAL);
-        copy.setPadding(dp(16), 0, 0, 0);
+        copy.setPadding(dp(SettingsUi.MD), 0, 0, 0);
         copy.addView(text(getString(module.nameResId()), 21,
                 index == category ? WHITE : 0xFFD0D0D0, medium));
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
@@ -775,24 +785,25 @@ public final class MainActivity extends Activity {
 
     private void addRow(LinearLayout parent, int label, int sub, String value, final int toggleIndex) {
         LinearLayout row = horizontal();
-        row.setPadding(dp(30), 0, dp(28), 0);
+        SettingsUi.contentRow(this, row);
         row.setBackgroundDrawable(selectable(CANVAS, Color.TRANSPARENT, 0, false));
         LinearLayout copy = vertical();
         copy.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = text(getString(label), 24, WHITE, medium);
-        title.setTextScaleX(0.98f);
         TextView detail = text(getString(sub), 18, MUTED, sans);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
-        sp.topMargin = dp(3);
+        sp.topMargin = dp(SettingsUi.XS);
         copy.addView(title);
         copy.addView(detail, sp);
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
         if (toggleIndex >= 0) {
             final TextView check = text(getString(checks[category][toggleIndex] ? R.string.on : R.string.off), 18,
-                    checks[category][toggleIndex] ? BLUE : MUTED, mono);
-            check.setGravity(Gravity.CENTER);
+                    checks[category][toggleIndex] ? BLUE : MUTED, medium);
             updateCheck(check, checks[category][toggleIndex]);
-            row.addView(check, new LinearLayout.LayoutParams(dp(96), dp(48)));
+            LinearLayout.LayoutParams checkParams = new LinearLayout.LayoutParams(
+                    dp(SettingsUi.STATUS_WIDTH), dp(SettingsUi.STATUS_HEIGHT));
+            checkParams.leftMargin = dp(SettingsUi.MD);
+            row.addView(check, checkParams);
             row.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
                     checks[category][toggleIndex] = !checks[category][toggleIndex];
@@ -800,9 +811,11 @@ public final class MainActivity extends Activity {
                 }
             });
         } else {
-            TextView trailing = text(value, 20, WHITE, mono);
+            TextView trailing = text(value, 20, WHITE, sans);
             trailing.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-            row.addView(trailing, new LinearLayout.LayoutParams(dp(200), -1));
+            LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(dp(240), -1);
+            valueParams.leftMargin = dp(SettingsUi.MD);
+            row.addView(trailing, valueParams);
         }
         parent.addView(row, new LinearLayout.LayoutParams(-1, dp(75)));
         divider(parent, false);
@@ -811,15 +824,14 @@ public final class MainActivity extends Activity {
     private void updateCheck(TextView check, boolean on) {
         check.setText(getString(on ? R.string.on : R.string.off));
         check.setTextColor(on ? BLUE : MUTED);
-        check.setBackgroundDrawable(shape(on ? 0xFF17283A : RAISED, on ? BLUE : HAIRLINE, 6));
+        SettingsUi.pill(this, check, shape(on ? 0xFF17283A : RAISED,
+                on ? BLUE : HAIRLINE, 6));
     }
 
     private TextView action(String label, boolean primary) {
         TextView b = text(label, 21, WHITE, medium);
-        b.setGravity(Gravity.CENTER);
-        b.setBackgroundDrawable(selectable(primary ? BLUE : RAISED,
+        SettingsUi.button(this, b, selectable(primary ? BLUE : RAISED,
                 primary ? BLUE : HAIRLINE, 6, false));
-        b.setClickable(true);
         return b;
     }
 

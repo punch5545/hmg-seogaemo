@@ -75,6 +75,10 @@
     <string name="module_loading">모듈 상태 확인 중…</string>
     <string name="module_state">확인된 상태</string>
     <string name="module_unavailable">확인 불가</string>
+    <string name="module_status_unknown">상태를 확인할 수 없음</string>
+    <string name="module_status_conflict">변경 내용이 저장된 원본과 충돌합니다</string>
+    <string name="module_status_incompatible">이 헤드 유닛과 호환되지 않습니다</string>
+    <string name="module_status_unsupported">상태 확인을 지원하지 않습니다</string>
     <string name="module_restart">이 변경을 적용하려면 헤드 유닛을 재시작해야 합니다</string>
     <string name="module_confirm">모듈 변경을 적용할까요?</string>
     <string name="module_no_changes">변경할 내용이 없습니다.</string>

@@ -1,26 +1,45 @@
-# hmg-seogaemo
+# HMG-Seogaemo
 
-Gen5W head-unit app (1920×720, hdpi) with built-in module settings and an OTA update screen. Home shows the Settings shortcut and tiles supplied by enabled modules. The current modules supply no Home tiles.
+HMG-Seogaemo is a Gen5W head-unit app and NEMESIS package with toggleable Wi-Fi client, wireless ADB, and wireless CarPlay and Android Auto modules. The app also supports OTA updates from GitHub Releases.
+
+## Install
+
+Download `hmg-seogaemo-<v>-nemesis-usb.zip` from [Releases](https://github.com/seogaemo/hmg-seogaemo/releases), unzip it to an empty FAT32 or exFAT USB stick, and install it through NEMESIS. Remove HMG-API and HMG Leafia Plus before installing.
+
+## Build
+
+```sh
+make
+make test
+make package
+```
 
 ## Screenshots
 
+### Home
+
 ![Home](assets/home.png)
-Korean Home; Settings opens the live module settings UI.
 
-![General settings](assets/settings-general.png)
-Korean General settings with language, installed version, update check, and rollback controls.
+### Settings — General
 
-![Modules](assets/settings-modules.png)
-Korean Modules page with built-in module status. The emulator has no NEMESIS root service, so live status is unavailable in this capture.
+![Settings — General](assets/settings-general.png)
 
-![Wireless ADB](assets/settings-wireless-adb.png)
-Korean Wireless ADB settings with connection details and guidance.
+### Module management
+
+![Module management](assets/settings-modules.png)
+
+### Wi-Fi client
 
 ![Wi-Fi client](assets/settings-wifi-client.png)
-Korean Wi-Fi client settings with its stock Wi-Fi action.
+
+### Wireless ADB
+
+![Wireless ADB](assets/settings-wireless-adb.png)
+
+### Wireless CarPlay and Android Auto
 
 ![Wireless CarPlay and Android Auto](assets/settings-wireless-carplay-and-aa.png)
-Korean wireless CarPlay and Android Auto module settings.
 
-![Logs settings](assets/settings-logs.png)
-Korean Logs page with the USB change export action.
+### Logs
+
+![Logs](assets/settings-logs.png)

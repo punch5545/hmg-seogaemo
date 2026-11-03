@@ -40,7 +40,7 @@ public final class HomeView extends LinearLayout {
         this.openSettings = openSettings;
         this.actionHandler = actionHandler;
         setOrientation(VERTICAL);
-        setPadding(dp(30), dp(16), dp(30), dp(12));
+        setPadding(dp(32), dp(16), dp(32), dp(12));
 
         LinearLayout heading = new LinearLayout(context);
         heading.setGravity(Gravity.CENTER_VERTICAL);
@@ -200,7 +200,6 @@ public final class HomeView extends LinearLayout {
             TextView label = text(c.getString(item.labelResId), 21, WHITE, true);
             label.setGravity(Gravity.TOP | Gravity.LEFT);
             label.setMaxLines(2);
-            label.setTextScaleX(0.97f);
             LayoutParams lp = new LayoutParams(-1, dp(67), Gravity.BOTTOM);
             lp.leftMargin = dp(17);
             lp.rightMargin = dp(12);
