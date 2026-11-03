@@ -1,0 +1,231 @@
+{
+  "_origin": "Follows HMG-API core/hookpoints/gpm.json@4fab437",
+  "files": [
+    "/system/app/HKMC_GPM.odex"
+  ],
+  "group": "gpm",
+  "namespace": "com.google.android.projection.sink",
+  "points": {
+    "gpm.cluster_type": {
+      "match": {
+        "name": "com.google.android.projection.proto.Protos$NavigationStatusService$InstrumentClusterType"
+      },
+      "type": "class"
+    },
+    "gpm.cluster_type.enum": {
+      "match": {
+        "class_member": true,
+        "name": "ENUM",
+        "type": "@gpm.cluster_type"
+      },
+      "owner": "gpm.cluster_type",
+      "type": "field"
+    },
+    "gpm.cluster_type.image": {
+      "match": {
+        "class_member": true,
+        "name": "IMAGE",
+        "type": "@gpm.cluster_type"
+      },
+      "owner": "gpm.cluster_type",
+      "type": "field"
+    },
+    "gpm.navigation_status": {
+      "match": {
+        "name": "com.google.android.projection.protocol.NavigationStatus"
+      },
+      "type": "class"
+    },
+    "gpm.navigation_status.init": {
+      "about": "tells the phone what the cluster takes: IMAGE (pictures) or ENUM (turn data)",
+      "match": {
+        "name": "init",
+        "parameters": [
+          "int",
+          "long",
+          "int",
+          "com.google.android.projection.proto.Protos$NavigationStatusService$InstrumentClusterType",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "boolean"
+      },
+      "owner": "gpm.navigation_status",
+      "type": "method"
+    },
+    "gpm.navigation_status.next_turn": {
+      "about": "the phone's next turn (road, side, event, image, angle, number), from the AA library",
+      "match": {
+        "name": "navigationNextTurnCallback",
+        "parameters": [
+          "java.lang.String",
+          "int",
+          "int",
+          "byte[]",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "gpm.navigation_status",
+      "type": "method"
+    },
+    "gpm.navigation_status.next_turn_distance": {
+      "about": "distance to the next turn (meters, time, display distance x1000, unit)",
+      "match": {
+        "name": "navigationNextTurnDistanceCallback",
+        "parameters": [
+          "int",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "gpm.navigation_status",
+      "type": "method"
+    },
+    "gpm.navigation_status.receiver": {
+      "match": {
+        "name": "mGalReceiver",
+        "type": "@gpm.receiver"
+      },
+      "owner": "gpm.navigation_status",
+      "type": "field"
+    },
+    "gpm.navigation_status.status": {
+      "about": "the phone's guidance status (1 active, 2 inactive, 3 rerouting)",
+      "match": {
+        "name": "navigationStatusCallback",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "gpm.navigation_status",
+      "type": "method"
+    },
+    "gpm.receiver": {
+      "about": "GPM's link to the AA library for one connection",
+      "match": {
+        "name": "com.google.android.projection.protocol.GalReceiver"
+      },
+      "type": "class"
+    },
+    "gpm.receiver.destroy": {
+      "about": "the connection ends",
+      "match": {
+        "name": "destroy",
+        "parameters": [],
+        "returns": "void"
+      },
+      "owner": "gpm.receiver",
+      "type": "method"
+    },
+    "gpm.receiver.focus_native": {
+      "match": {
+        "class_member": true,
+        "name": "NAVIGATION_FOCUS_STATE_NATIVE",
+        "type": "int"
+      },
+      "owner": "gpm.receiver",
+      "type": "field"
+    },
+    "gpm.receiver.send_navigation_focus": {
+      "about": "the car answers who navigates: the car's own navigation (native) or the phone (projected)",
+      "match": {
+        "name": "sendNavigationFocusState",
+        "parameters": [
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "gpm.receiver",
+      "type": "method"
+    },
+    "gpm.receiver_service": {
+      "about": "GPM's service: Android Auto sessions (wired, wireless)",
+      "match": {
+        "name": "com.google.android.projection.service.GalReceiverService"
+      },
+      "type": "class"
+    },
+    "gpm.receiver_service.disconnected": {
+      "about": "a session ended, also when the phone is just gone (ping timeout, Wi-Fi off), where destroy isn't called",
+      "match": {
+        "literals": [
+          "==> onDisconnected retry="
+        ],
+        "name": "onDisconnected",
+        "parameters": [
+          "int",
+          "boolean",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "gpm.receiver_service",
+      "type": "method"
+    },
+    "gpm.sensor_source": {
+      "about": "Android Auto's sensor service",
+      "match": {
+        "name": "com.google.android.projection.protocol.SensorSource"
+      },
+      "type": "class"
+    },
+    "gpm.sensor_source.init": {
+      "about": "(type, native, sensors offered to the phone, location, fuel types, EV connector types): once per connection",
+      "match": {
+        "name": "init",
+        "parameters": [
+          "int",
+          "long",
+          "int[]",
+          "int",
+          "int[]",
+          "int[]"
+        ],
+        "returns": "boolean"
+      },
+      "owner": "gpm.sensor_source",
+      "type": "method"
+    },
+    "gpm.sensor_source.speed": {
+      "about": "the speed sensor (offered: the phone limits taps while moving)",
+      "match": {
+        "class_member": true,
+        "name": "SENSOR_TYPE_SPEED",
+        "type": "int"
+      },
+      "owner": "gpm.sensor_source",
+      "type": "field"
+    },
+    "gpm.video_sink": {
+      "about": "Android Auto's video sink (what the car offers the phone)",
+      "match": {
+        "name": "com.google.android.projection.protocol.VideoSink"
+      },
+      "type": "class"
+    },
+    "gpm.video_sink.nearest": {
+      "about": "one video setting: (width, height, density, real density, fps, depth); density is what AA DPI changes",
+      "match": {
+        "name": "nearestVideoConfiguration",
+        "parameters": [
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "gpm.video_sink",
+      "type": "method"
+    }
+  },
+  "schema": 1
+}

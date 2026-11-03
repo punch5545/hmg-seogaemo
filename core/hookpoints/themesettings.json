@@ -1,0 +1,121 @@
+{
+  "_origin": "Follows HMG-API core/hookpoints/themesettings.json@4fab437",
+  "files": [
+    "/system/app/ThemeSettings.odex"
+  ],
+  "group": "themesettings",
+  "namespace": "com.android.themesettings",
+  "points": {
+    "themesettings.split_item": {
+      "about": "one page in the split-screen page editor",
+      "match": {
+        "name": "com.android.themesettings.splitscreensettings.SplitScreenItem"
+      },
+      "type": "class"
+    },
+    "themesettings.split_item.new": {
+      "about": "(view id, title, on)",
+      "match": {
+        "parameters": [
+          "int",
+          "java.lang.String",
+          "boolean"
+        ]
+      },
+      "owner": "themesettings.split_item",
+      "type": "ctor"
+    },
+    "themesettings.split_item.type": {
+      "match": {
+        "parameters": [],
+        "returns": "int",
+        "smali_code": "iget v0, p0, Lcom/android/themesettings/splitscreensettings/SplitScreenItem;->splitViewType:I\\nreturn v0"
+      },
+      "owner": "themesettings.split_item",
+      "type": "method"
+    },
+    "themesettings.split_items": {
+      "about": "the editor's page list helpers",
+      "match": {
+        "method_shapes": [
+          {
+            "class_member": true,
+            "literals": [
+              "makeSplitScreenItemsList"
+            ],
+            "parameters": [
+              "android.content.Context",
+              "java.util.LinkedHashMap"
+            ],
+            "returns": "java.util.ArrayList"
+          }
+        ],
+        "namespace": "com.android.themesettings.splitscreensettings"
+      },
+      "type": "class"
+    },
+    "themesettings.split_items.available": {
+      "about": "whether the editor keeps a page (view id); false for ids it doesn't know, and the editor then saves its list without them",
+      "match": {
+        "class_member": true,
+        "literals": [
+          "checkItemAvailable type : "
+        ],
+        "parameters": [
+          "int",
+          "android.content.Context"
+        ],
+        "returns": "boolean"
+      },
+      "owner": "themesettings.split_items",
+      "type": "method"
+    },
+    "themesettings.split_items.make": {
+      "about": "the editor's items from {view id: on/off}; unknown ids are skipped",
+      "match": {
+        "class_member": true,
+        "literals": [
+          "makeSplitScreenItemsList"
+        ],
+        "parameters": [
+          "android.content.Context",
+          "java.util.LinkedHashMap"
+        ],
+        "returns": "java.util.ArrayList"
+      },
+      "owner": "themesettings.split_items",
+      "type": "method"
+    },
+    "themesettings.split_items.string_id": {
+      "about": "a page's title (string resource id) by view id; 0 for an id it doesn't know, which the saved-list builder passes to getString",
+      "match": {
+        "class_member": true,
+        "literals": [
+          "getItemStringId type error = "
+        ],
+        "parameters": [
+          "int"
+        ],
+        "returns": "int"
+      },
+      "owner": "themesettings.split_items",
+      "type": "method"
+    },
+    "themesettings.split_items.view_name": {
+      "match": {
+        "class_member": true,
+        "literals": [
+          "getViewName viewID : "
+        ],
+        "parameters": [
+          "android.content.Context",
+          "int"
+        ],
+        "returns": "java.lang.String"
+      },
+      "owner": "themesettings.split_items",
+      "type": "method"
+    }
+  },
+  "schema": 1
+}

@@ -1,0 +1,158 @@
+{
+  "_origin": "Follows HMG-API core/hookpoints/panel.json@4fab437",
+  "files": [
+    "/system/app/RightScreenHome.odex"
+  ],
+  "group": "panel",
+  "namespace": "com.mobis.splitscreen.right",
+  "points": {
+    "panel.home": {
+      "about": "the right-hand split-screen panel (a persistent system service drawing its own window)",
+      "match": {
+        "name": "com.mobis.splitscreen.right.SplitScreenHome"
+      },
+      "type": "class"
+    },
+    "panel.home.build_views": {
+      "about": "builds the panel's view list by id (slot 22 is the test page's)",
+      "match": {
+        "parameters": [
+          "int",
+          "boolean",
+          "int"
+        ],
+        "returns": "void",
+        "smali_code": "const/16 v\\d+, 0x16\\niget-object v\\d+, p0, Lcom/mobis/splitscreen/right/SplitScreenHome;->\\w+:Lcom/mobis/splitscreen/right/subviewExample/"
+      },
+      "owner": "panel.home",
+      "type": "method"
+    },
+    "panel.home.page_for_id": {
+      "about": "the page for a view id",
+      "match": {
+        "literals": [
+          ">>>>>> getSplitScreenViewFromId is not matched viewId = "
+        ],
+        "parameters": [
+          "int"
+        ],
+        "returns": "@panel.page"
+      },
+      "owner": "panel.home",
+      "type": "method"
+    },
+    "panel.home.test_page": {
+      "about": "never set by stock code",
+      "match": {
+        "group": "test_f",
+        "smali_pattern": "test_slot",
+        "type": "@panel.test_page"
+      },
+      "owner": "panel.home",
+      "type": "field"
+    },
+    "panel.page": {
+      "about": "base class of every panel page",
+      "match": {
+        "field_shapes": [
+          {
+            "name": "viewId",
+            "type": "int"
+          },
+          {
+            "name": "mView",
+            "type": "android.view.View"
+          },
+          {
+            "name": "mContext",
+            "type": "android.content.Context"
+          },
+          {
+            "name": "mHandler",
+            "type": "android.os.Handler"
+          }
+        ],
+        "method_shapes": [
+          {
+            "name": "getView",
+            "parameters": [],
+            "returns": "android.view.View"
+          }
+        ],
+        "namespace": "com.mobis.splitscreen.right"
+      },
+      "type": "class"
+    },
+    "panel.page.context": {
+      "match": {
+        "name": "mContext",
+        "type": "android.content.Context"
+      },
+      "owner": "panel.page",
+      "type": "field"
+    },
+    "panel.page.handler": {
+      "match": {
+        "name": "mHandler",
+        "type": "android.os.Handler"
+      },
+      "owner": "panel.page",
+      "type": "field"
+    },
+    "panel.page.view": {
+      "match": {
+        "name": "mView",
+        "type": "android.view.View"
+      },
+      "owner": "panel.page",
+      "type": "field"
+    },
+    "panel.page.view_id": {
+      "match": {
+        "name": "viewId",
+        "type": "int"
+      },
+      "owner": "panel.page",
+      "type": "field"
+    },
+    "panel.test_gate": {
+      "match": {
+        "class_group": "gate",
+        "namespace": "com.mobis.splitscreen.right",
+        "smali_pattern": "test_slot"
+      },
+      "type": "class"
+    },
+    "panel.test_gate.on": {
+      "about": "Mobis' test switch for slot 22 (always off on a car; HMG-API answers true only inside page_for_id and build_views)",
+      "match": {
+        "class_member": true,
+        "group": "gate_m",
+        "parameters": [],
+        "returns": "boolean",
+        "smali_pattern": "test_slot"
+      },
+      "owner": "panel.test_gate",
+      "type": "method"
+    },
+    "panel.test_page": {
+      "about": "Mobis' unused test page (slot 22, getView returns null): HMG-API's page",
+      "match": {
+        "class_group": "test",
+        "namespace": "com.mobis.splitscreen.right",
+        "smali_pattern": "test_slot"
+      },
+      "type": "class"
+    },
+    "panel.test_page.get_view": {
+      "match": {
+        "name": "getView",
+        "parameters": [],
+        "returns": "android.view.View"
+      },
+      "owner": "panel.test_page",
+      "type": "method"
+    }
+  },
+  "schema": 1
+}

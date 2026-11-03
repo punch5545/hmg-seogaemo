@@ -1,0 +1,32 @@
+{
+  "_origin": "Follows HMG-API core/hookpoints/settings.json@4fab437",
+  "files": [
+    "/system/app/Settings_W.odex"
+  ],
+  "group": "settings",
+  "namespace": "com.android.settings",
+  "points": {
+    "settings.split_screen": {
+      "about": "Settings' split-screen page list helpers",
+      "match": {
+        "name": "com.android.settings.util.SplitScreenUtils"
+      },
+      "type": "class"
+    },
+    "settings.split_screen.supported": {
+      "about": "is a panel view id supported here (unsupported ones are dropped from the page lists)",
+      "match": {
+        "class_member": true,
+        "name": "isSupportViewId",
+        "parameters": [
+          "android.content.Context",
+          "int"
+        ],
+        "returns": "boolean"
+      },
+      "owner": "settings.split_screen",
+      "type": "method"
+    }
+  },
+  "schema": 1
+}

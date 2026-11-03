@@ -1,0 +1,73 @@
+{
+  "_origin": "Follows HMG-API core/hookpoints/btsettings.json@4fab437",
+  "files": [
+    "/system/app/HKMC_BtSettings.odex"
+  ],
+  "group": "btsettings",
+  "namespace": "com.android.btsettings",
+  "points": {
+    "btsettings.projection_helper": {
+      "about": "BtSettings' static helper that opens the Phone Projection pages",
+      "match": {
+        "class_group": "helper",
+        "namespace": "com.android.settings2.bluetooth",
+        "smali_pattern": "phone_projection_menu"
+      },
+      "type": "class"
+    },
+    "btsettings.projection_helper.device_connections_available": {
+      "match": {
+        "class_member": true,
+        "group": "available",
+        "parameters": [],
+        "returns": "boolean",
+        "smali_pattern": "phone_projection_menu"
+      },
+      "owner": "btsettings.projection_helper",
+      "type": "method"
+    },
+    "btsettings.projection_helper.open_device_connections": {
+      "match": {
+        "class_member": true,
+        "group": "dc",
+        "parameters": [
+          "android.content.Context",
+          "int"
+        ],
+        "returns": "void",
+        "smali_pattern": "phone_projection_menu"
+      },
+      "owner": "btsettings.projection_helper",
+      "type": "method"
+    },
+    "btsettings.projection_helper.open_other_page": {
+      "match": {
+        "class_member": true,
+        "group": "other",
+        "parameters": [
+          "android.content.Context"
+        ],
+        "returns": "void",
+        "smali_pattern": "phone_projection_menu"
+      },
+      "owner": "btsettings.projection_helper",
+      "type": "method"
+    },
+    "btsettings.projection_helper.open_wireless_page": {
+      "about": "opens the wireless projection page (its only caller is the Phone Projection menu)",
+      "match": {
+        "class_member": true,
+        "group": "wireless",
+        "parameters": [
+          "android.content.Context"
+        ],
+        "returns": "void",
+        "smali_pattern": "phone_projection_menu",
+        "sole_caller": true
+      },
+      "owner": "btsettings.projection_helper",
+      "type": "method"
+    }
+  },
+  "schema": 1
+}
