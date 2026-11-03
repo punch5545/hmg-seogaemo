@@ -1,7 +1,15 @@
 package com.seogaemo.app.module;
 
+import com.seogaemo.app.ui.settings.SettingsPage;
+
 /** Shared compile-only adapter for built-in root modules. */
 public abstract class RootBackedModule implements Module {
+    public void buildSettingsPage(SettingsPage page) {
+        page.statusHeader();
+        for (InfoRow row : infoRows()) page.info(row.labelResId, row.infoKey);
+        for (int note : notes()) page.note(note);
+        for (ModuleAction action : actions()) page.action(action.labelResId, action);
+    }
     public ModuleStatus apply() { return map(RootClient.run(id(), "apply")); }
     public ModuleStatus revert() { return map(RootClient.run(id(), "revert")); }
     public ModuleStatus status() { return map(RootClient.run(id(), "status")); }

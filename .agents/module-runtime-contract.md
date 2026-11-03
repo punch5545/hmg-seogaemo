@@ -52,6 +52,8 @@ baseline on first touch, perform, verify, mark applied, append ledger; non-zero 
 | `sg_file_delete <path>` | remove a file (baseline keeps its bytes) |
 | `sg_bind_mount <target> <payload-rel-src>` | non-persistent bind mount, recorded; reapplied by reconcile at boot |
 | `sg_service_restart <name>` | `stop`/`start` an init service (allow-listed per module in `module.properties` `services=`) |
+| `sg_zygote_install <wrapper-rel-src> <loader-rel-src> <jar-rel-src>` | guarded transaction for `/system/bin/app_process`, its `app_process.seogaemo-stock` copy, the wireless loader and JAR, and `enable`/`enabled`/`starts`/`disable` state; all eight paths must be in `owns_files` |
+| `sg_dex_cache_track <system-jar> <app-package>` | track the Dalvik cache entry for an owned `/system/framework/*.jar` and the package's `app_seogaemo-wireless-dex` files; these two derived cache namespaces are the sole exception to explicit `owns_files` listing |
 | `sg_revert_all` | undo every change this module made, newest first, with the guarded restore rules below; clears baselines only after every item verified |
 
 Read/report helpers: `sg_log <msg>`, `sg_owner_present <name>` (`nemesis-adb-tcp`, `hmgapi`,
@@ -63,6 +65,16 @@ Internal (not for modules): baseline capture, applied-copy marking, remount, led
 (`before/`), the bytes we wrote (`after/`), file metadata, and property before/after values. It is
 never pruned while any change is active; after a verified uninstall it is kept as a final
 export-able record until the package directory is removed.
+
+The zygote transaction copies the original executable to `app_process.seogaemo-stock` and
+verifies that backup before replacing `app_process`. The wrapper must always exec that stock
+path, including when its 3-start/120-second preload guard trips. A failure rolls back via the
+same full preflight and guarded restore as uninstall. `starts` is a dynamic decimal counter;
+its final value is captured in the ledger before restore. Dalvik cache entries in the two
+derived namespaces are captured before activation and again at revert, then restored to their
+original bytes or absence. `sg_revert_all` checks every owned path for drift before its first
+restore write. `make test` also runs optional `modules/<id>/build/build.sh` hooks before APK
+packaging and every `modules/<id>/test/run.sh`.
 
 **Export.** `seogaemo-root export usb|adb` copies the ledger, all original and modified files,
 property before/after values, `ro.build.product`, package version and module desired states into

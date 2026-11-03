@@ -1,5 +1,7 @@
 package com.seogaemo.app.module;
 
+import com.seogaemo.app.ui.settings.SettingsPage;
+
 /** Compile-time contract for built-in modules. No operation is wired to the UI yet. */
 public interface Module {
     enum RestartRequirement { NONE, ADBD, HEAD_UNIT }
@@ -39,4 +41,5 @@ public interface Module {
     ModuleStatus apply();
     ModuleStatus revert();
     ModuleStatus status();
+    void buildSettingsPage(SettingsPage page);
 }
