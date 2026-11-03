@@ -52,6 +52,7 @@ test: package
 	mkdir -p out/planner-test
 	javac -d out/planner-test app/src/com/seogaemo/app/module/ModulePlan.java app/src/com/seogaemo/app/module/ModulePlanner.java app/src/com/seogaemo/app/module/Warning.java tools/ModulePlannerTest.java
 	java -cp out/planner-test ModulePlannerTest
+	python3 tools/test-update.py
 
 clean:
 	rm -rf out

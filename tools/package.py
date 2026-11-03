@@ -51,6 +51,7 @@ def build(aapt):
     prefix = f"hmg-seogaemo-{version}"
     package_zip = DIST / f"{prefix}-nemesis-package.zip"
     usb_zip = DIST / f"{prefix}-nemesis-usb.zip"
+    ota_zip = DIST / f"{prefix}-ota.zip"
     apk_asset = DIST / f"{prefix}.apk"
     shutil.copyfile(apk, apk_asset)
     files = {"app/Seogaemo.apk": apk}
@@ -79,7 +80,12 @@ def build(aapt):
         "NEMESIS.data": ROOT / "nemesis/usb/NEMESIS.data",
         "packages/seogaemo.zip": package_zip,
     })
-    assets = [apk_asset, package_zip, usb_zip]
+    ota_files = {"app/Seogaemo.apk": apk, "VERSION": (version + "\n").encode()}
+    for name, source in files.items():
+        if name.startswith(("bin/", "lib/", "modules/", "core/", "svc/")) or name in ("modules.list", "modules.graph"):
+            ota_files[name] = source
+    add_zip(ota_zip, ota_files)
+    assets = [apk_asset, package_zip, usb_zip, ota_zip]
     private = os.environ.get("OTA_MANIFEST_PRIVATE_KEY")
     if private:
         if not Path(private).is_file():
@@ -106,7 +112,7 @@ def build(aapt):
 def verify(aapt):
     version, code = read_version(ROOT / "VERSION")
     prefix = f"hmg-seogaemo-{version}"
-    expected = {f"{prefix}.apk", f"{prefix}-nemesis-package.zip", f"{prefix}-nemesis-usb.zip", "SHA256SUMS"}
+    expected = {f"{prefix}.apk", f"{prefix}-nemesis-package.zip", f"{prefix}-nemesis-usb.zip", f"{prefix}-ota.zip", "SHA256SUMS"}
     manifest = DIST / f"{prefix}-manifest.json"
     signature = DIST / f"{prefix}-manifest.json.sig"
     if manifest.exists() != signature.exists():
@@ -119,7 +125,7 @@ def verify(aapt):
         if data["schema"] != 1 or data["version"] != version or data["versionCode"] != code or data["target"] != TARGET:
             raise ValueError("manifest metadata mismatch")
         names = {x["name"] for x in data["assets"]}
-        if len(names) != 3 or names != expected - {"SHA256SUMS", manifest.name, signature.name}:
+        if len(data["assets"]) != 4 or names != expected - {"SHA256SUMS", manifest.name, signature.name}:
             raise ValueError("manifest asset names mismatch")
         for asset in data["assets"]:
             path = DIST / asset["name"]

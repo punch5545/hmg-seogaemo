@@ -4,6 +4,7 @@ import argparse
 import configparser
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import zipfile
@@ -27,14 +28,24 @@ def run():
     verify(args.aapt)
     package_path = DIST / f"{prefix}-nemesis-package.zip"
     usb_path = DIST / f"{prefix}-nemesis-usb.zip"
-    with zipfile.ZipFile(package_path) as package, zipfile.ZipFile(usb_path) as usb:
+    ota_path = DIST / f"{prefix}-ota.zip"
+    with zipfile.ZipFile(package_path) as package, zipfile.ZipFile(usb_path) as usb, zipfile.ZipFile(ota_path) as ota:
         entries = set(package.namelist())
         required = {"NEMESIS.data", "app/Seogaemo.apk", "bin/seogaemo-root", "bin/install-apk.sh",
                     "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
                     "svc/reconcile.sh", "lib/common.sh", "modules.list", "modules.graph"}
         assert required <= entries, required - entries
+        for script_name in ("core/update.sh", "svc/reconcile.sh"):
+            body = package.read(script_name).decode()
+            assert not re.search(r"\b(?:awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|sha256sum|sha1sum|tar|unzip|busybox|toybox)\b", body), script_name
         assert set(usb.namelist()) == {"NEMESIS.data", "packages/seogaemo.zip"}
         assert usb.read("packages/seogaemo.zip") == package_path.read_bytes()
+        assert ota.read("VERSION") == (version + "\n").encode()
+        assert ota.read("app/Seogaemo.apk") == package.read("app/Seogaemo.apk")
+        for name in ota.namelist():
+            assert name == "VERSION" or name == "app/Seogaemo.apk" or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/")) or name in ("modules.list", "modules.graph")
+            if name in entries:
+                assert ota.read(name) == package.read(name)
         usb_meta = descriptor(usb.read("NEMESIS.data"))
         assert dict(usb_meta["nemesis"]) == {"version": "1.0", "type": "install", "path": "packages/seogaemo.zip"}
         meta = descriptor(package.read("NEMESIS.data"))
@@ -134,6 +145,57 @@ def run():
             temp.write(package.read("app/Seogaemo.apk"))
             temp.flush()
             assert apk_version(Path(temp.name), args.aapt) == (version, code)
+        # Exercise the fixed updater transaction against a fake root tree.
+        with tempfile.TemporaryDirectory() as fake_temp:
+            fake_root = Path(fake_temp)
+            package_root = fake_root / "package"
+            (package_root / "core").mkdir(parents=True)
+            (package_root / "bin").mkdir()
+            (package_root / "app").mkdir()
+            (package_root / "app/Seogaemo.apk").write_bytes(b"old apk")
+            (package_root / "NEMESIS.data").write_bytes(package.read("NEMESIS.data"))
+            (package_root / "bin/install-apk.sh").write_text("#!/bin/sh\nexit 0\n")
+            updater = package.read("core/update.sh").decode()
+            state = fake_root / "state"
+            incoming = fake_root / "download"
+            updater = updater.replace("state=/data/nemesis/backup/seogaemo", "state=" + str(state))
+            updater = updater.replace("input=/data/data/com.seogaemo.app/files/update", "input=" + str(incoming))
+            (package_root / "core/update.sh").write_text(updater)
+            incoming.mkdir()
+            for name in ("hmg-seogaemo-0.1.1-manifest.json", "hmg-seogaemo-0.1.1-manifest.json.sig", "hmg-seogaemo-0.1.1-ota.zip"):
+                (incoming / name).write_bytes(b"test")
+            (incoming / "payload/app").mkdir(parents=True)
+            for name in ("VERSION", "app/Seogaemo.apk", "modules.list", "modules.graph"):
+                (incoming / "payload" / name).write_text("test\n")
+            md5_lines = "".join("a" * 32 + "|" + name + "\n" for name in ("VERSION", "app/Seogaemo.apk", "modules.list", "modules.graph"))
+            (incoming / "payload/files.md5").write_text(md5_lines)
+            fake_bin = fake_root / "bin"
+            fake_bin.mkdir()
+            (fake_bin / "app_process").write_text("""#!/bin/sh
+case "$3" in
+  copy) mkdir "$5"; cp "$4"/hmg-seogaemo-* "$5/";;
+  verify) echo 0.1.1;;
+  extract) mkdir -p "$6/app" "$6/bin" "$6/svc"; echo 0.1.1 > "$6/VERSION"; echo graph > "$6/modules.graph"; echo list > "$6/modules.list"; echo apk > "$6/app/Seogaemo.apk"; echo '#!/bin/sh' > "$6/bin/install-apk.sh"; echo 'exit 0' >> "$6/bin/install-apk.sh"; echo '#!/bin/sh' > "$6/bin/seogaemo-root"; echo 'exit 0' >> "$6/bin/seogaemo-root"; echo '#!/bin/sh' > "$6/svc/reconcile.sh"; echo 'exit 0' >> "$6/svc/reconcile.sh"; printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|VERSION\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|app/Seogaemo.apk\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|modules.list\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|modules.graph\n' > "$6/files.md5";;
+  switch) python3 -c 'import os,sys; os.replace(sys.argv[1],sys.argv[2])' "$4" "$5";;
+esac
+""")
+            (fake_bin / "md5").write_text("#!/bin/sh\necho aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \"$1\"\n")
+            (fake_bin / "dumpsys").write_text("#!/bin/sh\necho versionName=0.1.1\n")
+            for name in ("app_process", "dumpsys", "md5"):
+                (fake_bin / name).chmod(0o755)
+            env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}")
+            updater_cmd = ["sh", str(package_root / "core/update.sh")]
+            for verb in ("stage", "apply", "rollback"):
+                result = subprocess.run(updater_cmd + [verb], env=env, capture_output=True, text=True)
+                assert result.returncode == 0, (verb, result.stdout, result.stderr)
+            assert "package-version=" + version in (package_root / "NEMESIS.data").read_text(), (package_root / "NEMESIS.data").read_text()
+            assert (state / "update/journal").read_text().strip() == "phase=rolled-back"
+            (state / "update/staged").write_text("0.1.1\n")
+            (fake_bin / "dumpsys").write_text("#!/bin/sh\necho versionName=wrong\n")
+            result = subprocess.run(updater_cmd + ["apply"], env=env, capture_output=True, text=True)
+            assert result.returncode != 0
+            assert (state / "update/current").resolve() == package_root.resolve(), (result.stdout, result.stderr, (state / "update/current").resolve(), package_root.resolve(), (state / "update/journal").read_text())
+            assert (state / "update/journal").read_text().strip() == "phase=auto-rollback"
     print("NEMESIS package tests passed")
 
 

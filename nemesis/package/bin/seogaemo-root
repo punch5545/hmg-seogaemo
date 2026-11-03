@@ -50,11 +50,19 @@ if [ "$1" = export ]; then
     printf 'state=on\nrestart=none\ndetail=%s\n' "$dest"
     exit 0
 fi
+if [ "$1" = update ]; then
+    case "$2" in stage|apply|rollback|status) ;; *) exit 2 ;; esac
+    base=${0%/*}
+    base=${base%/bin}
+    exec sh "$base/core/update.sh" "$2"
+fi
 case "$1" in
     ''|*[!a-z0-9-]*|-*|*--*|*-) exit 2 ;;
 esac
-# UPDATE VERB OWNERSHIP: the updater adds its own validated dispatch here.
 case "$2" in apply|revert|status|precheck) ;; *) exit 2 ;; esac
+base=${0%/*}
+base=${base%/bin}
+[ -L /data/nemesis/backup/seogaemo/update/current ] && base=/data/nemesis/backup/seogaemo/update/current
 [ "$base" != "$0" ] || exit 2
 [ -f "$base/modules.list" ] || exit 2
 grep -Fxq "$1" "$base/modules.list" || exit 2

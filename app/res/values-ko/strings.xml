@@ -105,4 +105,25 @@
     <string name="module_no_changes">변경할 내용이 없습니다.</string>
     <string name="export_changes_usb">변경 내역을 USB로 내보내기</string>
     <string name="export_changes_hint">변경 기록과 원본 파일을 연결된 USB 드라이브에 복사합니다.</string>
+    <string name="update_current">현재 버전</string>
+    <string name="update_current_hint">설치된 새개모 버전</string>
+    <string name="update_idle">업데이트 확인 준비됨</string>
+    <string name="update_check">업데이트 확인</string>
+    <string name="update_rollback">이전 버전 복원</string>
+    <string name="update_wifi_required">업데이트에는 Wi-Fi가 필요합니다. Wi-Fi 클라이언트를 켜면 무선 CarPlay가 중단되고 헤드 유닛 재시작이 필요합니다. 계속할까요?</string>
+    <string name="update_enable_wifi">Wi-Fi 클라이언트 켜기</string>
+    <string name="update_resume_after_restart">재시작 후 확인을 계속합니다</string>
+    <string name="update_available">버전 %1$s의 검증이 완료되었습니다. 설치할까요?</string>
+    <string name="update_install">업데이트 설치</string>
+    <string name="update_rollback_confirm">이전에 검증한 버전으로 복원할까요?</string>
+    <string name="update_staging">업데이트 준비 중…</string>
+    <string name="update_applying">업데이트 적용 중…</string>
+    <string name="update_rolling_back">이전 버전 복원 중…</string>
+    <string name="update_complete">업데이트 작업 완료</string>
+    <string name="update_restore_pending">이전 모듈 설정 복원 또는 헤드 유닛 재시작이 필요합니다</string>
+    <string name="update_checking">릴리스 확인 중…</string>
+    <string name="update_fetching_signature">서명 다운로드 중…</string>
+    <string name="update_downloading">OTA 다운로드 중…</string>
+    <string name="update_verifying">서명 및 해시 검증 중…</string>
+    <string name="update_no_update">새 릴리스가 없습니다</string>
 </resources>

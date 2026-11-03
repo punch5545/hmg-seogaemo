@@ -105,4 +105,25 @@
     <string name="module_no_changes">No changes needed.</string>
     <string name="export_changes_usb">Export changes to USB</string>
     <string name="export_changes_hint">Copy the change ledger and original files to a mounted USB drive.</string>
+    <string name="update_current">Current version</string>
+    <string name="update_current_hint">Installed Seogaemo build</string>
+    <string name="update_idle">Ready to check for updates</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_rollback">Roll back</string>
+    <string name="update_wifi_required">Updates need Wi-Fi. Enabling Wi-Fi client interrupts wireless CarPlay and requires a head-unit restart. Continue?</string>
+    <string name="update_enable_wifi">Enable Wi-Fi client</string>
+    <string name="update_resume_after_restart">Check will resume after restart</string>
+    <string name="update_available">Version %1$s is verified and ready to install.</string>
+    <string name="update_install">Install update</string>
+    <string name="update_rollback_confirm">Restore the previous verified build?</string>
+    <string name="update_staging">Staging update…</string>
+    <string name="update_applying">Applying update…</string>
+    <string name="update_rolling_back">Rolling back…</string>
+    <string name="update_complete">Update operation complete</string>
+    <string name="update_restore_pending">Previous module settings need restoration or a head-unit restart</string>
+    <string name="update_checking">Checking release…</string>
+    <string name="update_fetching_signature">Downloading signature…</string>
+    <string name="update_downloading">Downloading OTA…</string>
+    <string name="update_verifying">Verifying signature and hash…</string>
+    <string name="update_no_update">No newer release is available</string>
 </resources>
