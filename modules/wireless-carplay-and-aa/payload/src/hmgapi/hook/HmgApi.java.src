@@ -54,10 +54,13 @@ final class HmgApi {
                     !property(prop, "ro.build.version.release").equals(car.getString("android"))) {
                 i("hooks off: car identity changed"); return;
             }
-            String seal = product + "\n" + read(new File(selected, "hash-id")).trim() + "\n"
-                    + read(new File("/proc/sys/kernel/random/boot_id")).trim() + "\n";
-            if (!seal.equals(read(new File(selected, "verified")))) {
-                i("hooks off: map not verified this boot"); return;
+            // The seal holds the product and stock hash the map was verified on, then the boot it
+            // was verified in. The zygote starts seconds after boot, long before this boot's
+            // verification finishes, so only the first two lines gate the hooks; every stock file
+            // is still compared with the MD5s recorded in car.json below.
+            String seal = product + "\n" + read(new File(selected, "hash-id")).trim() + "\n";
+            if (!read(new File(selected, "verified")).startsWith(seal)) {
+                i("hooks off: map not verified for this stock build"); return;
             }
             JSONObject files = car.getJSONObject("files");
             Iterator<String> paths = files.keys();

@@ -446,7 +446,12 @@ records pointer and content changes in the ledger, then atomically replaces the
 `car-maps/active` pointer file. The pointer is the only path consumers select;
 there is no write to a stock file. A failed publish leaves the previous pointer.
 The boot ID is included in the map ID and verification seal, so a new boot needs
-reflection verification again. Module `hookpoints.required` IDs must all survive
+reflection verification again.
+The zygote hook gate (`HmgApi.zygoteInit`) checks only the first two lines of the `verified` seal
+(product, stock hash ID), not the boot ID: the zygote starts about two seconds after boot while this
+boot's verification finishes one to three minutes later, so a boot-bound gate left the Java hooks off on
+every cold boot (the native library still loaded, so `status` read "hooks loaded"). Every stock file is
+still compared with the MD5s in `car.json` before the map is used. Module `hookpoints.required` IDs must all survive
 resolution and reflection before publish. `map.json` exposes only verified points.
 Generated maps and the ledger are package-local state retained for export until
 package removal; module revert never removes them. The app invokes map commands
