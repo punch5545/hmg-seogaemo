@@ -50,6 +50,7 @@ while IFS= read -r props; do
     service_calls=$(property "$props" service_calls)
     watch=$(property "$props" watch)
     restore=$(property "$props" restore)
+    reassert_props=$(property "$props" reassert_props)
     module_version=$(property "$props" version)
     if [ "$module_version" != '@VERSION@' ]; then
         echo "gen-modules: version must be @VERSION@ in $props" >&2
@@ -97,7 +98,7 @@ while IFS= read -r props; do
         exit 1
     fi
     if [ -n "$watch" ]; then
-        [ "$restore" = reboot ] || { echo "gen-modules: watch requires reboot restore in $props" >&2; exit 1; }
+        [ "$restore" = reboot ] || [ -n "$reassert_props" ] || { echo "gen-modules: watch requires reboot restore or reassert_props in $props" >&2; exit 1; }
         case "$watch" in boot|screen_on|boot,screen_on|screen_on,boot) ;; *) echo "gen-modules: invalid watch events in $props" >&2; exit 1;; esac
     fi
     if [ -n "$service_calls" ]; then

@@ -327,10 +327,36 @@ esac
     assert list((car.state / 'stock').glob('recovery.*/b/line.*'))
 
 
+def test_reassert_restore(folder):
+    car = Car(folder)
+    manifest = car.base / 'modules/a.properties'
+    manifest.write_text(manifest.read_text() + 'reassert_props=demo.a\n')
+    (car.live / 'demo.a').write_text('original')
+    (car.backing / 'demo.a').write_bytes(b'original\x00')
+    car.enable()
+    (car.live / 'demo.a').write_text('stock.reset')
+    # Whole-package preflight permits drift ONLY for the declared property.
+    (car.live / 'demo.b').write_text('external')
+    car.run('stock', 'restore', ok=False)
+    assert car.calls.read_text() == ''
+    assert (car.live / 'demo.a').read_text() == 'stock.reset'
+    (car.live / 'demo.b').write_text('ours')
+    car.run('stock', 'restore')
+    assert (car.live / 'demo.a').read_text() == 'original'
+    assert (car.backing / 'demo.a').read_bytes() == b'original\x00'
+    assert not list((car.state / 'modules/a').glob('prop.*'))
+    # The preuninstall hook uses the same explicit drift policy.
+    car.enable()
+    (car.live / 'demo.a').write_text('user.choice')
+    car.hook()
+    assert (car.live / 'demo.a').read_text() == 'original'
+    assert (car.backing / 'demo.a').read_bytes() == b'original\x00'
+
+
 with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
                  test_late_failure, test_detached_failure, test_missing_handoff,
-                 test_shared_lines):
+                 test_shared_lines, test_reassert_restore):
         folder = Path(directory) / test.__name__
         folder.mkdir()
         test(folder)

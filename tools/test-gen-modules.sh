@@ -200,3 +200,17 @@ for first in alpha beta; do
 done
 
 echo 'gen-modules tests passed'
+
+# Property watch policy must be explicit and a unique subset of ownership.
+reset_fixture
+printf 'owns_props=demo\nreassert_props=demo\nwatch=boot,screen_on\n' >> "$fixture/modules/alpha/module.properties"
+PROJECT_ROOT="$fixture" sh "$repo/tools/gen-modules.sh"
+reset_fixture
+printf 'owns_props=demo\nreassert_props=other\nwatch=boot\n' >> "$fixture/modules/alpha/module.properties"
+expect_failure 'invalid reassert_props'
+reset_fixture
+printf 'owns_props=demo\nreassert_props=demo,demo\n' >> "$fixture/modules/alpha/module.properties"
+expect_failure 'invalid reassert_props'
+reset_fixture
+printf 'owns_props=demo\nwatch=boot\n' >> "$fixture/modules/alpha/module.properties"
+expect_failure 'watch requires reboot restore or reassert_props'

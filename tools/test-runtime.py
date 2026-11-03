@@ -560,6 +560,42 @@ def test_watch_dispatch(temp):
     assert calls.read_text().splitlines() == ["watcher watch screen_on"]
 
 
+    # Quick boot: same boot ID, always Awake, property drift alone dispatches.
+    (base / "modules/watcher.properties").write_text(
+        "watch=boot,screen_on\nowns_props=demo\nreassert_props=demo\n")
+    prop_dir = state / "modules/watcher/prop.demo"
+    prop_dir.mkdir(parents=True)
+    (prop_dir / "ready").write_text("1")
+    (prop_dir / "applied").write_text("our.action")
+    actual = base / "actual-property"
+    env["FAKE_PROPERTY"] = str(actual)
+    script(fake / "getprop", 'if [ "$1" = sys.boot_completed ]; then echo 1; else cat "$FAKE_PROPERTY"; fi\n')
+    script(fake / "dumpsys", 'echo mWakefulness=Awake\n')
+    script(base / "bin/hmg-seogaemo-root", 'echo "$1 $2 $3" >> "$FAKE_CALLS"; echo our.action > "$FAKE_PROPERTY"; echo state=on\n')
+    for drift in ("stock.reset", "user.choice"):
+        actual.write_text(drift)
+        calls.write_text("")
+        run(base / "svc/watcher.sh", env=env)
+        assert calls.read_text().splitlines() == ["watcher watch screen_on"]
+        assert actual.read_text().strip() == "our.action"
+    calls.write_text("")
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text() == ""  # matching value never dispatches
+    (state / "desired/watcher").write_text("off")
+    actual.write_text("user.choice")
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text() == "" and actual.read_text() == "user.choice"
+    (state / "desired/watcher").write_text("on")
+    (state / "stock").mkdir()
+    (state / "stock/paused").touch()
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text() == ""
+    (state / "stock/paused").unlink()
+    (prop_dir / "applied").unlink()
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text() == ""  # never invent an assignment without a snapshot
+
+
 def test_reconcile_does_not_watch(temp):
     text = (ROOT / "nemesis/package/svc/reconcile.sh").read_text()
     assert " watch " not in text and "dumpsys" not in text

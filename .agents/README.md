@@ -17,7 +17,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [wifi-client.md](wifi-client.md) | Current | Implemented Wi-Fi client file edits, status, tests, and on-car checklist. |
 | [wireless-adb.md](wireless-adb.md) | Current | Implemented ADB property behavior, network observations, and on-car checklist. |
 | [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) | Current | Implemented AGPL projection port, owned changes, recovery, and on-car checklist. |
-| [user-button-shortcut.md](user-button-shortcut.md) | Current | Independent default-off steering/head-unit user-button assignments, KOR dispatch evidence, exact restore and on-car checks. |
+| [user-button-shortcut.md](user-button-shortcut.md) | Current | Independent steering/head-unit shortcuts, owner-approved reassertion on boot/wake/property drift, original restore and KOR evidence. |
 | [skip-consent-screen.md](skip-consent-screen.md) | Current | Factory82 provenance, owner-tested NEEV KOR behavior, implemented watcher and reboot restore, on-car checklist. |
 | [research-car-mapping.md](research-car-mapping.md) | Implemented plus historical research | KOR evidence, core mapper design, and remaining on-car validation. |
 | [carplay-tbt-learnings.md](carplay-tbt-learnings.md) | Current | CarPlay turn-by-turn fixes ported from HMG-API, open problems, Wi-Fi client/AP findings. |

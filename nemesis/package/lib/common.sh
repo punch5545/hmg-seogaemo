@@ -98,6 +98,10 @@ sg_prop_write() {
             mv "$sg_dir/applied.tmp.$$" "$sg_dir/applied" || return 1
     fi
 }
+# Explicit owner-approved exception; unrelated properties retain exact guards.
+sg_prop_drift_allowed() {
+    sg_validate owns_props "$1" && sg_validate reassert_props "$1"
+}
 sg_prop_restore() {
     sg_prop_name "$1" || return 2
     sg_check_build || return 3
@@ -105,7 +109,7 @@ sg_prop_restore() {
     [ -f "$sg_dir/ready" ] || return 1
     sg_live=$(cat "$sg_dir/live") || return 1
     sg_current=$(getprop "$1") || return 1
-    if [ "$sg_current" != "$sg_live" ]; then
+    if [ "$sg_current" != "$sg_live" ] && ! sg_prop_drift_allowed "$1"; then
         [ -f "$sg_dir/applied" ] &&
             [ "$sg_current" = "$(cat "$sg_dir/applied")" ] ||
             { sg_log "conflict: property $1 changed"; return 3; }
@@ -225,7 +229,7 @@ sg_restore_preflight() {
         sg_key=${sg_dir##*/prop.}
         sg_live=$(cat "$sg_dir/live") || return 1
         sg_current=$(getprop "$sg_key") || return 1
-        [ "$sg_current" = "$sg_live" ] || {
+        [ "$sg_current" = "$sg_live" ] || sg_prop_drift_allowed "$sg_key" || {
             [ -f "$sg_dir/applied" ] &&
                 [ "$sg_current" = "$(cat "$sg_dir/applied")" ] || return 3
         }
@@ -929,7 +933,12 @@ sg_revert_all() {
         case "$sg_kind" in
             prop)
                 sg_saved=$HMG_SEOGAEMO_STATE/prop.$sg_target
-                sg_copy "$sg_saved/applied" "$sg_revert_before" || return 1
+                if sg_prop_drift_allowed "$sg_target"; then
+                    sg_observed=$(getprop "$sg_target") || return 1
+                    sg_write "$sg_observed" > "$sg_revert_before" || return 1
+                else
+                    sg_copy "$sg_saved/applied" "$sg_revert_before" || return 1
+                fi
                 sg_prop_restore "$sg_target" || return 3
                 sg_ledger revert "$sg_target" "$sg_revert_before" "$sg_saved/live" "" || return 1 ;;
             file)
