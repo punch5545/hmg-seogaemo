@@ -119,7 +119,7 @@ for name in awk sed tail head cut tr wc sort uniq xargs find stat readlink \
     sha256sum sha1sum tar unzip busybox toybox; do
     ln -s "$tmp/bin/forbidden" "$tmp/restricted-bin/$name"
 done
-export FAKE_ROOT="$tmp" SEOGAEMO_BASE="$tmp/base" SEOGAEMO_STATE="$tmp/state"
+export FAKE_ROOT="$tmp" HMG_SEOGAEMO_BASE="$tmp/base" HMG_SEOGAEMO_STATE="$tmp/state"
 script="$module_dir/root/wireless-adb.sh"
 
 run() { PATH="$tmp/restricted-bin" "$car_shell" "$script" "$1" > "$tmp/output"; }

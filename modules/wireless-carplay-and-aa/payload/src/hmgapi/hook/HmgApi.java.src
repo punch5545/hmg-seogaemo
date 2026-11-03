@@ -13,8 +13,8 @@ import org.json.JSONObject;
 
 final class HmgApi {
     private HmgApi() {}
-    static void i(String msg) { Log.i("Seogaemo-Wireless", msg); }
-    static void e(String msg, Throwable t) { Log.e("Seogaemo-Wireless", msg, t); }
+    static void i(String msg) { Log.i("HMG-Seogaemo-Wireless", msg); }
+    static void e(String msg, Throwable t) { Log.e("HMG-Seogaemo-Wireless", msg, t); }
     static final Wireless ENTRY = new Wireless();
     static final ModContext MOD = new ModContext();
 
@@ -25,7 +25,7 @@ final class HmgApi {
             if (!"NEEV.KOR.0000.V039.001.260902".equals(product)) { i("hooks off: firmware " + product); return; }
             File enabled = new File("/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/enabled");
             if (!enabled.isFile()) { i("hooks off: module disabled"); return; }
-            File mapFile = new File("/system/etc/seogaemo/wireless-carplay-and-aa/car-map.json");
+            File mapFile = new File("/system/etc/hmg-seogaemo/wireless-carplay-and-aa/car-map.json");
             FileInputStream in = new FileInputStream(mapFile);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buf = new byte[8192]; int n;

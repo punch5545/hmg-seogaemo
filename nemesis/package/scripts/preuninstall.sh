@@ -6,7 +6,7 @@ case "$caller" in
     *uninstall*) ;;
     *install*)
         if grep -Fxq 'id=hmg-seogaemo' /data/local/tmp/nemesis/stage/hmg-seogaemo/NEMESIS.data 2>/dev/null; then
-            echo 'Seogaemo update: retaining APK and app data'
+            echo 'HMG-Seogaemo update: retaining APK and app data'
             exit 0
         fi ;;
 esac
@@ -25,11 +25,11 @@ for id in $reverse; do
     done
     [ "$active" = on ] || [ "$baseline" -eq 1 ] || continue
     if [ "$baseline" -eq 1 ]; then
-        SEOGAEMO_STATE=$state/modules/$id
-        export SEOGAEMO_STATE
+        HMG_SEOGAEMO_STATE=$state/modules/$id
+        export HMG_SEOGAEMO_STATE
         . "$base/lib/common.sh"
         sg_restore_preflight || {
-            echo "Seogaemo uninstall blocked: $id baseline conflict; backups retained" >&2
+            echo "HMG-Seogaemo uninstall blocked: $id baseline conflict; backups retained" >&2
             exit 1
         }
     fi
@@ -42,17 +42,17 @@ for id in $reverse; do
     done
     [ "$active" = on ] || [ "$baseline" -eq 1 ] || continue
     sh "$base/bin/hmg-seogaemo-root" "$id" revert || {
-        echo "Seogaemo uninstall blocked: $id revert failed; backups retained" >&2
+        echo "HMG-Seogaemo uninstall blocked: $id revert failed; backups retained" >&2
         exit 1
     }
     status=$(sh "$base/bin/hmg-seogaemo-root" "$id" status) || exit 1
     case "$status" in *'state=off'*) ;; *)
-        echo "Seogaemo uninstall blocked: $id did not verify off" >&2; exit 1 ;;
+        echo "HMG-Seogaemo uninstall blocked: $id did not verify off" >&2; exit 1 ;;
     esac
     [ "$(cat "$state/desired/$id" 2>/dev/null)" = off ] || exit 1
     for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready; do
         [ ! -f "$item" ] || {
-            echo "Seogaemo uninstall blocked: $id baseline remains" >&2; exit 1;
+            echo "HMG-Seogaemo uninstall blocked: $id baseline remains" >&2; exit 1;
         }
     done
 done

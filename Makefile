@@ -1,7 +1,7 @@
 SDK ?= $(if $(ANDROID_HOME),$(ANDROID_HOME),$(HOME)/Library/Android/sdk)
 BT := $(SDK)/build-tools/34.0.0
 ANDROID_JAR := $(SDK)/platforms/android-19/android.jar
-OUT := out/seogaemo.apk
+OUT := out/hmg-seogaemo.apk
 SOURCES := $(shell find app/src modules -name '*.java' | sort)
 INPUTS := $(shell find app/res modules -type f | sort)
 
@@ -31,8 +31,8 @@ $(OUT): VERSION app/AndroidManifest.xml app/allow-sha1.security $(SOURCES) $(INP
 		jarsigner -J-Djava.security.properties=$(CURDIR)/app/allow-sha1.security -sigalg SHA1withRSA -digestalg SHA1 -keystore "$$RELEASE_KEYSTORE" -storepass:env RELEASE_KEYSTORE_PASSWORD -keypass:env RELEASE_KEYSTORE_PASSWORD out/unsigned.apk "$$RELEASE_KEY_ALIAS" >/dev/null; \
 	else \
 		echo 'Signing debug APK with a throwaway key'; \
-		test -f out/debug.keystore || keytool -genkeypair -keystore out/debug.keystore -alias seogaemo -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname 'CN=seogaemo,O=seogaemo,C=US' >/dev/null 2>&1; \
-		jarsigner -J-Djava.security.properties=$(CURDIR)/app/allow-sha1.security -sigalg SHA1withRSA -digestalg SHA1 -keystore out/debug.keystore -storepass android -keypass android out/unsigned.apk seogaemo >/dev/null; \
+		test -f out/debug.keystore || keytool -genkeypair -keystore out/debug.keystore -alias hmg-seogaemo -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname 'CN=HMG-Seogaemo,O=HMG-Seogaemo,C=US' >/dev/null 2>&1; \
+		jarsigner -J-Djava.security.properties=$(CURDIR)/app/allow-sha1.security -sigalg SHA1withRSA -digestalg SHA1 -keystore out/debug.keystore -storepass android -keypass android out/unsigned.apk hmg-seogaemo >/dev/null; \
 	fi
 	$(BT)/zipalign -f 4 out/unsigned.apk $(OUT)
 	$(BT)/apksigner verify --verbose --min-sdk-version 19 $(OUT)
@@ -50,6 +50,7 @@ test: package
 	python3 tools/test-package.py --aapt $(BT)/aapt
 	python3 tools/test-runtime.py
 	python3 tools/lint-module-root.py
+	python3 tools/lint-names.py
 	@for t in modules/*/test/run.sh; do test ! -f "$$t" || sh "$$t"; done
 	mkdir -p out/planner-test
 	javac -d out/planner-test app/src/com/seogaemo/hmg/module/ModulePlan.java app/src/com/seogaemo/hmg/module/ModulePlanner.java app/src/com/seogaemo/hmg/module/Warning.java tools/ModulePlannerTest.java

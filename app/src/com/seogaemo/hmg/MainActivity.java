@@ -90,7 +90,7 @@ public final class MainActivity extends Activity {
                 }
             } catch (Exception ignored) { }
         } else if (getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
-            new Thread(new Runnable() { public void run() { if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending)); } }, "seogaemo-update-restore").start();
+            new Thread(new Runnable() { public void run() { if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending)); } }, "hmg-seogaemo-update-restore").start();
         }
     }
 
@@ -695,7 +695,7 @@ public final class MainActivity extends Activity {
                     updateMessage(e.getMessage() + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
                     finishUpdateWork(dialog);
                 }
-            }}, "seogaemo-update-check").start();
+            }}, "hmg-seogaemo-update-check").start();
         } catch (Exception e) { if (dialog != null) dialog.dismiss(); updateMessage(e.getMessage()); }
     }
 
@@ -714,7 +714,7 @@ public final class MainActivity extends Activity {
         }, new Runnable() {
             public void run() { new Thread(new Runnable() {
                 public void run() { if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending)); }
-            }, "seogaemo-update-restore").start(); }
+            }, "hmg-seogaemo-update-restore").start(); }
         });
     }
 
@@ -740,7 +740,7 @@ public final class MainActivity extends Activity {
                 boolean restored = restoreModules();
                 updateMessage(e.getMessage() + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
             } finally { finishUpdateWork(dialog); }
-        }}, "seogaemo-update-root").start();
+        }}, "hmg-seogaemo-update-root").start();
     }
 
     private String enabledModules() {

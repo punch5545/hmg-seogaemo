@@ -1,13 +1,13 @@
 /* Modified by HMG-Seogaemo: standalone wireless zygote wrapper. */
 /*
  * hmgapi-hook zygote wrapper: installed as /system/bin/app_process, runs the
- * stock binary (kept as app_process.seogaemo-stock) with the same arguments.
+ * stock binary (kept as app_process.hmg-seogaemo-stock) with the same arguments.
  *
- * For the zygote only (argv has --zygote), it adds LD_PRELOAD=libseogaemo_wireless_hook.so
+ * For the zygote only (argv has --zygote), it adds LD_PRELOAD=libhmg_seogaemo_wireless_hook.so
  * when all of these hold, so the hook runtime loads into every app:
  *   /data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/enable exists      (step 2 creates it)
  *   /data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/disable is absent  (manual off switch)
- *   /system/lib/libseogaemo_wireless_hook.so exists
+ *   /system/lib/libhmg_seogaemo_wireless_hook.so exists
  *   /data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/starts < 3         (boot guard)
  * Boot guard reset: with hooks on, a watcher (double-forked, so init adopts it
  * and the zygote never sees it exit) waits GUARD_DELAY seconds and writes 0 to
@@ -26,7 +26,7 @@
 typedef unsigned long ul;
 
 #ifndef STOCK
-#define STOCK "/system/bin/app_process.seogaemo-stock"
+#define STOCK "/system/bin/app_process.hmg-seogaemo-stock"
 #endif
 #ifndef KMSG
 #define KMSG "/dev/kmsg"
@@ -35,7 +35,7 @@ typedef unsigned long ul;
 #define HOOKDIR "/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa"
 #endif
 #ifndef HOOKLIB
-#define HOOKLIB "/system/lib/libseogaemo_wireless_hook.so"
+#define HOOKLIB "/system/lib/libhmg_seogaemo_wireless_hook.so"
 #endif
 #define MAXSTARTS 3
 #ifndef GUARD_DELAY
@@ -135,7 +135,7 @@ static void start_watcher(void)
             if (!alive(zpid)) xexit(0);
             fd = xopen(HOOKDIR "/starts", O_WR, 0600);
             if (fd >= 0) { xwrite(fd, "0", 1); xclose(fd); }
-            put("<6>seogaemo-wireless: zygote "); putn(zpid); put(" up "); putn(GUARD_DELAY);
+            put("<6>hmg-seogaemo-wireless: zygote "); putn(zpid); put(" up "); putn(GUARD_DELAY);
             put(" s, boot guard reset"); flush();
         }
         xexit(0);
@@ -156,7 +156,7 @@ int main(int argc, char **argv, char **envp)
     for (i = 0; envp[i]; i++)
         if (spre(envp[i], "NO_ADDR_COMPAT_LAYOUT_FIXUP=")) reexec = 1;
 
-    put("<6>seogaemo-wireless: ");
+    put("<6>hmg-seogaemo-wireless: ");
     put(zygote ? "zygote" : "app_process");
     if (reexec) put(" (re-exec)");
     else if (zygote && exists(HOOKDIR "/enable")) {
@@ -179,7 +179,7 @@ int main(int argc, char **argv, char **envp)
     flush();
     if (use) start_watcher();
     rc = xexecve(STOCK, argv, env);
-    put("<3>seogaemo-wireless: exec " STOCK " failed, errno ");
+    put("<3>hmg-seogaemo-wireless: exec " STOCK " failed, errno ");
     putn(-rc);
     flush();
     (void)slen;

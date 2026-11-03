@@ -1,5 +1,16 @@
 # hmg-seogaemo
 
+## Naming
+
+Project-owned names use `hmg-seogaemo` for paths and artifacts, `hmg_seogaemo`
+for snake-case identifiers, `HMG_SEOGAEMO` for environment variables and constants,
+`HmgSeogaemo` for Java class prefixes, and `HMG-Seogaemo` for display and log text.
+The Java package `com.seogaemo.hmg` and the GitHub repository
+`seogaemo/hmg-seogaemo` retain their owner-chosen names. The existing `sg_*`
+shell functions and internal variables remain the module runtime API prefix;
+renaming the entire API would add churn to all modules and tests without changing
+the project identity. New root-side environment variables use `HMG_SEOGAEMO_*`.
+
 HMG-Seogaemo: an app + root package for Hyundai/Kia/Genesis **Gen5W** head units, installed
 through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG-Seogaemo only**
 (HMG-API and HMG Leafia Plus are not installed alongside; they are upstream references).
@@ -84,7 +95,7 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 
 ## Build, test, release
 
-- `make` builds `out/seogaemo.apk`; `make test` runs generator, package, runtime, update, lint and
+- `make` builds `out/hmg-seogaemo.apk`; `make test` runs generator, package, runtime, update, lint and
   every `modules/*/test/run.sh` (tests put `tools/testlib/fakebin` first on PATH and use `mksh`
   when installed); `make package` writes `out/dist/` (`hmg-seogaemo-<v>-nemesis-package.zip`,
   `-nemesis-usb.zip`, `-ota.zip`, `.apk`, `SHA256SUMS`, plus signed manifest when

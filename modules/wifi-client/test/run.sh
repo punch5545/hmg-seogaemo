@@ -22,25 +22,25 @@ cat > "$work/base/lib/common.sh" <<'EOF'
 sg_log() { :; }
 sg_snapshot() {
     name=${1##*/}
-    if [ ! -e "$SEOGAEMO_STATE/$name.saved" ] && [ ! -e "$SEOGAEMO_STATE/$name.absent" ]; then
-        if [ -e "$1" ]; then cp -p "$1" "$SEOGAEMO_STATE/$name.saved";
-        else : > "$SEOGAEMO_STATE/$name.absent"; fi
+    if [ ! -e "$HMG_SEOGAEMO_STATE/$name.saved" ] && [ ! -e "$HMG_SEOGAEMO_STATE/$name.absent" ]; then
+        if [ -e "$1" ]; then cp -p "$1" "$HMG_SEOGAEMO_STATE/$name.saved";
+        else : > "$HMG_SEOGAEMO_STATE/$name.absent"; fi
     fi
 }
 sg_mark() {
     name=${1##*/}
-    cp -p "$1" "$SEOGAEMO_STATE/$name.applied"
+    cp -p "$1" "$HMG_SEOGAEMO_STATE/$name.applied"
     printf '%s\n' "$name" >> "$TEST_WORK/marks"
 }
 sg_applied() {
     name=${1##*/}
-    [ -f "$SEOGAEMO_STATE/$name.applied" ] && [ -f "$1" ] &&
-        cmp -s "$SEOGAEMO_STATE/$name.applied" "$1"
+    [ -f "$HMG_SEOGAEMO_STATE/$name.applied" ] && [ -f "$1" ] &&
+        cmp -s "$HMG_SEOGAEMO_STATE/$name.applied" "$1"
 }
 sg_file_put() {
     [ "$3" = 0644 ] && [ "$4" = root:root ] || return 1
     sg_snapshot "$1" || return 1
-    cp -p "$SEOGAEMO_MODULE_DIR/$2" "$1" || return 1
+    cp -p "$HMG_SEOGAEMO_MODULE_DIR/$2" "$1" || return 1
     sg_mark "$1"
 }
 sg_file_replace_line() {
@@ -57,18 +57,18 @@ sg_file_replace_line() {
 sg_revert_all() {
     for path in "$TEST_WORK/system/onebin/neev_kr/featurexml.cfg" "$TEST_WORK/system/etc/permissions/android.hardware.wifi.xml"; do
         name=${path##*/}
-        [ -f "$SEOGAEMO_STATE/$name.saved" ] || [ -f "$SEOGAEMO_STATE/$name.absent" ] || continue
-        if [ -f "$SEOGAEMO_STATE/$name.saved" ] && [ -f "$path" ] && cmp -s "$path" "$SEOGAEMO_STATE/$name.saved"; then continue; fi
-        if [ -f "$SEOGAEMO_STATE/$name.absent" ] && [ ! -e "$path" ]; then continue; fi
+        [ -f "$HMG_SEOGAEMO_STATE/$name.saved" ] || [ -f "$HMG_SEOGAEMO_STATE/$name.absent" ] || continue
+        if [ -f "$HMG_SEOGAEMO_STATE/$name.saved" ] && [ -f "$path" ] && cmp -s "$path" "$HMG_SEOGAEMO_STATE/$name.saved"; then continue; fi
+        if [ -f "$HMG_SEOGAEMO_STATE/$name.absent" ] && [ ! -e "$path" ]; then continue; fi
         sg_applied "$path" || return 1
     done
     for path in "$TEST_WORK/system/onebin/neev_kr/featurexml.cfg" "$TEST_WORK/system/etc/permissions/android.hardware.wifi.xml"; do
         name=${path##*/}
-        if [ -f "$SEOGAEMO_STATE/$name.saved" ]; then cp -p "$SEOGAEMO_STATE/$name.saved" "$path";
-        elif [ -f "$SEOGAEMO_STATE/$name.absent" ]; then rm -f "$path"; fi
+        if [ -f "$HMG_SEOGAEMO_STATE/$name.saved" ]; then cp -p "$HMG_SEOGAEMO_STATE/$name.saved" "$path";
+        elif [ -f "$HMG_SEOGAEMO_STATE/$name.absent" ]; then rm -f "$path"; fi
     done
     [ ! -e "$TEST_WORK/fail-clear" ] || return 1
-    rm -f "$SEOGAEMO_STATE"/*.saved "$SEOGAEMO_STATE"/*.absent "$SEOGAEMO_STATE"/*.applied
+    rm -f "$HMG_SEOGAEMO_STATE"/*.saved "$HMG_SEOGAEMO_STATE"/*.absent "$HMG_SEOGAEMO_STATE"/*.applied
 }
 sg_owner_present() { grep -Fxq "$1" "$TEST_WORK/owners"; }
 sg_status() {
@@ -122,7 +122,7 @@ sed -e "s|^cfg=/system/|cfg=$work/system/|" \
     "$repo/modules/wifi-client/root/wifi-client.sh" > "$work/wifi-client.sh"
 
 cp "$repo/modules/wifi-client/payload/android.hardware.wifi.xml" "$work/base/android.hardware.wifi.xml"
-export TEST_WORK=$work SEOGAEMO_BASE=$work/base SEOGAEMO_STATE=$work/state SEOGAEMO_MODULE_DIR=$work/base
+export TEST_WORK=$work HMG_SEOGAEMO_BASE=$work/base HMG_SEOGAEMO_STATE=$work/state HMG_SEOGAEMO_MODULE_DIR=$work/base
 # Keep the test harness on the host PATH, but execute the module with only
 # toolbox-like commands. Forbidden names are explicit failing stubs.
 mkdir "$work/allowed"

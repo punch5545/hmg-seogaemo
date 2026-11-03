@@ -8,7 +8,7 @@ state=/data/nemesis/backup/hmg-seogaemo
 root=$state/update
 input=/data/data/com.seogaemo.hmg/files/update
 descriptor=$base/NEMESIS.data
-trusted=$base/app/Seogaemo.apk
+trusted=$base/app/hmg-seogaemo.apk
 verb=${1:-}
 [ "$#" -eq 1 ] || exit 2
 case "$verb" in stage|apply|rollback|status) ;; *) exit 2 ;; esac
@@ -109,7 +109,7 @@ if [ "$verb" = rollback ]; then
     IFS= read -r old < "$root/previous-path" || :
     IFS= read -r previous_version < "$root/previous-version" || :
     case "$old" in "$base"|"$root"/versions/*) ;; *) exit 1 ;; esac
-    [ -f "$old/app/Seogaemo.apk" ] || exit 1
+    [ -f "$old/app/hmg-seogaemo.apk" ] || exit 1
     echo 'phase=rollback' > "$root/journal"
     switch_to "$old"
     sh "$root/current/bin/install-apk.sh" || exit 1
@@ -125,7 +125,7 @@ verified=$(java_update verify "$root/incoming" "$installed") || exit 1
 [ "$verified" = "$version" ] || exit 1
 new=$root/versions/$version
 check_md5 "$new" || exit 1
-[ -f "$new/app/Seogaemo.apk" ] || exit 1
+[ -f "$new/app/hmg-seogaemo.apk" ] || exit 1
 old=$base
 if [ -f "$root/current-path" ]; then IFS= read -r old < "$root/current-path" || :; fi
 case "$old" in "$base"|"$root"/versions/*) ;; *) exit 1 ;; esac
@@ -134,7 +134,7 @@ printf '%s\n' "$installed" > "$root/previous-version"
 echo 'phase=applying' > "$root/journal"
 sync
 switch_to "$new"
-if ! sh "$root/current/bin/install-apk.sh" || ! grep -Fxq "$version" "$root/current/VERSION" || ! [ -s "$root/current/modules.graph" ] || ! dumpsys package com.seogaemo.hmg | grep -Fq "versionName=$version" || ! SEOGAEMO_UPDATE_HEALTH=1 sh "$root/current/svc/reconcile.sh"; then
+if ! sh "$root/current/bin/install-apk.sh" || ! grep -Fxq "$version" "$root/current/VERSION" || ! [ -s "$root/current/modules.graph" ] || ! dumpsys package com.seogaemo.hmg | grep -Fq "versionName=$version" || ! HMG_SEOGAEMO_UPDATE_HEALTH=1 sh "$root/current/svc/reconcile.sh"; then
     echo 'phase=auto-rollback' > "$root/journal"
     switch_to "$old"
     sh "$root/current/bin/install-apk.sh" || true

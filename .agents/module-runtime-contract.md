@@ -22,24 +22,24 @@ notes). Anything outside needs a note in the final report instead of an edit.
 
 `hmg-seogaemo-root <id> apply|revert|status|precheck` runs `modules/<id>.sh <verb>` as root with:
 
-- `SEOGAEMO_BASE`: installed package root (contains `lib/`, `modules/`, `modules.list`, `modules.graph`).
-- `SEOGAEMO_MODULE_DIR`: `$SEOGAEMO_BASE/modules/<id>.d` = packaged copy of `modules/<id>/payload/`
+- `HMG_SEOGAEMO_BASE`: installed package root (contains `lib/`, `modules/`, `modules.list`, `modules.graph`).
+- `HMG_SEOGAEMO_MODULE_DIR`: `$HMG_SEOGAEMO_BASE/modules/<id>.d` = packaged copy of `modules/<id>/payload/`
   (extra files: jars, `.so`, XML, APK patches). Absent if the module has no payload.
-- `SEOGAEMO_STATE`: `/data/nemesis/backup/hmg-seogaemo/modules/<id>` (mode 0700, survives updates,
+- `HMG_SEOGAEMO_STATE`: `/data/nemesis/backup/hmg-seogaemo/modules/<id>` (mode 0700, survives updates,
   removed only after a verified uninstall restore).
 - `umask 077`, Android 4.4 mksh/toolbox only (no bash-isms, no `tail`, no `readlink -f`).
 
 Dependencies and exclusions are enforced by `hmg-seogaemo-root`/`ModuleManager`, never inside a
 module script. A module script must assume its dependencies are already applied.
 
-Module scripts start with `. "$SEOGAEMO_BASE/lib/common.sh"`.
+Module scripts start with `. "$HMG_SEOGAEMO_BASE/lib/common.sh"`.
 
 **Modules never modify the system themselves.** Every write goes through the package API below,
 which baselines, writes, records the applied state and appends to the change ledger in one step.
 Module scripts may only *read* directly (`getprop`, `cat`, `ls`, `grep`, `pm list features`,
 `ifconfig`/`netcfg`, `ps`, `dumpsys`). `make test` lints module root scripts and fails on direct
 mutations: `setprop`, `mount`/`umount`, `cp`, `mv`, `rm`, `dd`, `ln`, `chmod`, `chown`, `sed -i`,
-output redirection to absolute paths outside `$SEOGAEMO_STATE`, `nemesis remount`,
+output redirection to absolute paths outside `$HMG_SEOGAEMO_STATE`, `nemesis remount`,
 `pm install|uninstall|enable|disable`, `settings put`, `start`/`stop`, `iptables`, `am`.
 
 Mutation API (each call: validate target against the module's `owns_props`/`owns_files`,
@@ -48,13 +48,13 @@ baseline on first touch, perform, verify, mark applied, append ledger; non-zero 
 | Function | Meaning |
 |---|---|
 | `sg_prop_set <key> <value>` | set a persistent/live property (must be in `owns_props`) |
-| `sg_file_put <path> <payload-rel-src> [mode] [owner:group]` | create/replace a file from `$SEOGAEMO_MODULE_DIR/<src>` atomically (path in `owns_files`); handles `/system` remount |
+| `sg_file_put <path> <payload-rel-src> [mode] [owner:group]` | create/replace a file from `$HMG_SEOGAEMO_MODULE_DIR/<src>` atomically (path in `owns_files`); handles `/system` remount |
 | `sg_file_replace_line <path> <exact-old-line> <new-line>` | replace exactly one line that must match exactly once (e.g. comment a `featurexml.cfg` entry) |
 | `sg_file_delete <path>` | remove a file (baseline keeps its bytes) |
 | `sg_bind_mount <target> <payload-rel-src>` | non-persistent bind mount, recorded; reapplied by reconcile at boot |
 | `sg_service_restart <name>` | `stop`/`start` an init service (allow-listed per module in `module.properties` `services=`) |
-| `sg_zygote_install <wrapper-rel-src> <loader-rel-src> <jar-rel-src>` | guarded transaction for `/system/bin/app_process`, its `app_process.seogaemo-stock` copy, the wireless loader and JAR, and `enable`/`enabled`/`starts`/`disable` state; all eight paths must be in `owns_files` |
-| `sg_dex_cache_track <system-jar> <app-package>` | track the Dalvik cache entry for an owned `/system/framework/*.jar` and the package's `app_seogaemo-wireless-dex` files; these two derived cache namespaces are the sole exception to explicit `owns_files` listing |
+| `sg_zygote_install <wrapper-rel-src> <loader-rel-src> <jar-rel-src>` | guarded transaction for `/system/bin/app_process`, its `app_process.hmg-seogaemo-stock` copy, the wireless loader and JAR, and `enable`/`enabled`/`starts`/`disable` state; all eight paths must be in `owns_files` |
+| `sg_dex_cache_track <system-jar> <app-package>` | track the Dalvik cache entry for an owned `/system/framework/*.jar` and the package's `app_hmg-seogaemo-wireless-dex` files; these two derived cache namespaces are the sole exception to explicit `owns_files` listing |
 | `sg_revert_all` | undo every change this module made, newest first, with the guarded restore rules below; clears baselines only after every item verified |
 
 Read/report helpers: `sg_log <msg>`, `sg_owner_present <name>` (`nemesis-adb-tcp`, `hmgapi`,
@@ -67,7 +67,7 @@ Internal (not for modules): baseline capture, applied-copy marking, remount, led
 never pruned while any change is active; after a verified uninstall it is kept as a final
 export-able record until the package directory is removed.
 
-The zygote transaction copies the original executable to `app_process.seogaemo-stock` and
+The zygote transaction copies the original executable to `app_process.hmg-seogaemo-stock` and
 verifies that backup before replacing `app_process`. The wrapper must always exec that stock
 path, including when its 3-start/120-second preload guard trips. A failure rolls back via the
 same full preflight and guarded restore as uninstall. `starts` is a dynamic decimal counter;
@@ -205,3 +205,16 @@ the root dispatcher is `hmg-seogaemo-root`. Installed files live under
 `/data/nemesis/backup/hmg-seogaemo`, and the USB wrapper contains
 `packages/hmg-seogaemo.zip`. For example:
 `adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.
+
+## Naming and install boundary (2026-11-03)
+
+The root environment variables are `HMG_SEOGAEMO_BASE`, `HMG_SEOGAEMO_STATE`,
+and `HMG_SEOGAEMO_MODULE_DIR`. The `sg_*` function prefix remains the stable
+module runtime API. Package and OTA APK entries are `app/hmg-seogaemo.apk`;
+wireless assets use `/system/etc/hmg-seogaemo/`,
+`/system/bin/app_process.hmg-seogaemo-stock`,
+`/system/lib/libhmg_seogaemo_wireless_hook.so`, and
+`/system/framework/hmg-seogaemo-wireless-hook.jar`. The derived Dalvik cache
+names follow the new JAR and `app_hmg-seogaemo-wireless-dex` directory. These
+are changes to the planned initial installation paths; no build has been
+deployed on a car, so there is no migration from the earlier names.

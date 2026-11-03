@@ -3,7 +3,7 @@ umask 077
 base=${0%/*}
 base=${base%/svc}
 journal=/data/nemesis/backup/hmg-seogaemo/update/journal
-if [ "${SEOGAEMO_UPDATE_HEALTH:-}" != 1 ] && [ -f "$journal" ]; then
+if [ "${HMG_SEOGAEMO_UPDATE_HEALTH:-}" != 1 ] && [ -f "$journal" ]; then
     IFS= read -r phase < "$journal" || :
     case "$phase" in phase=applying|phase=auto-rollback|phase=rollback)
         sh "$base/core/update.sh" rollback || exit 1 ;;

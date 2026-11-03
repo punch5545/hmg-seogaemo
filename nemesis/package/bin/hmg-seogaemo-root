@@ -68,10 +68,10 @@ base=${base%/bin}
 grep -Fxq "$1" "$base/modules.list" || exit 2
 script=$base/modules/$1.sh
 [ -f "$script" ] || exit 2
-SEOGAEMO_BASE=$base
-SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$1
-SEOGAEMO_MODULE_DIR=$base/modules/$1.d
-export SEOGAEMO_BASE SEOGAEMO_STATE SEOGAEMO_MODULE_DIR SG_DATA_ROOT
+HMG_SEOGAEMO_BASE=$base
+HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$1
+HMG_SEOGAEMO_MODULE_DIR=$base/modules/$1.d
+export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE HMG_SEOGAEMO_MODULE_DIR SG_DATA_ROOT
 if [ "$2" = status ] || [ "$2" = precheck ]; then
     exec sh "$script" "$2"
 fi

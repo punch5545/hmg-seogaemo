@@ -53,7 +53,7 @@ jobs:
           make test
           make package
           make verify-dist
-          actual_cert="$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs --min-sdk-version 19 out/seogaemo.apk | awk '/certificate SHA-256 digest:/ {print $NF}')"
+          actual_cert="$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs --min-sdk-version 19 out/hmg-seogaemo.apk | awk '/certificate SHA-256 digest:/ {print $NF}')"
           test "$actual_cert" = '3a71c382c97598e17fbe688e9f1169a9575003749dd6b19ce87460cc5de1e853'
           gh release create "$tag" --draft --verify-tag out/dist/*
           find out/dist -maxdepth 1 -type f -printf '%f\n' | sort > "$secret_dir/expected-assets"

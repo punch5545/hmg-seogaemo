@@ -58,8 +58,8 @@ def test_common(temp):
     target.write_bytes(b"original\x00bytes")
     env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
                FAKE_LIVE=str(live), SG_PROPERTY_ROOT=str(backing),
-               SEOGAEMO_STATE=str(state), SEOGAEMO_BASE=str(base),
-               SEOGAEMO_MODULE_DIR=str(base / "payload"), SG_DATA_ROOT=str(base / "data"))
+               HMG_SEOGAEMO_STATE=str(state), HMG_SEOGAEMO_BASE=str(base),
+               HMG_SEOGAEMO_MODULE_DIR=str(base / "payload"), SG_DATA_ROOT=str(base / "data"))
     common = ROOT / "nemesis/package/lib/common.sh"
     runner = base / "runner"
     script(runner, f'''
@@ -84,7 +84,7 @@ sg_file_baseline "{target}"
 printf changed > "{target}"
 sg_file_mark_applied "{target}"
 sg_file_restore "{target}"
-cmp -s "{target}" "$SEOGAEMO_STATE/file.$(sg_file_key "{target}")/bytes"
+cmp -s "{target}" "$HMG_SEOGAEMO_STATE/file.$(sg_file_key "{target}")/bytes"
 sg_file_restore "{target}"
 sg_file_baseline "{base / "drift-file"}"
 printf ours > "{base / "drift-file"}"
@@ -192,8 +192,8 @@ printf 'bind %s ext4 rw 0 0\n' "$4" > "$SG_MOUNTS_FILE"
     mounts.write_text("")
     env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
                FAKE_LIVE=str(live), FAKE_REMOUNTS=str(base / "remounts"),
-               SG_DATA_ROOT=str(base / "data"), SEOGAEMO_STATE=str(state),
-               SEOGAEMO_BASE=str(base), SEOGAEMO_MODULE_DIR=str(base / "payload"),
+               SG_DATA_ROOT=str(base / "data"), HMG_SEOGAEMO_STATE=str(state),
+               HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_MODULE_DIR=str(base / "payload"),
                SG_PROPERTY_ROOT=str(base / "property"), SG_MOUNTS_FILE=str(mounts))
     (base / "property").mkdir()
     runner = base / "run-api"
@@ -350,9 +350,9 @@ def test_zygote_and_dex(temp):
                    payload, manifest.parent, base / "fake", base / "live"):
         folder.mkdir(parents=True, exist_ok=True)
     paths = [target / "system/bin/app_process",
-             target / "system/bin/app_process.seogaemo-stock",
-             target / "system/lib/libseogaemo_wireless_hook.so",
-             target / "system/framework/seogaemo-wireless-hook.jar"]
+             target / "system/bin/app_process.hmg-seogaemo-stock",
+             target / "system/lib/libhmg_seogaemo_wireless_hook.so",
+             target / "system/framework/hmg-seogaemo-wireless-hook.jar"]
     guards = [state / name for name in ("enable", "enabled", "starts", "disable")]
     paths[0].write_bytes(b"stock-executable")
     paths[0].chmod(0o755)
@@ -366,20 +366,20 @@ def test_zygote_and_dex(temp):
     fake = base / "fake"
     script(fake / "getprop", 'cat "$FAKE_LIVE/$1" 2>/dev/null || true\n')
     script(fake / "chown", 'exit 0\n')
-    cache = target / "data/dalvik-cache/system@framework@seogaemo-wireless-hook.jar@classes.dex"
+    cache = target / "data/dalvik-cache/system@framework@hmg-seogaemo-wireless-hook.jar@classes.dex"
     cache.write_bytes(b"previous-cache")
-    app_dir = target / "data/data/com.daudio.app.dipo/app_seogaemo-wireless-dex"
+    app_dir = target / "data/data/com.daudio.app.dipo/app_hmg-seogaemo-wireless-dex"
     env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
                SG_DATA_ROOT=str(base / "data/nemesis/backup/hmg-seogaemo"),
-               SG_TARGET_ROOT=str(target), SEOGAEMO_STATE=str(state),
-               SEOGAEMO_BASE=str(base), SEOGAEMO_MODULE_DIR=str(payload),
+               SG_TARGET_ROOT=str(target), HMG_SEOGAEMO_STATE=str(state),
+               HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_MODULE_DIR=str(payload),
                FAKE_LIVE=str(live))
     common = ROOT / "nemesis/package/lib/common.sh"
     runner = base / "run-zygote"
     script(runner, f'''
 set -eu
 . "{common}"
-sg_dex_cache_track /system/framework/seogaemo-wireless-hook.jar com.daudio.app.dipo
+sg_dex_cache_track /system/framework/hmg-seogaemo-wireless-hook.jar com.daudio.app.dipo
 sg_zygote_install wrapper loader jar
 [ "$(cat "{paths[1]}")" = stock-executable ]
 [ -x "{paths[1]}" ]
