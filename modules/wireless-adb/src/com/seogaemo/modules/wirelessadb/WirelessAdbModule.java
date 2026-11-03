@@ -6,6 +6,7 @@ import com.seogaemo.app.module.RootClient;
 import com.seogaemo.app.module.RootResult;
 import com.seogaemo.app.module.InfoRow;
 import com.seogaemo.app.module.ModuleAction;
+import com.seogaemo.app.module.HomeTile;
 import com.seogaemo.app.module.Warning;
 
 /** Property-only TCP ADB module. The runtime renders its wireless pane. */
@@ -56,5 +57,6 @@ public final class WirelessAdbModule extends RootBackedModule {
                     ModuleAction.Type.ENABLE_MODULE, "wifi-client")
         };
     }
+    public HomeTile[] homeTiles() { return new HomeTile[0]; }
     public Warning[] enableWarnings() { return new Warning[0]; }
 }

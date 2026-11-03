@@ -10,6 +10,7 @@ public abstract class RootBackedModule implements Module {
         for (int note : notes()) page.note(note);
         for (ModuleAction action : actions()) page.action(action.labelResId, action);
     }
+    public HomeTile[] homeTiles() { return new HomeTile[0]; }
     public ModuleStatus apply() { return map(RootClient.run(id(), "apply")); }
     public ModuleStatus revert() { return map(RootClient.run(id(), "revert")); }
     public ModuleStatus status() { return map(RootClient.run(id(), "status")); }

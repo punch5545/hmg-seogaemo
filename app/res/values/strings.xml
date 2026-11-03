@@ -1,6 +1,14 @@
 <resources>
     <string name="app_name">HMG-Seogaemo</string>
     <string name="home_title">Quick actions</string>
+    <string name="home_page">HOME  /  %1$d OF %2$d</string>
+    <string name="tile_wireless_adb">Wireless ADB</string>
+    <string name="tile_wifi_client">Wi-Fi client</string>
+    <string name="tile_projection">Wireless CarPlay / AA</string>
+    <string name="tile_export">Export changes</string>
+    <string name="tile_logs">Logs</string>
+    <string name="tile_display">Display</string>
+    <string name="tile_about">About</string>
     <string name="placeholder_note">PLACEHOLDERS  ·  NO VEHICLE COMMANDS</string>
     <string name="meta">GEN5W  /  UI PREVIEW</string>
     <string name="back">Home</string>

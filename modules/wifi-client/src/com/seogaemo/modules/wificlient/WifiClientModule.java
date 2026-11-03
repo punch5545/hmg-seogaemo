@@ -5,6 +5,7 @@ import com.seogaemo.app.module.Module;
 import com.seogaemo.app.module.RootBackedModule;
 import com.seogaemo.app.module.InfoRow;
 import com.seogaemo.app.module.ModuleAction;
+import com.seogaemo.app.module.HomeTile;
 import com.seogaemo.app.module.Warning;
 
 /** Stock Wi-Fi client feature for supported NEEV Korean firmware. */
@@ -42,4 +43,5 @@ public final class WifiClientModule extends RootBackedModule {
     public Warning[] enableWarnings() {
         return new Warning[] { new Warning("carplay_active", R.string.wifi_client_carplay_warning) };
     }
+    public HomeTile[] homeTiles() { return new HomeTile[0]; }
 }

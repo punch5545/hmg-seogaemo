@@ -1,0 +1,270 @@
+package com.seogaemo.app.ui;
+
+import android.content.Context;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import com.seogaemo.app.R;
+import com.seogaemo.app.module.HomeTile;
+
+/** Portrait card Home mock. No demo tile executes a vehicle command. */
+public final class HomeView extends LinearLayout {
+    private static final int TILES_PER_PAGE = 6;
+    private static final int WHITE = 0xFFF5F5F5;
+    private static final int MUTED = 0xFF9A9A9A;
+    private static final int BLUE = 0xFF0070F3;
+    private static final int RED = 0xFFEE0000;
+    private final Pager pager;
+    private final LinearLayout dots;
+    private final TextView counter;
+    private final TextView previous;
+    private final TextView next;
+    private final int pageCount;
+
+    public HomeView(Context context, final Runnable openSettings) {
+        super(context);
+        setOrientation(VERTICAL);
+        setPadding(dp(30), dp(16), dp(30), dp(12));
+
+        // Static demo entries until the runtime supplies enabled module HomeTile values.
+        HomeTile[] demo = new HomeTile[] {
+            tile("settings", R.string.settings, "⚙", 0),
+            tile("wireless-adb", R.string.tile_wireless_adb, "ADB", 10),
+            tile("wifi-client", R.string.tile_wifi_client, "Wi‑Fi", 20),
+            tile("projection", R.string.tile_projection, "CP", 30),
+            tile("battery", R.string.action_battery, "BAT", 40),
+            tile("exhaust", R.string.action_exhaust, "VEX", 50),
+            tile("restart", R.string.action_restart, "↻", 60),
+            tile("export", R.string.tile_export, "⇧", 70),
+            tile("logs", R.string.tile_logs, "LOG", 80),
+            tile("display", R.string.tile_display, "DSP", 90),
+            tile("about", R.string.tile_about, "i", 100)
+        };
+        pageCount = (demo.length + TILES_PER_PAGE - 1) / TILES_PER_PAGE;
+
+        LinearLayout heading = new LinearLayout(context);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text(context.getString(R.string.home_title), 26, WHITE, true);
+        heading.addView(title, new LayoutParams(0, dp(46), 1));
+        TextView note = text(context.getString(R.string.placeholder_note), 15, MUTED, false);
+        note.setTypeface(Typeface.MONOSPACE);
+        heading.addView(note, new LayoutParams(-2, dp(46)));
+        addView(heading, new LayoutParams(-1, dp(52)));
+
+        LinearLayout stage = new LinearLayout(context);
+        stage.setGravity(Gravity.CENTER_VERTICAL);
+        previous = arrow("‹");
+        next = arrow("›");
+        stage.addView(previous, new LayoutParams(dp(52), -1));
+        pager = new Pager(context);
+        LayoutParams pagerParams = new LayoutParams(0, -1, 1);
+        pagerParams.leftMargin = dp(6);
+        pagerParams.rightMargin = dp(6);
+        stage.addView(pager, pagerParams);
+        stage.addView(next, new LayoutParams(dp(52), -1));
+        addView(stage, new LayoutParams(-1, 0, 1));
+
+        for (int p = 0; p < pageCount; p++) {
+            LinearLayout row = new LinearLayout(context);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(2), dp(4), dp(2), dp(4));
+            for (int i = p * TILES_PER_PAGE; i < Math.min((p + 1) * TILES_PER_PAGE, demo.length); i++) {
+                final HomeTile item = demo[i];
+                HomeTileView card = new HomeTileView(context, item, i + 1, "restart".equals(item.id));
+                if ("settings".equals(item.id)) card.setOnClickListener(new OnClickListener() {
+                    public void onClick(View v) { openSettings.run(); }
+                });
+                else card.setClickable(true);
+                LayoutParams cardParams = new LayoutParams(0, -1, 1);
+                if (i > p * TILES_PER_PAGE) cardParams.leftMargin = dp(10);
+                row.addView(card, cardParams);
+            }
+            // Hold vacant slots so page two keeps the same card width.
+            for (int i = demo.length - p * TILES_PER_PAGE; i < TILES_PER_PAGE && p == pageCount - 1; i++) {
+                LayoutParams empty = new LayoutParams(0, -1, 1);
+                empty.leftMargin = dp(10);
+                row.addView(new View(context), empty);
+            }
+            pager.addPage(row);
+        }
+
+        LinearLayout footer = new LinearLayout(context);
+        footer.setGravity(Gravity.CENTER);
+        dots = new LinearLayout(context);
+        dots.setGravity(Gravity.CENTER);
+        footer.addView(dots, new LayoutParams(dp(80), -1));
+        counter = text("", 15, MUTED, false);
+        counter.setTypeface(Typeface.MONOSPACE);
+        footer.addView(counter, new LayoutParams(dp(130), -1));
+        addView(footer, new LayoutParams(-1, dp(46)));
+        previous.setOnClickListener(new OnClickListener() { public void onClick(View v) { pager.setPage(pager.page - 1); } });
+        next.setOnClickListener(new OnClickListener() { public void onClick(View v) { pager.setPage(pager.page + 1); } });
+        pager.setPageListener(new Runnable() { public void run() { updateNavigation(); } });
+        pager.post(new Runnable() { public void run() { pager.syncWidths(); } });
+        updateNavigation();
+    }
+
+    private static HomeTile tile(String id, int label, String glyph, int order) {
+        return new HomeTile(id, label, glyph, null, order, true);
+    }
+
+    private void updateNavigation() {
+        dots.removeAllViews();
+        for (int i = 0; i < pageCount; i++) {
+            final int target = i;
+            View dot = new View(getContext());
+            dot.setBackgroundDrawable(shape(i == pager.page ? BLUE : 0xFF575757, Color.TRANSPARENT, 20));
+            LayoutParams params = new LayoutParams(dp(i == pager.page ? 12 : 8), dp(i == pager.page ? 12 : 8));
+            params.leftMargin = dp(8);
+            params.rightMargin = dp(8);
+            dots.addView(dot, params);
+            dot.setOnClickListener(new OnClickListener() { public void onClick(View v) { pager.setPage(target); } });
+        }
+        counter.setText(getContext().getString(R.string.home_page, pager.page + 1, pageCount));
+        previous.setTextColor(pager.page == 0 ? 0xFF555555 : WHITE);
+        next.setTextColor(pager.page == pageCount - 1 ? 0xFF555555 : WHITE);
+    }
+
+    private TextView arrow(String label) {
+        TextView arrow = text(label, 52, WHITE, false);
+        arrow.setGravity(Gravity.CENTER);
+        arrow.setBackgroundDrawable(selector(0xFF171717, 0xFF343434, false));
+        return arrow;
+    }
+
+    private TextView text(String value, int sp, int color, boolean medium) {
+        TextView view = new TextView(getContext());
+        view.setText(value);
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        view.setTextColor(color);
+        view.setTypeface(Typeface.create(medium ? "sans-serif-medium" : "sans-serif", Typeface.NORMAL));
+        view.setGravity(Gravity.CENTER_VERTICAL);
+        view.setIncludeFontPadding(false);
+        return view;
+    }
+
+    private int dp(int value) {
+        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
+                getResources().getDisplayMetrics());
+    }
+
+    private GradientDrawable shape(int color, int border, int radius) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(dp(radius));
+        if (border != Color.TRANSPARENT) d.setStroke(dp(1), border);
+        return d;
+    }
+
+    private StateListDrawable selector(int fill, int border, boolean destructive) {
+        StateListDrawable d = new StateListDrawable();
+        d.addState(new int[] {android.R.attr.state_pressed}, shape(destructive ? 0xFF633030 : 0xFF294563,
+                destructive ? RED : BLUE, 8));
+        d.addState(new int[] {}, shape(fill, border, 8));
+        return d;
+    }
+
+    private final class HomeTileView extends FrameLayout {
+        HomeTileView(Context c, HomeTile item, int number, boolean destructive) {
+            super(c);
+            int accent = destructive ? RED : "settings".equals(item.id) ? BLUE : 0xFFB7C6D7;
+            setBackgroundDrawable(selector(destructive ? 0xFF241919 : 0xFF202020,
+                    destructive ? 0xFF743333 : 0xFF3B3B3B, destructive));
+            setContentDescription(c.getString(item.labelResId));
+            TextView ordinal = text(String.format(java.util.Locale.US, "%02d", number), 16, MUTED, false);
+            ordinal.setTypeface(Typeface.MONOSPACE);
+            LayoutParams op = new LayoutParams(-1, dp(38), Gravity.TOP);
+            op.leftMargin = dp(17);
+            op.topMargin = dp(11);
+            addView(ordinal, op);
+
+            TextView glyph = text(item.glyph, item.glyph.length() > 3 ? 32 : 46, accent, true);
+            glyph.setGravity(Gravity.CENTER);
+            glyph.setSingleLine(true);
+            glyph.setBackgroundDrawable(shape(destructive ? 0xFF321B1B : 0xFF171C22,
+                    destructive ? 0xFF743333 : 0xFF354352, 10));
+            LayoutParams gp = new LayoutParams(dp(104), dp(104), Gravity.CENTER_HORIZONTAL | Gravity.TOP);
+            gp.topMargin = dp(62);
+            addView(glyph, gp);
+
+            View rule = new View(c);
+            rule.setBackgroundColor(accent);
+            LayoutParams rp = new LayoutParams(dp(36), dp(3), Gravity.BOTTOM | Gravity.LEFT);
+            rp.leftMargin = dp(17);
+            rp.bottomMargin = dp(82);
+            addView(rule, rp);
+
+            TextView label = text(c.getString(item.labelResId), 21, destructive ? 0xFFFFA0A0 : WHITE, true);
+            label.setGravity(Gravity.TOP | Gravity.LEFT);
+            label.setMaxLines(2);
+            label.setTextScaleX(0.97f);
+            LayoutParams lp = new LayoutParams(-1, dp(67), Gravity.BOTTOM);
+            lp.leftMargin = dp(17);
+            lp.rightMargin = dp(12);
+            lp.bottomMargin = dp(11);
+            addView(label, lp);
+        }
+    }
+
+    /** Equal-width pages with swipe settling, based on the NEMESIS interaction pattern. */
+    private final class Pager extends HorizontalScrollView {
+        private final LinearLayout strip;
+        private Runnable listener;
+        private int page;
+        private float downX;
+
+        Pager(Context c) {
+            super(c);
+            setHorizontalScrollBarEnabled(false);
+            setFillViewport(true);
+            strip = new LinearLayout(c);
+            strip.setOrientation(HORIZONTAL);
+            addView(strip, new FrameLayout.LayoutParams(-2, -1));
+        }
+
+        void addPage(View row) {
+            int width = getWidth() > 0 ? getWidth() : getResources().getDisplayMetrics().widthPixels;
+            strip.addView(row, new LayoutParams(width, -1));
+        }
+        void syncWidths() {
+            int width = getWidth();
+            if (width <= 0) return;
+            for (int i = 0; i < strip.getChildCount(); i++) strip.getChildAt(i).getLayoutParams().width = width;
+            strip.requestLayout();
+            scrollTo(page * width, 0);
+        }
+        void setPageListener(Runnable callback) { listener = callback; }
+        void setPage(int value) {
+            page = Math.max(0, Math.min(pageCount - 1, value));
+            smoothScrollTo(page * getWidth(), 0);
+            if (listener != null) listener.run();
+        }
+        @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            syncWidths();
+        }
+        @Override public boolean onInterceptTouchEvent(MotionEvent e) {
+            if (e.getAction() == MotionEvent.ACTION_DOWN) downX = e.getX();
+            return super.onInterceptTouchEvent(e);
+        }
+        @Override public boolean onTouchEvent(MotionEvent e) {
+            if (e.getAction() == MotionEvent.ACTION_DOWN) downX = e.getX();
+            boolean result = super.onTouchEvent(e);
+            if (e.getAction() == MotionEvent.ACTION_UP) {
+                float distance = e.getX() - downX;
+                if (Math.abs(distance) > getWidth() / 5f) setPage(page + (distance < 0 ? 1 : -1));
+                else setPage(page);
+            }
+            return result;
+        }
+    }
+}
