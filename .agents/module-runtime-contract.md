@@ -176,3 +176,13 @@ Parse with `while read`, `case` and parameter expansion. Hashing on the unit: `m
   Android views themselves. Default implementation (in `RootBackedModule`) renders
   `statusHeader()` + `infoRows()` + `notes()` + `actions()`, so declarative modules need no code.
 - Components follow `ui-guidelines.md` (NEMESIS-scale rows, EN/KO).
+
+## Planned rename (applied once, after all feature branches are merged)
+
+Keep the current names inside feature branches; the integrator applies this in one commit:
+`com.seogaemo.app` → `com.seogaemo.hmg` (applicationId + Java packages),
+`com.seogaemo.modules.*` → `com.seogaemo.hmg.modules.*`, NEMESIS package id `seogaemo` →
+`hmg-seogaemo` (so `/data/nemesis/apps/hmg-seogaemo`, `/data/nemesis/backup/hmg-seogaemo`,
+`packages/hmg-seogaemo.zip`), dispatcher `seogaemo-root` → `hmg-seogaemo-root`, and every
+documented adb command accordingly (e.g.
+`adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`).
