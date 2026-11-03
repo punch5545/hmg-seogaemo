@@ -247,6 +247,15 @@ sg_restore_preflight() {
     done
 }
 sg_remount() { case "$1" in rw|ro) nemesis remount "$1";; *) return 2;; esac; }
+# Returning /system to read-only fails with EBUSY while a process still holds a
+# replaced or removed file (the running app_process, a loaded JAR). The write has
+# already been verified by then, so a failure here must not turn into a failed
+# change: warn, keep the ledger consistent, and let the next restart mount it ro.
+sg_remount_ro() {
+    sg_remount ro && return 0
+    sg_log 'warning: /system stays read-write until restart (remount ro failed)' || :
+    return 0
+}
 sg_baseline_clear() {
     [ -n "$HMG_SEOGAEMO_STATE" ] || return 2
     rm -rf "$HMG_SEOGAEMO_STATE"/prop.* "$HMG_SEOGAEMO_STATE"/file.* "$HMG_SEOGAEMO_STATE"/bind.*
@@ -332,7 +341,7 @@ sg_commit_file() {
         [ "$1" = "$sg_expected_mode" ] || sg_rc=1
     fi
     rm -f "$sg_tmp"
-    if [ "$sg_system" -eq 1 ]; then sg_remount ro || sg_rc=1; fi
+    if [ "$sg_system" -eq 1 ]; then sg_remount_ro; fi
     [ "$sg_rc" -eq 0 ] || return 1
     sg_file_mark_applied "$sg_target" || return 1
     sg_ledger file_put "$sg_target" "$sg_saved/bytes" "$sg_saved/applied" "$sg_saved/meta" || return 1
@@ -560,7 +569,7 @@ sg_line_transaction() (
         sg_equal "$next/bytes" "$target" &&
         [ "$(sg_file_meta "$target")" = "$(cat "$shared/meta")" ] || rc=1
     rm -f "$temporary"
-    if [ "$system" -eq 1 ]; then sg_remount ro || rc=1; fi
+    if [ "$system" -eq 1 ]; then sg_remount_ro; fi
     [ "$rc" -eq 0 ] || exit 1
     sync || exit 1
     sg_line_recover "$target" || exit $?
@@ -643,7 +652,7 @@ sg_file_delete() {
     case "$1" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
     rm -f "$1"; sg_rc=$?
     [ ! -e "$1" ] || sg_rc=1
-    if [ "$sg_system" -eq 1 ]; then sg_remount ro || sg_rc=1; fi
+    if [ "$sg_system" -eq 1 ]; then sg_remount_ro; fi
     [ "$sg_rc" -eq 0 ] || return 1
     sg_file_mark_applied "$1" || return 1
     sg_ledger file_delete "$1" "$sg_saved/bytes" "$sg_saved/applied" "$sg_saved/meta" || return 1
@@ -933,7 +942,7 @@ sg_revert_all() {
                 fi
                 case "$sg_target" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
                 sg_file_restore "$sg_target"; sg_rc=$?
-                if [ "$sg_system" -eq 1 ]; then sg_remount ro || return 1; fi
+                if [ "$sg_system" -eq 1 ]; then sg_remount_ro; fi
                 [ "$sg_rc" -eq 0 ] || return "$sg_rc"
                 sg_ledger revert "$sg_target" "$sg_revert_before" "$sg_saved/bytes" "$sg_saved/meta" || return 1 ;;
             *) return 1 ;;

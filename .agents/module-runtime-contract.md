@@ -209,6 +209,12 @@ Never route binary files or property backing files through shell variables: copy
 
 Internal (not for modules): baseline capture, applied-copy marking, remount, ledger writes.
 
+`/system` returns to read-only through `sg_remount_ro`, which treats a failed `remount ro` as a warning in
+the module log, never as a failed change. On the Ioniq 5 (2026-11-04) replacing the running `app_process`
+or removing a loaded JAR leaves the old file open, so `remount ro` fails with EBUSY until the next restart.
+Failing the change there left the wrapper written but not ledgered, and the rollback failed the same way,
+which blocked `revert`, `stock restore` and the next `apply` (`orphaned app_process backup`).
+
 `watch=boot,screen_on` may declare only these fixed events. The package's single
 watcher service (`svc/watcher.sh`, `mode=restart`, separate from the `mode=once`
 `reconcile` service, and never calling apply/revert) invokes `root/<id>.sh watch

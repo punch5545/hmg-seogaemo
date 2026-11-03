@@ -593,6 +593,30 @@ def test_module_build_hook(temp):
     assert (base / "modules/example/payload-built").read_text() == "built"
 
 
+def test_remount_ro_busy(temp):
+    base = temp / "remount-busy"
+    state = base / "state"
+    fake = base / "fake"
+    state.mkdir(parents=True)
+    script(fake / "nemesis", '''
+echo "$*" >> "$FAKE_REMOUNTS"
+[ "$1 $2" != "remount ro" ] || exit 16
+''')
+    runner = base / "runner"
+    script(runner, '''
+set -eu
+# A busy /system must not fail a write that was already verified.
+sg_remount_ro
+# The raw call still reports the failure to callers that need it.
+if sg_remount ro; then exit 1; fi
+grep -Fq 'warning: /system stays read-write until restart' "$HMG_SEOGAEMO_STATE/module.log"
+''')
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"], FAKE_REMOUNTS=str(base / "remounts"),
+               HMG_SEOGAEMO_STATE=str(state))
+    run(runner, env=env)
+    assert (base / "remounts").read_text().splitlines() == ["remount ro", "remount ro"]
+
+
 def test_zygote_and_dex(temp):
     base = temp / "zygote"
     state = base / "data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa"
@@ -700,4 +724,5 @@ with tempfile.TemporaryDirectory() as directory:
     test_lint(root)
     test_module_build_hook(root)
     test_zygote_and_dex(root)
+    test_remount_ro_busy(root)
 print("shared runtime tests passed")
