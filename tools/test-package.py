@@ -36,7 +36,7 @@ def run():
         entries = set(package.namelist())
         required = {"NEMESIS.data", "app/hmg-seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
                     "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
-                    "svc/reconcile.sh", "lib/common.sh", "modules.list", "modules.graph",
+                    "svc/reconcile.sh", "svc/watcher.sh", "lib/common.sh", "modules.list", "modules.graph",
                     "core/map/hmg-seogaemo-mapper.jar", "core/hmg-seogaemo-map.sh", "hookpoints/framework.json",
                     "hookpoints.required/wireless-carplay-and-aa",
                     "maps/hyundai/ioniq5/kor/260902/map.json",
@@ -48,7 +48,7 @@ def run():
         preuninstall = package.read("scripts/preuninstall.sh").decode()
         assert "id=hmg-seogaemo" in preuninstall
         assert "/data/local/tmp/nemesis/stage/hmg-seogaemo/NEMESIS.data" in preuninstall
-        for script_name in ("core/update.sh", "core/hmg-seogaemo-map.sh", "svc/reconcile.sh"):
+        for script_name in ("core/update.sh", "core/hmg-seogaemo-map.sh", "svc/reconcile.sh", "svc/watcher.sh"):
             body = package.read(script_name).decode()
             assert not re.search(r"\b(?:awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|sha256sum|sha1sum|tar|unzip|busybox|toybox)\b", body), script_name
         assert set(usb.namelist()) == {"NEMESIS.data", "packages/hmg-seogaemo.zip"}
@@ -70,6 +70,7 @@ def run():
             "preuninstall": "scripts/preuninstall.sh"}
         assert dict(meta["app.0"]) == {"kind": "sh", "path": "bin/open.sh", "uid": "root"}
         assert dict(meta["service.0"]) == {"name": "reconcile", "kind": "sh", "path": "svc/reconcile.sh", "uid": "root", "mode": "once"}
+        assert dict(meta["service.1"]) == {"name": "watcher", "kind": "sh", "path": "svc/watcher.sh", "uid": "root", "mode": "restart"}
         ids = package.read("modules.list").decode().splitlines()
         assert ids and len(ids) == len(set(ids))
         assert len(package.read("modules.graph").decode().splitlines()) == len(ids)

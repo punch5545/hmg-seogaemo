@@ -84,6 +84,7 @@
     <string name="module_status_incompatible">This head unit is not compatible</string>
     <string name="module_status_unsupported">Status is not supported</string>
     <string name="module_restart">Head unit restart required for this change</string>
+    <string name="module_restore_reboot">Restart the head unit after disabling to restore the stock startup notice</string>
     <string name="module_confirm">Apply module changes?</string>
     <string name="module_no_changes">No changes needed.</string>
     <string name="export_changes_usb">Export changes to USB</string>

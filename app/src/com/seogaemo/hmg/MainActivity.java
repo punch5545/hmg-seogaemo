@@ -255,8 +255,7 @@ public final class MainActivity extends Activity {
                 HomeTileCatalog.Entry[] entries = new HomeTileCatalog.Entry[modules.length];
                 for (int i = 0; i < modules.length; i++) {
                     RootResult status = RootClient.run(modules[i].id(), "status");
-                    boolean enabled = status.exitCode == 0 &&
-                            ("on".equals(status.state) || "pending-restart".equals(status.state));
+                    boolean enabled = status.exitCode == 0 && moduleEnabled(status);
                     entries[i] = new HomeTileCatalog.Entry(modules[i].id(), enabled, modules[i].homeTiles());
                 }
                 final List<HomeTile> tiles = HomeTileCatalog.collect(HomeView.settingsTile(), entries);
@@ -519,8 +518,9 @@ public final class MainActivity extends Activity {
     }
 
     private void addModule(LinearLayout parent, final Module module, RootResult result) {
-        final boolean enabled = "on".equals(result.state) || "pending-restart".equals(result.state);
-        final boolean observed = enabled || "off".equals(result.state);
+        final boolean enabled = moduleEnabled(result);
+        final boolean observed = enabled || "off".equals(result.state) ||
+                ("pending-restart".equals(result.state) && "off".equals(result.info.get("desired")));
         LinearLayout row = horizontal();
         SettingsUi.cardRow(this, row);
         row.setBackgroundDrawable(selectable(RAISED, HAIRLINE, 8, false));
@@ -547,7 +547,8 @@ public final class MainActivity extends Activity {
         parent.addView(text(stateText, 18, MUTED, sans),
                 new LinearLayout.LayoutParams(-1, dp(40)));
         if ("pending-restart".equals(result.state)) {
-            TextView banner = text(getString(R.string.module_restart), 20, WHITE, medium);
+            TextView banner = text(getString(module.rebootRestore() && !enabled
+                    ? R.string.module_restore_reboot : R.string.module_restart), 20, WHITE, medium);
             banner.setPadding(dp(SettingsUi.MD), 0, dp(SettingsUi.MD), 0);
             banner.setBackgroundDrawable(shape(0xFF263347, BLUE, 6));
             parent.addView(banner, new LinearLayout.LayoutParams(-1, dp(60)));
@@ -559,7 +560,8 @@ public final class MainActivity extends Activity {
     private String moduleStateText(RootResult result) {
         if ("on".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.on);
         if ("off".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.off);
-        if ("pending-restart".equals(result.state)) return getString(R.string.module_restart);
+        if ("pending-restart".equals(result.state)) return getString("off".equals(result.info.get("desired"))
+                ? R.string.module_restore_reboot : R.string.module_restart);
         if ("conflict".equals(result.state)) return getString(R.string.module_status_conflict);
         if ("incompatible".equals(result.state)) return getString(R.string.module_status_incompatible);
         if ("not-implemented".equals(result.state)) return getString(R.string.module_status_unsupported);
@@ -676,6 +678,8 @@ public final class MainActivity extends Activity {
             message.append("• ").append(getString(step.enable ? R.string.plan_step_enable : R.string.plan_step_disable,
                     getString(ModuleRegistry.find(step.id).nameResId()))).append('\n');
         }
+        if (!enable && module.rebootRestore())
+            message.append('\n').append(getString(R.string.module_restore_reboot));
         if (plan.steps.isEmpty()) message.append(getString(R.string.module_no_changes));
         if (precheck != null) {
             for (Warning warning : module.enableWarnings()) {
@@ -861,11 +865,16 @@ public final class MainActivity extends Activity {
         }}, "hmg-seogaemo-update-root").start();
     }
 
+    private static boolean moduleEnabled(RootResult result) {
+        return "on".equals(result.state) ||
+                ("pending-restart".equals(result.state) && !"off".equals(result.info.get("desired")));
+    }
+
     private String enabledModules() {
         StringBuilder enabled = new StringBuilder();
         for (Module module : ModuleRegistry.all()) {
             RootResult result = RootClient.run(module.id(), "status");
-            if ("on".equals(result.state) || "pending-restart".equals(result.state)) enabled.append(module.id()).append(',');
+            if (moduleEnabled(result)) enabled.append(module.id()).append(',');
         }
         return enabled.toString();
     }
@@ -878,20 +887,22 @@ public final class MainActivity extends Activity {
         boolean success = true;
         for (Module module : ModuleRegistry.all()) {
             boolean wanted = ("," + desired).contains("," + module.id() + ",");
-            String observed = RootClient.run(module.id(), "status").state;
-            boolean active = "on".equals(observed) || "pending-restart".equals(observed);
+            RootResult observed = RootClient.run(module.id(), "status");
+            boolean active = moduleEnabled(observed);
             if (active && !wanted && manager.execute(manager.plan(module.id(), false)).exitCode != 0) success = false;
         }
         for (Module module : ModuleRegistry.all()) {
             boolean wanted = ("," + desired).contains("," + module.id() + ",");
-            String observed = RootClient.run(module.id(), "status").state;
-            boolean active = "on".equals(observed) || "pending-restart".equals(observed);
+            RootResult observed = RootClient.run(module.id(), "status");
+            boolean active = moduleEnabled(observed);
             if (wanted && !active && manager.execute(manager.plan(module.id(), true)).exitCode != 0) success = false;
         }
         for (Module module : ModuleRegistry.all()) {
             boolean wanted = ("," + desired).contains("," + module.id() + ",");
-            String observed = RootClient.run(module.id(), "status").state;
-            if (wanted ? !"on".equals(observed) : !("off".equals(observed) || "not-implemented".equals(observed))) success = false;
+            RootResult observed = RootClient.run(module.id(), "status");
+            if (wanted ? !moduleEnabled(observed) : !("off".equals(observed.state) ||
+                    ("pending-restart".equals(observed.state) && !moduleEnabled(observed)) ||
+                    "not-implemented".equals(observed.state))) success = false;
         }
         if (success) pending.edit().clear().apply();
         return success;

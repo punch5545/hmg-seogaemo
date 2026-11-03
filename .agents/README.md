@@ -15,6 +15,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [wifi-client.md](wifi-client.md) | Current | Implemented Wi-Fi client file edits, status, tests, and on-car checklist. |
 | [wireless-adb.md](wireless-adb.md) | Current | Implemented ADB property behavior, network observations, and on-car checklist. |
 | [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) | Current | Implemented AGPL projection port, owned changes, recovery, and on-car checklist. |
+| [skip-consent-screen.md](skip-consent-screen.md) | Current | Factory82 provenance, owner-tested NEEV KOR behavior, implemented watcher and reboot restore, on-car checklist. |
 | [research-car-mapping.md](research-car-mapping.md) | Implemented plus historical research | KOR evidence, core mapper design, and remaining on-car validation. |
 | [research-nemesis-packaging.md](research-nemesis-packaging.md) | Partly superseded | NEMESIS source research and current package layout; older proposal marked historical. |
 | [research-ota-update.md](research-ota-update.md) | Partly superseded | Upstream OTA research and historical design choices, with current release notes. |

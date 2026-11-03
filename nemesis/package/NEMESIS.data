@@ -21,3 +21,10 @@ kind=sh
 path=svc/reconcile.sh
 uid=root
 mode=once
+
+[service.1]
+name=watcher
+kind=sh
+path=svc/watcher.sh
+uid=root
+mode=restart

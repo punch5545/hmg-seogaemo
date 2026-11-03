@@ -22,7 +22,9 @@ public final class ModuleManager {
             if (status.exitCode != 0 || !("off".equals(status.state) ||
                     "on".equals(status.state) || "pending-restart".equals(status.state)))
                 throw new IllegalStateException("Could not read " + candidate + " state: " + status.detail);
-            if ("on".equals(status.state) || "pending-restart".equals(status.state)) on.add(candidate);
+            if ("on".equals(status.state) ||
+                    ("pending-restart".equals(status.state) && !"off".equals(status.info.get("desired"))))
+                on.add(candidate);
         }
         Map<String, String[]> dependencies = new HashMap<String, String[]>();
         Map<String, String[]> exclusions = new HashMap<String, String[]>();

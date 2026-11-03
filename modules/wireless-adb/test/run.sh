@@ -123,8 +123,8 @@ export FAKE_ROOT="$tmp" HMG_SEOGAEMO_BASE="$tmp/base" HMG_SEOGAEMO_STATE="$tmp/s
 script="$module_dir/root/wireless-adb.sh"
 
 run() { PATH="$tmp/restricted-bin" "$car_shell" "$script" "$1" > "$tmp/output"; }
-has() { rg -q -F "$1" "$tmp/output" || { cat "$tmp/output"; exit 1; }; }
-restarts() { count=$(rg -c '^ctl.restart adbd$' "$tmp/calls" 2>/dev/null) || count=0; printf '%s' "$count"; }
+has() { grep -q -F "$1" "$tmp/output" || { cat "$tmp/output"; exit 1; }; }
+restarts() { count=$(grep -c '^ctl.restart adbd$' "$tmp/calls" 2>/dev/null) || count=0; printf '%s' "$count"; }
 assert_count() { [ "$(restarts)" = "$1" ] || { cat "$tmp/calls"; exit 1; }; }
 reset() {
     rm -f "$tmp/props/"* "$tmp/baseline/"* "$tmp/applied/"* "$tmp/state/"* "$tmp/interfaces/"* \
@@ -140,9 +140,9 @@ run status
 has 'state=off'
 has 'info.hotspot_ip=192.168.0.1'
 has 'info.adb_endpoint=192.168.0.1:5555'
-! rg -q 'info.hotspot_ssid=' "$tmp/output"
+! grep -q 'info.hotspot_ssid=' "$tmp/output"
 run precheck
-! rg -q '^warn\.' "$tmp/output"
+! grep -q '^warn\.' "$tmp/output"
 run apply
 has 'state=on'
 [ "$(cat "$tmp/props/persist.service.adb.tcp.enable")" = 0 ]

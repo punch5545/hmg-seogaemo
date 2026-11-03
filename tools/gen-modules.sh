@@ -46,6 +46,9 @@ while IFS= read -r props; do
     depends=$(property "$props" depends)
     excludes=$(property "$props" excludes)
     services=$(property "$props" services)
+    service_calls=$(property "$props" service_calls)
+    watch=$(property "$props" watch)
+    restore=$(property "$props" restore)
     module_version=$(property "$props" version)
     if [ "$module_version" != '@VERSION@' ]; then
         echo "gen-modules: version must be @VERSION@ in $props" >&2
@@ -84,6 +87,26 @@ while IFS= read -r props; do
                 echo "gen-modules: malformed service '$service' in $props" >&2
                 exit 1
             fi
+        done
+        IFS=$old_ifs
+    fi
+    case "$restore" in ''|exact|reboot) ;; *) echo "gen-modules: invalid restore class in $props" >&2; exit 1;; esac
+    if [ "$restore" = reboot ] && { [ -n "$(property "$props" owns_props)" ] || [ -n "$(property "$props" owns_files)" ]; }; then
+        echo "gen-modules: reboot restore cannot own persistent targets in $props" >&2
+        exit 1
+    fi
+    if [ -n "$watch" ]; then
+        [ "$restore" = reboot ] || { echo "gen-modules: watch requires reboot restore in $props" >&2; exit 1; }
+        case "$watch" in boot|screen_on|boot,screen_on|screen_on,boot) ;; *) echo "gen-modules: invalid watch events in $props" >&2; exit 1;; esac
+    fi
+    if [ -n "$service_calls" ]; then
+        old_ifs=$IFS; IFS=,
+        for call in $service_calls; do
+            if ! printf '%s\n' "$call" | grep -Eq '^[a-zA-Z0-9_]+([.-][a-zA-Z0-9_]+)*:[1-9][0-9]{0,4}$'; then
+                echo "gen-modules: invalid service call '$call' in $props" >&2; exit 1
+            fi
+            code=${call##*:}
+            [ "$code" -le 65535 ] || { echo "gen-modules: service code out of range in $props" >&2; exit 1; }
         done
         IFS=$old_ifs
     fi

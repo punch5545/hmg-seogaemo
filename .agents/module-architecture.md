@@ -1,5 +1,11 @@
 Status: partly superseded — planning-era scaffold and future-module descriptions are updated below; physical-car behavior remains untested.
 
+Current update (2026-11-03): `skip-consent-screen` is a fourth built-in module.
+NEMESIS runs two services: `reconcile` (`mode=once`, boot reconciliation and OTA
+health checks only) and `watcher` (`svc/watcher.sh`, `mode=restart`), which only
+dispatches fixed boot/screen-on watch events and never applies or reverts.
+Earlier references below to three modules are historical.
+
 # Built-in module architecture
 
 Design for HMG-Seogaemo on Gen5W (Android 4.4.2/API 19, 1920×720 hdpi, English default and Korean), installed by NEMESIS 1.16.4+. This is an implemented off-car architecture; physical-car behavior remains untested. The target setup is **NEMESIS + HMG-Seogaemo only**: HMG-API is not installed. The built-in modules are `wifi-client`, `wireless-adb`, and `wireless-carplay-and-aa`, compiled into one APK and NEMESIS package; there is no third-party loader. Wi-Fi client and ADB behavior are independently implemented; wireless projection ports AGPL-covered HMG-API code with retained attribution (see `.agents/wireless-carplay-and-aa.md`).
@@ -49,7 +55,8 @@ nemesis/                            # module-independent package parts
   package/bin/hmg-seogaemo-root         # validated dispatcher, only ids in modules.list
   package/bin/open.sh               # Manager Launch / APK recovery
   package/scripts/postinstall.sh, preuninstall.sh
-  package/svc/reconcile.sh          # one-shot boot reconciliation
+  package/svc/reconcile.sh          # boot reconciliation (mode=once)
+  package/svc/watcher.sh            # boot/screen_on watch dispatch (mode=restart)
   usb/NEMESIS.data                  # USB install wrapper
 out/                                # build output (gitignored)
 ```

@@ -46,7 +46,11 @@ for id in $reverse; do
         exit 1
     }
     status=$(sh "$base/bin/hmg-seogaemo-root" "$id" status) || exit 1
-    case "$status" in *'state=off'*) ;; *)
+    case "$status" in
+        *'state=off'*) ;;
+        *'state=pending-restart'*'info.desired=off'*)
+            grep -Fxq 'restore=reboot' "$base/modules/$id.properties" || exit 1 ;;
+        *)
         echo "HMG-Seogaemo uninstall blocked: $id did not verify off" >&2; exit 1 ;;
     esac
     [ "$(cat "$state/desired/$id" 2>/dev/null)" = off ] || exit 1

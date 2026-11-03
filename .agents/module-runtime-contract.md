@@ -53,19 +53,45 @@ baseline on first touch, perform, verify, mark applied, append ledger; non-zero 
 | `sg_file_delete <path>` | remove a file (baseline keeps its bytes) |
 | `sg_bind_mount <target> <payload-rel-src>` | non-persistent bind mount, recorded; reapplied by reconcile at boot |
 | `sg_service_restart <name>` | `stop`/`start` an init service (allow-listed per module in `module.properties` `services=`) |
+| `sg_service_call <service> <code>` | fixed Binder call, only if the exact `service:code` pair is listed in `service_calls=`; validates both arguments, enforces a 15-second timeout and records every attempted result in the ledger |
 | `sg_zygote_install <wrapper-rel-src> <loader-rel-src> <jar-rel-src>` | guarded transaction for `/system/bin/app_process`, its `app_process.hmg-seogaemo-stock` copy, the wireless loader and JAR, and `enable`/`enabled`/`starts`/`disable` state; all eight paths must be in `owns_files` |
 | `sg_dex_cache_track <system-jar> <app-package>` | track the Dalvik cache entry for an owned `/system/framework/*.jar` and the package's `app_hmg-seogaemo-wireless-dex` files; these two derived cache namespaces are the sole exception to explicit `owns_files` listing |
 | `sg_revert_all` | undo every change this module made, newest first, with the guarded restore rules below; clears baselines only after every item verified |
 
 Read/report helpers: `sg_log <msg>`, `sg_owner_present <name>` (`nemesis-adb-tcp`, `hmgapi`,
-`leafia`), `sg_applied <path|key>` (0 if our applied state is current), `sg_status <state> <restart> [detail]`.
+`leafia`, `local-hkmc-factory82`), `sg_applied <path|key>` (0 if our applied state is current), `sg_status <state> <restart> [detail]`.
 Internal (not for modules): baseline capture, applied-copy marking, remount, ledger writes.
+
+`watch=boot,screen_on` may declare only these fixed events. The package's single
+watcher service (`svc/watcher.sh`, `mode=restart`, separate from the `mode=once`
+`reconcile` service, and never calling apply/revert) invokes `root/<id>.sh watch
+<event>` only while that module's desired state is on, under the root operation
+lock. It waits for `sys.boot_completed=1` with a slow sleep and no hard exit, and
+re-reads desired state every loop. With no enabled watch module it idles on a
+300-second sleep. The boot event is dispatched once per module per kernel boot
+(marker `watch/boot.<id>` holding `/proc/sys/kernel/random/boot_id`), so a watcher
+restart does not repeat it. Screen-on dispatch uses a display off-to-on
+transition read from `dumpsys power` every 5 seconds (Android 4.4 keys
+`mWakefulness=`, `mDisplayPowerRequest.policy=`; `mScreenOn=`/`mInteractive=` are
+also accepted); uncertain readings do not trigger calls. The watcher never passes
+arbitrary event names or arguments.
+
+`restore=reboot` is reserved for modules whose only non-reversible effect is
+transient until a head-unit restart. Disable stops future watch calls. Until the
+next kernel boot, status is `pending-restart`, `restart=head_unit`, with
+`info.desired=off`; after reboot it is `off`. Apply/revert writes its desired
+state through the root dispatcher. The UI treats `info.desired=off` as off for
+toggle planning and explicitly tells the owner in the confirmation dialog that
+disabling requires a head-unit restart to restore stock behavior. This class
+must not own persistent stock-file or property changes.
 
 **Change ledger.** `/data/nemesis/backup/hmg-seogaemo/ledger/` holds an append-only `ledger.tsv`
 (`time, module, op, target, before-ref, after-ref, result`) plus, per change, the original bytes
 (`before/`), the bytes we wrote (`after/`), file metadata, and property before/after values. It is
 never pruned while any change is active; after a verified uninstall it is kept as a final
 export-able record until the package directory is removed.
+Binder calls record the exact allow-listed pair, time, bounded Parcel summary,
+and outcome in this same ledger; export includes them.
 
 The zygote transaction copies the original executable to `app_process.hmg-seogaemo-stock` and
 verifies that backup before replacing `app_process`. The wrapper must always exec that stock

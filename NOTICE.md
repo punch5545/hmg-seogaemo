@@ -10,6 +10,10 @@ The core car mapper, verifier, host mapping workflow, and hookpoint catalogue fo
 
 HMG-Seogaemo installs through [NEMESIS](https://github.com/xwtk/hmg_nemesis) by xwtk, licensed AGPL-3.0. NEMESIS is a required package manager and root command provider; its source is not copied into the wireless module.
 
+## HKMC Factory 82
+
+The `skip-consent-screen` module follows the observed behavior of [HKMC Factory 82](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (MIT). HMG-Seogaemo's module, fixed Binder-call API, and shared `watcher` service are independently written; no HKMC Factory 82 source is included.
+
 ## HMG Leafia Plus and Xposed
 
 HMG-API credits [HMG Leafia Plus](https://github.com/VysseCodes/HMG-Leafia-Plus) for the original wireless CarPlay bridge, native patch recipes, and audio converter lineage. HMG-API's Dalvik hook design follows Xposed for Android 4.x; no Xposed source is included here. See HMG-API's upstream `NOTICE.md` for its attributions.

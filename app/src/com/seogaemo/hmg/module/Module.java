@@ -37,6 +37,7 @@ public interface Module {
     HomeTile[] homeTiles();
     Warning[] enableWarnings();
     RestartRequirement restartRequirement();
+    boolean rebootRestore();
     String checkCompatibility();
     String checkConflicts();
     ModuleStatus apply();

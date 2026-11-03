@@ -135,17 +135,34 @@ def test_root(temp):
     for name in "abc":
         script(base / "modules" / (name + ".sh"),
                'case "$1" in apply) echo state=on;; revert) echo state=off;; '
-               'status) echo state=off;; esac\necho restart=none\necho detail=\n')
+               'status) echo state=off;; watch) echo state=on;; esac\necho restart=none\necho detail=\n')
+    script(base / "modules/c.sh", '''
+case "$1" in
+    apply) echo state=on; echo restart=none ;;
+    revert) echo state=pending-restart; echo restart=head_unit; echo info.desired=off ;;
+    status) echo state=off; echo restart=none ;;
+esac
+echo detail=
+''')
+    (base / "modules/a.properties").write_text("watch=boot,screen_on\n")
+    (base / "modules/c.properties").write_text("restore=reboot\n")
     state = base / "state"
     env = dict(os.environ, SG_DATA_ROOT=str(state))
     root = base / "bin/hmg-seogaemo-root"
     run(root, "b", "apply", env=env, ok=False)
     run(root, "a", "apply", env=env)
     run(root, "b", "apply", env=env)
+    run(root, "a", "watch", "boot", env=env)
+    run(root, "a", "watch", "bogus", env=env, ok=False)
+    run(root, "b", "watch", "boot", env=env, ok=False)
     run(root, "c", "apply", env=env, ok=False)
     run(root, "a", "revert", env=env, ok=False)
     run(root, "b", "revert", env=env)
     run(root, "a", "revert", env=env)
+    run(root, "a", "watch", "boot", env=env, ok=False)
+    run(root, "c", "apply", env=env)
+    run(root, "c", "revert", env=env)
+    assert (state / "desired/c").read_text() == "off"
     assert (state / "desired/a").read_text() == "off"
     assert (state / "desired/b").read_text() == "off"
 
@@ -219,6 +236,7 @@ sg_applied "{bound}"
 sg_revert_all
 ''')
     run(runner, env=env)
+
     assert put.read_text() == "old"
     assert replace.read_text() == "before\nkeep\n"
     assert deleted.read_text() == "delete me"
@@ -247,6 +265,47 @@ sg_revert_all
     result = run(base / "bin/hmg-seogaemo-root", "export", "usb", env=env)
     assert "state=on" in result.stdout
     assert list(usb.glob("HMG-Seogaemo-export/*/ledger/ledger.tsv"))
+
+
+def test_service_call_api(temp):
+    base = temp / "service-call"
+    state = base / "data/modules/skip-consent-screen"
+    state.mkdir(parents=True)
+    (base / "modules").mkdir()
+    (base / "modules/skip-consent-screen.properties").write_text(
+        "service_calls=com.hkmc.factory:82\n")
+    fake = base / "fake"
+    fake.mkdir()
+    script(fake / "service", 'printf "%s %s\\n" "$2" "$3" >> "$FAKE_CALLS"; echo "Parcel(00000000)"\n')
+    boot = base / "boot-id"
+    boot.write_text("boot-a")
+    runner = base / "runner"
+    script(runner, f'''
+set -eu
+. "{ROOT / 'nemesis/package/lib/common.sh'}"
+if sg_service_call wrong.name 82; then exit 1; fi
+if sg_service_call com.hkmc.factory 83; then exit 1; fi
+if sg_service_call 'com.hkmc.factory;bad' 82; then exit 1; fi
+if sg_service_call com.hkmc.factory 00082; then exit 1; fi
+sg_service_call com.hkmc.factory 82
+[ "$SG_SERVICE_CALL_RESPONSE" = 'Parcel(00000000)' ]
+sg_service_call_this_boot
+''')
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+               SG_DATA_ROOT=str(base / "data"), HMG_SEOGAEMO_STATE=str(state),
+               HMG_SEOGAEMO_BASE=str(base), SG_BOOT_ID_FILE=str(boot),
+               HMG_SEOGAEMO_SERVICE_BIN=str(fake / "service"),
+               FAKE_CALLS=str(base / "calls"))
+    run(runner, env=env)
+    assert (base / "calls").read_text() == "com.hkmc.factory 82\n"
+    ledger = (base / "data/ledger/ledger.tsv").read_text()
+    assert "service_call\tcom.hkmc.factory:82" in ledger
+    assert "Parcel(00000000)" in "".join(
+        path.read_text() for path in (base / "data/ledger/after").iterdir())
+    boot.write_text("boot-b")
+    check = base / "check-boot"
+    script(check, f'. "{ROOT / "nemesis/package/lib/common.sh"}"\nsg_service_call_this_boot\n')
+    run(check, env=env, ok=False)
 
 
 def test_reconcile_and_uninstall(temp):
@@ -315,6 +374,73 @@ echo detail=
     (state / "desired/b").write_text("on")
     run(base / "scripts/preuninstall.sh", env=env)
     assert log.read_text().splitlines() == ["b revert", "b status", "a revert", "a status"]
+
+
+def test_watch_dispatch(temp):
+    base = temp / "watch-dispatch"
+    for folder in ("bin", "svc", "modules"):
+        (base / folder).mkdir(parents=True)
+    shutil.copy(ROOT / "nemesis/package/svc/watcher.sh", base / "svc/watcher.sh")
+    (base / "modules.list").write_text("watcher\nplain\n")
+    (base / "modules/watcher.properties").write_text("watch=boot,screen_on\n")
+    (base / "modules/plain.properties").write_text("id=plain\n")
+    state = base / "state"
+    (state / "desired").mkdir(parents=True)
+    fake = base / "fake"
+    fake.mkdir()
+    script(fake / "getprop", 'echo 1\n')
+    script(fake / "dumpsys", 'cat "$FAKE_DISPLAY"\n')
+    # Each sleep flips the display on, so the second poll sees off -> on.
+    script(fake / "sleep", 'echo "$1" >> "$FAKE_SLEEPS"; echo "mWakefulness=Awake" > "$FAKE_DISPLAY"\n')
+    script(base / "bin/hmg-seogaemo-root", 'echo "$1 $2 $3" >> "$FAKE_CALLS"; echo state=on\n')
+    display = base / "display"
+    boot_id = base / "boot-id"
+    boot_id.write_text("boot-a")
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+               SG_DATA_ROOT=str(state), FAKE_DISPLAY=str(display),
+               FAKE_CALLS=str(base / "calls"), FAKE_SLEEPS=str(base / "sleeps"),
+               SG_BOOT_ID_FILE=str(boot_id), HMG_SEOGAEMO_WATCH_MAX_POLLS="3")
+    calls = base / "calls"
+    # Nothing enabled: idle with the long interval, never dispatch, never exit early.
+    display.write_text("mWakefulness=Asleep")
+    run(base / "svc/watcher.sh", env=env)
+    assert not calls.exists()
+    assert (base / "sleeps").read_text().splitlines() == ["300", "300"]
+    (base / "sleeps").unlink()
+    # Enabled: boot dispatched once, screen_on on the off -> on transition only.
+    (state / "desired/watcher").write_text("on")
+    (state / "desired/plain").write_text("on")
+    display.write_text("mWakefulness=Asleep")
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch boot", "watcher watch screen_on"]
+    assert (base / "sleeps").read_text().splitlines() == ["5", "5"]
+    # Watcher restart in the same boot does not repeat the boot event; a new boot does.
+    calls.write_text("")
+    display.write_text("mWakefulness=Awake")
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text() == ""
+    boot_id.write_text("boot-b")
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch boot"]
+    # The watcher never applies or reverts.
+    assert "apply" not in calls.read_text() and "revert" not in calls.read_text()
+    # Unreadable display state never triggers a call.
+    calls.write_text("")
+    display.write_text("garbage")
+    script(fake / "sleep", 'echo "$1" >> "$FAKE_SLEEPS"\n')
+    boot_id.write_text("boot-c")
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch boot"]
+    # Screen off-> on recognises both Android 4.4 policy and wakefulness keys.
+    calls.write_text("")
+    script(fake / "dumpsys", 'if [ -f "$FAKE_DISPLAY.n" ]; then echo mDisplayPowerRequest.policy=BRIGHT; else : > "$FAKE_DISPLAY.n"; echo mDisplayPowerRequest.policy=OFF; fi\n')
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch screen_on"]
+
+
+def test_reconcile_does_not_watch(temp):
+    text = (ROOT / "nemesis/package/svc/reconcile.sh").read_text()
+    assert " watch " not in text and "dumpsys" not in text
 
 
 def test_lint(temp):
@@ -435,7 +561,10 @@ with tempfile.TemporaryDirectory() as directory:
     test_common(root)
     test_root(root)
     test_mutation_api_and_export(root)
+    test_service_call_api(root)
     test_reconcile_and_uninstall(root)
+    test_watch_dispatch(root)
+    test_reconcile_does_not_watch(root)
     test_lint(root)
     test_module_build_hook(root)
     test_zygote_and_dex(root)
