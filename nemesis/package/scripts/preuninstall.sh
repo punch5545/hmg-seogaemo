@@ -16,7 +16,7 @@ state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 # One implementation for app restore and NEMESIS removal, including OTA payloads.
 SG_DATA_ROOT=$state
 export SG_DATA_ROOT
-sh "$base/core/stock.sh" restore || {
+/system/bin/sh "$base/core/stock.sh" restore || {
     echo 'HMG-Seogaemo uninstall blocked: restore failed; backups retained' >&2
     exit 1
 }

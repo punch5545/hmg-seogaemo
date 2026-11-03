@@ -8,6 +8,9 @@ case "$(getprop ro.build.product)" in
     NEEV.KOR.*.260902) ;;
     *) echo 'Unsupported firmware' >&2; exit 1 ;;
 esac
+# NEMESIS ignores ZIP modes. Shell callers use /system/bin/sh; also permit
+# Manager Launch implementations that execute kind=sh directly.
+chmod 755 "$base/bin/hmg-seogaemo-root" "$base/bin/open.sh" "$base/bin/install-apk.sh" || exit 1
 # The packaged APK must use the daemon path. A SUID invocation can inherit
 # the app process's limited capability bounding set and fail remount/restore.
 cp /system/xbin/nemesis "$base/bin/nemesis-client.tmp.$$" || exit 1

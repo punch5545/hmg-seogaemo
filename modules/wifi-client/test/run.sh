@@ -120,11 +120,11 @@ if [ -f "$TEST_WORK/projection-on" ]; then sg_print "state=on";
 else sg_print "state=off"; fi
 EOF
 chmod +x "$work/bin/"*
-chmod +x "$work/base/bin/hmg-seogaemo-root"
+chmod 644 "$work/base/bin/hmg-seogaemo-root"
 
 # Rewrite only fixed filesystem roots in a private copy; featurexml entries
 # remain the actual absolute paths used on the car.
-sed -e "s|^cfg=/system/|cfg=$work/system/|" \
+sed -e "s|/system/bin/sh|$car_shell|g" -e "s|^cfg=/system/|cfg=$work/system/|" \
     -e "s|^xml=/system/|xml=$work/system/|" \
     -e "s|/sys/bus/sdio/devices/\*|$work/sys/bus/sdio/devices/*|" \
     -e "s|/sys/class/net/wlan\*|$work/sys/class/net/wlan*|" \

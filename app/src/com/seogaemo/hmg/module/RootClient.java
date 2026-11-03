@@ -14,27 +14,27 @@ public final class RootClient {
         catch (IllegalArgumentException bad) { return failure("unknown module"); }
         if (!("apply".equals(verb) || "revert".equals(verb) ||
                 "status".equals(verb) || "precheck".equals(verb))) return failure("invalid verb");
-        final String command = "/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root " + moduleId + " " + verb;
+        final String command = "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root " + moduleId + " " + verb;
         return invoke(command);
     }
 
     public static RootResult exportUsb() {
-        return invoke("/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb");
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb");
     }
 
     public static RootResult stock(String verb) {
         if (!("restore".equals(verb) || "status".equals(verb))) return failure("invalid stock verb");
-        return invoke("/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root stock " + verb, 180000);
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root stock " + verb, 180000);
     }
 
     public static RootResult uninstallPackage() {
-        return invoke("/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root package uninstall", 180000);
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root package uninstall", 180000);
     }
 
     public static RootResult map(String verb) {
         if (!("status".equals(verb) || "run".equals(verb) ||
                 "verify".equals(verb) || "export".equals(verb))) return failure("invalid map verb");
-        String command = "/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root map " + verb;
+        String command = "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root map " + verb;
         return invoke(command, "run".equals(verb) ? 600000 : "verify".equals(verb) ? 180000 : 30000);
     }
 

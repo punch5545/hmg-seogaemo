@@ -7,7 +7,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
-from testlib import car_env, SHELL
+from testlib import car_env, SHELL, copy_shell_script
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMON = ROOT / 'nemesis/package/lib/common.sh'
@@ -226,7 +226,7 @@ def lifecycle(root):
         (f.root / name).mkdir()
     shutil.copy(COMMON, f.root / 'lib/common.sh')
     for name in ('svc/reconcile.sh',):
-        shutil.copy(ROOT / 'nemesis/package' / name, f.root / name)
+        copy_shell_script(ROOT / 'nemesis/package' / name, f.root / name)
     f.script('getprop', 'case "$1" in sys.boot_completed) echo 1;; *) cat "$FAKE_BUILD";; esac\n')
     (f.root / 'bin/hmg-seogaemo-root').write_text(
         '. "$HMG_SEOGAEMO_BASE/lib/common.sh"\n'

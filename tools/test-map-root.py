@@ -5,7 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from testlib import car_env, SHELL
+from testlib import car_env, SHELL, copy_shell_script
 
 ROOT=Path(__file__).resolve().parent.parent
 os.environ.update(car_env())
@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-root-") as tmp:
     for source,dest in (("nemesis/package/bin/hmg-seogaemo-root","bin/hmg-seogaemo-root"),
                         ("nemesis/package/core/hmg-seogaemo-map.sh","core/hmg-seogaemo-map.sh"),
                         ("nemesis/package/lib/common.sh","lib/common.sh")):
-        shutil.copyfile(ROOT/source,base/dest)
+        copy_shell_script(ROOT/source,base/dest)
     (fake/"getprop").write_text("#!/bin/sh\ncase \"$1\" in ro.build.product) echo NEEV.KOR.0000.V039.001.260902;; esac\n")
     (fake/"app_process").write_text('''#!/bin/sh
 . "$HMG_SEOGAEMO_BASE/lib/common.sh"
