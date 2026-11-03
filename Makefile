@@ -65,7 +65,7 @@ test: package
 	python3 tools/test-runtime.py
 	python3 tools/lint-module-root.py
 	python3 tools/lint-names.py
-	@for t in modules/*/test/run.sh; do test ! -f "$$t" || sh "$$t"; done
+	@for t in modules/*/test/run.sh; do test ! -f "$$t" || sh "$$t" || exit 1; done
 	mkdir -p out/planner-test
 	javac -d out/planner-test app/src/com/seogaemo/hmg/module/ModulePlan.java app/src/com/seogaemo/hmg/module/ModulePlanner.java app/src/com/seogaemo/hmg/module/Warning.java tools/ModulePlannerTest.java
 	java -cp out/planner-test ModulePlannerTest
