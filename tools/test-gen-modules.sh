@@ -149,4 +149,54 @@ reset_fixture
 printf '0.0.0\n' > "$fixture/VERSION"
 expect_failure 'outside Android'
 
+
+# Line claims are literal after the first colon and independent of exclusions.
+reset_fixture
+mkdir -p "$fixture/modules/beta/src/com/example"
+printf 'id=beta\nclass=com.example.Beta\nversion=@VERSION@\nrequires_root=false\n' > "$fixture/modules/beta/module.properties"
+: > "$fixture/modules/beta/src/com/example/Beta.java"
+printf 'owns_lines.1=/system/shared:  a,b:c=d\\x  \n' >> "$fixture/modules/alpha/module.properties"
+printf 'owns_lines.1=/system/shared:other\n' >> "$fixture/modules/beta/module.properties"
+PROJECT_ROOT="$fixture" sh "$repo/tools/gen-modules.sh"
+printf 'alpha\t1\t/system/shared:  a,b:c=d\\x  \nbeta\t1\t/system/shared:other\n' > "$scratch/expected-lines"
+cmp "$scratch/expected-lines" "$fixture/out/package/modules.lines"
+printf 'owns_lines.2=/system/shared:  a,b:c=d\\x  \nexcludes=alpha\n' >> "$fixture/modules/beta/module.properties"
+expect_failure 'duplicate line ownership'
+
+reset_fixture
+printf 'owns_lines.1=/system/shared:stock\nowns_lines.1=/system/shared:other\n' >> "$fixture/modules/alpha/module.properties"
+expect_failure 'invalid or duplicate line key'
+
+reset_fixture
+printf 'owns_lines.01=/system/shared:stock\n' >> "$fixture/modules/alpha/module.properties"
+expect_failure 'invalid or duplicate line key'
+
+reset_fixture
+printf 'owns_lines.1=/system/shared:stock\nowns_lines.2=/system/shared:stock\n' >> "$fixture/modules/alpha/module.properties"
+expect_failure 'duplicate line ownership'
+
+reset_fixture
+printf 'owns_lines.1=/system/shared:stock\nrestore=reboot\n' >> "$fixture/modules/alpha/module.properties"
+expect_failure 'reboot restore cannot own persistent targets'
+
+reset_fixture
+printf 'owns_lines.1=/system/shared:bad\tline\n' >> "$fixture/modules/alpha/module.properties"
+expect_failure 'invalid stock line'
+reset_fixture
+printf 'owns_lines.1=/system/shared:bad\rline\n' >> "$fixture/modules/alpha/module.properties"
+expect_failure 'invalid stock line'
+
+for first in alpha beta; do
+    reset_fixture
+    mkdir -p "$fixture/modules/beta/src/com/example"
+    printf 'id=beta\nclass=com.example.Beta\nversion=@VERSION@\nrequires_root=false\n' > "$fixture/modules/beta/module.properties"
+    : > "$fixture/modules/beta/src/com/example/Beta.java"
+    if [ "$first" = alpha ]; then second=beta; else second=alpha; fi
+    printf 'owns_files=/system/shared\n' >> "$fixture/modules/$first/module.properties"
+    printf 'owns_lines.1=/system/shared:stock\n' >> "$fixture/modules/$second/module.properties"
+    expect_failure 'whole-file ownership conflict'
+    printf 'owns_files=/system/shared\n' >> "$fixture/modules/$second/module.properties"
+    expect_failure 'whole-file ownership conflict'
+done
+
 echo 'gen-modules tests passed'
