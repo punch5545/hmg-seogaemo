@@ -54,3 +54,23 @@ APK certificate, uploads to a draft, confirms all six asset names, then
 publishes the release.
 The About screen reads `PackageInfo.versionName` at runtime, avoiding a
 second literal version in localized string resources.
+
+## Live TLS chains and bundled CA roots (2026-11-03)
+
+Fetched with `openssl s_client -connect <host>:443 -servername <host> -showcerts` for `api.github.com`, `github.com`, `objects.githubusercontent.com`, and `release-assets.githubusercontent.com`. The first two served Sectigo DV E36 → Sectigo Root E46 (cross-signed by USERTrust ECC); the latter two served Let's Encrypt YR1 → ISRG Root YR (cross-signed by ISRG Root X1). The saved API and objects chains are in `tools/fixtures/tls/`. Certificates and routes rotate; these are observations, not pins.
+
+`app/res/raw/update_roots.pem` contains these self-signed trust anchors. It is embedded in the APK and included in the signed OTA ZIP for updates. A chain is accepted only when the Android system trust manager or the bundled-root trust manager validates it. The HTTPS connection still checks the hostname and enables TLS 1.2.
+
+| Subject | Expiry (UTC) | SHA-256 fingerprint |
+| --- | --- | --- |
+| C=GB, O=Sectigo Limited, CN=Sectigo Public Server Authentication Root E46 | Mar 21 23:59:59 2046 GMT | `C9:0F:26:F0:FB:1B:40:18:B2:22:27:51:9B:5C:A2:B5:3E:2C:A5:B3:BE:5C:F1:8E:FE:1B:EF:47:38:0C:53:83` |
+| C=GB, O=Sectigo Limited, CN=Sectigo Public Server Authentication Root R46 | Mar 21 23:59:59 2046 GMT | `7B:B6:47:A6:2A:EE:AC:88:BF:25:7A:A5:22:D0:1F:FE:A3:95:E0:AB:45:C7:3F:93:F6:56:54:EC:38:F2:5A:06` |
+| C=US, ST=New Jersey, L=Jersey City, O=The USERTRUST Network, CN=USERTrust ECC Certification Authority | Jan 18 23:59:59 2038 GMT | `4F:F4:60:D5:4B:9C:86:DA:BF:BC:FC:57:12:E0:40:0D:2B:ED:3F:BC:4D:4F:BD:AA:86:E0:6A:DC:D2:A9:AD:7A` |
+| C=US, ST=New Jersey, L=Jersey City, O=The USERTRUST Network, CN=USERTrust RSA Certification Authority | Jan 18 23:59:59 2038 GMT | `E7:93:C9:B0:2F:D8:AA:13:E2:1C:31:22:8A:CC:B0:81:19:64:3B:74:9C:89:89:64:B1:74:6D:46:C3:D4:CB:D2` |
+| C=US, O=Internet Security Research Group, CN=ISRG Root X1 | Jun  4 11:04:38 2035 GMT | `96:BC:EC:06:26:49:76:F3:74:60:77:9A:CF:28:C5:A7:CF:E8:A3:C0:AA:E1:1A:8F:FC:EE:05:C0:BD:DF:08:C6` |
+| C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Global Root G2 | Jan 15 12:00:00 2038 GMT | `CB:3C:CB:B7:60:31:E5:E0:13:8F:8D:D3:9A:23:F9:DE:47:FF:C3:5E:43:C1:14:4C:EA:27:D4:6A:5A:B1:CB:5F` |
+| C=US, O=DigiCert Inc, OU=www.digicert.com, CN=DigiCert Global Root CA | Nov 10 00:00:00 2031 GMT | `43:48:A0:E9:44:4C:78:CB:26:5E:05:8D:5E:89:44:B4:D8:4F:96:62:BD:26:DB:25:7F:89:34:A4:43:C7:01:61` |
+| OU=GlobalSign Root CA - R6, O=GlobalSign, CN=GlobalSign | Dec 10 00:00:00 2034 GMT | `2C:AB:EA:FE:37:D0:6C:A2:2A:BA:73:91:C0:03:3D:25:98:29:52:C4:53:64:73:49:76:3A:3A:B5:AD:6C:CF:69` |
+| OU=GlobalSign Root CA - R3, O=GlobalSign, CN=GlobalSign | Mar 18 10:00:00 2029 GMT | `CB:B5:22:D7:B7:F1:27:AD:6A:01:13:86:5B:DF:1C:D4:10:2E:7D:07:59:AF:63:5A:7C:F4:72:0D:C9:63:C5:3B` |
+
+The signed release manifest and embedded verification key remain the update security boundary. If TLS validation fails, the updater fails closed and the signed USB package remains the fallback. The head-unit clock and TLS/SNI behavior still require on-car validation.

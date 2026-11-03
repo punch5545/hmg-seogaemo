@@ -32,8 +32,10 @@ public final class UpdateClient {
 
     public UpdateClient(Context context) throws Exception {
         this.context = context;
+        InputStream roots = context.getResources().openRawResource(R.raw.update_roots);
         SSLContext ssl = SSLContext.getInstance("TLS");
-        ssl.init(null, null, null);
+        try { ssl.init(null, new javax.net.ssl.TrustManager[] {UpdateTrust.create(roots)}, null); }
+        finally { roots.close(); }
         tls = new Tls12Factory(ssl.getSocketFactory());
     }
 

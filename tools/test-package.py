@@ -42,8 +42,9 @@ def run():
         assert usb.read("packages/seogaemo.zip") == package_path.read_bytes()
         assert ota.read("VERSION") == (version + "\n").encode()
         assert ota.read("app/Seogaemo.apk") == package.read("app/Seogaemo.apk")
+        assert ota.read("update_roots.pem") == (ROOT / "app/res/raw/update_roots.pem").read_bytes()
         for name in ota.namelist():
-            assert name == "VERSION" or name == "app/Seogaemo.apk" or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/")) or name in ("modules.list", "modules.graph")
+            assert name in ("VERSION", "update_roots.pem", "app/Seogaemo.apk", "modules.list", "modules.graph") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/"))
             if name in entries:
                 assert ota.read(name) == package.read(name)
         usb_meta = descriptor(usb.read("NEMESIS.data"))

@@ -53,6 +53,9 @@ test: package
 	javac -d out/planner-test app/src/com/seogaemo/app/module/ModulePlan.java app/src/com/seogaemo/app/module/ModulePlanner.java app/src/com/seogaemo/app/module/Warning.java tools/ModulePlannerTest.java
 	java -cp out/planner-test ModulePlannerTest
 	python3 tools/test-update.py
+	mkdir -p out/trust-test
+	javac -source 7 -target 7 -d out/trust-test app/src/com/seogaemo/app/core/update/UpdateTrust.java tools/UpdateTrustTest.java
+	java -cp out/trust-test com.seogaemo.app.core.update.UpdateTrustTest app/res/raw/update_roots.pem tools/fixtures/tls/api.github.com.pem tools/fixtures/tls/objects.githubusercontent.com.pem
 
 clean:
 	rm -rf out

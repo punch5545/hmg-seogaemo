@@ -80,7 +80,8 @@ def build(aapt):
         "NEMESIS.data": ROOT / "nemesis/usb/NEMESIS.data",
         "packages/seogaemo.zip": package_zip,
     })
-    ota_files = {"app/Seogaemo.apk": apk, "VERSION": (version + "\n").encode()}
+    ota_files = {"app/Seogaemo.apk": apk, "VERSION": (version + "\n").encode(),
+                 "update_roots.pem": ROOT / "app/res/raw/update_roots.pem"}
     for name, source in files.items():
         if name.startswith(("bin/", "lib/", "modules/", "core/", "svc/")) or name in ("modules.list", "modules.graph"):
             ota_files[name] = source

@@ -107,7 +107,7 @@ public final class UpdateVerifier {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 String name = entry.getName();
-                if (++entries > 2048 || name.length() > 160 || !names.add(name) || !name.matches("(?:VERSION|modules\\.list|modules\\.graph|app/Seogaemo\\.apk|(?:bin|lib|modules|core|svc)/[A-Za-z0-9_./-]+)") || name.contains("..") || name.startsWith("/")) throw new IOException("unsafe ZIP entry");
+                if (++entries > 2048 || name.length() > 160 || !names.add(name) || !name.matches("(?:VERSION|update_roots\\.pem|modules\\.list|modules\\.graph|app/Seogaemo\\.apk|(?:bin|lib|modules|core|svc)/[A-Za-z0-9_./-]+)") || name.contains("..") || name.startsWith("/")) throw new IOException("unsafe ZIP entry");
                 File out = new File(dest, name);
                 if (entry.isDirectory()) { if (!out.isDirectory() && !out.mkdirs()) throw new IOException("mkdir failed"); continue; }
                 if (!out.getParentFile().isDirectory() && !out.getParentFile().mkdirs()) throw new IOException("mkdir failed");
