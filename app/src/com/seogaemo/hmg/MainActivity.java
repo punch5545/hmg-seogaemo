@@ -54,9 +54,9 @@ public final class MainActivity extends Activity {
     private static final int ERROR = 0xFFEE0000;
     private static final int PRESS = 0xFF294563;
     private static final int RED_PRESS = 0xFF633030;
-    private static final int[] CATEGORIES = {R.string.cat_general, R.string.cat_modules,
+    private static final int[] CATEGORIES = {R.string.cat_general, R.string.cat_mapping, R.string.cat_modules,
         R.string.cat_logs, R.string.cat_about};
-    private static final int[] CATEGORY_SUBS = {R.string.cat_general_sub, R.string.cat_modules_sub,
+    private static final int[] CATEGORY_SUBS = {R.string.cat_general_sub, R.string.cat_mapping_sub, R.string.cat_modules_sub,
         R.string.cat_logs_sub, R.string.cat_about_sub};
     private Typeface sans;
     private Typeface medium;
@@ -69,6 +69,10 @@ public final class MainActivity extends Activity {
     private boolean updateBusy;
     private boolean modulePlanning;
     private boolean moduleWorking;
+    private RootResult mapStatus;
+    private boolean mapRefreshing;
+    private boolean mapBusy;
+    private String mapResult;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -81,6 +85,7 @@ public final class MainActivity extends Activity {
             sidebarOffset = state.getInt("sidebarOffset", 0);
             showSettings();
         } else showHome();
+        refreshMap(true);
         if (getSharedPreferences("update", MODE_PRIVATE).getBoolean("resume", false)) {
             try {
                 if (new UpdateClient(this).hasUsableNetwork()) {
@@ -313,9 +318,12 @@ public final class MainActivity extends Activity {
             showUpdate(general);
             return;
         } else if (category == 1) {
-            showModules(content);
+            showMapping(content);
             return;
         } else if (category == 2) {
+            showModules(content);
+            return;
+        } else if (category == 3) {
             TextView explanation = text(getString(R.string.export_changes_hint), 19, MUTED, sans);
             explanation.setPadding(dp(SettingsUi.PAGE), 0, dp(SettingsUi.PAGE), 0);
             content.addView(explanation, new LinearLayout.LayoutParams(-1, dp(85)));
@@ -347,7 +355,7 @@ public final class MainActivity extends Activity {
                 }
             });
             return;
-        } else if (category == 3) {
+        } else if (category == 4) {
             addRow(content, R.string.app, R.string.app_description, R.string.app_name);
             addRow(content, R.string.version, R.string.installed_version, installedVersion());
             addRow(content, R.string.android, R.string.minimum_api, R.string.value_api);
@@ -371,6 +379,116 @@ public final class MainActivity extends Activity {
         content.addView(hint, new LinearLayout.LayoutParams(-1, dp(40)));
     }
 
+    private String mapInfo(String key) {
+        String value = mapStatus == null ? null : mapStatus.info.get(key);
+        return value == null || value.length() == 0 ? "—" : value;
+    }
+
+    private void showMapping(LinearLayout content) {
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout rows = vertical();
+        rows.setPadding(0, dp(SettingsUi.SM), 0, dp(SettingsUi.LG));
+        scroll.addView(rows);
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        int status = R.string.mapping_loading;
+        if (mapStatus != null) {
+            if ("on".equals(mapStatus.state)) status = R.string.mapping_ready;
+            else if ("off".equals(mapStatus.state)) status = R.string.mapping_verification_needed;
+            else if ("incompatible".equals(mapStatus.state)) status = R.string.mapping_needed;
+            else status = R.string.mapping_unavailable;
+        }
+        addRow(rows, R.string.mapping_state, R.string.mapping_state_hint,
+                getString(mapBusy ? R.string.mapping_progress : status));
+        addRow(rows, R.string.mapping_product, R.string.mapping_product_hint, mapInfo("product"));
+        String source = mapInfo("source");
+        if ("bundled".equals(source)) source = getString(R.string.mapping_source_bundled);
+        else if ("generated".equals(source)) source = getString(R.string.mapping_source_generated);
+        else if ("none".equals(source)) source = getString(R.string.mapping_source_none);
+        addRow(rows, R.string.mapping_source, R.string.mapping_source_hint, source);
+        addRow(rows, R.string.mapping_points, R.string.mapping_points_hint,
+                mapInfo("mapped") + " / " + mapInfo("verified") + " / " + mapInfo("failed"));
+        TextView failures = text(getString(R.string.mapping_failing_ids) + ": " + mapInfo("failing_ids"), 18, MUTED, sans);
+        failures.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.SM), dp(SettingsUi.PAGE), dp(SettingsUi.SM));
+        rows.addView(failures, new LinearLayout.LayoutParams(-1, -2));
+        if (mapResult != null) {
+            TextView result = text(mapResult, 18, WHITE, sans);
+            result.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.SM), dp(SettingsUi.PAGE), dp(SettingsUi.SM));
+            rows.addView(result, new LinearLayout.LayoutParams(-1, -2));
+        }
+        TextView map = action(getString(R.string.mapping_run), true);
+        LinearLayout.LayoutParams mp = SettingsUi.contentAction(this);
+        mp.topMargin = dp(SettingsUi.SM);
+        rows.addView(map, mp);
+        map.setEnabled(!mapBusy);
+        map.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmMapRun(); } });
+        TextView export = action(getString(R.string.mapping_export), false);
+        LinearLayout.LayoutParams ep = SettingsUi.contentAction(this);
+        ep.topMargin = dp(SettingsUi.SM);
+        rows.addView(export, ep);
+        export.setEnabled(!mapBusy);
+        export.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmMapExport(); } });
+        TextView note = text(getString(R.string.mapping_pr_hint), 18, MUTED, sans);
+        note.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.MD), dp(SettingsUi.PAGE), dp(SettingsUi.SM));
+        rows.addView(note, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void refreshMap(final boolean verifyKnown) {
+        if (mapRefreshing) return;
+        mapRefreshing = true;
+        new Thread(new Runnable() { public void run() {
+            RootResult status = RootClient.map("status");
+            String failure = null;
+            if (verifyKnown && status.exitCode == 0 && "off".equals(status.state) &&
+                    !"none".equals(status.info.get("source"))) {
+                RootResult verification = RootClient.map("verify");
+                if (verification.exitCode != 0) failure = verification.detail;
+                status = RootClient.map("status");
+            }
+            final RootResult observed = status;
+            final String observedFailure = failure;
+            runOnUiThread(new Runnable() { public void run() {
+                mapStatus = observed;
+                if (observedFailure != null) mapResult = observedFailure;
+                mapRefreshing = false;
+                if (settingsVisible && category == 1) showSettings();
+            } });
+        } }, "car-map-status").start();
+    }
+
+    private void confirmMapRun() {
+        if (mapBusy) return;
+        ConfirmDialog.show(this, getString(R.string.mapping_run), getString(R.string.mapping_run_confirm),
+                getString(R.string.mapping_run), getString(R.string.cancel), false,
+                new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { mapOperation("run", dialog); } }, null);
+    }
+
+    private void confirmMapExport() {
+        if (mapBusy) return;
+        ConfirmDialog.show(this, getString(R.string.mapping_export), getString(R.string.mapping_export_confirm),
+                getString(R.string.mapping_export), getString(R.string.cancel), false,
+                new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { mapOperation("export", dialog); } }, null);
+    }
+
+    private void mapOperation(final String verb, final ConfirmDialog dialog) {
+        mapBusy = true;
+        dialog.showProgress();
+        if (settingsVisible && category == 1) showSettings();
+        new Thread(new Runnable() { public void run() {
+            final RootResult outcome = RootClient.map(verb);
+            final RootResult observed = RootClient.map("status");
+            runOnUiThread(new Runnable() { public void run() {
+                mapBusy = false;
+                mapStatus = observed;
+                mapResult = outcome.exitCode == 0 && "run".equals(verb)
+                        ? getString(R.string.mapping_run_done) : outcome.detail;
+                dialog.dismiss();
+                if (settingsVisible && category == 1) showSettings();
+                new AlertDialog.Builder(MainActivity.this).setMessage(mapResult)
+                        .setPositiveButton("OK", null).show();
+            } });
+        } }, "car-map-" + verb).start();
+    }
+
     private void showModules(final LinearLayout content) {
         final ScrollView scroll = new ScrollView(this);
         final LinearLayout rows = vertical();
@@ -389,7 +507,7 @@ public final class MainActivity extends Activity {
                 }
                 runOnUiThread(new Runnable() {
                     public void run() {
-                        if (!settingsVisible || category != 1) return;
+                        if (!settingsVisible || category != 2) return;
                         rows.removeAllViews();
                         for (int i = 0; i < modules.length; i++) {
                             if (results[i] != null) addModule(rows, modules[i], results[i]);
@@ -807,7 +925,7 @@ public final class MainActivity extends Activity {
         copy.addView(sub, subp);
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
         row.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { category = index; showSettings(); }
+            public void onClick(View v) { category = index; showSettings(); if (index == 1) refreshMap(false); }
         });
         parent.addView(row, new LinearLayout.LayoutParams(-1, dp(70)));
         divider(parent, false);
