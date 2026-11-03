@@ -1,0 +1,4 @@
+<resources>
+    <string name="wireless_adb_name">무선 ADB</string>
+    <string name="wireless_adb_description">차량 핫스팟을 통한 ADB 연결</string>
+</resources>

@@ -1,0 +1,6 @@
+<resources>
+    <style name="Hkmc" parent="@android:style/Theme.NoTitleBar.Fullscreen">
+        <item name="android:windowBackground">@color/hkmc_bg</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+</resources>

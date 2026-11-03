@@ -1,0 +1,4 @@
+<resources>
+    <string name="wireless_adb_name">Wireless ADB</string>
+    <string name="wireless_adb_description">ADB connection through the car hotspot</string>
+</resources>

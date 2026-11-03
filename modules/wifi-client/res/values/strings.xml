@@ -1,0 +1,4 @@
+<resources>
+    <string name="wifi_client_name">Wi-Fi client</string>
+    <string name="wifi_client_description">Join a network through stock Wi-Fi Settings</string>
+</resources>

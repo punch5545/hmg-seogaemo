@@ -1,0 +1,4 @@
+<resources>
+    <string name="wifi_client_name">Wi-Fi 클라이언트</string>
+    <string name="wifi_client_description">기본 Wi-Fi 설정에서 네트워크에 연결</string>
+</resources>

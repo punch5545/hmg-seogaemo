@@ -1,0 +1,75 @@
+# NEMESIS packaging for Seogaemo
+
+Paths and line references below are relative to `tmp/`. This describes NEMESIS 1.16.4 source and upstream documentation; the proposed Seogaemo package has not been tested on a head unit.
+
+## Verified facts
+
+### Package and descriptor
+
+A package is a zip with `NEMESIS.data` at its root; NEMESIS unpacks it under `/data/nemesis/apps/<id>/` and records packages/services in `/data/nemesis/*.db`. The USB stick has a *different* root `NEMESIS.data` that points to `packages/<id>.zip`. `hmg_nemesis/04-Packages.md:9-19,196-214`; `hmg_nemesis/Sources/native/pkg.c:258-263`.
+
+The zip descriptor's `[nemesis]` requires `id` (up to 64 characters; letters/digits/`.`/`_`/`-`, no leading `.`/`-` or `..`). Recommended fields: `version=1.1` (descriptor version, not app version), `name` (defaults to id), `type` (comma list; legacy `types` fallback), dotted-numeric `package-version`, and `short-desc` (at most 64 characters). Optional: `detailed-desc` (at most 256), `depends`, `os`, `models`, and the four hook paths. Missing descriptor version means 1.0; missing `os`/`models` means `any`. `hmg_nemesis/04-Packages.md:27-48`; `hmg_nemesis/Sources/native/meta.c:214-264`.
+
+`depends` accepts `id`, `id@any`, `id@1.2`, `id@>=1.2`, `id@<=1.2`, `id@1.2-1.5`; prefix `!` excludes that id/version. `1.2` equals `1.2.0`. Self-dependency or both need/exclude is invalid. Missing dependencies and conflicts stop install (22/23); an update that breaks a dependent stops (21), and uninstall of a needed package stops (4). `os` and `models` accept comma-separated `*`/`?` globs. OS match gives `full`; OS miss plus model match gives `partial`; both miss gives `incompatible` (20 unless `--accept-risk`). `hmg_nemesis/04-Packages.md:50-82`; `hmg_nemesis/Sources/native/meta.c:57-103,192-211,294-309`.
+
+`preinstall` runs in the staging directory before copy; `postinstall` runs after copy/APK install/service registration in the installed tree. `preuninstall` runs after service stop, before APK uninstall; `postuninstall` is copied to a temporary path before running. Hooks run as root. NEMESIS 1.16.4 rejects any hook, `[app.N]`, or `[service.N]` path with a `..` component, although absolute paths remain allowed; zip extraction also rejects traversal members. `hmg_nemesis/04-Packages.md:41-48,253-264`; `hmg_nemesis/Sources/native/pkg.c:228-284,629-715`; `hmg_nemesis/README.md:82-88`.
+
+`[app.N] kind=apk,path=app/Seogaemo.apk` invokes `pm install -r`. `package=` gives the Android package id for uninstall; `component=package/class` is preferred for Manager Launch, otherwise a launcher activity is used. `[app.N] kind=sh,path=bin/open.sh` makes Launch run a script. `[service.N]` registers `<id>/<name>`: `kind=sh` runs a script (including with Android down); `kind=instance` starts an Android component after Android is up. `uid=root` is default or `uid=system` is UID/GID 1000. `mode=restart` relaunches until five rapid deaths; `background` starts once; `once` waits. `hmg_nemesis/04-Packages.md:86-120`; `hmg_nemesis/Sources/native/svc.c:136-205`.
+
+Backups under `/data/nemesis/backup/<id>/` are **package script policy**, not a generic NEMESIS uninstall guarantee. Upstream packages snapshot live files in `postinstall`, restore in `preuninstall`, and delete their own backup directory only after success; failed restore keeps it. Native uninstall deletes the package tree, but has no backup-directory deletion in that path. HMG-API's note says NEMESIS deletes backups on uninstall; the source/examples show the narrower behavior, so our scripts must own cleanup. `hmg_nemesis/04-Packages.md:184-186,241-249`; `hmg_nemesis/Sources/packages/adb-tcp/scripts/preun.sh:5-13`; `hmg_nemesis/Sources/native/pkg.c:629-680`; `HMG-API/CLAUDE.md:63`.
+
+### APK installation, signing, and root
+
+On these units, `sys.boot_completed=1` makes PackageManager reject non-OEM-allowlisted APK signers with `INSTALL_PARSE_FAILED_INCONSISTENT_CERTIFICATES`, even on first install. NEMESIS temporarily sets it to `0` around `pm install -r`, restores it, and checks output text (`pm` may exit 0 on failure). If an installed package really has a different signer, NEMESIS checks `pm path`, uninstalls, then retries once. Android-down install leaves the APK in the package tree; `pkg-launch` can install it later. `hmg_nemesis/Sources/native/pkg.c:460-549,1067-1079`; `HMG-API/CLAUDE.md:52`.
+
+This supports a **normal user app** installed by `pm`; there is no need to put our APK in `/system/app` just to use NEMESIS. HMG-API uses v1/JAR APK signing for API 19 and a stable release key (throwaway only for development); the OEM allowlist issue is independent of the digest. Preserve one signing key for Seogaemo updates because an actual signer change triggers uninstall/reinstall. `hmg_nemesis/04-Packages.md:3,86-100`; `HMG-API/build.sh:103-115`; `hmg_nemesis/Sources/native/pkg.c:493-505`.
+
+For Manager Launch, HMG-API deliberately declares `[app.0] kind=sh,path=bin/open.sh` without `package` or `component`: its script calls `/data/hmgapi/open.sh`, which reinstalls a missing app with the temporary boot-property change, then `am start`. This avoids NEMESIS's automatic `pm uninstall` of an `apk` entry during package update. The `nemesis-shortcut` HMG-API mod goes the opposite direction: it adds *NEMESIS Manager* to HMG-API's menu, not our app to NEMESIS. `HMG-API/install/nemesis/NEMESIS.data.in:15-18`; `HMG-API/install/nemesis/bin/open.sh:1-10`; `HMG-API/install/common/app-open.sh:1-35`; `HMG-API/install/nemesis/README.md:37-43`; `HMG-API/mods/examples/nemesis-shortcut/mod.json:10-26`.
+
+An installed app can invoke `/system/xbin/nemesis root -c '...'` for a command, or `nemesis root 1000 -c '...'` for a system-UID command. Non-root callers go through the watchdog's command socket; its sockets are mode 0666 and **any UID** may use this channel—there is no package/Android-permission allowlist. The privileged service can instead run its shell script as root. Security consequence: NEMESIS itself makes root broadly available, so Seogaemo should expose only fixed, validated module actions and avoid arbitrary command strings or untrusted input. `hmg_nemesis/Sources/native/main.c:35-55`; `hmg_nemesis/Sources/native/su.c:64-113,229-258`; `hmg_nemesis/02-Debugging-Execution-Interface.md:129-163`; `HMG-API/CLAUDE.md:49`.
+
+From ADB, the SUID binary may produce *weak* root (adbd's limited capability set). HMG-API documents copying the binary without SUID to `/data/local/tmp/nemesis-d` so the call goes through NEMESIS's full-root daemon. NEMESIS daemon commands inherit `umask 0`; scripts that create files should set `umask 077`. `HMG-API/CLAUDE.md:50-51`; `hmg_nemesis/Sources/native/util.c:670-687`.
+
+### Delivery, updates, and operational constraints
+
+USB: unzip a delivery archive to the stick root as `NEMESIS.data` (`[nemesis] version=1.0,type=install,path=packages/seogaemo.zip`) plus `packages/seogaemo.zip`, then confirm on the head unit. `path` is relative and rejects `/`, `..`, and shell metacharacters. With Android down, only a root `NEMESIS.emergency` permits automatic, unprompted install; leave that marker off normal media. CLI/ADB shell: `nemesis install <zip>`, `nemesis install --update <zip>`, `nemesis uninstall <id>`; Manager Store/My Packages offers install/Launch/uninstall. `hmg_nemesis/04-Packages.md:196-249`; `hmg_nemesis/05-Run-Scripts.md:20-52`; `hmg_nemesis/02-Debugging-Execution-Interface.md:129-148`.
+
+Store: submit the **package zip** through xwtk.Portal with an HTTPS repository URL; account approval reserves its id, and updates use the same id with a higher dotted `package-version`. Manager checks HTTPS and SHA-256 for downloads; `nemesis_roots.pem` holds HTTPS trust roots, **not** a package-signing key. The zip's own descriptor controls actual install. No separate cryptographic zip signature is described in the local package/Store flow. `hmg_nemesis/07-Submit-a-Package.md:11-56`; `hmg_nemesis/06-Cloud-Store-API.md:11-31,138-146`; `hmg_nemesis/04-Packages.md:9-11`.
+
+HMG-API's `tools/mkinstallers.sh` builds `hmgapi-<v>-nemesis-package.zip` directly from descriptor/scripts/bin/payload, then `hmgapi-<v>-nemesis.zip` as a USB wrapper containing root descriptor and `packages/hmgapi.zip`; it also makes separate adb/combined USB distributions. Its old `preuninstall` detects a staged update and skips removing the live HMG-API installation, while real uninstall restores it. NEMESIS updates stop services, run old uninstall hooks/APK removal, remove old tree, then install the new tree; a failed removal keeps the old package unless forced. `HMG-API/tools/mkinstallers.sh:1-13,42-66,68-90`; `HMG-API/install/nemesis/scripts/preuninstall.sh:1-22`; `hmg_nemesis/Sources/native/pkg.c:851-890`.
+
+Target **NEMESIS 1.16.4 or newer** for the current path validation and service fixes; descriptor 1.1 debuted in 1.16, dependency/conflict behavior improved in 1.16.3. Known field issues: a stale watchdog pidfile may prevent daemon startup; `/system` remount should use `nemesis remount rw|ro` (toolbox remount fails); the unit lacks `tail`; shell scripts need KitKat toolbox-compatible commands. `hmg_nemesis/README.md:82-115`; `HMG-API/CLAUDE.md:50-58`; `hmg_nemesis/04-Packages.md:182`.
+
+## Implemented package (off-car verified; no head-unit install yet)
+
+`make package` now builds `hmg-seogaemo-<v>-nemesis-package.zip` and
+`hmg-seogaemo-<v>-nemesis-usb.zip`. The USB archive contains root
+`NEMESIS.data` and `packages/seogaemo.zip`. The inner descriptor is 1.1,
+`id=seogaemo`, `type=application,service`, `os=NEEV.KOR.260902`,
+`models=neev_kr`, a root shell app entry, and a root one-shot service.
+NEMESIS classifies an OS mismatch plus model match as partial, so
+`postinstall.sh` checks the exact `ro.build.product` value before installing
+the APK. The package includes module metadata and scripts, but modules and
+reconciliation are still stubs. A real uninstall removes the APK; an update
+with a valid staged Seogaemo descriptor retains it and its app data.
+When Android is down, postinstall leaves the APK in the package and Manager
+Launch installs it once Android is up. This path has not been tested on a car.
+
+## Earlier design proposal (historical)
+
+Use a user APK plus a NEMESIS wrapper. Build `make -C app` first, then produce two artifacts: `seogaemo-<v>-nemesis-package.zip` (package) and `seogaemo-<v>-nemesis.zip` (USB wrapper). Mirror HMG-API's assembly and validate with `nemesis pkg-info` before car testing. `HMG-API/tools/mkinstallers.sh:42-58`; `hmg_nemesis/04-Packages.md:188-214`.
+
+```text
+package/                       USB wrapper/
+  NEMESIS.data                   NEMESIS.data  # type=install; path=packages/seogaemo.zip
+  app/Seogaemo.apk               packages/seogaemo.zip
+  bin/open.sh
+  scripts/postinstall.sh
+  scripts/preuninstall.sh
+  scripts/postuninstall.sh       # only if needed
+  svc/root-helper.sh             # only if a persistent helper is needed
+```
+
+Descriptor: `version=1.1`, `id=seogaemo` (reserve exact id before Store submission), `name=Seogaemo`, `type=application` (add `service` only when used), numeric `package-version`, concise descriptions, explicit tested `os` glob(s), `models` scope, and `depends` only for real package dependencies/conflicts. Use `[app.0] kind=sh,path=bin/open.sh,uid=root` without `package`/`component` to preserve app state across NEMESIS package updates; follow HMG-API's open/install pattern. An optional `[service.0] kind=sh,name=root-helper,path=svc/root-helper.sh,uid=root,mode=restart` is for genuine long-running work; ordinary toggles can call `nemesis root -c` on demand. `hmg_nemesis/04-Packages.md:27-48,86-120`; `HMG-API/install/nemesis/README.md:37-43`.
+
+`postinstall` should set `umask 077`, copy the APK to a stable package-owned `/data/seogaemo/` location **readable by PackageManager**, install/update it when Android is up using the boot-property workaround, and save any live-file snapshots before changes. For Android-down recovery installs, arrange a bounded background install after `sys.boot_completed=1` (as HMG-API's pending installer does), and keep the Launch script able to reinstall if needed. `open.sh` should open `com.seogaemo.app/.MainActivity`. `preuninstall` should distinguish staged update from real removal; for real removal, stop helper work, restore exact snapshots, uninstall the APK, and delete backups **only after** successful restoration. Any `/system` edits need stock checks and `nemesis remount`. Avoid a `kind=apk` entry if retaining Android app data through NEMESIS updates matters. `HMG-API/install/nemesis/scripts/postinstall.sh:1-7`; `HMG-API/install/nemesis/scripts/preuninstall.sh:1-22`; `HMG-API/install/common/app-open.sh:15-35`; `HMG-API/install/common/app-pending.sh:1-34`; `HMG-API/install/common/install.sh:115-120,189-209`; `hmg_nemesis/Sources/packages/adb-tcp/scripts/preun.sh:5-13`; `HMG-API/CLAUDE.md:7-8,52,58`.

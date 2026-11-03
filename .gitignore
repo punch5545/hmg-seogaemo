@@ -1,1 +1,5 @@
 /tmp/
+app/build/
+/out/
+AGENTS.local.md
+CLAUDE.local.md

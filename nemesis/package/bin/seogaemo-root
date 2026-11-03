@@ -1,0 +1,22 @@
+#!/system/bin/sh
+umask 077
+if [ "$#" -ne 2 ]; then
+    echo 'usage: seogaemo-root <id> apply|revert|status|precheck' >&2
+    exit 2
+fi
+case "$1" in
+    ''|*[!a-z0-9-]*|-*|*--*|*-) exit 2 ;;
+esac
+case "$2" in apply|revert|status|precheck) ;; *) exit 2 ;; esac
+base=${0%/*}
+base=${base%/bin}
+[ "$base" != "$0" ] || exit 2
+[ -f "$base/modules.list" ] || exit 2
+grep -Fxq "$1" "$base/modules.list" || exit 2
+script=$base/modules/$1.sh
+[ -f "$script" ] || exit 2
+SEOGAEMO_BASE=$base
+SEOGAEMO_STATE=/data/nemesis/backup/seogaemo/modules/$1
+SEOGAEMO_MODULE_DIR=$base/modules/$1.d
+export SEOGAEMO_BASE SEOGAEMO_STATE SEOGAEMO_MODULE_DIR
+exec sh "$script" "$2"

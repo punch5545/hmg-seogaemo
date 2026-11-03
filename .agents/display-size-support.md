@@ -71,10 +71,13 @@ hooks/patches against firmware, not layout against the panel.
   criteria for other sizes (`HMG-API/docs/car-test.md:189`).
 - No multi-size plan in upstream docs, wiki, changelogs or git history.
 
-## Where to start for multi-size support
+## Project decision
 
-1. HMG-API `Ui.K`: derive from real `DisplayMetrics` instead of a constant.
-2. Add display size/density to Car Report and car maps.
-3. Per-panel default for `aa_density`.
+**This project targets the wide screen (1920x720, density 1.5), the same as upstream.**
+Multi-size support is out of scope. Build UI against upstream's existing conventions:
 
-Prerequisite: real panel resolution/density from the target cars.
+- HMG-API app sizes: go through `Ui.dp()` (fixed `K = 0.66f`), as upstream does.
+- NEMESIS-style tiles: stock Setup hdpi geometry (204x166dp).
+- Android Auto: stock 240 DPI on this screen; `aa_density` only if a mod needs it.
+
+The gaps in section 5 only matter if another panel size is added later.

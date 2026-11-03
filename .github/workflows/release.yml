@@ -1,0 +1,59 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android API 19 tools
+        run: sdkmanager --install 'platforms;android-19' 'build-tools;34.0.0'
+      - name: Build, verify, and publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          OTA_MANIFEST_PRIVATE_KEY_PEM: ${{ secrets.OTA_MANIFEST_PRIVATE_KEY_PEM }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="$(python3 tools/version.py)"
+          test "$tag" = "v$version"
+          : "${RELEASE_KEYSTORE_B64:?missing release keystore}"
+          : "${RELEASE_KEYSTORE_PASSWORD:?missing keystore password}"
+          : "${RELEASE_KEY_ALIAS:?missing keystore alias}"
+          : "${OTA_MANIFEST_PRIVATE_KEY_PEM:?missing manifest private key}"
+          secret_dir="$(mktemp -d)"
+          trap 'rm -rf "$secret_dir"' EXIT
+          chmod 700 "$secret_dir"
+          echo "::add-mask::$secret_dir"
+          export RELEASE_KEYSTORE="$secret_dir/release.p12"
+          export OTA_MANIFEST_PRIVATE_KEY="$secret_dir/manifest.pem"
+          printf '%s' "$RELEASE_KEYSTORE_B64" | base64 --decode > "$RELEASE_KEYSTORE"
+          printf '%s' "$OTA_MANIFEST_PRIVATE_KEY_PEM" > "$OTA_MANIFEST_PRIVATE_KEY"
+          chmod 600 "$RELEASE_KEYSTORE" "$OTA_MANIFEST_PRIVATE_KEY"
+          unset RELEASE_KEYSTORE_B64 OTA_MANIFEST_PRIVATE_KEY_PEM
+          make test
+          make package
+          make verify-dist
+          actual_cert="$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs --min-sdk-version 19 out/seogaemo.apk | awk '/certificate SHA-256 digest:/ {print $NF}')"
+          test "$actual_cert" = '3a71c382c97598e17fbe688e9f1169a9575003749dd6b19ce87460cc5de1e853'
+          gh release create "$tag" --draft --verify-tag out/dist/*
+          find out/dist -maxdepth 1 -type f -printf '%f\n' | sort > "$secret_dir/expected-assets"
+          gh release view "$tag" --json assets --jq '.assets[].name' | sort > "$secret_dir/uploaded-assets"
+          diff -u "$secret_dir/expected-assets" "$secret_dir/uploaded-assets"
+          test "$(wc -l < "$secret_dir/uploaded-assets")" -eq 6
+          gh release edit "$tag" --draft=false
