@@ -20,12 +20,13 @@ UNAVAILABLE = re.compile(
 def lint(path):
     errors = []
     for number, raw in enumerate(path.read_text().splitlines(), 1):
-        line = raw.split("#", 1)[0]
+        line = re.sub(r"'[^']*'", "''", raw.split("#", 1)[0])
         if UNAVAILABLE.search(line):
             errors.append(f"{path}:{number}: unavailable head-unit tool")
         if "modules/" in str(path) and BAD.search(line):
             errors.append(f"{path}:{number}: direct mutation")
         for target in REDIRECT.findall(line) if "modules/" in str(path) else ():
+            target = target.rstrip(";")
             if target in ("&2", "/dev/null") or target.startswith("$SEOGAEMO_STATE"):
                 continue
             errors.append(f"{path}:{number}: direct output redirection")
