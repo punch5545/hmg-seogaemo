@@ -10,6 +10,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [module-runtime-contract.md](module-runtime-contract.md) | Partly superseded | Implemented root/Java contract and test rules; original parallel work ownership table is historical. |
 | [module-runtime-implementation.md](module-runtime-implementation.md) | Current | Runtime and host-test implementation findings. |
 | [stock-restore.md](stock-restore.md) | Current | Whole-package stock restore, detached uninstall, recovery and on-car checks. |
+| [android44-shell-audit.md](android44-shell-audit.md) | Current | Pinned KitKat toolbox/mksh evidence, compatibility fixes, lint boundaries and waivers. |
 | [ui-guidelines.md](ui-guidelines.md) | Partly superseded | Display tokens and touch measurements; emulator capture commands are historical. |
 | [display-size-support.md](display-size-support.md) | Partly superseded | Upstream display research and the current single-panel decision. |
 | [ota-implementation.md](ota-implementation.md) | Current | Signed GitHub Releases OTA, trust roots, transaction, and validation gaps. |

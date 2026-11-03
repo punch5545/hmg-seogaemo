@@ -48,6 +48,10 @@ automatic removal or automatic module reapply.
 
 Upstream evidence, read-only:
 
+- The Android 4.4 shell profile permits the fixed uninstall command based on
+  `Sources/native/main.c` at its pinned NEMESIS commit
+  `da77eef6654e1f321ef3b979704681a0abc398f0` (usage and `cmd_uninstall` dispatch).
+  Receipt replacement uses plain toolbox `mv`; no additional lint waiver is needed.
 - `tmp/hmg_nemesis/Sources/native/main.c` routes the uninstall CLI.
 - `pkg.c:629-680,893-910`: normal uninstall stops package services, runs the hook,
   aborts and restarts services on hook failure, then removes package files.

@@ -44,7 +44,12 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
   Compile against `platforms/android-19`. APK v1 (JAR) SHA1withRSA signing.
 - **Head-unit shell = toolbox + mksh.** No `printf`, `awk`, `sed`, `tail`, `head`, `cut`, `tr`, `wc`, `sort`,
   `find`, `stat`, `sha256sum`, `tar`, `unzip`, `busybox`. Hashing on the unit: toolbox `md5`
-  (`<hex>  <path>`). `make test` lints every on-car script. Full list: contract, "Shell tools".
+  (`<hex>  <path>`; filenames required, explicit `/proc/self/fd/0` for a pipe).
+  The pinned AOSP `android-4.4.2_r1` profile is `tools/android44-shell-profile.json`.
+  `make test` runs `tools/lint-android44-shell.py` on source and packaged scripts,
+  checking commands, absolute binary paths, options and supported shell syntax.
+  Edge cases need `# android44-shell: allow -- <specific reason>` inline; all are reported.
+  Toolbox `mv` accepts no options. Full evidence: `.agents/android44-shell-audit.md`.
 - **Modules never mutate the system directly.** All writes go through the package API in
   `nemesis/package/lib/common.sh` (`sg_prop_set`, `sg_file_put`, `sg_file_replace_line`,
   `sg_file_delete`, `sg_bind_mount`, `sg_service_restart`, `sg_zygote_install`,

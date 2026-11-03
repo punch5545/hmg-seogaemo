@@ -1,0 +1,901 @@
+{
+  "schema": 1,
+  "provenance": {
+    "tag": "android-4.4.2_r1",
+    "note": "Project-authored conservative allowlist derived from option parsers; omitted commands/forms require review. Fetched sources are read-only audit data, never executed.",
+    "sources": [
+      {
+        "repository": "https://android.googlesource.com/platform/system/core",
+        "commit": "e65b7ea8801145626504c724c28aedd0e5038a28",
+        "url": "https://android.googlesource.com/platform/system/core/+/e65b7ea8801145626504c724c28aedd0e5038a28/"
+      },
+      {
+        "repository": "https://android.googlesource.com/platform/external/mksh",
+        "commit": "f8c396c4d446a038358106a301b329607a04633d",
+        "url": "https://android.googlesource.com/platform/external/mksh/+/f8c396c4d446a038358106a301b329607a04633d/"
+      },
+      {
+        "repository": "https://android.googlesource.com/platform/bionic",
+        "commit": "5ab8d33aa64a4ca12172dba92df172f70629874d",
+        "url": "https://android.googlesource.com/platform/bionic/+/5ab8d33aa64a4ca12172dba92df172f70629874d/"
+      },
+      {
+        "repository": "https://android.googlesource.com/platform/frameworks/native",
+        "commit": "14e8b01a761180250671f3d6494532d8bd04fa8e",
+        "url": "https://android.googlesource.com/platform/frameworks/native/+/14e8b01a761180250671f3d6494532d8bd04fa8e/"
+      },
+      {
+        "repository": "https://android.googlesource.com/platform/frameworks/base",
+        "commit": "feef9887e8f8eb6f64fc1b4552c02efb5755cdc1",
+        "url": "https://android.googlesource.com/platform/frameworks/base/+/feef9887e8f8eb6f64fc1b4552c02efb5755cdc1/"
+      },
+      {
+        "repository": "https://android.googlesource.com/platform/external/wpa_supplicant_8",
+        "commit": "f62167e88c0c1b9621f2984f1a59ae7d41cf4c88",
+        "url": "https://android.googlesource.com/platform/external/wpa_supplicant_8/+/f62167e88c0c1b9621f2984f1a59ae7d41cf4c88/"
+      }
+    ],
+    "nemesis": {
+      "url": "https://github.com/xwtk/hmg_nemesis/tree/da77eef6654e1f321ef3b979704681a0abc398f0/Sources/native",
+      "commit": "da77eef6654e1f321ef3b979704681a0abc398f0",
+      "forms": [
+        "remount rw",
+        "remount ro",
+        "uninstall hmg-seogaemo"
+      ]
+    }
+  },
+  "commands": {
+    "ls": {
+      "short": {
+        "l": 0,
+        "n": 0,
+        "s": 0,
+        "R": 0,
+        "d": 0,
+        "Z": 0,
+        "a": 0,
+        "F": 0,
+        "i": 0
+      },
+      "source": "system/core/toolbox/ls.c",
+      "interspersed": true
+    },
+    "mount": {
+      "short": {
+        "o": 1,
+        "r": 0,
+        "t": 1,
+        "w": 0
+      },
+      "source": "system/core/toolbox/mount.c"
+    },
+    "cat": {
+      "short": {
+        "u": 0
+      },
+      "source": "external/mksh/src/funcs.c:c_cat (builtin shadows toolbox cat)",
+      "double_dash": true
+    },
+    "ps": {
+      "short": {
+        "t": 0,
+        "x": 0,
+        "Z": 0,
+        "P": 0,
+        "p": 0,
+        "c": 0
+      },
+      "source": "system/core/toolbox/ps.c",
+      "combined": false
+    },
+    "rm": {
+      "short": {
+        "f": 0,
+        "r": 0,
+        "R": 0
+      },
+      "source": "system/core/toolbox/rm.c"
+    },
+    "mkdir": {
+      "short": {
+        "p": 0
+      },
+      "source": "system/core/toolbox/mkdir.c",
+      "combined": false,
+      "long": {
+        "--parents": 0,
+        "--help": 0
+      }
+    },
+    "rmdir": {
+      "short": {},
+      "source": "system/core/toolbox/rmdir.c"
+    },
+    "date": {
+      "short": {
+        "u": 0,
+        "s": 1
+      },
+      "source": "system/core/toolbox/date.c",
+      "formats": [
+        "+%s",
+        "+%Y%m%d-%H%M%S"
+      ]
+    },
+    "sync": {
+      "short": {},
+      "source": "system/core/toolbox/sync.c"
+    },
+    "umount": {
+      "short": {},
+      "source": "system/core/toolbox/umount.c"
+    },
+    "start": {
+      "short": {},
+      "source": "system/core/toolbox/start.c"
+    },
+    "stop": {
+      "short": {},
+      "source": "system/core/toolbox/stop.c"
+    },
+    "cmp": {
+      "short": {
+        "b": 0,
+        "l": 0,
+        "n": 1
+      },
+      "source": "system/core/toolbox/cmp.c"
+    },
+    "dmesg": {
+      "short": {
+        "c": 0
+      },
+      "source": "system/core/toolbox/dmesg.c"
+    },
+    "route": {
+      "short": {},
+      "source": "system/core/toolbox/route.c"
+    },
+    "dd": {
+      "short": {},
+      "source": "system/core/toolbox/dd.c",
+      "operands": [
+        "bs",
+        "cbs",
+        "conv",
+        "count",
+        "files",
+        "ibs",
+        "if",
+        "obs",
+        "of",
+        "seek",
+        "skip",
+        "progress"
+      ]
+    },
+    "getprop": {
+      "short": {},
+      "source": "system/core/toolbox/getprop.c"
+    },
+    "setprop": {
+      "short": {},
+      "source": "system/core/toolbox/setprop.c"
+    },
+    "log": {
+      "short": {
+        "t": 1,
+        "p": 1,
+        "h": 0
+      },
+      "source": "system/core/toolbox/log.c"
+    },
+    "sleep": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c:c_sleep (HAVE_SELECT=1; shadows toolbox sleep); project uses integer seconds only",
+      "operand_pattern": "[0-9]+",
+      "double_dash": true
+    },
+    "chmod": {
+      "short": {
+        "R": 0
+      },
+      "source": "system/core/toolbox/chmod.c",
+      "combined": false,
+      "long": {
+        "--recursive": 0,
+        "--help": 0
+      }
+    },
+    "chown": {
+      "short": {},
+      "source": "system/core/toolbox/chown.c",
+      "interspersed": true
+    },
+    "mv": {
+      "short": {},
+      "source": "system/core/toolbox/mv.c",
+      "interspersed": true
+    },
+    "id": {
+      "short": {},
+      "source": "system/core/toolbox/id.c",
+      "interspersed": true
+    },
+    "touch": {
+      "short": {
+        "a": 0,
+        "l": 0,
+        "m": 0,
+        "d": 0,
+        "t": 1
+      },
+      "source": "system/core/toolbox/touch.c",
+      "interspersed": true
+    },
+    "md5": {
+      "short": {},
+      "source": "system/core/toolbox/md5.c",
+      "interspersed": true
+    },
+    "ln": {
+      "short": {
+        "s": 0
+      },
+      "source": "system/core/toolbox/ln.c",
+      "combined": false
+    },
+    "ifconfig": {
+      "short": {},
+      "source": "system/core/toolbox/ifconfig.c"
+    },
+    "cp": {
+      "short": {
+        "H": 0,
+        "L": 0,
+        "N": 0,
+        "P": 0,
+        "R": 0,
+        "f": 0,
+        "a": 0,
+        "i": 0,
+        "l": 0,
+        "p": 0,
+        "r": 0,
+        "v": 0
+      },
+      "source": "system/core/toolbox/cp/cp.c",
+      "double_dash": true
+    },
+    "grep": {
+      "short": {
+        "0": 0,
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0,
+        "A": 1,
+        "B": 1,
+        "C": 1,
+        "D": 1,
+        "E": 0,
+        "F": 0,
+        "G": 0,
+        "H": 0,
+        "I": 0,
+        "L": 0,
+        "O": 0,
+        "S": 0,
+        "R": 0,
+        "U": 0,
+        "V": 0,
+        "Z": 0,
+        "a": 0,
+        "b": 0,
+        "c": 0,
+        "d": 1,
+        "e": 1,
+        "f": 1,
+        "h": 0,
+        "i": 0,
+        "l": 0,
+        "m": 1,
+        "n": 0,
+        "o": 0,
+        "p": 0,
+        "q": 0,
+        "r": 0,
+        "s": 0,
+        "u": 0,
+        "v": 0,
+        "w": 0,
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "source": "system/core/toolbox/grep/grep.c and file.c (P falls through to usage; Android disables decompression)",
+      "double_dash": true,
+      "long": {
+        "--binary-files": 1,
+        "--help": 0,
+        "--mmap": 0,
+        "--line-buffered": 0,
+        "--label": 1,
+        "--color": 2,
+        "--colour": 2,
+        "--exclude": 1,
+        "--include": 1,
+        "--exclude-dir": 1,
+        "--include-dir": 1,
+        "--after-context": 1,
+        "--text": 0,
+        "--before-context": 1,
+        "--byte-offset": 0,
+        "--context": 2,
+        "--count": 0,
+        "--devices": 1,
+        "--directories": 1,
+        "--extended-regexp": 0,
+        "--regexp": 1,
+        "--fixed-strings": 0,
+        "--file": 1,
+        "--basic-regexp": 0,
+        "--no-filename": 0,
+        "--with-filename": 0,
+        "--ignore-case": 0,
+        "--files-with-matches": 0,
+        "--files-without-match": 0,
+        "--max-count": 1,
+        "--line-number": 0,
+        "--only-matching": 0,
+        "--quiet": 0,
+        "--silent": 0,
+        "--recursive": 0,
+        "--no-messages": 0,
+        "--binary": 0,
+        "--unix-byte-offsets": 0,
+        "--invert-match": 0,
+        "--version": 0,
+        "--word-regexp": 0,
+        "--line-regexp": 0,
+        "--null": 0,
+        "--null-data": 0
+      }
+    },
+    "netcfg": {
+      "short": {},
+      "source": "system/core/netcfg/netcfg.c"
+    },
+    "print": {
+      "short": {
+        "R": 0,
+        "n": 0,
+        "p": 0,
+        "r": 0,
+        "s": 0,
+        "u": 1
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "echo": {
+      "short": {
+        "n": 0
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": false,
+      "combined": false
+    },
+    "read": {
+      "short": {
+        "A": 0,
+        "a": 0,
+        "d": 1,
+        "N": 1,
+        "n": 1,
+        "p": 0,
+        "r": 0,
+        "s": 0,
+        "t": 1,
+        "u": 1
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "test": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "[": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "[[": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "break": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "continue": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "return": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "exit": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "true": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "false": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    ":": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    ".": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "set": {
+      "short": {
+        "a": 0,
+        "b": 0,
+        "C": 0,
+        "e": 0,
+        "f": 0,
+        "h": 0,
+        "k": 0,
+        "m": 0,
+        "n": 0,
+        "u": 0,
+        "v": 0,
+        "x": 0,
+        "o": 1
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "shift": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "wait": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "trap": {
+      "short": {},
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "umask": {
+      "short": {
+        "S": 0
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "unset": {
+      "short": {
+        "f": 0,
+        "v": 0
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "export": {
+      "short": {
+        "p": 0
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "readonly": {
+      "short": {
+        "p": 0
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "typeset": {
+      "short": {
+        "L": 2,
+        "R": 2,
+        "U": 0,
+        "Z": 2,
+        "a": 0,
+        "f": 0,
+        "i": 2,
+        "l": 0,
+        "n": 0,
+        "p": 0,
+        "r": 0,
+        "t": 0,
+        "u": 0,
+        "x": 0
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "local": {
+      "short": {
+        "L": 2,
+        "R": 2,
+        "U": 0,
+        "Z": 2,
+        "a": 0,
+        "f": 0,
+        "i": 2,
+        "l": 0,
+        "n": 0,
+        "p": 0,
+        "r": 0,
+        "t": 0,
+        "u": 0,
+        "x": 0
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "kill": {
+      "short": {
+        "l": 0,
+        "s": 1
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "pwd": {
+      "short": {
+        "L": 0,
+        "P": 0
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "cd": {
+      "short": {
+        "L": 0,
+        "P": 0
+      },
+      "source": "external/mksh/src/funcs.c",
+      "double_dash": true
+    },
+    "sh": {
+      "short": {
+        "c": 1,
+        "s": 0,
+        "e": 0,
+        "u": 0,
+        "n": 0,
+        "v": 0,
+        "x": 0
+      },
+      "source": "external/mksh/Android.mk",
+      "double_dash": true
+    },
+    "pm": {
+      "short": {
+        "r": 0
+      },
+      "source": "frameworks/base/cmds/pm/src/com/android/commands/pm/Pm.java",
+      "interspersed": true,
+      "subcommands": [
+        "list",
+        "path",
+        "install",
+        "uninstall"
+      ]
+    },
+    "am": {
+      "short": {
+        "n": 1
+      },
+      "source": "frameworks/base/cmds/am/src/com/android/commands/am/Am.java",
+      "interspersed": true,
+      "subcommands": [
+        "start"
+      ]
+    },
+    "settings": {
+      "short": {},
+      "source": "frameworks/base/cmds/settings/src/com/android/commands/settings/SettingsCmd.java",
+      "subcommands": [
+        "get",
+        "put",
+        "delete",
+        "list"
+      ]
+    },
+    "service": {
+      "short": {
+        "h": 0,
+        "?": 0
+      },
+      "source": "frameworks/native/cmds/service/service.cpp",
+      "subcommands": [
+        "call",
+        "check",
+        "list"
+      ]
+    },
+    "dumpsys": {
+      "short": {
+        "l": 0
+      },
+      "source": "frameworks/native/cmds/dumpsys/dumpsys.cpp"
+    },
+    "logcat": {
+      "short": {
+        "c": 0,
+        "d": 0,
+        "t": 1,
+        "g": 0,
+        "s": 0,
+        "Q": 0,
+        "f": 1,
+        "r": 2,
+        "n": 1,
+        "v": 1,
+        "b": 1,
+        "B": 0
+      },
+      "source": "system/core/logcat/logcat.cpp"
+    },
+    "wpa_cli": {
+      "short": {
+        "a": 1,
+        "B": 0,
+        "g": 1,
+        "G": 1,
+        "h": 0,
+        "i": 1,
+        "p": 1,
+        "P": 1,
+        "v": 0
+      },
+      "source": "external/wpa_supplicant_8/wpa_supplicant/wpa_cli.c"
+    },
+    "app_process": {
+      "short": {},
+      "source": "frameworks/base/cmds/app_process/app_main.cpp"
+    },
+    "nemesis": {
+      "short": {},
+      "source": "NEMESIS Sources/native/main.c",
+      "subcommands": [
+        "remount",
+        "uninstall"
+      ]
+    },
+    "readlink": {
+      "short": {
+        "n": 0,
+        "f": 0,
+        "q": 0,
+        "s": 0
+      },
+      "double_dash": true,
+      "source": "system/core/toolbox/readlink.c (getopt nfqs; -f uses realpath)"
+    }
+  },
+  "absolute_paths": {
+    "/system/bin/ls": "ls",
+    "/system/bin/mount": "mount",
+    "/system/bin/cat": "cat",
+    "/system/bin/ps": "ps",
+    "/system/bin/rm": "rm",
+    "/system/bin/mkdir": "mkdir",
+    "/system/bin/rmdir": "rmdir",
+    "/system/bin/date": "date",
+    "/system/bin/sync": "sync",
+    "/system/bin/umount": "umount",
+    "/system/bin/start": "start",
+    "/system/bin/stop": "stop",
+    "/system/bin/cmp": "cmp",
+    "/system/bin/dmesg": "dmesg",
+    "/system/bin/route": "route",
+    "/system/bin/dd": "dd",
+    "/system/bin/getprop": "getprop",
+    "/system/bin/setprop": "setprop",
+    "/system/bin/log": "log",
+    "/system/bin/sleep": "sleep",
+    "/system/bin/chmod": "chmod",
+    "/system/bin/chown": "chown",
+    "/system/bin/mv": "mv",
+    "/system/bin/id": "id",
+    "/system/bin/touch": "touch",
+    "/system/bin/md5": "md5",
+    "/system/bin/ln": "ln",
+    "/system/bin/ifconfig": "ifconfig",
+    "/system/bin/cp": "cp",
+    "/system/bin/grep": "grep",
+    "/system/bin/netcfg": "netcfg",
+    "/system/bin/kill": "kill",
+    "/system/bin/sh": "sh",
+    "/system/bin/pm": "pm",
+    "/system/bin/am": "am",
+    "/system/bin/settings": "settings",
+    "/system/bin/service": "service",
+    "/system/bin/dumpsys": "dumpsys",
+    "/system/bin/logcat": "logcat",
+    "/system/bin/wpa_cli": "wpa_cli",
+    "/system/bin/app_process": "app_process",
+    "/system/xbin/nemesis": "nemesis",
+    "/system/bin/readlink": "readlink"
+  },
+  "mksh": {
+    "version": "R43 2013/02/19",
+    "android_build": 431,
+    "flags": [
+      "MKSH_ASSUME_UTF8",
+      "MKSH_CONSERVATIVE_FDS",
+      "MKSH_NOPWNAM",
+      "MKSH_BUILDSH",
+      "HAVE_SELECT=1",
+      "HAVE_MKNOD=0"
+    ],
+    "disabled": [
+      "MKSH_PRINTF_BUILTIN"
+    ],
+    "features": [
+      "POSIX command lists and pipelines",
+      "background jobs, wait, kill",
+      "case, for, while, until, functions",
+      "read with IFS",
+      "test and [ and [[",
+      "arithmetic expansion",
+      "typeset and local alias",
+      "ANSI C quoting",
+      "parameter length, trim, default and pattern substitution",
+      "here-documents",
+      "command substitution"
+    ],
+    "unsupported": [
+      "Bash process substitution",
+      "Bash regex =~",
+      "Bash case conversion and @Q expansion",
+      "Bash associative arrays",
+      "Bash readarray/mapfile",
+      "Bash &> redirection",
+      "set -o pipefail (absent in R43)"
+    ],
+    "echo": "Invocation as sh selects POSIX echo behavior: initial -n only, otherwise literal; use print -r -- for unambiguous text.",
+    "builtins_source": "external/mksh/src/funcs.c:mkshbuiltins; src/main.c:aliases; src/sh_flags.h",
+    "set_options": [
+      "errexit",
+      "nounset",
+      "xtrace",
+      "noglob",
+      "posix",
+      "monitor",
+      "noclobber"
+    ]
+  },
+  "test_operators": [
+    "-a",
+    "-b",
+    "-c",
+    "-d",
+    "-e",
+    "-f",
+    "-G",
+    "-g",
+    "-h",
+    "-H",
+    "-k",
+    "-L",
+    "-n",
+    "-O",
+    "-o",
+    "-p",
+    "-r",
+    "-s",
+    "-S",
+    "-t",
+    "-u",
+    "-w",
+    "-x",
+    "-z",
+    "-eq",
+    "-ne",
+    "-gt",
+    "-ge",
+    "-lt",
+    "-le",
+    "-ef",
+    "-nt",
+    "-ot",
+    "-a",
+    "-o"
+  ],
+  "host_only_scripts": [
+    "tools/gen-modules.sh",
+    "tools/upstream-diff.sh",
+    "modules/wireless-carplay-and-aa/payload/build.sh",
+    "modules/wireless-carplay-and-aa/payload/native/build.sh",
+    "modules/wireless-carplay-and-aa/payload/native/syslib-stubs.sh"
+  ],
+  "unsupported_commands": [
+    "printf",
+    "awk",
+    "sed",
+    "tail",
+    "head",
+    "cut",
+    "tr",
+    "wc",
+    "sort",
+    "uniq",
+    "xargs",
+    "find",
+    "stat",
+    "sha256sum",
+    "sha1sum",
+    "tar",
+    "unzip",
+    "busybox",
+    "toybox",
+    "timeout",
+    "which",
+    "seq",
+    "basename",
+    "dirname"
+  ],
+  "absolute_specs": {
+    "/system/bin/cat": {
+      "short": {
+        "b": 0,
+        "e": 0,
+        "f": 0,
+        "l": 0,
+        "n": 0,
+        "s": 0,
+        "t": 0,
+        "v": 0
+      },
+      "double_dash": true,
+      "source": "system/core/toolbox/cat.c (external binary; differs from builtin)"
+    },
+    "/system/bin/kill": {
+      "short": {
+        "l": 0
+      },
+      "source": "system/core/toolbox/kill.c (numeric/named signal only; no -s)"
+    },
+    "/system/bin/sleep": {
+      "short": {},
+      "operand_pattern": "[0-9]+",
+      "source": "system/core/toolbox/sleep.c (integer seconds; no options)"
+    }
+  }
+}

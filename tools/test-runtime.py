@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 from testlib import car_env, SHELL
 
@@ -19,13 +20,34 @@ def test_toolbox_md5(temp):
     missing = subprocess.run(["md5", str(temp / "missing")], env=car_env(), capture_output=True)
     assert missing.returncode != 0
     stdin = subprocess.run(["md5"], input=b"abc", env=car_env(), capture_output=True)
-    assert stdin.stdout == b"900150983cd24fb0d6963f7d28e17f72  -\n"
+    assert stdin.returncode != 0 and not stdin.stdout
+    piped = subprocess.run(["md5", "/proc/self/fd/0"], input=b"abc", env=car_env(), capture_output=True)
+    assert piped.returncode == 0
+    assert piped.stdout == b"900150983cd24fb0d6963f7d28e17f72  /proc/self/fd/0\n"
 
 
 def script(path, body):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('#!/bin/sh\n. "' + str(ROOT / 'nemesis/package/lib/common.sh') + '"\n' + body)
     path.chmod(0o755)
+
+
+def test_file_key_failures(temp):
+    runner = temp / 'file-key-runner'
+    script(runner, '''
+set -eu
+key=$(sg_file_key abc)
+[ "$key" = 900150983cd24fb0d6963f7d28e17f72 ]
+md5() { echo malformed; }
+if sg_file_key abc; then exit 1; fi
+md5() { :; }
+if sg_file_key abc; then exit 1; fi
+md5() { return 1; }
+if sg_file_key abc; then exit 1; fi
+sg_check_build() { :; }
+if sg_file_mark_applied /owned; then exit 1; fi
+''')
+    run(runner, env=dict(os.environ, HMG_SEOGAEMO_STATE=str(temp)))
 
 
 def run(path, *args, env, ok=True):
@@ -368,6 +390,31 @@ sg_service_call_this_boot
     assert "service_call\tcom.hkmc.factory:82" in ledger
     assert "Parcel(00000000)" in "".join(
         path.read_text() for path in (base / "data/ledger/after").iterdir())
+    # Exercise the full timeout path without spending fifteen real seconds.
+    # This service ignores TERM; the runtime must KILL it before wait().
+    (fake / 'service').write_text(
+        '#!' + sys.executable + chr(10) +
+        'import signal, time, os' + chr(10) +
+        'signal.signal(signal.SIGTERM, signal.SIG_IGN)' + chr(10) +
+        'open(os.environ["FAKE_CALLS"] + ".ready", "w").close()' + chr(10) +
+        'time.sleep(60)' + chr(10))
+    (fake / 'sleep').write_text(
+        '#!' + sys.executable + chr(10) +
+        'import os, time' + chr(10) +
+        'deadline = time.monotonic() + 2' + chr(10) +
+        'while not os.path.exists(os.environ["FAKE_CALLS"] + ".ready") and time.monotonic() < deadline: time.sleep(.01)' + chr(10) +
+        'time.sleep(.01)' + chr(10))
+    (fake / 'sleep').chmod(0o755)
+    script(runner, '''
+set -u
+sleep() { "$FAKE_SLEEP" "$@"; }
+if sg_service_call com.hkmc.factory 82; then exit 1; fi
+[ "$(cat "$HMG_SEOGAEMO_STATE/last-call-result")" = timeout ]
+''')
+    timed = subprocess.run([SHELL, str(runner)], env=car_env(dict(env, FAKE_SLEEP=str(fake / 'sleep'))),
+                           capture_output=True, timeout=6)
+    assert timed.returncode == 0, timed.stderr
+    assert b'timeout' in (base / 'data/ledger/ledger.tsv').read_bytes()
     boot.write_text("boot-b")
     check = base / "check-boot"
     script(check, f'. "{ROOT / "nemesis/package/lib/common.sh"}"\nsg_service_call_this_boot\n')
@@ -499,6 +546,7 @@ def test_lint(temp):
     script(safe, 'setprop demo value\n')
     assert subprocess.run(["python3", str(lint), str(safe)], capture_output=True).returncode != 0
     package = temp / "nemesis/package/bin/bad.sh"
+    lint = ROOT / "tools/lint-android44-shell.py"
     script(package, 'head -c 5 /tmp/file\n')
     assert subprocess.run(["python3", str(lint), str(package)], capture_output=True).returncode != 0
     for path in (safe, package):
@@ -609,6 +657,7 @@ if sg_revert_all; then exit 1; fi
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)
     test_toolbox_md5(root)
+    test_file_key_failures(root)
     test_common(root)
     test_output_bytes(root)
     test_root(root)

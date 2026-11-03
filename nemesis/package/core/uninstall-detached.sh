@@ -18,7 +18,7 @@ while [ "$tries" -lt 30 ]; do
     sleep 1
 done
 if [ "$code" -eq 0 ]; then value=removed; else value=failed; fi
-sg_write "$value" > "$job/result.tmp.$$" && mv -f "$job/result.tmp.$$" "$job/result"
+sg_write "$value" > "$job/result.tmp.$$" && mv "$job/result.tmp.$$" "$job/result"
 sg_write "$code" > "$job/exit-code"
 HMG_SEOGAEMO_STATE=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/stock
 sg_ledger package_uninstall stock /dev/null "$job/result" '' "$value"

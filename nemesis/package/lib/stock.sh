@@ -31,7 +31,7 @@ hmg_seogaemo_stock_receipt() {
             stock_value=$(cat "$stock/outcome.$stock_receipt_id" 2>/dev/null)
             sg_print "info.module_$(hmg_seogaemo_stock_key "$stock_receipt_id")=${stock_value:-not_attempted}"
         done
-    } > "$stock/result.tmp.$$" && mv -f "$stock/result.tmp.$$" "$stock/result"
+    } > "$stock/result.tmp.$$" && mv "$stock/result.tmp.$$" "$stock/result"
 }
 hmg_seogaemo_stock_ledger() {
     stock_saved_context=${HMG_SEOGAEMO_STATE:-}
@@ -124,7 +124,7 @@ hmg_seogaemo_stock_restore() {
         ); then stock_code=1; fi
         if [ "$stock_code" -eq 0 ]; then
             sg_write off > "$SG_DATA_ROOT/desired/$stock_id.tmp.$$" &&
-                mv -f "$SG_DATA_ROOT/desired/$stock_id.tmp.$$" "$SG_DATA_ROOT/desired/$stock_id" || stock_code=1
+                mv "$SG_DATA_ROOT/desired/$stock_id.tmp.$$" "$SG_DATA_ROOT/desired/$stock_id" || stock_code=1
         fi
         if [ "$stock_code" -ne 0 ]; then
             stock_state=failed

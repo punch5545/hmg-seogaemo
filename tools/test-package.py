@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import zipfile
 
-from package import DIST, ROOT, apk_version, verify
+from package import DIST, ROOT, HOST_SHELL, apk_version, verify
 from version import read_version
 from testlib import car_env, SHELL
 
@@ -86,6 +86,10 @@ def run():
                 for source in payload.rglob("*"):
                     if source.is_file():
                         entry = f"modules/{name}.d/{source.relative_to(payload).as_posix()}"
+                        if source.relative_to(ROOT).as_posix() in HOST_SHELL:
+                            assert entry not in entries
+                            assert entry not in ota.namelist()
+                            continue
                         assert package.read(entry) == source.read_bytes()
         for name in ids:
             with tempfile.TemporaryDirectory() as module_temp:
