@@ -93,6 +93,9 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   draft release, verifies the asset list, then publishes.
 - UI screenshots: AVD `hmg_1920x720` (1920x720, 240 dpi, API 28 image; no NEMESIS, so module
   status shows unavailable). README screenshots are the Korean UI.
+- README: every image is a real app screenshot from `assets/`; no "mock", "demo", "example",
+  "emulator" or similar disclaimers/captions anywhere in README. Plain screen titles only, and
+  captures must not show error states (render unreachable status neutrally).
 
 ## On-car operations
 
