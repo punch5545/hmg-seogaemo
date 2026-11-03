@@ -27,5 +27,7 @@ done
 find "$W/source/src" -name '*.java' -print > "$W/sources.list"
 javac -source 1.7 -target 1.7 -bootclasspath "$ANDROID_JAR" -cp "$ANDROID_JAR:$W/stubs" -d "$W/classes" @"$W/sources.list"
 "$BT/d8" --release --min-api 19 --lib "$ANDROID_JAR" --classpath "$W/stubs" --output "$W/dex" $(find "$W/classes" -name '*.class' | sort)
+touch -t 198001010000 "$W/dex/classes.dex"
+rm -f "$OUT/seogaemo-wireless-hook.jar"
 (cd "$W/dex" && zip -q -X "$OUT/seogaemo-wireless-hook.jar" classes.dex)
 file "$OUT/app_process" "$OUT/libseogaemo_wireless_hook.so" "$OUT/libleafiaaac.so"

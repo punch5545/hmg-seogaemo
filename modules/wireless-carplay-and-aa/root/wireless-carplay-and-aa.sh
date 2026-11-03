@@ -18,7 +18,8 @@ incompatible() { sg_status incompatible none "$1"; }
 stock_hashes() {
     # Four files needed by this mod, recorded in the 2026-11-02 pre-install Car Report.
     while read -r expected logical; do
-        actual=$(md5sum "$(path "$logical")" 2>/dev/null | cut -c1-32) || actual=
+        hash_line=$(md5 "$(path "$logical")" 2>/dev/null) || hash_line=
+        actual=${hash_line%% *}
         [ "$actual" = "$expected" ] || { incompatible "stock hash mismatch: $logical"; return 4; }
     done <<'HASHES'
 ffe86fa1540c8dea3b5499b1191bb727 /system/framework/framework.odex
@@ -91,7 +92,7 @@ apply() {
         sg_revert_all || sg_log 'rollback failed; ledger and baselines retained'
         fail 'apply failed; inspect change ledger'; return 1
     fi
-    sg_status pending-restart head_unit 'restart head unit to load projection features and hooks'
+    sg_status pending-restart head_unit 'restart unit to load projection features and hooks'
 }
 
 revert() {
@@ -101,7 +102,7 @@ revert() {
         sg_status off none 'disabled'; return 0
     fi
     sg_revert_all || { conflict 'restore blocked by drift; ledger retained'; return 3; }
-    sg_status pending-restart head_unit 'restart head unit to finish restoration'
+    sg_status pending-restart head_unit 'restart unit to finish restoration'
 }
 
 status() {
@@ -111,13 +112,20 @@ status() {
     if ! sg_applied /system/bin/app_process; then sg_status off none 'disabled'; return 0; fi
     if [ "$(value persist.service.adb.tcp.enable)" = 1 ]; then conflict 'stock ADB switch conflicts with hotspot'; return 3; fi
     if [ "$(value persist.ium.support)" != carplay ]; then fail 'projection property drift'; return 1; fi
-    # Runtime loaded in the zygote only after a full head-unit restart. A boot guard
+    # Runtime loaded in the zygote only after a full unit restart. A boot guard
     # that disabled preloading also leaves this pending instead of claiming success.
-    if pid=$(ps 2>/dev/null | grep '[z]ygote' | awk 'NR==1 {print $2}') &&
-       [ -n "$pid" ] && grep -q 'libseogaemo_wireless_hook.so' "$(path "/proc/$pid/maps")" 2>/dev/null; then
+    process=$(ps 2>/dev/null | grep '[z]ygote') || process=
+    pid=
+    if [ -n "$process" ]; then
+        read -r user pid rest <<EOF
+$process
+EOF
+    fi
+    if [ -n "$pid" ] &&
+       grep -q 'libseogaemo_wireless_hook.so' "$(path "/proc/$pid/maps")" 2>/dev/null; then
         sg_status on none 'wireless projection hooks loaded'
     else
-        sg_status pending-restart head_unit 'head unit restart or hook recovery required'
+        sg_status pending-restart head_unit 'unit restart or hook recovery required'
     fi
 }
 

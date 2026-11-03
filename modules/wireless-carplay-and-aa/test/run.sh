@@ -5,7 +5,7 @@ HERE=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 export SG_WIRELESS_TEST_ROOT=$T/root SEOGAEMO_BASE=$T/base SEOGAEMO_STATE=$T/state SEOGAEMO_MODULE_DIR=$HERE/payload
-export TEST_PROPS=$T/props TEST_STATE=$T/state REAL_MD5SUM=$(command -v md5sum)
+export TEST_PROPS=$T/props TEST_STATE=$T/state
 mkdir -p "$T/base/lib" "$T/bin" "$T/props" "$T/state" "$T/root/system/bin" "$T/root/system/app" "$T/root/system/framework" "$T/root/system/onebin/neev_kr" "$T/root/system/etc/permissions" "$T/root/proc/sys/kernel/random"
 cat > "$T/base/lib/common.sh" <<'SH'
 sg_log() { printf '%s\n' "$*" >&2; }
@@ -101,15 +101,16 @@ cat > "$T/bin/setprop" <<'SH'
 #!/bin/sh
 printf '%s' "$2" > "$TEST_PROPS/$1"
 SH
-cat > "$T/bin/md5sum" <<'SH'
+cat > "$T/bin/md5" <<'SH'
 #!/bin/sh
 [ -f "$1" ] || exit 1
+[ ! -f "$TEST_STATE/bad-md5" ] || { printf '00000000000000000000000000000000  %s\n' "$1"; exit 0; }
 case "$1" in
-    */framework.odex) echo 'ffe86fa1540c8dea3b5499b1191bb727  file';;
-    */HKMC_DiPO.odex) echo '3b26cdcbf3c43f75623311f2bdfc3471  file';;
-    */Iap2ServerApp.odex) echo 'a672fd0e0070414f2eb70a2807117a6f  file';;
-    */HKMC_GPM.odex) echo 'c38a7fd61f90973625401501215375db  file';;
-    *) "$REAL_MD5SUM" "$@";;
+    */framework.odex) printf 'ffe86fa1540c8dea3b5499b1191bb727  %s\n' "$1";;
+    */HKMC_DiPO.odex) printf '3b26cdcbf3c43f75623311f2bdfc3471  %s\n' "$1";;
+    */Iap2ServerApp.odex) printf 'a672fd0e0070414f2eb70a2807117a6f  %s\n' "$1";;
+    */HKMC_GPM.odex) printf 'c38a7fd61f90973625401501215375db  %s\n' "$1";;
+    *) exit 1;;
 esac
 SH
 chmod +x "$T/bin"/*
@@ -139,6 +140,10 @@ printf 'wrong_onebin' > "$T/props/ro.mobis.onebindir"
 run precheck && fail wrong-onebin-accepted
 grep -q '^state=incompatible$' "$T/output" || fail onebin-state
 printf 'neev_kr' > "$T/props/ro.mobis.onebindir"
+touch "$T/state/bad-md5"
+run precheck && fail stock-hash-mismatch-accepted
+grep -q '^state=incompatible$' "$T/output" || fail stock-hash-state
+rm -f "$T/state/bad-md5"
 touch "$T/state/owner-hmgapi"
 run precheck && fail owner-accepted
 grep -q '^state=conflict$' "$T/output" || fail owner-state
@@ -174,6 +179,16 @@ grep -q '^state=pending-restart$' "$T/output" || fail apply-state
 printf 'boot-two\n' > "$T/root/proc/sys/kernel/random/boot_id"
 run status || fail status
 grep -q '^state=pending-restart$' "$T/output" || fail pending-state
+cat > "$T/bin/ps" <<'SH'
+#!/bin/sh
+printf '%s\n' 'USER PID PPID VSIZE RSS WCHAN PC NAME' 'root 123 1 10000 2000 ffffffff 00000000 zygote'
+SH
+chmod +x "$T/bin/ps"
+mkdir -p "$T/root/proc/123"
+printf '%s\n' '/system/lib/libseogaemo_wireless_hook.so' > "$T/root/proc/123/maps"
+run status || fail loaded-status
+grep -q '^state=on$' "$T/output" || fail loaded-state
+rm -f "$T/bin/ps" "$T/root/proc/123/maps"
 printf 'external-change\n' >> "$T/root/system/onebin/neev_kr/featurexml.cfg"
 run revert && fail drift-accepted
 [ -f "$T/state/enabled" ] || fail state-lost-after-drift
@@ -189,4 +204,4 @@ cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail 
 [ ! -e "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file-present
 [ "$(cat "$T/props/persist.ium.support")" = stock ] || fail exact-prop-restore
 [ ! -f "$T/state/enabled" ] || fail enabled-marker-present
-printf 'ok wireless-carplay-and-aa fake-root guards, rollback, drift refusal, exact revert\n'
+printf 'ok wireless-carplay-and-aa toolbox parse, guards, rollback, drift refusal, exact revert\n'
