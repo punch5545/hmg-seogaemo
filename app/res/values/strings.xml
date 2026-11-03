@@ -26,6 +26,8 @@
     <string name="language_english">English</string>
     <string name="language_korean">한국어</string>
     <string name="language_scope">Applies to this app only.</string>
+    <string name="language_confirm_title">Change language?</string>
+    <string name="language_confirm_message">Change the app language to %1$s?</string>
     <string name="carplay">Wireless CarPlay</string>
     <string name="android_auto">Wireless Android Auto</string>
     <string name="wireless_hint">Enable wireless phone projection</string>
@@ -88,6 +90,7 @@
     <string name="update_current_hint">Installed Seogaemo build</string>
     <string name="update_idle">Ready to check for updates</string>
     <string name="update_check">Check for updates</string>
+    <string name="update_check_confirm">Connect to GitHub, check for an update, and download it if available? This may take a while.</string>
     <string name="update_rollback">Roll back</string>
     <string name="update_wifi_required">Updates need Wi-Fi. Enabling Wi-Fi client interrupts wireless CarPlay and requires a head-unit restart. Continue?</string>
     <string name="update_enable_wifi">Enable Wi-Fi client</string>

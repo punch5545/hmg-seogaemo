@@ -2,7 +2,6 @@ package com.seogaemo.hmg;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -36,6 +35,7 @@ import com.seogaemo.hmg.module.RootResult;
 import com.seogaemo.hmg.module.Warning;
 import com.seogaemo.hmg.ui.settings.SettingsPage;
 import com.seogaemo.hmg.ui.settings.SettingsUi;
+import com.seogaemo.hmg.ui.ConfirmDialog;
 import java.util.ArrayList;
 import java.util.List;
 import com.seogaemo.hmg.ui.HomeView;
@@ -63,10 +63,12 @@ public final class MainActivity extends Activity {
     private int category = 0;
     private int sidebarOffset;
     private ScrollView sidebarScroll;
-    private final boolean[][] checks = {{false, false}, {true, false}, {true, false}, {true, false}, {false, false}};
     private boolean settingsVisible;
     private HomeView homeView;
     private TextView updateStatus;
+    private boolean updateBusy;
+    private boolean modulePlanning;
+    private boolean moduleWorking;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -84,7 +86,7 @@ public final class MainActivity extends Activity {
                 if (new UpdateClient(this).hasUsableNetwork()) {
                     category = 0;
                     showSettings();
-                    checkUpdate();
+                    checkUpdate(); // The earlier confirmation saved this resume intent.
                 }
             } catch (Exception ignored) { }
         } else if (getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
@@ -264,7 +266,7 @@ public final class MainActivity extends Activity {
 
     private void dispatchModuleAction(ModuleAction action) {
         if (action.type == ModuleAction.Type.ENABLE_MODULE)
-            prepareModuleChange(ModuleRegistry.find(action.target), true);
+            prepareModuleChange(ModuleRegistry.find(action.target), true, false);
         else if (action.type == ModuleAction.Type.OPEN_STOCK_WIFI_SETTINGS)
             startActivity(new Intent("android.settings.WIFI_SETTINGS"));
     }
@@ -322,26 +324,34 @@ public final class MainActivity extends Activity {
             content.addView(export, ep);
             export.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View v) {
-                    new Thread(new Runnable() {
-                        public void run() {
-                            final RootResult result = RootClient.exportUsb();
-                            runOnUiThread(new Runnable() {
+                    ConfirmDialog.show(MainActivity.this, getString(R.string.export_changes_usb),
+                            getString(R.string.export_changes_hint), getString(R.string.export_changes_usb),
+                            getString(R.string.cancel), false, new ConfirmDialog.Action() {
+                        public void run(final ConfirmDialog dialog) {
+                            dialog.showProgress();
+                            new Thread(new Runnable() {
                                 public void run() {
-                                    new AlertDialog.Builder(MainActivity.this)
-                                            .setMessage(result.detail)
-                                            .setPositiveButton("OK", null).show();
+                                    final RootResult result = RootClient.exportUsb();
+                                    runOnUiThread(new Runnable() {
+                                        public void run() {
+                                            dialog.dismiss();
+                                            new AlertDialog.Builder(MainActivity.this)
+                                                    .setMessage(result.detail)
+                                                    .setPositiveButton("OK", null).show();
+                                        }
+                                    });
                                 }
-                            });
+                            }, "export-changes").start();
                         }
-                    }, "export-changes").start();
+                    }, null);
                 }
             });
             return;
         } else if (category == 3) {
-            addRow(content, R.string.app, R.string.app_description, R.string.app_name, -1);
-            addRow(content, R.string.version, R.string.installed_version, installedVersion(), -1);
-            addRow(content, R.string.android, R.string.minimum_api, R.string.value_api, -1);
-            addRow(content, R.string.platform, R.string.vehicle_brands, R.string.value_gen5w, -1);
+            addRow(content, R.string.app, R.string.app_description, R.string.app_name);
+            addRow(content, R.string.version, R.string.installed_version, installedVersion());
+            addRow(content, R.string.android, R.string.minimum_api, R.string.value_api);
+            addRow(content, R.string.platform, R.string.vehicle_brands, R.string.value_gen5w);
             return;
         } else {
             showModulePage(content, ModuleRegistry.all()[category - CATEGORIES.length]);
@@ -410,7 +420,7 @@ public final class MainActivity extends Activity {
         toggleParams.leftMargin = dp(SettingsUi.MD);
         row.addView(toggle, toggleParams);
         if (observed) row.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) { prepareModuleChange(module, !enabled); }
+            public void onClick(View view) { prepareModuleChange(module, !enabled, false); }
         });
         LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, dp(82));
         rp.bottomMargin = dp(SettingsUi.XS);
@@ -511,7 +521,10 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void prepareModuleChange(final Module module, final boolean enable) {
+    private void prepareModuleChange(final Module module, final boolean enable,
+            final boolean forUpdate) {
+        if (modulePlanning || moduleWorking) return;
+        modulePlanning = true;
         new Thread(new Runnable() {
             public void run() {
                 final ModulePlan plan;
@@ -519,6 +532,7 @@ public final class MainActivity extends Activity {
                 catch (final IllegalStateException error) {
                     runOnUiThread(new Runnable() {
                         public void run() {
+                            modulePlanning = false;
                             new AlertDialog.Builder(MainActivity.this).setMessage(error.getMessage())
                                     .setPositiveButton("OK", null).show();
                         }
@@ -527,52 +541,69 @@ public final class MainActivity extends Activity {
                 }
                 final RootResult precheck = enable ? RootClient.run(module.id(), "precheck") : null;
                 runOnUiThread(new Runnable() {
-                    public void run() { confirmModuleChange(module, enable, plan, precheck); }
+                    public void run() {
+                        modulePlanning = false;
+                        confirmModuleChange(module, enable, plan, precheck, forUpdate);
+                    }
                 });
             }
         }, "module-plan").start();
     }
 
     private void confirmModuleChange(final Module module, final boolean enable,
-            final ModulePlan plan, RootResult precheck) {
+            final ModulePlan plan, RootResult precheck, final boolean forUpdate) {
         StringBuilder message = new StringBuilder();
+        if (forUpdate) message.append(getString(R.string.update_wifi_required)).append("\n\n");
         for (ModulePlan.Step step : plan.steps) {
-            message.append(step.enable ? "+ " : "− ")
+            message.append(step.enable ? "• + " : "• − ")
                     .append(getString(ModuleRegistry.find(step.id).nameResId())).append('\n');
         }
         if (plan.steps.isEmpty()) message.append(getString(R.string.module_no_changes));
         if (precheck != null) {
             for (Warning warning : module.enableWarnings()) {
                 if ("1".equals(precheck.warnings.get(warning.checkKey)))
-                    message.append('\n').append(getString(warning.messageResId));
+                    message.append('\n').append("• ").append(getString(warning.messageResId));
             }
             if (precheck.exitCode != 0) message.append('\n').append(precheck.detail);
         }
-        new AlertDialog.Builder(this).setTitle(getString(R.string.module_confirm))
-                .setMessage(message.toString())
-                .setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(R.string.apply, new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int which) {
+        ConfirmDialog.show(this, getString(R.string.module_confirm), message.toString(),
+                getString(forUpdate ? R.string.update_enable_wifi : R.string.apply),
+                getString(R.string.cancel), !enable, new ConfirmDialog.Action() {
+                    public void run(final ConfirmDialog dialog) {
+                        moduleWorking = true;
+                        dialog.showProgress();
                         new Thread(new Runnable() {
                             public void run() {
+                                if (forUpdate) {
+                                    String prior = enabledModules();
+                                    getSharedPreferences("update", MODE_PRIVATE).edit()
+                                            .putString("restore", prior).putBoolean("resume", true).apply();
+                                }
                                 final RootResult outcome = enable
-                                        ? new ModuleManager(MainActivity.this).requestEnable(module.id(), "settings")
+                                        ? new ModuleManager(MainActivity.this).requestEnable(module.id(),
+                                                forUpdate ? "update-check" : "settings")
                                         : new ModuleManager(MainActivity.this).execute(plan);
+                                if (forUpdate && outcome.exitCode != 0)
+                                    getSharedPreferences("update", MODE_PRIVATE).edit().clear().apply();
                                 runOnUiThread(new Runnable() {
                                     public void run() {
+                                        moduleWorking = false;
+                                        dialog.dismiss();
                                         if (outcome.exitCode != 0)
                                             new AlertDialog.Builder(MainActivity.this)
                                                     .setMessage(outcome.detail).setPositiveButton("OK", null).show();
+                                        if (forUpdate) updateMessage(outcome.exitCode == 0
+                                                ? getString(R.string.update_resume_after_restart) : outcome.detail);
                                         showSettings();
                                     }
                                 });
                             }
                         }, "module-operation").start();
                     }
-                }).show();
+                }, null);
     }
 
-    private void addLanguageOption(LinearLayout content, int labelRes, final String choice) {
+    private void addLanguageOption(LinearLayout content, final int labelRes, final String choice) {
         boolean selected = choice.equals(preferences().getString("language", "system"));
         LinearLayout row = horizontal();
         SettingsUi.contentRow(this, row);
@@ -585,8 +616,17 @@ public final class MainActivity extends Activity {
         row.addView(radio, new LinearLayout.LayoutParams(dp(60), -1));
         row.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-                preferences().edit().putString("language", choice).apply();
-                recreate();
+                if (choice.equals(preferences().getString("language", "system"))) return;
+                ConfirmDialog.show(MainActivity.this, getString(R.string.language_confirm_title),
+                        getString(R.string.language_confirm_message, getString(labelRes)),
+                        getString(R.string.apply), getString(R.string.cancel), false,
+                        new ConfirmDialog.Action() {
+                    public void run(ConfirmDialog dialog) {
+                        preferences().edit().putString("language", choice).apply();
+                        dialog.dismiss();
+                        recreate();
+                    }
+                }, null);
             }
         });
         content.addView(row, new LinearLayout.LayoutParams(-1, dp(62)));
@@ -594,12 +634,12 @@ public final class MainActivity extends Activity {
     }
 
     private void showUpdate(LinearLayout content) {
-        addRow(content, R.string.update_current, R.string.update_current_hint, installedVersion(), -1);
+        addRow(content, R.string.update_current, R.string.update_current_hint, installedVersion());
         updateStatus = text(getString(getSharedPreferences("update", MODE_PRIVATE).contains("restore") ? R.string.update_restore_pending : R.string.update_idle), 18, MUTED, sans);
         updateStatus.setPadding(dp(SettingsUi.PAGE), 0, dp(SettingsUi.PAGE), 0);
         content.addView(updateStatus, new LinearLayout.LayoutParams(-1, dp(48)));
         TextView check = action(getString(R.string.update_check), true);
-        check.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { checkUpdate(); } });
+        check.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmCheckUpdate(); } });
         LinearLayout.LayoutParams cp = SettingsUi.contentAction(this);
         content.addView(check, cp);
         TextView rollback = action(getString(R.string.update_rollback), false);
@@ -613,59 +653,83 @@ public final class MainActivity extends Activity {
         runOnUiThread(new Runnable() { public void run() { if (updateStatus != null) updateStatus.setText(value); } });
     }
 
-    private void checkUpdate() {
+    private void confirmCheckUpdate() {
+        if (updateBusy) return;
+        ConfirmDialog.show(this, getString(R.string.update_check),
+                getString(R.string.update_check_confirm), getString(R.string.update_check),
+                getString(R.string.cancel), false, new ConfirmDialog.Action() {
+            public void run(ConfirmDialog dialog) { checkUpdate(dialog); }
+        }, null);
+    }
+
+    private void checkUpdate() { checkUpdate(null); }
+
+    private void checkUpdate(final ConfirmDialog dialog) {
+        if (updateBusy) { if (dialog != null) dialog.dismiss(); return; }
         try {
             final UpdateClient client = new UpdateClient(this);
             if (!client.hasUsableNetwork()) {
-                new AlertDialog.Builder(this).setMessage(R.string.update_wifi_required)
-                    .setPositiveButton(R.string.update_enable_wifi, new DialogInterface.OnClickListener() {
-                        public void onClick(DialogInterface dialog, int which) {
-                            new Thread(new Runnable() { public void run() {
-                                String prior = enabledModules();
-                                getSharedPreferences("update", MODE_PRIVATE).edit().putString("restore", prior).putBoolean("resume", true).apply();
-                                RootResult result = new ModuleManager(MainActivity.this).requestEnable("wifi-client", "update-check");
-                                if (result.exitCode != 0) getSharedPreferences("update", MODE_PRIVATE).edit().clear().apply();
-                                updateMessage(result.exitCode == 0 ? getString(R.string.update_resume_after_restart) : result.detail);
-                            }}, "seogaemo-update-wifi").start();
-                        }
-                    }).setNegativeButton(android.R.string.cancel, null).show();
+                if (dialog != null) dialog.dismiss();
+                prepareModuleChange(ModuleRegistry.find("wifi-client"), true, true);
                 return;
             }
+            updateBusy = true;
+            if (dialog != null) dialog.showProgress();
             new Thread(new Runnable() { public void run() {
                 try {
                     final String version = client.download(installedVersion(), new UpdateClient.Progress() {
                         public void changed(int phase) { updateMessage(getString(phase)); }
                     });
                     getSharedPreferences("update", MODE_PRIVATE).edit().putBoolean("resume", false).apply();
-                    runOnUiThread(new Runnable() { public void run() { confirmInstall(version); } });
+                    runOnUiThread(new Runnable() { public void run() {
+                        updateBusy = false;
+                        if (dialog != null) dialog.dismiss();
+                        confirmInstall(version);
+                    } });
                 } catch (UpdateClient.NoUpdateException e) {
                     boolean restored = restoreModules();
                     updateMessage(getString(R.string.update_no_update) + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
+                    finishUpdateWork(dialog);
                 } catch (Exception e) {
                     boolean restored = restoreModules();
                     updateMessage(e.getMessage() + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
+                    finishUpdateWork(dialog);
                 }
             }}, "seogaemo-update-check").start();
-        } catch (Exception e) { updateMessage(e.getMessage()); }
+        } catch (Exception e) { if (dialog != null) dialog.dismiss(); updateMessage(e.getMessage()); }
+    }
+
+    private void finishUpdateWork(final ConfirmDialog dialog) {
+        runOnUiThread(new Runnable() { public void run() {
+            updateBusy = false;
+            if (dialog != null) dialog.dismiss();
+        } });
     }
 
     private void confirmInstall(final String version) {
-        new AlertDialog.Builder(this).setMessage(getString(R.string.update_available, version))
-            .setPositiveButton(R.string.update_install, new DialogInterface.OnClickListener() {
-                public void onClick(DialogInterface dialog, int which) { rootUpdate(true); }
-            }).setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
-                public void onClick(DialogInterface dialog, int which) { new Thread(new Runnable() { public void run() { if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending)); } }).start(); }
-            }).show();
+        ConfirmDialog.show(this, getString(R.string.update_install),
+                getString(R.string.update_available, version), getString(R.string.update_install),
+                getString(R.string.cancel), false, new ConfirmDialog.Action() {
+            public void run(ConfirmDialog dialog) { rootUpdate(true, dialog); }
+        }, new Runnable() {
+            public void run() { new Thread(new Runnable() {
+                public void run() { if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending)); }
+            }, "seogaemo-update-restore").start(); }
+        });
     }
 
     private void confirmRollback() {
-        new AlertDialog.Builder(this).setMessage(R.string.update_rollback_confirm)
-            .setPositiveButton(R.string.update_rollback, new DialogInterface.OnClickListener() {
-                public void onClick(DialogInterface dialog, int which) { rootUpdate(false); }
-            }).setNegativeButton(android.R.string.cancel, null).show();
+        if (updateBusy) return;
+        ConfirmDialog.show(this, getString(R.string.update_rollback),
+                getString(R.string.update_rollback_confirm), getString(R.string.update_rollback),
+                getString(R.string.cancel), true, new ConfirmDialog.Action() {
+            public void run(ConfirmDialog dialog) { rootUpdate(false, dialog); }
+        }, null);
     }
 
-    private void rootUpdate(final boolean install) {
+    private void rootUpdate(final boolean install, final ConfirmDialog dialog) {
+        updateBusy = true;
+        dialog.showProgress();
         new Thread(new Runnable() { public void run() {
             try {
                 if (install) { updateMessage(getString(R.string.update_staging)); UpdateClient.root("stage"); }
@@ -675,7 +739,7 @@ public final class MainActivity extends Activity {
             } catch (Exception e) {
                 boolean restored = restoreModules();
                 updateMessage(e.getMessage() + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
-            }
+            } finally { finishUpdateWork(dialog); }
         }}, "seogaemo-update-root").start();
     }
 
@@ -779,11 +843,11 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void addRow(LinearLayout parent, int label, int sub, int value, final int toggleIndex) {
-        addRow(parent, label, sub, value == 0 ? "" : getString(value), toggleIndex);
+    private void addRow(LinearLayout parent, int label, int sub, int value) {
+        addRow(parent, label, sub, value == 0 ? "" : getString(value));
     }
 
-    private void addRow(LinearLayout parent, int label, int sub, String value, final int toggleIndex) {
+    private void addRow(LinearLayout parent, int label, int sub, String value) {
         LinearLayout row = horizontal();
         SettingsUi.contentRow(this, row);
         row.setBackgroundDrawable(selectable(CANVAS, Color.TRANSPARENT, 0, false));
@@ -796,36 +860,13 @@ public final class MainActivity extends Activity {
         copy.addView(title);
         copy.addView(detail, sp);
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
-        if (toggleIndex >= 0) {
-            final TextView check = text(getString(checks[category][toggleIndex] ? R.string.on : R.string.off), 18,
-                    checks[category][toggleIndex] ? BLUE : MUTED, medium);
-            updateCheck(check, checks[category][toggleIndex]);
-            LinearLayout.LayoutParams checkParams = new LinearLayout.LayoutParams(
-                    dp(SettingsUi.STATUS_WIDTH), dp(SettingsUi.STATUS_HEIGHT));
-            checkParams.leftMargin = dp(SettingsUi.MD);
-            row.addView(check, checkParams);
-            row.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    checks[category][toggleIndex] = !checks[category][toggleIndex];
-                    updateCheck(check, checks[category][toggleIndex]);
-                }
-            });
-        } else {
-            TextView trailing = text(value, 20, WHITE, sans);
-            trailing.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-            LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(dp(240), -1);
-            valueParams.leftMargin = dp(SettingsUi.MD);
-            row.addView(trailing, valueParams);
-        }
+        TextView trailing = text(value, 20, WHITE, sans);
+        trailing.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams valueParams = new LinearLayout.LayoutParams(dp(240), -1);
+        valueParams.leftMargin = dp(SettingsUi.MD);
+        row.addView(trailing, valueParams);
         parent.addView(row, new LinearLayout.LayoutParams(-1, dp(75)));
         divider(parent, false);
-    }
-
-    private void updateCheck(TextView check, boolean on) {
-        check.setText(getString(on ? R.string.on : R.string.off));
-        check.setTextColor(on ? BLUE : MUTED);
-        SettingsUi.pill(this, check, shape(on ? 0xFF17283A : RAISED,
-                on ? BLUE : HAIRLINE, 6));
     }
 
     private TextView action(String label, boolean primary) {

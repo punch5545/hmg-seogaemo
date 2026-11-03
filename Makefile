@@ -45,6 +45,7 @@ verify-dist:
 
 test: export PATH := $(CURDIR)/tools/testlib/fakebin:$(PATH)
 test: package
+	python3 tools/test-confirm-routing.py
 	sh tools/test-gen-modules.sh
 	python3 tools/test-package.py --aapt $(BT)/aapt
 	python3 tools/test-runtime.py

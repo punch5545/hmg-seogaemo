@@ -26,6 +26,8 @@
     <string name="language_english">English</string>
     <string name="language_korean">한국어</string>
     <string name="language_scope">이 앱에만 적용됩니다.</string>
+    <string name="language_confirm_title">언어를 변경할까요?</string>
+    <string name="language_confirm_message">앱 언어 설정: %1$s. 적용할까요?</string>
     <string name="carplay">무선 CarPlay</string>
     <string name="android_auto">무선 Android Auto</string>
     <string name="wireless_hint">무선 휴대폰 연결</string>
@@ -88,6 +90,7 @@
     <string name="update_current_hint">설치된 HMG-Seogaemo 버전</string>
     <string name="update_idle">업데이트 확인 준비됨</string>
     <string name="update_check">업데이트 확인</string>
+    <string name="update_check_confirm">GitHub에 연결해 업데이트를 확인하고, 새 버전이 있으면 다운로드할까요? 시간이 걸릴 수 있습니다.</string>
     <string name="update_rollback">이전 버전 복원</string>
     <string name="update_wifi_required">업데이트에는 Wi-Fi가 필요합니다. Wi-Fi 클라이언트를 켜면 무선 CarPlay가 중단되고 헤드 유닛 재시작이 필요합니다. 계속할까요?</string>
     <string name="update_enable_wifi">Wi-Fi 클라이언트 켜기</string>

@@ -116,6 +116,10 @@ Module tests (`modules/<id>/test/*.sh`, run by `make test`) use a fake `common.s
   head-unit reboot (used by the updater for `wifi-client`).
 - Generic Settings rows (toggle, observed state, restart banner, confirmation dialog) are built by
   the runtime from module metadata. Modules do not edit UI code.
+- Every module write, including `ENABLE_MODULE` from a declarative Settings action or Home tile,
+  passes through the shared `ui.ConfirmDialog` after `ModuleManager.plan` and read-only `precheck`.
+  The dialog lists ordered steps and active warnings; it disables Confirm on submission and shows
+  progress until the operation finishes. Navigation-only actions remain direct.
 - Module-specific pane content is declarative:
   - `Module.infoRows()` → `InfoRow[]` (`labelResId`, `infoKey`): runtime shows the value of
     `info.<infoKey>` from the last `status`, or "—".
