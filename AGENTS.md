@@ -104,8 +104,6 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 
 ## Known gaps / risks (not yet verified on a car)
 
-- Code gap: `HomeView` still renders a static demo tile list (Settings first); it does not yet
-  collect `Module.homeTiles()`, and the three modules return no tiles. Wire this before shipping.
 - Nothing has run on a real head unit yet; all tests use fakes and an emulator.
 - `wireless-carplay-and-aa` replaces `/system/bin/app_process` (boot guard disables it after 3
   quick restarts). Dalvik offsets were proven on a US EV6 only. Keep an adb recovery path ready.

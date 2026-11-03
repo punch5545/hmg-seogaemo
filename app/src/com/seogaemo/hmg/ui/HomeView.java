@@ -15,10 +15,13 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import com.seogaemo.hmg.R;
 import com.seogaemo.hmg.module.HomeTile;
+import com.seogaemo.hmg.module.HomeTileCatalog;
+import com.seogaemo.hmg.module.ModuleAction;
+import java.util.List;
 
-/** Portrait card Home mock. No demo tile executes a vehicle command. */
+/** Portrait card Home pager for built-in and module shortcuts. */
 public final class HomeView extends LinearLayout {
-    private static final int TILES_PER_PAGE = 6;
+    public interface ActionHandler { void run(ModuleAction action); }
     private static final int WHITE = 0xFFF5F5F5;
     private static final int MUTED = 0xFF9A9A9A;
     private static final int BLUE = 0xFF0070F3;
@@ -28,36 +31,21 @@ public final class HomeView extends LinearLayout {
     private final TextView counter;
     private final TextView previous;
     private final TextView next;
-    private final int pageCount;
+    private final Runnable openSettings;
+    private final ActionHandler actionHandler;
+    private int pageCount;
 
-    public HomeView(Context context, final Runnable openSettings) {
+    public HomeView(Context context, Runnable openSettings, ActionHandler actionHandler) {
         super(context);
+        this.openSettings = openSettings;
+        this.actionHandler = actionHandler;
         setOrientation(VERTICAL);
         setPadding(dp(30), dp(16), dp(30), dp(12));
-
-        // Static demo entries until the runtime supplies enabled module HomeTile values.
-        HomeTile[] demo = new HomeTile[] {
-            tile("settings", R.string.settings, "⚙", 0),
-            tile("wireless-adb", R.string.tile_wireless_adb, "ADB", 10),
-            tile("wifi-client", R.string.tile_wifi_client, "Wi‑Fi", 20),
-            tile("projection", R.string.tile_projection, "CP", 30),
-            tile("battery", R.string.action_battery, "BAT", 40),
-            tile("exhaust", R.string.action_exhaust, "VEX", 50),
-            tile("restart", R.string.action_restart, "↻", 60),
-            tile("export", R.string.tile_export, "⇧", 70),
-            tile("logs", R.string.tile_logs, "LOG", 80),
-            tile("display", R.string.tile_display, "DSP", 90),
-            tile("about", R.string.tile_about, "i", 100)
-        };
-        pageCount = (demo.length + TILES_PER_PAGE - 1) / TILES_PER_PAGE;
 
         LinearLayout heading = new LinearLayout(context);
         heading.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = text(context.getString(R.string.home_title), 26, WHITE, true);
         heading.addView(title, new LayoutParams(0, dp(46), 1));
-        TextView note = text(context.getString(R.string.placeholder_note), 15, MUTED, false);
-        note.setTypeface(Typeface.MONOSPACE);
-        heading.addView(note, new LayoutParams(-2, dp(46)));
         addView(heading, new LayoutParams(-1, dp(52)));
 
         LinearLayout stage = new LinearLayout(context);
@@ -73,30 +61,6 @@ public final class HomeView extends LinearLayout {
         stage.addView(next, new LayoutParams(dp(52), -1));
         addView(stage, new LayoutParams(-1, 0, 1));
 
-        for (int p = 0; p < pageCount; p++) {
-            LinearLayout row = new LinearLayout(context);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(2), dp(4), dp(2), dp(4));
-            for (int i = p * TILES_PER_PAGE; i < Math.min((p + 1) * TILES_PER_PAGE, demo.length); i++) {
-                final HomeTile item = demo[i];
-                HomeTileView card = new HomeTileView(context, item, i + 1, "restart".equals(item.id));
-                if ("settings".equals(item.id)) card.setOnClickListener(new OnClickListener() {
-                    public void onClick(View v) { openSettings.run(); }
-                });
-                else card.setClickable(true);
-                LayoutParams cardParams = new LayoutParams(0, -1, 1);
-                if (i > p * TILES_PER_PAGE) cardParams.leftMargin = dp(10);
-                row.addView(card, cardParams);
-            }
-            // Hold vacant slots so page two keeps the same card width.
-            for (int i = demo.length - p * TILES_PER_PAGE; i < TILES_PER_PAGE && p == pageCount - 1; i++) {
-                LayoutParams empty = new LayoutParams(0, -1, 1);
-                empty.leftMargin = dp(10);
-                row.addView(new View(context), empty);
-            }
-            pager.addPage(row);
-        }
-
         LinearLayout footer = new LinearLayout(context);
         footer.setGravity(Gravity.CENTER);
         dots = new LinearLayout(context);
@@ -109,17 +73,55 @@ public final class HomeView extends LinearLayout {
         previous.setOnClickListener(new OnClickListener() { public void onClick(View v) { pager.setPage(pager.page - 1); } });
         next.setOnClickListener(new OnClickListener() { public void onClick(View v) { pager.setPage(pager.page + 1); } });
         pager.setPageListener(new Runnable() { public void run() { updateNavigation(); } });
+        setTiles(HomeTileCatalog.collect(settingsTile(), new HomeTileCatalog.Entry[0]));
+    }
+
+    public static HomeTile settingsTile() {
+        return new HomeTile("settings", R.string.settings, "⚙", null, 0, true);
+    }
+
+    public void setTiles(List<HomeTile> tiles) {
+        pager.clearPages();
+        pageCount = HomeTileCatalog.pageCount(tiles.size());
+        for (int p = 0; p < pageCount; p++) {
+            Context context = getContext();
+            LinearLayout row = new LinearLayout(context);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(2), dp(4), dp(2), dp(4));
+            for (int i = p * HomeTileCatalog.TILES_PER_PAGE; i < Math.min((p + 1) * HomeTileCatalog.TILES_PER_PAGE, tiles.size()); i++) {
+                final HomeTile item = tiles.get(i);
+                HomeTileView card = new HomeTileView(context, item);
+                if ("settings".equals(item.id)) card.setOnClickListener(new OnClickListener() {
+                    public void onClick(View v) { openSettings.run(); }
+                });
+                else if (item.action != null) card.setOnClickListener(new OnClickListener() {
+                    public void onClick(View v) { actionHandler.run(item.action); }
+                });
+                LayoutParams cardParams = new LayoutParams(0, -1, 1);
+                if (i > p * HomeTileCatalog.TILES_PER_PAGE) cardParams.leftMargin = dp(10);
+                row.addView(card, cardParams);
+            }
+            // Preserve card width on partial pages.
+            for (int i = tiles.size() - p * HomeTileCatalog.TILES_PER_PAGE; i < HomeTileCatalog.TILES_PER_PAGE && p == pageCount - 1; i++) {
+                LayoutParams empty = new LayoutParams(0, -1, 1);
+                empty.leftMargin = dp(10);
+                row.addView(new View(context), empty);
+            }
+            pager.addPage(row);
+        }
+        pager.page = 0;
         pager.post(new Runnable() { public void run() { pager.syncWidths(); } });
         updateNavigation();
     }
 
-    private static HomeTile tile(String id, int label, String glyph, int order) {
-        return new HomeTile(id, label, glyph, null, order, true);
-    }
-
     private void updateNavigation() {
+        boolean multiple = pageCount > 1;
+        dots.setVisibility(multiple ? VISIBLE : GONE);
+        counter.setVisibility(multiple ? VISIBLE : GONE);
+        previous.setVisibility(multiple ? VISIBLE : GONE);
+        next.setVisibility(multiple ? VISIBLE : GONE);
         dots.removeAllViews();
-        for (int i = 0; i < pageCount; i++) {
+        for (int i = 0; multiple && i < pageCount; i++) {
             final int target = i;
             View dot = new View(getContext());
             dot.setBackgroundDrawable(shape(i == pager.page ? BLUE : 0xFF575757, Color.TRANSPARENT, 20));
@@ -174,24 +176,16 @@ public final class HomeView extends LinearLayout {
     }
 
     private final class HomeTileView extends FrameLayout {
-        HomeTileView(Context c, HomeTile item, int number, boolean destructive) {
+        HomeTileView(Context c, HomeTile item) {
             super(c);
-            int accent = destructive ? RED : "settings".equals(item.id) ? BLUE : 0xFFB7C6D7;
-            setBackgroundDrawable(selector(destructive ? 0xFF241919 : 0xFF202020,
-                    destructive ? 0xFF743333 : 0xFF3B3B3B, destructive));
+            int accent = "settings".equals(item.id) ? BLUE : 0xFFB7C6D7;
+            setBackgroundDrawable(selector(0xFF202020, 0xFF3B3B3B, false));
             setContentDescription(c.getString(item.labelResId));
-            TextView ordinal = text(String.format(java.util.Locale.US, "%02d", number), 16, MUTED, false);
-            ordinal.setTypeface(Typeface.MONOSPACE);
-            LayoutParams op = new LayoutParams(-1, dp(38), Gravity.TOP);
-            op.leftMargin = dp(17);
-            op.topMargin = dp(11);
-            addView(ordinal, op);
 
             TextView glyph = text(item.glyph, item.glyph.length() > 3 ? 32 : 46, accent, true);
             glyph.setGravity(Gravity.CENTER);
             glyph.setSingleLine(true);
-            glyph.setBackgroundDrawable(shape(destructive ? 0xFF321B1B : 0xFF171C22,
-                    destructive ? 0xFF743333 : 0xFF354352, 10));
+            glyph.setBackgroundDrawable(shape(0xFF171C22, 0xFF354352, 10));
             LayoutParams gp = new LayoutParams(dp(104), dp(104), Gravity.CENTER_HORIZONTAL | Gravity.TOP);
             gp.topMargin = dp(62);
             addView(glyph, gp);
@@ -203,7 +197,7 @@ public final class HomeView extends LinearLayout {
             rp.bottomMargin = dp(82);
             addView(rule, rp);
 
-            TextView label = text(c.getString(item.labelResId), 21, destructive ? 0xFFFFA0A0 : WHITE, true);
+            TextView label = text(c.getString(item.labelResId), 21, WHITE, true);
             label.setGravity(Gravity.TOP | Gravity.LEFT);
             label.setMaxLines(2);
             label.setTextScaleX(0.97f);
@@ -230,6 +224,8 @@ public final class HomeView extends LinearLayout {
             strip.setOrientation(HORIZONTAL);
             addView(strip, new FrameLayout.LayoutParams(-2, -1));
         }
+
+        void clearPages() { strip.removeAllViews(); }
 
         void addPage(View row) {
             int width = getWidth() > 0 ? getWidth() : getResources().getDisplayMetrics().widthPixels;

@@ -6,7 +6,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 
 | Document | Status | Purpose |
 | --- | --- | --- |
-| [module-architecture.md](module-architecture.md) | Partly superseded | Built-in modules, package, state, UI, and recovery architecture; identifies the static Home gap. |
+| [module-architecture.md](module-architecture.md) | Partly superseded | Built-in modules, package, state, UI, and recovery architecture; Home wiring is current. |
 | [module-runtime-contract.md](module-runtime-contract.md) | Partly superseded | Implemented root/Java contract and test rules; original parallel work ownership table is historical. |
 | [module-runtime-implementation.md](module-runtime-implementation.md) | Current | Runtime and host-test implementation findings. |
 | [ui-guidelines.md](ui-guidelines.md) | Partly superseded | Display tokens and touch measurements; emulator capture commands are historical. |
@@ -24,4 +24,4 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 
 The target is Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (package glob `NEEV.KOR.*.260902`), onebin `neev_kr`, Android 4.4.2. Installation is NEMESIS plus HMG-Seogaemo only. Off-car tests do not establish physical-car behavior.
 
-Current code gap: `HomeView` displays a static paged card list with Settings first; it does not yet collect `Module.homeTiles()`. The module API exists, and Settings module pages are live.
+Home now collects `Module.homeTiles()` from enabled modules and keeps Settings first. The current three modules provide no Home tiles, so Settings is the only card.

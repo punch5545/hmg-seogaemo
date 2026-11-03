@@ -53,6 +53,8 @@ test: package
 	mkdir -p out/planner-test
 	javac -d out/planner-test app/src/com/seogaemo/hmg/module/ModulePlan.java app/src/com/seogaemo/hmg/module/ModulePlanner.java app/src/com/seogaemo/hmg/module/Warning.java tools/ModulePlannerTest.java
 	java -cp out/planner-test ModulePlannerTest
+	javac -source 7 -target 7 -d out/planner-test app/src/com/seogaemo/hmg/module/HomeTile.java app/src/com/seogaemo/hmg/module/HomeTileCatalog.java app/src/com/seogaemo/hmg/module/ModuleAction.java tools/HomeTileCatalogTest.java
+	java -cp out/planner-test HomeTileCatalogTest
 	python3 tools/test-update.py
 	mkdir -p out/trust-test
 	javac -source 7 -target 7 -d out/trust-test app/src/com/seogaemo/hmg/core/update/UpdateTrust.java tools/UpdateTrustTest.java

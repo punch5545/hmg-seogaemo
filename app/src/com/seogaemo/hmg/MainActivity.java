@@ -23,6 +23,8 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import com.seogaemo.hmg.module.InfoRow;
+import com.seogaemo.hmg.module.HomeTile;
+import com.seogaemo.hmg.module.HomeTileCatalog;
 import com.seogaemo.hmg.module.Module;
 import com.seogaemo.hmg.module.ModuleAction;
 import com.seogaemo.hmg.module.ModuleManager;
@@ -50,12 +52,6 @@ public final class MainActivity extends Activity {
     private static final int ERROR = 0xFFEE0000;
     private static final int PRESS = 0xFF294563;
     private static final int RED_PRESS = 0xFF633030;
-    private static final int[] ACTIONS = {R.string.action_battery, R.string.action_exhaust,
-        R.string.action_climate, R.string.action_drive, R.string.action_audio,
-        R.string.action_connect, R.string.action_restart, R.string.settings};
-    private static final int[] ICONS = {R.string.icon_battery, R.string.icon_exhaust,
-        R.string.icon_climate, R.string.icon_drive, R.string.icon_audio,
-        R.string.icon_connect, R.string.icon_restart, R.string.icon_settings};
     private static final int[] CATEGORIES = {R.string.cat_general, R.string.cat_modules,
         R.string.cat_logs, R.string.cat_about};
     private static final int[] CATEGORY_SUBS = {R.string.cat_general_sub, R.string.cat_modules_sub,
@@ -68,6 +64,7 @@ public final class MainActivity extends Activity {
     private ScrollView sidebarScroll;
     private final boolean[][] checks = {{false, false}, {true, false}, {true, false}, {true, false}, {false, false}};
     private boolean settingsVisible;
+    private HomeView homeView;
     private TextView updateStatus;
 
     @Override public void onCreate(Bundle state) {
@@ -100,6 +97,11 @@ public final class MainActivity extends Activity {
         state.putInt("category", category);
         state.putInt("sidebarOffset", sidebarScroll == null ? sidebarOffset : sidebarScroll.getScrollY());
         super.onSaveInstanceState(state);
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (!settingsVisible && homeView != null) refreshHomeTiles(homeView);
     }
 
     private SharedPreferences preferences() {
@@ -204,9 +206,6 @@ public final class MainActivity extends Activity {
         }
         View spacer = new View(this);
         bar.addView(spacer, new LinearLayout.LayoutParams(0, dp(60), 1));
-        TextView meta = text(getString(R.string.meta), 16, MUTED, mono);
-        meta.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-        bar.addView(meta, new LinearLayout.LayoutParams(dp(270), dp(60)));
         if (back) {
             TextView backButton = text(getString(R.string.nav_back_label), 21, WHITE, medium);
             backButton.setGravity(Gravity.CENTER);
@@ -234,38 +233,41 @@ public final class MainActivity extends Activity {
         settingsVisible = false;
         LinearLayout r = root();
         header(r, false);
-        r.addView(new HomeView(this, new Runnable() {
+        homeView = new HomeView(this, new Runnable() {
             public void run() { showSettings(); }
-        }), new LinearLayout.LayoutParams(-1, 0, 1));
+        }, new HomeView.ActionHandler() {
+            public void run(ModuleAction action) { dispatchModuleAction(action); }
+        });
+        r.addView(homeView, new LinearLayout.LayoutParams(-1, 0, 1));
+        refreshHomeTiles(homeView);
     }
 
-    private FrameLayout makeAction(final int index) {
-        boolean destructive = index == 6;
-        FrameLayout tile = new FrameLayout(this);
-        tile.setBackgroundDrawable(selectable(destructive ? 0xFF241919 : RAISED,
-                destructive ? 0xFF743333 : HAIRLINE, 8, destructive));
-        tile.setClickable(true);
-        TextView icon = text(getString(ICONS[index]), 20, destructive ? ERROR : index == 7 ? BLUE : WHITE, mono);
-        icon.setGravity(Gravity.CENTER);
-        icon.setBackgroundDrawable(shape(SURFACE, destructive ? ERROR : index == 7 ? BLUE : HAIRLINE, 8));
-        FrameLayout.LayoutParams ip = new FrameLayout.LayoutParams(dp(66), dp(66), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        ip.topMargin = dp(22);
-        tile.addView(icon, ip);
-        TextView label = text(getString(ACTIONS[index]), index == 0 ? 21 : 24, destructive ? 0xFFFF8888 : WHITE, medium);
-        label.setGravity(Gravity.CENTER);
-        label.setSingleLine(false);
-        label.setMaxLines(2);
-        label.setTextScaleX(0.97f);
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, dp(66), Gravity.TOP);
-        lp.topMargin = dp(92);
-        lp.leftMargin = dp(6);
-        lp.rightMargin = dp(6);
-        tile.addView(label, lp);
-        tile.setContentDescription(getString(ACTIONS[index]));
-        if (index == 7) tile.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { showSettings(); }
-        });
-        return tile;
+    private void refreshHomeTiles(final HomeView view) {
+        new Thread(new Runnable() {
+            public void run() {
+                Module[] modules = ModuleRegistry.all();
+                HomeTileCatalog.Entry[] entries = new HomeTileCatalog.Entry[modules.length];
+                for (int i = 0; i < modules.length; i++) {
+                    RootResult status = RootClient.run(modules[i].id(), "status");
+                    boolean enabled = status.exitCode == 0 &&
+                            ("on".equals(status.state) || "pending-restart".equals(status.state));
+                    entries[i] = new HomeTileCatalog.Entry(modules[i].id(), enabled, modules[i].homeTiles());
+                }
+                final List<HomeTile> tiles = HomeTileCatalog.collect(HomeView.settingsTile(), entries);
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        if (homeView == view && !settingsVisible) view.setTiles(tiles);
+                    }
+                });
+            }
+        }, "home-tiles").start();
+    }
+
+    private void dispatchModuleAction(ModuleAction action) {
+        if (action.type == ModuleAction.Type.ENABLE_MODULE)
+            prepareModuleChange(ModuleRegistry.find(action.target), true);
+        else if (action.type == ModuleAction.Type.OPEN_STOCK_WIFI_SETTINGS)
+            startActivity(new Intent("android.settings.WIFI_SETTINGS"));
     }
 
     private void showSettings() {
@@ -339,8 +341,8 @@ public final class MainActivity extends Activity {
             });
             return;
         } else if (category == 3) {
-            addRow(content, R.string.app, R.string.ui_mock, R.string.app_name, -1);
-            addRow(content, R.string.version, R.string.preview_build, installedVersion(), -1);
+            addRow(content, R.string.app, R.string.app_description, R.string.app_name, -1);
+            addRow(content, R.string.version, R.string.installed_version, installedVersion(), -1);
             addRow(content, R.string.android, R.string.minimum_api, R.string.value_api, -1);
             addRow(content, R.string.platform, R.string.vehicle_brands, R.string.value_gen5w, -1);
             return;
@@ -489,10 +491,7 @@ public final class MainActivity extends Activity {
                 rows.addView(button, ap);
                 button.setOnClickListener(new View.OnClickListener() {
                     public void onClick(View view) {
-                        if (action.type == ModuleAction.Type.ENABLE_MODULE)
-                            prepareModuleChange(ModuleRegistry.find(action.target), true);
-                        else if (action.type == ModuleAction.Type.OPEN_STOCK_WIFI_SETTINGS)
-                            startActivity(new Intent("android.settings.WIFI_SETTINGS"));
+                        dispatchModuleAction(action);
                     }
                 });
                 break;

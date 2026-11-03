@@ -1,4 +1,4 @@
-Status: partly superseded — the former parallel-work ownership table is historical, and Home tile wiring is still pending; runtime APIs and module decisions reflect current code.
+Status: partly superseded — the former parallel-work ownership table is historical; runtime APIs, Home tile wiring, and module decisions reflect current code.
 
 # Module runtime contract (parallel-work interface)
 
@@ -154,7 +154,7 @@ Strings: modules add only `<snake_id>_*` resources in their own `res/values{,-ko
 
 ## Home screen tiles
 
-The `Module.homeTiles()` metadata API exists, but current `HomeView` uses a static demo array and does not render module-provided tiles. The layout rules below describe the intended live wiring; Settings is first in the current demo.
+`HomeView` renders module-provided tiles selected by the runtime. Settings is always first; currently no built-in module supplies a Home tile.
 
 - Home is a horizontally paged row of tall vertical cards (ccNC style), NEMESIS-scale touch targets.
 - `Module.homeTiles()` → `HomeTile[]` (`id`, `labelResId`, `iconResId` or glyph, `ModuleAction action`,
