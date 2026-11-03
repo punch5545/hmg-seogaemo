@@ -33,10 +33,13 @@ The community [HKMC Factory 82 package](https://github.com/armandodollia/nemesis
 
 ## User button shortcut reference
 
-`user-button-shortcut` follows action-broadcast / explicit-activity behavior in
+`user-button-shortcut` (steering) and `user-button-head-unit` follow the shared
+action-broadcast / explicit-activity behavior in
 HMG-API `core/runtime/java/hmgapi/hook/StarKey.java:64-103` at `4fab437`. The
 owner-selected no-hook alternative omits stock-list injection (`:115-204`) and
 uses our guarded exact property restore instead of upstream's reset-to-None.
 Module and receiver code are independently written; no upstream source was copied.
 See [.agents/user-button-shortcut.md](.agents/user-button-shortcut.md) for KOR
-odex evidence and physical-car checks.
+odex evidence (including head getCustomKeyAction and processCustomKey offsets)
+and physical-car checks. Both independently own one property and share our fixed
+receiver; no additional upstream source was copied.

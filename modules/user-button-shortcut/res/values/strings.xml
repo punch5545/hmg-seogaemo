@@ -1,5 +1,5 @@
 <resources>
-    <string name="user_button_shortcut_name">User button</string>
+    <string name="user_button_shortcut_name">Steering-wheel user button</string>
     <string name="user_button_shortcut_description">Open HMG-Seogaemo with the steering-wheel user button.</string>
     <string name="user_button_shortcut_note">While enabled, Open HMG-Seogaemo replaces the current steering-wheel user-button assignment (for example, gohome). Disabling restores the exact previous assignment if it has not changed. Choosing another function in stock button settings overrides this shortcut and causes a conflict; HMG-Seogaemo will preserve that choice and keep the backup. This action does not appear in the stock button settings list.</string>
 </resources>
