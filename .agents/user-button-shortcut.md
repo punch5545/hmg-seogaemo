@@ -20,7 +20,7 @@ directory and the common exact-restore API. Either or both may be enabled.
 Normal module planning shows ConfirmDialog and `warn.assignment` before apply.
 Each EN/KO warning names its physical button and explains replacement of the current
 assignment (steering: `gohome`; head: `com.mobis.intent.action.CONNECTIVITY_SHORTCUT`),
-guarded exact restore, and stock settings overriding this shortcut. Navigation
+exact original restore, and automatic reassertion overriding stock settings while ON. Navigation
 from a received button action changes no persistent settings.
 
 ## Upstream reference
@@ -75,11 +75,22 @@ Direct Dex/odex inspection of `files/system/framework/automotive-service.odex`:
 
 Each module owns only its tabled property. Apply uses `sg_prop_set`, restore uses
 `sg_revert_all`. Live values plus backing bytes/absence are baselined. Existing
-HMG-API/Leafia ownership and incompatible product/API are refused. Reapply checks
-our baseline/applied value first, including boot reconcile; external choices
-produce conflict and retained backups, never automatic reassignment. Disable also
-fails closed on external change. Returning the property to the recorded applied
-action permits a guarded retry. Our action without a baseline is never adopted.
+HMG-API/Leafia ownership and incompatible product/API are refused.
+
+The owner subsequently observed stock resetting the steering assignment after a
+head-unit restart and chose package assignment precedence while ON. Both manifests
+now declare `reassert_props` for their sole property plus `watch=boot,screen_on`.
+Apply/reconcile reasserts our action over a stock reset or user choice, preserving
+the ORIGINAL first-apply live value and backing bytes/absence. Watch requires desired
+ON, an existing baseline, compatibility and matching product; it never re-baselines.
+Read-only status reports pending reassertion (`pending-restart`, `info.desired=on`)
+instead of conflict when an enabled assignment drifted. The watcher repairs it
+without needing a new restart; the pending state uses the existing status protocol.
+
+Disable/stock restore/uninstall deliberately override drift for these declared
+properties and restore the original baseline. Firmware mismatch still conflicts,
+retains backups and prevents both reassertion and restore. Unrelated property/file
+restore guards are unchanged. Our action without a baseline is never adopted.
 Keep globbing enabled: package restore enumerates and clears baselines with globs.
 
 The exported receiver accepts exactly `com.seogaemo.hmg.USER_BUTTON_SHORTCUT`,
@@ -89,20 +100,24 @@ No arbitrary target or command is accepted.
 
 Tests exercise the real package API with fake properties: repeat apply, read-only
 status, warning emission, exact live/backing restore, absent backing restore,
-firmware mismatch, external-change status/apply/revert conflict, orphan action,
+firmware mismatch, stock/user drift reassertion, pending read-only status, drifted
+revert restoring the original baseline, orphan action, missing-baseline watch and
 failed write. The shared lifecycle suite runs for each module and also verifies
-that both can be enabled, disabling either preserves the other, and a conflict in
-one does not prevent guarded restore of the other. Receiver tests compile
-production source against stubs, checking
-null/other action rejection, fixed target/flags, launch failure and manifest action.
+that both can be enabled, disabling either preserves the other, and reasserting
+one does not change the other. Runtime tests keep the same boot ID and an always
+Awake display while drifting a property, then verify fixed screen_on dispatch,
+no matching-value writes, and no dispatch when OFF, paused or missing a snapshot.
+Stock restore tests verify that the explicit policy permits drifted original restore
+and uninstall, while an unrelated drift still blocks global preflight. Receiver
+tests compile production source against stubs, checking null/other action rejection, fixed target/flags, launch failure and manifest action.
 The build compiles against Android 19.
 
 On-car checks for each button independently and both together: confirm/cancel;
 press foreground/background and after update/reboot; no shortcut from that button
 after disable; the other button and mode list unchanged by each operation; stock settings
-open/select can reset/override unknown action, with conflict and no reapply;
-profile/boot restoration; exact backing bytes on revert/uninstall; backups retained
-on conflict. Force-stopped APK delivery is not promised (stock include-stopped
+open/select is overridden while ON; profile/boot restoration; exact original backing
+bytes on drifted revert/uninstall; backups retained on firmware mismatch.
+Force-stopped APK delivery is not promised (stock include-stopped
 handling varies by action); open the app normally before testing. Host tests do
 not establish physical-car behavior.
 
@@ -118,3 +133,33 @@ passed once after the changes, including the Android 19 build/package, generated
 module ownership checks, confirmation routing, runtime/restore suites, every
 module test, shell/naming lints, planner/home tiles, OTA and trust checks.
 No VERSION bump, push, or head-unit changes.
+
+## Ignition/quick-boot reassertion follow-up
+
+Owner evidence: stock reset after restart; QUICKBOOT_POWERON can retain the kernel
+boot ID, and dumpsys power can remain Awake throughout ignition/display toggles.
+Boot-once and off-to-on detection alone are insufficient. The existing watcher
+therefore also checks declared reasserted properties against saved applied values
+on each active poll (normally 5 seconds). It reuses the fixed `watch screen_on`
+handler only on mismatch, under the normal root lock, desired-ON and stock-paused
+guards. Matching values cause no write or ledger event. No root verb/event or
+free-form argument was added. This is polling, so drift can remain briefly until
+the next successful poll/root operation; the watcher must be running. Physical
+ignition-cycle timing and both buttons still need verification on the car.
+
+Original snapshots survive repeated reassertions. Product-bound originals are
+restored even from a user-selected value because the owner explicitly accepted
+that overwrite. EN/KO confirmation warns to turn the module OFF to select another
+function. Receiver/action, proper nouns, default OFF, IDs and ownership are unchanged.
+The runtime contract documents the narrow manifest policy before its implementation.
+
+Reassertion follow-up validation (2026-11-04): module/receiver suites passed under
+/bin/sh and mksh R59c; standalone generator, runtime watcher-drift tests and shell
+lints passed; `make test` passed once after the changes, including stock/uninstall
+restoration from declared drift, unrelated-conflict retention, all module suites,
+Android 19 build/package/signature checks and the remaining repository checks.
+Built from fetched origin/main `eb67343` (VERSION 0.1.20), with no version bump or
+push. The existing idle watcher interval is 300 seconds, so enabling the first
+watch module while it sleeps can delay the first active poll by up to that interval.
+The normal active polling interval remains 5 seconds. No physical-car writes or
+verification were performed by this change.

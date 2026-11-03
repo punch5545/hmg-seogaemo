@@ -1,5 +1,5 @@
 <resources>
     <string name="user_button_head_unit_name">Head-unit user button</string>
     <string name="user_button_head_unit_description">Open HMG-Seogaemo with the head-unit user button.</string>
-    <string name="user_button_head_unit_note">While enabled, Open HMG-Seogaemo replaces the current head-unit user-button assignment (for example, com.mobis.intent.action.CONNECTIVITY_SHORTCUT). Disabling restores the exact previous assignment if it has not changed. Choosing another function in stock button settings overrides this shortcut and causes a conflict; HMG-Seogaemo will preserve that choice and keep the backup. This action does not appear in the stock button settings list.</string>
+    <string name="user_button_head_unit_note">While enabled, Open HMG-Seogaemo replaces the current head-unit user-button assignment (for example, com.mobis.intent.action.CONNECTIVITY_SHORTCUT). HMG-Seogaemo reapplies this assignment after restarts and overrides choices made in stock button settings while enabled. Turn this module off to choose another function. Disabling restores the exact original assignment, replacing any intervening choice. This action does not appear in the stock button settings list.</string>
 </resources>

@@ -43,3 +43,10 @@ See [.agents/user-button-shortcut.md](.agents/user-button-shortcut.md) for KOR
 odex evidence (including head getCustomKeyAction and processCustomKey offsets)
 and physical-car checks. Both independently own one property and share our fixed
 receiver; no additional upstream source was copied.
+
+The user-button reassertion follow-up is owner-directed behavior beyond upstream:
+while enabled, our fixed action overrides stock resets and stock-settings choices,
+including quick boot without a new boot ID/display transition. The shared watcher
+reuses fixed screen_on dispatch on declared property drift; original product-bound
+baselines survive, and disable restores them even over drift. This uses no upstream
+hook code; see the module/runtime notes for policy and car verification limits.

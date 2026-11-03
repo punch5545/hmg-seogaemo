@@ -32,12 +32,17 @@ with tempfile.TemporaryDirectory() as directory:
         FAKE_PROPS=str(base / 'props'), HMG_SEOGAEMO_BASE=str(base),
         HMG_SEOGAEMO_STATE=str(state), SG_DATA_ROOT=str(base / 'data'),
         SG_PROPERTY_ROOT=str(base / 'backing')))
+    (base / "data/desired").mkdir(parents=True)
     def prop(key, value): (base / 'props' / key).write_text(value)
-    def run(verb, expected, code=0, module=MODULE, module_state=state):
+    def run(verb, expected, code=0, module=MODULE, module_state=state, event=None):
         module_env = dict(env, HMG_SEOGAEMO_STATE=str(module_state))
-        p = subprocess.run([SHELL, str(module / 'root' / (module.name + '.sh')), verb], env=module_env, capture_output=True, text=True)
+        args = [SHELL, str(module / 'root' / (module.name + '.sh')), verb]
+        if event is not None: args.append(event)
+        p = subprocess.run(args, env=module_env, capture_output=True, text=True)
         assert p.returncode == code, (verb, p.stdout, p.stderr)
-        assert 'state=' + expected in p.stdout, p.stdout
+        if expected is not None: assert 'state=' + expected in p.stdout, p.stdout
+        if code == 0 and verb in ('apply', 'revert'):
+            (base / 'data/desired' / module.name).write_text('on' if verb == 'apply' else 'off')
         return p.stdout
     product = 'NEEV.KOR.0000.V039.001.260902'
     prop('ro.build.product', product)
@@ -48,24 +53,43 @@ with tempfile.TemporaryDirectory() as directory:
     run('status', 'off')
     assert not list(state.iterdir())
     assert 'warn.assignment=1' in run('precheck', 'off')
+    run('watch', None, 3, event='boot')
+    (base / 'data/desired' / MODULE_ID).write_text('on')
+    run('watch', 'failed', 1, event='boot')
+    assert not (state / ('prop.' + KEY) / 'ready').exists()
+    (base / 'data/desired' / MODULE_ID).write_text('off')
     run('apply', 'on')
     run('apply', 'on')
     assert (state / ('prop.' + KEY) / 'live').read_text() == INITIAL
+    # Stock reset after boot, and stock settings choice after screen-on.
+    for event, value in [('boot', INITIAL), ('screen_on', 'external.choice')]:
+        prop(KEY, value)
+        before = (base / 'props' / KEY).read_bytes()
+        assert 'info.desired=on' in run('status', 'pending-restart')
+        assert (base / 'props' / KEY).read_bytes() == before  # read-only status
+        run('watch', 'on', event=event)
+        assert (base / 'props' / KEY).read_text() == ACTION
+        assert (state / ('prop.' + KEY) / 'live').read_text() == INITIAL
+        assert (state / ('prop.' + KEY) / 'backing').read_bytes() == original
+    changes = (state / 'changes').read_bytes()
+    run('watch', 'on', event='screen_on')
+    assert (state / 'changes').read_bytes() == changes  # no matching-value write
     prop(KEY, 'external.choice')
-    run('status', 'conflict', 3)
-    run('apply', 'conflict', 3)  # reconcile must not fight stock settings
-    run('revert', 'conflict', 3)
-    assert (state / ('prop.' + KEY) / 'ready').exists()
-    prop(KEY, ACTION)
-    run('revert', 'off')
+    run('apply', 'on')  # confirmed apply/reconcile also wins over drift
+    prop(KEY, 'another.choice')
+    run('revert', 'off')  # even a drifted value restores the ORIGINAL baseline
     assert (base / 'props' / KEY).read_text() == INITIAL
     assert (base / 'backing' / KEY).read_bytes() == original
     # Absent backing file is restored as absent, including an empty live value.
     (base / 'backing' / KEY).unlink()
     prop(KEY, '')
     run('apply', 'on')
-    prop('ro.build.product', 'different')
+    prop(KEY, 'stock.reset')
+    prop('ro.build.product', 'NEEV.KOR.changed.260902')
+    run('watch', 'conflict', 3, event='boot')
+    run('apply', 'conflict', 3)
     run('revert', 'conflict', 3)
+    assert (base / 'props' / KEY).read_text() == 'stock.reset'
     prop('ro.build.product', product)
     run('revert', 'off')
     assert not (base / 'backing' / KEY).exists()
@@ -97,10 +121,17 @@ with tempfile.TemporaryDirectory() as directory:
     run('status', 'on', module=other, module_state=other_state)
     run('apply', 'on')
     prop(KEY, 'external.choice')
-    run('apply', 'conflict', 3)
+    prop(other_key, 'other.drift')
+    run('watch', 'on', event='screen_on')
+    assert (base / 'props' / KEY).read_text() == ACTION
+    assert (base / 'props' / other_key).read_text() == 'other.drift'
     run('revert', 'off', module=other, module_state=other_state)
     assert (base / 'props' / other_key).read_text() == 'other.original'
     assert (base / 'backing' / other_key).read_bytes() == b'other.original\x00'
-    assert (base / 'props' / KEY).read_text() == 'external.choice'
-    assert (state / ('prop.' + KEY) / 'ready').exists()
-print(MODULE_ID + ' lifecycle and independence tests passed')
+    assert (base / 'props' / KEY).read_text() == ACTION
+    prop(KEY, 'final.drift')
+    run('revert', 'off')
+    assert (base / 'props' / KEY).read_text() == INITIAL
+    run('watch', None, 3, event='screen_on')
+    assert (base / 'props' / KEY).read_text() == INITIAL
+print(MODULE_ID + ' reassertion, restore and independence tests passed')

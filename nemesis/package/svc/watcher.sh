@@ -22,6 +22,25 @@ display_state() {
         *) echo unknown ;;
     esac
 }
+# Quick boot can keep both boot ID and display state unchanged. Reuse the
+# fixed screen_on handler only for explicitly declared, baselined property drift.
+property_drift() {
+    drift_keys=
+    while IFS='=' read -r drift_field drift_value; do
+        [ "$drift_field" = reassert_props ] && drift_keys=$drift_value
+    done < "$base/modules/$1.properties"
+    drift_ifs=$IFS; IFS=,
+    for drift_key in $drift_keys; do
+        case "$drift_key" in ''|*[!a-zA-Z0-9_.-]*) continue;; esac
+        drift_dir=$state/modules/$1/prop.$drift_key
+        [ -f "$drift_dir/ready" ] && [ -f "$drift_dir/applied" ] || continue
+        drift_expected=$(cat "$drift_dir/applied") || continue
+        drift_actual=$(getprop "$drift_key") || continue
+        if [ "$drift_actual" != "$drift_expected" ]; then IFS=$drift_ifs; return 0; fi
+    done
+    IFS=$drift_ifs
+    return 1
+}
 # Boot readiness: wait without a hard exit, slowly.
 while [ "$(getprop sys.boot_completed)" != 1 ]; do sleep 5; done
 last_display=unknown
@@ -51,11 +70,11 @@ while :; do
         done
         if [ -n "$screen_ids" ]; then
             current_display=$(display_state)
-            if [ "$last_display" = off ] && [ "$current_display" = on ]; then
-                for id in $screen_ids; do
+            for id in $screen_ids; do
+                if { [ "$last_display" = off ] && [ "$current_display" = on ]; } || property_drift "$id"; then
                     /system/bin/sh "$root" "$id" watch screen_on >> "$log" 2>&1 || echo "watch screen_on failed: $id" >> "$log"
-                done
-            fi
+                fi
+            done
             [ "$current_display" = unknown ] || last_display=$current_display
         fi
     fi

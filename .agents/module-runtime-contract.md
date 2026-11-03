@@ -461,3 +461,39 @@ resolution and reflection before publish. `map.json` exposes only verified point
 Generated maps and the ledger are package-local state retained for export until
 package removal; module revert never removes them. The app invokes map commands
 through `RootClient.map` on a worker thread, with fixed arguments and bounded output.
+
+## Reasserted user-button properties (2026-11-04)
+
+Owner-approved `reassert_props=<csv>` explicitly permits reasserting and restoring
+listed properties despite external value drift. Each entry must be a valid,
+uniquely listed member of `owns_props`; `restore=reboot` is forbidden. Other
+properties/files retain guarded compare-before-restore semantics. Product/build
+guards remain mandatory, including for drifted values. Current users are only
+`user-button-shortcut` / `persist.sys.key.swrccustom` and
+`user-button-head-unit` / `persist.sys.key.custom`. Their confirmation warns that
+HMG-Seogaemo wins over stock settings while enabled; turning the module off
+restores the original baseline, overriding any intervening choice.
+
+Exact-restore modules may declare `watch=boot,screen_on` when they declare
+`reassert_props`. Initial confirmed apply captures the original baseline once;
+subsequent `sg_prop_set` calls preserve it and record reassertions in the ledger.
+Watch must require desired on, an existing baseline, and matching product; it must
+never capture a new baseline. Read-only status reports pending reassertion while
+desired on and drifted, using `state=pending-restart`, `restart=head_unit`, and
+`info.desired=on`. This is a queued repair, not a request to restart the head unit.
+
+On each active watcher poll (normally 5 seconds), enabled modules with
+`watch=screen_on` and `reassert_props` are checked against their saved applied
+property values. A ready baseline and applied marker are required. A mismatch
+reuses fixed `watch screen_on` dispatch under the existing root lock and desired/
+paused-state guards, even when the boot ID and dumpsys power state did not change.
+No new event or root argument is exposed. Matching properties cause no call or
+write. Disabling stops dispatch. Failed reassertions retry on subsequent polls;
+physical timing after QUICKBOOT_POWERON still needs on-car verification. The
+existing 300-second idle sleep can delay noticing the first newly enabled watch
+module; once active the watcher uses its ordinary 5-second interval.
+
+Restore preflight and property restore accept external drift only for explicitly
+owned reassert_props. They still fail on product mismatch and retain backups on
+failure. Restore ledger before bytes for these properties describe the observed
+live drifted value, while the immutable baseline remains the first-apply value.

@@ -16,7 +16,7 @@ def generate(root, order, output):
             if raw.startswith('#') or '=' not in raw:
                 continue
             key, value = raw.split('=', 1)
-            if key in ('owns_files', 'owns_props') and key in fields:
+            if key in ('owns_files', 'owns_props', 'reassert_props') and key in fields:
                 raise ValueError(f'duplicate ownership key: {module}:{key}')
             if key.startswith('owns_lines'):
                 if not re.fullmatch(r'owns_lines\.[1-9][0-9]*', key) or key in fields:
@@ -26,6 +26,13 @@ def generate(root, order, output):
                     raise ValueError(f'invalid stock line: {module}:{key}')
                 claims.append((key.split('.')[1], path, stock))
             fields[key] = value
+        reassert = fields.get('reassert_props', '')
+        if reassert:
+            keys = reassert.split(',')
+            owned = fields.get('owns_props', '').split(',')
+            if (fields.get('restore') == 'reboot' or len(keys) != len(set(keys)) or
+                    any(not re.fullmatch(r'[a-zA-Z0-9_.-]+', key) or key not in owned for key in keys)):
+                raise ValueError(f'invalid reassert_props: {module}')
         for path in filter(None, fields.get('owns_files', '').split(',')):
             validate_path(path)
             if path in whole or any(p == path for p, _ in lines):
