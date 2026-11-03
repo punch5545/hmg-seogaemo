@@ -136,5 +136,7 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 - Parallel work: one Paseo/git worktree per area; ownership is in the contract's ownership table.
   Shared files (`MainActivity`, `hmg-seogaemo-root`, `lib/common.sh`, `Makefile`,
   `tools/test-*.py`) belong to the runtime owner; others list needed hunks instead of editing.
+- One commit per logical change; each commit builds and passes `make test` on its own. Do not
+  bundle unrelated fixes into one commit.
 - Merge feature branches into `main` with `--no-ff`; keep worktrees after merging.
 - Interface changes go into `.agents/module-runtime-contract.md` first, then code.
