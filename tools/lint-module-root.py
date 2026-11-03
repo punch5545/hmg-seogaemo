@@ -8,7 +8,7 @@ BAD = re.compile(
     r"(?<![\w])(?:setprop|mount|umount|cp|mv|rm|dd|ln|chmod|chown|"
     r"start|stop|iptables|am|tee|"
     r"sg_prop_baseline|sg_prop_restore|sg_file_baseline|sg_file_mark_applied|"
-    r"sg_file_restore|sg_remount|sg_baseline_clear)\b|"
+    r"sg_file_restore|sg_remount|sg_remount_ro|sg_baseline_clear)\b|"
     r"\bsed\s+-i\b|\bnemesis\s+remount\b|"
     r"\bpm\s+(?:install|uninstall|enable|disable)\b|\bsettings\s+put\b")
 REDIRECT = re.compile(r"(?<![0-9])(?:>>|>)\s*['\"]?([^\s'\"]+)")
