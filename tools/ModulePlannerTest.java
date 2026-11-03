@@ -33,5 +33,17 @@ public final class ModulePlannerTest {
                 "-dependent -base +other ");
         expect(ModulePlanner.plan("base", false, order, deps, excludes, on),
                 "-dependent -base ");
+        excludes.put("other", new String[0]);
+        excludes.put("base", new String[0]);
+        if (!ModulePlanner.related("dependent", order, deps, excludes)
+                .equals(new HashSet<String>(Arrays.asList("dependent", "base"))))
+            throw new AssertionError("related dependency chain");
+        if (!ModulePlanner.related("other", order, deps, excludes)
+                .equals(new HashSet<String>(Arrays.asList("other"))))
+            throw new AssertionError("unrelated module included");
+        excludes.put("other", new String[] {"dependent"});
+        if (!ModulePlanner.related("base", order, deps, excludes)
+                .equals(new HashSet<String>(Arrays.asList("base", "dependent", "other"))))
+            throw new AssertionError("transitive exclusion missing");
     }
 }
