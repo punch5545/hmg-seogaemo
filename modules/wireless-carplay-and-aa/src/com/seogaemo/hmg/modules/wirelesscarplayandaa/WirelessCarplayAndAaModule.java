@@ -30,7 +30,6 @@ public final class WirelessCarplayAndAaModule extends RootBackedModule {
         "/system/lib/libhmg_seogaemo_wireless_hook.so",
         "/system/framework/hmg-seogaemo-wireless-hook.jar",
         "/system/lib/libleafiaaac.so",
-        "/system/onebin/neev_kr/featurexml.cfg",
         "/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml",
         "/system/etc/permissions/com.hkmc.software.connectivity.androidauto_wireless.xml",
         "/system/etc/permissions/com.hkmc.software.wifihotspot.xml",

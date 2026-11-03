@@ -212,6 +212,7 @@ sg_file_restore() {
     esac
 }
 sg_restore_preflight() {
+    sg_line_preflight || return 3
     sg_check_build || return 3
     for sg_check in "$HMG_SEOGAEMO_STATE"/prop.*/ready; do
         [ -f "$sg_check" ] || continue
@@ -270,6 +271,12 @@ sg_ledger() {
     [ -f "$sg_ledger_dir/ledger.tsv" ] ||
         sg_print "time	module	op	target	before-ref	after-ref	result" > "$sg_ledger_dir/ledger.tsv" || return 1
     sg_stamp=$(date +%s).$$.${SG_LEDGER_SEQ:-0}
+    # Subshell transactions do not propagate their counters to the caller.
+    # Preserve every referenced record even within the same second and PID.
+    while [ -e "$sg_ledger_dir/before/$sg_stamp" ] || [ -e "$sg_ledger_dir/after/$sg_stamp" ]; do
+        SG_LEDGER_SEQ=$((${SG_LEDGER_SEQ:-0} + 1))
+        sg_stamp=$(date +%s).$$.$SG_LEDGER_SEQ
+    done
     SG_LEDGER_SEQ=$((${SG_LEDGER_SEQ:-0} + 1))
     sg_before=before/$sg_stamp
     sg_after=after/$sg_stamp
@@ -291,6 +298,7 @@ sg_prop_set() {
 sg_commit_file() {
     sg_target=$1; sg_input=$2; sg_mode=$3; sg_owner=$4
     sg_validate owns_files "$sg_target" || return 2
+    sg_whole_exclusive "$sg_target" || return 3
     sg_file_baseline "$sg_target" || return 1
     sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_target")
     if [ -z "$sg_mode" ] || [ -z "$sg_owner" ]; then
@@ -329,8 +337,274 @@ sg_file_put() {
     sg_validate owns_files "$1" && sg_payload "$2" || return 2
     sg_commit_file "$1" "$sg_source" "${3:-}" "${4:-}"
 }
+# Shared text transactions. Subshells keep their scratch variables out of the
+# existing whole-file runtime. The dispatcher holds the global operation lock.
+sg_line_text() {
+    [ "$#" -eq 1 ] || return 2
+    [ "$(sg_write "$1" | LC_ALL=C grep -c '[[:cntrl:]]')" = 0 ] || return 2
+    case "$1" in *'
+'*) return 2;; esac
+}
+sg_line_claim() (
+    sg_line_text "$2" || exit 2
+    while IFS='=' read -r key value; do
+        case "$key" in owns_lines.*)
+            [ "$value" != "$1:$2" ] || exit 0 ;;
+        esac
+    done < "$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties"
+    exit 2
+)
+sg_whole_exclusive() (
+    for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
+        [ "$manifest" != "$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties" ] || continue
+        while IFS='=' read -r key value; do
+            case "$key" in
+                owns_files) case ",$value," in *,"$1",*) exit 3;; esac ;;
+                owns_lines.*) [ "${value%%:*}" != "$1" ] || exit 3 ;;
+            esac
+        done < "$manifest"
+    done
+)
+sg_line_authorize() (
+    sg_line_claim "$1" "$2" || exit 2
+    module=${HMG_SEOGAEMO_STATE##*/}
+    for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
+        other=${manifest##*/}; other=${other%.properties}
+        while IFS='=' read -r key value; do
+            case "$key" in
+                owns_files) case ",$value," in *,"$1",*) exit 3;; esac ;;
+                owns_lines.*)
+                    [ "$other" != "$module" ] || continue
+                    if [ "$value" = "$1:$2" ] &&
+                        [ "$(cat "$SG_DATA_ROOT/desired/$other" 2>/dev/null)" = on ]; then exit 3; fi ;;
+            esac
+        done < "$manifest"
+    done
+    # Do not reinterpret an earlier runtime's whole-file baseline as stock.
+    for saved in "$SG_DATA_ROOT"/modules/*/file."$(sg_file_key "$1")"/ready; do
+        [ ! -f "$saved" ] || exit 3
+    done
+)
+sg_line_guard() (
+    shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$1")
+    [ -f "$shared/ready" ] || exit 1
+    [ "$(cat "$shared/path")" = "$1" ] &&
+        [ "$(cat "$shared/build")" = "$(getprop ro.build.product)" ] &&
+        [ -f "$1" ] && [ ! -L "$1" ] &&
+        [ "$(sg_file_meta "$1")" = "$(cat "$shared/meta")" ] || exit 3
+    expected=$shared/bytes
+    if [ -f "$shared/active" ]; then
+        version=$(cat "$shared/active") || exit 1
+        case "$version" in v[0-9]* ) ;; *) exit 3;; esac
+        expected=$shared/versions/$version/bytes
+    fi
+    sg_equal "$expected" "$1" && exit 0
+    if [ -f "$shared/pending" ]; then
+        version=$(cat "$shared/pending") || exit 1
+        sg_equal "$shared/versions/$version/bytes" "$1" && exit 0
+    fi
+    exit 3
+)
+sg_line_audit() (
+    transaction=$1
+    module=$(cat "$transaction/module") || exit 1
+    HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$module
+    for event in "$transaction"/events/*; do
+        [ -d "$event" ] || continue
+        op=$(cat "$event/op") || exit 1
+        sg_ledger "$op" "$(cat "$transaction/path")" "$event/old" "$event/new" "$transaction/hashes" || exit 1
+    done
+    sg_ledger line_compose "$(cat "$transaction/path")" "$transaction/before" "$transaction/bytes" "$transaction/hashes"
+)
+sg_line_recover() (
+    target=$1
+    shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$target")
+    sg_line_guard "$target" || exit $?
+    [ -f "$shared/pending" ] || exit 0
+    version=$(cat "$shared/pending") || exit 1
+    transaction=$shared/versions/$version
+    if sg_equal "$transaction/bytes" "$target"; then
+        sg_line_audit "$transaction" || exit 1
+        sg_copy "$shared/pending" "$shared/active" || exit 1
+        sync || exit 1
+    fi
+    rm -f "$shared/pending"
+)
+sg_line_baseline() (
+    target=$1
+    shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$target")
+    [ ! -f "$shared/ready" ] || { sg_line_recover "$target"; exit $?; }
+    [ -f "$target" ] && [ ! -L "$target" ] || exit 3
+    stage=$shared.init.$$
+    mkdir -p "$stage/versions" || exit 1
+    chmod 700 "$SG_DATA_ROOT/shared-lines" "$stage" || exit 1
+    sg_copy "$target" "$stage/bytes" &&
+        sg_file_meta "$target" > "$stage/meta" &&
+        sg_write "$target" > "$stage/path" &&
+        getprop ro.build.product > "$stage/build" &&
+        sg_write present > "$stage/existence" &&
+        sg_write 1 > "$stage/ready" &&
+        mv "$stage" "$shared" || exit 1
+)
+# Compose each output line from the original input. Patch output is never fed
+# into another patch, even when its text equals a different stock line.
+sg_line_compose() (
+    shared=$1; next=$2
+    for patch in "$next"/patches/*/*; do
+        [ -d "$patch" ] || continue
+        owner=${patch%/*}; owner=${owner##*/}
+        grep -Fxq "$owner" "$HMG_SEOGAEMO_BASE/modules.list" || exit 3
+        old=$(cat "$patch/old") || exit 1
+        count=0
+        while IFS= read -r line || [ -n "$line" ]; do
+            [ "$line" != "$old" ] || count=$((count + 1))
+        done < "$shared/bytes"
+        [ "$count" -eq 1 ] || exit 3
+    done
+    : > "$next/bytes" || exit 1
+    while :; do
+        line=; newline=1
+        IFS= read -r line || newline=0
+        [ "$newline" -eq 1 ] || [ -n "$line" ] || break
+        output=$line; matches=0
+        while IFS= read -r module; do
+            for patch in "$next/patches/$module"/*; do
+                [ -d "$patch" ] || continue
+                if [ "$(cat "$patch/old")" = "$line" ]; then
+                    matches=$((matches + 1))
+                    output=$(cat "$patch/new") || exit 1
+                fi
+            done
+        done < "$HMG_SEOGAEMO_BASE/modules.list"
+        [ "$matches" -le 1 ] || exit 3
+        if [ "$newline" -eq 1 ]; then sg_print "$output"; else sg_write "$output"; fi >> "$next/bytes" || exit 1
+        [ "$newline" -eq 1 ] || break
+    done < "$shared/bytes"
+)
+sg_line_transaction() (
+    target=$1; action=$2; old=${3:-}; new=${4:-}
+    module=${HMG_SEOGAEMO_STATE##*/}
+    sg_line_baseline "$target" || exit $?
+    shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$target")
+    sg_line_guard "$target" || exit $?
+    version=v$(date +%s).$$; serial=0
+    while [ -e "$shared/versions/$version" ]; do serial=$((serial + 1)); version=v$(date +%s).$$.$serial; done
+    next=$shared/versions/$version
+    mkdir -p "$next/patches" "$next/events" || exit 1
+    if [ -f "$shared/active" ]; then
+        previous=$(cat "$shared/active") || exit 1
+        cp -R "$shared/versions/$previous/patches/." "$next/patches/" || exit 1
+    fi
+    mkdir -p "$HMG_SEOGAEMO_STATE/line.$(sg_file_key "$target")" || exit 1
+    marker=$HMG_SEOGAEMO_STATE/line.$(sg_file_key "$target")
+    sg_write "$target" > "$marker/path.tmp.$$" &&
+        mv -f "$marker/path.tmp.$$" "$marker/path" &&
+        sg_write 1 > "$marker/ready.tmp.$$" &&
+        mv -f "$marker/ready.tmp.$$" "$marker/ready" || exit 1
+    sg_bind_build || exit 3
+    if [ "$action" = apply ]; then
+        # Refuse an already applied same-line patch, even if desired=off.
+        for patch in "$next"/patches/*/*; do
+            [ -d "$patch" ] || continue
+            owner=${patch%/*}; owner=${owner##*/}
+            if [ "$(cat "$patch/old")" = "$old" ] && [ "$owner" != "$module" ]; then exit 3; fi
+        done
+        number=
+        while IFS='=' read -r key value; do
+            case "$key" in owns_lines.*) [ "$value" != "$target:$old" ] || number=${key#owns_lines.};; esac
+        done < "$HMG_SEOGAEMO_BASE/modules/$module.properties"
+        case "$number" in ''|*[!0-9]*) exit 2;; esac
+        patch=$next/patches/$module/$number
+        mkdir -p "$patch" "$next/events/$number" || exit 1
+        sg_write "$old" > "$patch/old" && sg_write "$new" > "$patch/new" &&
+            cp "$patch/old" "$next/events/$number/old" &&
+            cp "$patch/new" "$next/events/$number/new" &&
+            sg_write line_patch > "$next/events/$number/op" || exit 1
+    else
+        for patch in "$next/patches/$module"/*; do
+            [ -d "$patch" ] || continue
+            number=${patch##*/}
+            mkdir -p "$next/events/$number" &&
+                cp "$patch/new" "$next/events/$number/old" &&
+                cp "$patch/old" "$next/events/$number/new" &&
+                sg_write line_revert > "$next/events/$number/op" || exit 1
+        done
+        rm -rf "$next/patches/$module" || exit 1
+    fi
+    sg_line_compose "$shared" "$next" || exit $?
+    sg_copy "$target" "$next/before" && sg_write "$module" > "$next/module" &&
+        sg_write "$target" > "$next/path" || exit 1
+    { md5 "$next/before"; md5 "$next/bytes"; cat "$shared/build"; sg_print ''; cat "$shared/meta"; } > "$next/hashes" || exit 1
+    sg_print "$version" > "$shared/pending.tmp.$$" &&
+        mv -f "$shared/pending.tmp.$$" "$shared/pending" || exit 1
+    sync || exit 1
+    sg_line_guard "$target" || exit $?
+    system=0
+    case "$target" in /system/*) sg_remount rw || exit 1; system=1;; esac
+    temporary=$target.hmg-seogaemo.$$
+    read mode uid gid < "$shared/meta" || exit 1
+    rc=0
+    cp "$next/bytes" "$temporary" && chown "$uid:$gid" "$temporary" &&
+        chmod "$mode" "$temporary" &&
+        mv -f "$temporary" "$target" &&
+        sg_equal "$next/bytes" "$target" &&
+        [ "$(sg_file_meta "$target")" = "$(cat "$shared/meta")" ] || rc=1
+    rm -f "$temporary"
+    if [ "$system" -eq 1 ]; then sg_remount ro || rc=1; fi
+    [ "$rc" -eq 0 ] || exit 1
+    sync || exit 1
+    sg_line_recover "$target" || exit $?
+    if [ "$action" = revert ]; then
+        rm -rf "$marker" || exit 1
+        remaining=0
+        for patch in "$next"/patches/*/*; do [ ! -d "$patch" ] || remaining=1; done
+        if [ "$remaining" -eq 0 ]; then
+            sg_equal "$shared/bytes" "$target" &&
+                [ "$(sg_file_meta "$target")" = "$(cat "$shared/meta")" ] || exit 3
+            # A cancelled sibling apply can leave a marker without a patch.
+            # Stock is verified and no patches remain, so retire those too.
+            for stale in "$SG_DATA_ROOT"/modules/*/line."$(sg_file_key "$target")"; do
+                [ ! -d "$stale" ] || rm -rf "$stale" || exit 1
+            done
+            rm -rf "$shared"
+        fi
+    fi
+)
+sg_line_preflight() (
+    for marker in "$HMG_SEOGAEMO_STATE"/line.*/ready; do
+        [ -f "$marker" ] || continue
+        target=$(cat "${marker%/ready}/path") || exit 1
+        sg_line_guard "$target" || exit $?
+    done
+)
+sg_line_revert_all() (
+    for marker in "$HMG_SEOGAEMO_STATE"/line.*/ready; do
+        [ -f "$marker" ] || continue
+        target=$(cat "${marker%/ready}/path") || exit 1
+        shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$target")
+        sg_line_transaction "$target" revert || exit $?
+    done
+)
+sg_line_applied() (
+    shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$1")
+    [ -f "$shared/active" ] && [ ! -f "$shared/pending" ] || exit 1
+    sg_line_guard "$1" || exit $?
+    version=$(cat "$shared/active") || exit 1
+    for patch in "$shared/versions/$version/patches/${HMG_SEOGAEMO_STATE##*/}"/*; do
+        [ ! -d "$patch" ] || exit 0
+    done
+    exit 1
+)
+
 sg_file_replace_line() {
+    if sg_line_claim "$1" "$2"; then
+        sg_line_text "$3" || return 2
+        sg_line_authorize "$1" "$2" || return $?
+        sg_line_transaction "$1" apply "$2" "$3"
+        return $?
+    fi
     sg_validate owns_files "$1" || return 2
+    sg_whole_exclusive "$1" || return 3
     [ -f "$1" ] || return 1
     sg_replacement=$HMG_SEOGAEMO_STATE/replace.$$
     sg_ready || return 1
@@ -351,6 +625,7 @@ sg_file_replace_line() {
 }
 sg_file_delete() {
     sg_validate owns_files "$1" || return 2
+    sg_whole_exclusive "$1" || return 3
     sg_file_baseline "$1" || return 1
     sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1")
     case "$1" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
@@ -364,6 +639,7 @@ sg_file_delete() {
 }
 sg_bind_mount() {
     sg_validate owns_files "$1" && sg_payload "$2" || return 2
+    sg_whole_exclusive "$1" || return 3
     [ -f "$1" ] || return 1
     sg_file_baseline "$1" || return 1
     sg_bind=$HMG_SEOGAEMO_STATE/bind.$(sg_file_key "$1")
@@ -458,7 +734,10 @@ sg_service_call_ok_this_boot() {
 sg_applied() {
     sg_check_build || return 3
     case "$1" in
-        /*) sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1")
+        /*) if [ -f "$HMG_SEOGAEMO_STATE/line.$(sg_file_key "$1")/ready" ]; then
+                sg_line_applied "$1"; return $?
+            fi
+            sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1")
             case "$(cat "$sg_dir/applied-existence" 2>/dev/null)" in
                 absent) [ ! -e "$1" ] ;;
                 present) [ -f "$1" ] && sg_equal "$sg_dir/applied" "$1" ;;
@@ -575,6 +854,7 @@ sg_zygote_install() {
         "$HMG_SEOGAEMO_STATE/enable" "$HMG_SEOGAEMO_STATE/enabled" \
         "$HMG_SEOGAEMO_STATE/starts" "$HMG_SEOGAEMO_STATE/disable"; do
         sg_validate owns_files "$sg_target" || return 2
+        sg_whole_exclusive "$sg_target" || return 3
     done
     [ -f "$sg_bin" ] || return 3
     if sg_applied "$sg_bin"; then
@@ -611,7 +891,8 @@ sg_revert_all() {
     sg_zygote_finalize_guard || return 3
     sg_dex_finalize || return 3
     sg_restore_preflight || return 3
-    [ -f "$HMG_SEOGAEMO_STATE/changes" ] || return 0
+    sg_line_revert_all || return $?
+    [ -f "$HMG_SEOGAEMO_STATE/changes" ] || { sg_baseline_clear; return $?; }
     sg_reverse=
     while IFS='	' read -r sg_kind sg_target; do
         sg_reverse="$sg_kind:$sg_target $sg_reverse"

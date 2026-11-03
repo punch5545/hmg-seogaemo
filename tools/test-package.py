@@ -57,7 +57,7 @@ def run():
         assert ota.read("app/hmg-seogaemo.apk") == package.read("app/hmg-seogaemo.apk")
         assert ota.read("update_roots.pem") == (ROOT / "app/res/raw/update_roots.pem").read_bytes()
         for name in ota.namelist():
-            assert name in ("VERSION", "update_roots.pem", "app/hmg-seogaemo.apk", "modules.list", "modules.graph") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/"))
+            assert name in ("VERSION", "update_roots.pem", "app/hmg-seogaemo.apk", "modules.list", "modules.graph", "modules.lines") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/"))
             if name in entries:
                 assert ota.read(name) == package.read(name)
         usb_meta = descriptor(usb.read("NEMESIS.data"))
@@ -183,10 +183,10 @@ def run():
             for name in ("hmg-seogaemo-0.1.1-manifest.json", "hmg-seogaemo-0.1.1-manifest.json.sig", "hmg-seogaemo-0.1.1-ota.zip"):
                 (incoming / name).write_bytes(b"test")
             (incoming / "payload/app").mkdir(parents=True)
-            for name in ("VERSION", "app/hmg-seogaemo.apk", "modules.list", "modules.graph"):
+            for name in ("VERSION", "app/hmg-seogaemo.apk", "modules.list", "modules.graph", "modules.lines"):
                 (incoming / "payload" / name).write_text("test\n")
             (incoming / "payload/VERSION").write_text("0.1.1\n")
-            md5_lines = "".join(hashlib.md5((incoming / "payload" / name).read_bytes()).hexdigest() + "|" + name + "\n" for name in ("VERSION", "app/hmg-seogaemo.apk", "modules.list", "modules.graph"))
+            md5_lines = "".join(hashlib.md5((incoming / "payload" / name).read_bytes()).hexdigest() + "|" + name + "\n" for name in ("VERSION", "app/hmg-seogaemo.apk", "modules.list", "modules.graph", "modules.lines"))
             (incoming / "payload/files.md5").write_text(md5_lines)
             fake_bin = fake_root / "bin"
             fake_bin.mkdir()
@@ -194,7 +194,7 @@ def run():
 case "$3" in
   copy) mkdir "$5"; cp "$4"/hmg-seogaemo-* "$5/"; cp -R "$4/payload" "$5/";;
   verify) echo 0.1.1;;
-  extract) mkdir -p "$6/app" "$6/bin" "$6/svc"; cp "$4/payload/VERSION" "$6/VERSION"; cp "$4/payload/modules.graph" "$6/modules.graph"; cp "$4/payload/modules.list" "$6/modules.list"; cp "$4/payload/app/hmg-seogaemo.apk" "$6/app/hmg-seogaemo.apk"; echo '#!/bin/sh' > "$6/bin/install-apk.sh"; echo 'exit 0' >> "$6/bin/install-apk.sh"; echo '#!/bin/sh' > "$6/bin/hmg-seogaemo-root"; echo 'exit 0' >> "$6/bin/hmg-seogaemo-root"; echo '#!/bin/sh' > "$6/svc/reconcile.sh"; echo 'exit 0' >> "$6/svc/reconcile.sh"; cp "$4/payload/files.md5" "$6/files.md5";;
+  extract) mkdir -p "$6/app" "$6/bin" "$6/svc"; cp "$4/payload/VERSION" "$6/VERSION"; cp "$4/payload/modules.graph" "$6/modules.graph"; cp "$4/payload/modules.lines" "$6/modules.lines"; cp "$4/payload/modules.list" "$6/modules.list"; cp "$4/payload/app/hmg-seogaemo.apk" "$6/app/hmg-seogaemo.apk"; echo '#!/bin/sh' > "$6/bin/install-apk.sh"; echo 'exit 0' >> "$6/bin/install-apk.sh"; echo '#!/bin/sh' > "$6/bin/hmg-seogaemo-root"; echo 'exit 0' >> "$6/bin/hmg-seogaemo-root"; echo '#!/bin/sh' > "$6/svc/reconcile.sh"; echo 'exit 0' >> "$6/svc/reconcile.sh"; cp "$4/payload/files.md5" "$6/files.md5";;
   switch) python3 -c 'import os,sys; os.replace(sys.argv[1],sys.argv[2])' "$4" "$5";;
 esac
 """)

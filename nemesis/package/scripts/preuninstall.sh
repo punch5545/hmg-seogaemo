@@ -20,7 +20,7 @@ for id in $(cat "$base/modules.list"); do reverse="$id $reverse"; done
 for id in $reverse; do
     active=$(cat "$state/desired/$id" 2>/dev/null)
     baseline=0
-    for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready; do
+    for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready "$state/modules/$id"/line.*/ready; do
         [ -f "$item" ] && baseline=1
     done
     [ "$active" = on ] || [ "$baseline" -eq 1 ] || continue
@@ -37,7 +37,7 @@ done
 for id in $reverse; do
     active=$(cat "$state/desired/$id" 2>/dev/null)
     baseline=0
-    for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready; do
+    for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready "$state/modules/$id"/line.*/ready; do
         [ -f "$item" ] && baseline=1
     done
     [ "$active" = on ] || [ "$baseline" -eq 1 ] || continue
@@ -54,7 +54,7 @@ for id in $reverse; do
         echo "HMG-Seogaemo uninstall blocked: $id did not verify off" >&2; exit 1 ;;
     esac
     [ "$(cat "$state/desired/$id" 2>/dev/null)" = off ] || exit 1
-    for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready; do
+    for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready "$state/modules/$id"/line.*/ready; do
         [ ! -f "$item" ] || {
             echo "HMG-Seogaemo uninstall blocked: $id baseline remains" >&2; exit 1;
         }

@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+OWNERSHIP_TOOL=$(CDPATH= cd "$(dirname "$0")" && pwd)/module-ownership.py
 
 PROJECT_ROOT=${PROJECT_ROOT:-$(CDPATH= cd "$(dirname "$0")/.." && pwd)}
 OUT_DIR=${OUT_DIR:-$PROJECT_ROOT/out}
@@ -248,6 +249,8 @@ END {
     }
 }' "$work/records"
 
+python3 "$OWNERSHIP_TOOL" "$PROJECT_ROOT" "$work/ordered-ids" "$work/lines"
+
 mkdir -p "$OUT_DIR/gen/com/seogaemo/hmg/module" "$OUT_DIR/package/modules"
 {
     echo 'package com.seogaemo.hmg.module;'
@@ -271,6 +274,7 @@ mkdir -p "$OUT_DIR/gen/com/seogaemo/hmg/module" "$OUT_DIR/package/modules"
 } > "$OUT_DIR/gen/com/seogaemo/hmg/module/GeneratedModules.java"
 cp "$work/ordered-ids" "$OUT_DIR/package/modules.list"
 cp "$work/graph" "$OUT_DIR/package/modules.graph"
+cp "$work/lines" "$OUT_DIR/package/modules.lines"
 rm -f "$OUT_DIR/package/modules/"*.sh "$OUT_DIR/package/modules/"*.properties
 while IFS=' ' read -r id script; do
     [ -n "$id" ] || continue
