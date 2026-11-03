@@ -31,15 +31,18 @@ The pre-enable warning uses the sibling module's root `status` (`on` or
 `wlan0` at `192.168.0.1`. These are read-only indicators and can miss a
 projection session on other interface/address setups. `status` reports
 `info.client_ip` only if `wpa_cli -i wlan0 status` reports
-`wpa_state=COMPLETED` and `ifconfig wlan0` has a non-AP IPv4 address.
+`wpa_state=COMPLETED` and `ifconfig wlan0` or `netcfg` has a non-AP IPv4
+address. The parser uses mksh builtins because `awk` is absent on the unit.
 PackageManager's `android.hardware.wifi` feature distinguishes applied files
 awaiting a reboot from an observed feature. The module cannot infer actual
 Settings menu visibility from the feature list.
 
 `modules/wifi-client/test/run.sh` uses a private fake `common.sh`, fake
-`getprop`/`setprop`/`pm`/`ifconfig`/`wpa_cli`, and fake system/sys roots. It covers
+`getprop`/`setprop`/`pm`/`ifconfig`/`netcfg`/`wpa_cli`, and fake system/sys roots. It covers
 off/apply/reapply/on/revert, exact config restore and XML absence, IP,
-warning, firmware/chip/owner gates, and drift conflict. The current top-level
+warning, firmware/chip/owner gates, and drift conflict. It runs module
+commands with a restricted PATH that supplies only the documented head-unit
+tools and failing stubs for unavailable tools. The current top-level
 `make test` does not discover module tests; the runtime owner should add
 `sh modules/wifi-client/test/run.sh` to that target (or general discovery).
 The current `tools/test-package.py:63-76` also assumes every module is still

@@ -30,15 +30,44 @@ external_owner() {
         [ -f /data/nemesis/apps/wireless.projection/NEMESIS.data ]
 }
 
+parse_client_ip() {
+    mode=$1
+    set -f
+    line=
+    while IFS= read -r line || [ -n "$line" ]; do
+        set -- $line
+        ip=
+        if [ "$mode" = netcfg ]; then
+            [ "$#" -gt 0 ] || continue
+            [ "$1" = wlan0 ] || continue
+            shift
+            for field do
+                case "$field" in */*) ip=${field%%/*}; break ;; esac
+            done
+        else
+            while [ "$#" -gt 1 ]; do
+                if [ "$1" = inet ]; then
+                    shift
+                    ip=${1#addr:}
+                    break
+                fi
+                shift
+            done
+        fi
+        # An AP normally owns 192.168.0.1; never report that as a client IP.
+        case "$ip" in
+            ''|0.0.0.0|192.168.0.1|*[!0-9.]*|.*|*..*|*.) continue ;;
+            *.*.*.*) printf '%s\n' "$ip"; break ;;
+        esac
+    done
+}
+
 client_ip() {
     [ -e /sys/class/net/wlan0 ] || return 0
     wpa_cli -i wlan0 status 2>/dev/null | grep -Fxq 'wpa_state=COMPLETED' || return 0
-    # An AP normally owns 192.168.0.1; never report that as a client address.
-    ifconfig wlan0 2>/dev/null | awk '
-        /inet addr:/ { for (i=1; i<=NF; i++) if ($i ~ /^addr:/) { sub(/^addr:/, "", $i); ip=$i } }
-        /inet / && !/inet addr:/ { for (i=1; i<NF; i++) if ($i=="inet") ip=$(i+1) }
-        END { if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && ip != "0.0.0.0" && ip != "192.168.0.1") print ip }
-    '
+    ip=$(ifconfig wlan0 2>/dev/null | parse_client_ip ifconfig)
+    [ -n "$ip" ] || ip=$(netcfg 2>/dev/null | parse_client_ip netcfg)
+    [ -z "$ip" ] || printf '%s\n' "$ip"
 }
 print_ip() { ip=$(client_ip); [ -z "$ip" ] || printf 'info.client_ip=%s\n' "$ip"; }
 

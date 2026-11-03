@@ -45,7 +45,10 @@ sg_file_put() {
 sg_file_replace_line() {
     [ "$(grep -Fxc -e "$2" "$1")" = 1 ] || return 1
     sg_snapshot "$1" || return 1
-    sed 's|^-/system/etc/permissions/android\.hardware\.wifi\.xml$|#-/system/etc/permissions/android.hardware.wifi.xml|' "$1" > "$1.tmp" || return 1
+    while IFS= read -r line || [ -n "$line" ]; do
+        [ "$line" != "$2" ] || line=$3
+        printf '%s\n' "$line"
+    done < "$1" > "$1.tmp" || return 1
     cat "$1.tmp" > "$1" || return 1
     rm "$1.tmp"
     sg_mark "$1"
@@ -91,6 +94,10 @@ cat > "$work/bin/ifconfig" <<'EOF'
 #!/bin/sh
 cat "$TEST_WORK/ifconfig" 2>/dev/null || :
 EOF
+cat > "$work/bin/netcfg" <<'EOF'
+#!/bin/sh
+cat "$TEST_WORK/netcfg" 2>/dev/null || :
+EOF
 cat > "$work/bin/wpa_cli" <<'EOF'
 #!/bin/sh
 cat "$TEST_WORK/wpa-status" 2>/dev/null || :
@@ -115,9 +122,24 @@ sed -e "s|^cfg=/system/|cfg=$work/system/|" \
 
 cp "$repo/modules/wifi-client/payload/android.hardware.wifi.xml" "$work/base/android.hardware.wifi.xml"
 export TEST_WORK=$work SEOGAEMO_BASE=$work/base SEOGAEMO_STATE=$work/state SEOGAEMO_MODULE_DIR=$work/base
-PATH=$work/bin:$PATH
-export PATH
-run() { sh "$work/wifi-client.sh" "$1" > "$work/output"; }
+# Keep the test harness on the host PATH, but execute the module with only
+# toolbox-like commands. Forbidden names are explicit failing stubs.
+mkdir "$work/allowed"
+for tool in sh cat cmp cp grep rm; do
+    ln -s "$(command -v "$tool")" "$work/allowed/$tool"
+done
+for tool in getprop setprop pm ifconfig netcfg wpa_cli; do
+    ln -s "$work/bin/$tool" "$work/allowed/$tool"
+done
+for tool in awk sed tail head cut tr wc sort uniq xargs find stat readlink sha256sum sha1sum tar unzip busybox toybox; do
+    cat > "$work/allowed/$tool" <<'EOF'
+#!/bin/sh
+echo "forbidden tool called: ${0##*/}" >&2
+exit 99
+EOF
+    chmod +x "$work/allowed/$tool"
+done
+run() { PATH=$work/allowed sh "$work/wifi-client.sh" "$1" > "$work/output"; }
 assert_state() { grep -Fxq "state=$1" "$work/output" || { cat "$work/output"; exit 1; }; }
 assert_line() { grep -Fxq "$1" "$work/output" || { cat "$work/output"; exit 1; }; }
 
@@ -135,6 +157,9 @@ run status; assert_state on
 printf 'wpa_state=COMPLETED\n' > "$work/wpa-status"
 printf 'wlan0: inet addr:10.7.0.15 Bcast:10.7.0.255 Mask:255.255.255.0\n' > "$work/ifconfig"
 run status; assert_line info.client_ip=10.7.0.15
+: > "$work/ifconfig"
+printf 'wlan0 UP 10.7.0.16/24 0x00001043\n' > "$work/netcfg"
+run status; assert_line info.client_ip=10.7.0.16
 printf 'wpa_state=DISCONNECTED\n' > "$work/wpa-status"
 run status
 if grep -q '^info.client_ip=' "$work/output"; then exit 1; fi
