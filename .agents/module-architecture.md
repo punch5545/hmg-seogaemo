@@ -1,10 +1,10 @@
 Status: partly superseded — planning-era scaffold and future-module descriptions are updated below; physical-car behavior remains untested.
 
 Current update (2026-11-03): `skip-consent-screen` is a fourth built-in module.
-The single NEMESIS reconcile service now uses `mode=restart`, reconciles at boot,
-then watches fixed boot/screen-on events. OTA health checks run reconciliation
-once and return. Earlier references below to three modules and `mode=once` are
-historical.
+NEMESIS runs two services: `reconcile` (`mode=once`, boot reconciliation and OTA
+health checks only) and `watcher` (`svc/watcher.sh`, `mode=restart`), which only
+dispatches fixed boot/screen-on watch events and never applies or reverts.
+Earlier references below to three modules are historical.
 
 # Built-in module architecture
 
@@ -55,7 +55,8 @@ nemesis/                            # module-independent package parts
   package/bin/hmg-seogaemo-root         # validated dispatcher, only ids in modules.list
   package/bin/open.sh               # Manager Launch / APK recovery
   package/scripts/postinstall.sh, preuninstall.sh
-  package/svc/reconcile.sh          # boot reconciliation and shared watch loop
+  package/svc/reconcile.sh          # boot reconciliation (mode=once)
+  package/svc/watcher.sh            # boot/screen_on watch dispatch (mode=restart)
   usb/NEMESIS.data                  # USB install wrapper
 out/                                # build output (gitignored)
 ```

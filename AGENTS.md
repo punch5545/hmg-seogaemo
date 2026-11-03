@@ -89,7 +89,7 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 |---|---|
 | `app/` | APK `com.seogaemo.hmg`: `ui/` (Home `HomeView` pager, `ui/settings` page components), `module/` (registry, `ModuleManager`, `RootClient`, contract types), `core/update/` (OTA) |
 | `modules/<id>/` | one module = one dir: `module.properties`, `src/` (`com.seogaemo.hmg.modules.*`), `res/` (`<snake_id>_*` strings), `root/<id>.sh`, optional `payload/`, `build/build.sh`, `test/run.sh` |
-| `nemesis/package/` | NEMESIS package `hmg-seogaemo`: `NEMESIS.data`, `bin/` (`hmg-seogaemo-root`, `open.sh`, `install-apk.sh`), `lib/common.sh`, `core/update.sh`, `scripts/` (stable hook wrappers), `svc/reconcile.sh` |
+| `nemesis/package/` | NEMESIS package `hmg-seogaemo`: `NEMESIS.data`, `bin/` (`hmg-seogaemo-root`, `open.sh`, `install-apk.sh`), `lib/common.sh`, `core/update.sh`, `scripts/` (stable hook wrappers), `svc/reconcile.sh` (boot-only), `svc/watcher.sh` (boot/screen_on watch dispatch, never apply/revert) |
 | `nemesis/usb/` | USB wrapper descriptor (`packages/hmg-seogaemo.zip`) |
 | `tools/` | module generator, packager, root-script lint, tests, `testlib/fakebin` (toolbox shims) |
 | `core/hookpoints/`, `core/map/`, `maps/` | full hookpoint catalogue, standalone API 19 mapper, bundled verified map data |

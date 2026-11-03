@@ -63,11 +63,18 @@ Read/report helpers: `sg_log <msg>`, `sg_owner_present <name>` (`nemesis-adb-tcp
 Internal (not for modules): baseline capture, applied-copy marking, remount, ledger writes.
 
 `watch=boot,screen_on` may declare only these fixed events. The package's single
-reconcile/watch service invokes `root/<id>.sh watch <event>` only while that
-module's desired state is on, under the root operation lock. Boot dispatch waits
-for `sys.boot_completed=1`. Screen-on dispatch uses a display off-to-on
-transition; uncertain readings do not trigger calls. The core polls slowly while
-running and never passes arbitrary event names or arguments.
+watcher service (`svc/watcher.sh`, `mode=restart`, separate from the `mode=once`
+`reconcile` service, and never calling apply/revert) invokes `root/<id>.sh watch
+<event>` only while that module's desired state is on, under the root operation
+lock. It waits for `sys.boot_completed=1` with a slow sleep and no hard exit, and
+re-reads desired state every loop. With no enabled watch module it idles on a
+300-second sleep. The boot event is dispatched once per module per kernel boot
+(marker `watch/boot.<id>` holding `/proc/sys/kernel/random/boot_id`), so a watcher
+restart does not repeat it. Screen-on dispatch uses a display off-to-on
+transition read from `dumpsys power` every 5 seconds (Android 4.4 keys
+`mWakefulness=`, `mDisplayPowerRequest.policy=`; `mScreenOn=`/`mInteractive=` are
+also accepted); uncertain readings do not trigger calls. The watcher never passes
+arbitrary event names or arguments.
 
 `restore=reboot` is reserved for modules whose only non-reversible effect is
 transient until a head-unit restart. Disable stops future watch calls. Until the

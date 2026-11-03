@@ -380,34 +380,67 @@ def test_watch_dispatch(temp):
     base = temp / "watch-dispatch"
     for folder in ("bin", "svc", "modules"):
         (base / folder).mkdir(parents=True)
-    shutil.copy(ROOT / "nemesis/package/svc/reconcile.sh", base / "svc/reconcile.sh")
-    (base / "modules.list").write_text("watcher\n")
+    shutil.copy(ROOT / "nemesis/package/svc/watcher.sh", base / "svc/watcher.sh")
+    (base / "modules.list").write_text("watcher\nplain\n")
     (base / "modules/watcher.properties").write_text("watch=boot,screen_on\n")
+    (base / "modules/plain.properties").write_text("id=plain\n")
     state = base / "state"
     (state / "desired").mkdir(parents=True)
-    (state / "desired/watcher").write_text("on")
-    marker = base / "apk-installed"
-    marker.write_text("1")
     fake = base / "fake"
     fake.mkdir()
     script(fake / "getprop", 'echo 1\n')
-    script(fake / "pm", 'echo package:fake\n')
     script(fake / "dumpsys", 'cat "$FAKE_DISPLAY"\n')
-    script(fake / "sleep", 'echo "mScreenOn=true" > "$FAKE_DISPLAY"\n')
+    # Each sleep flips the display on, so the second poll sees off -> on.
+    script(fake / "sleep", 'echo "$1" >> "$FAKE_SLEEPS"; echo "mWakefulness=Awake" > "$FAKE_DISPLAY"\n')
     script(base / "bin/hmg-seogaemo-root", 'echo "$1 $2 $3" >> "$FAKE_CALLS"; echo state=on\n')
     display = base / "display"
-    display.write_text("mScreenOn=false")
+    boot_id = base / "boot-id"
+    boot_id.write_text("boot-a")
     env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
                SG_DATA_ROOT=str(state), FAKE_DISPLAY=str(display),
-               FAKE_CALLS=str(base / "calls"), FAKE_PM_MARKER=str(marker),
-               HMG_SEOGAEMO_WATCH_MAX_POLLS="1")
-    run(base / "svc/reconcile.sh", env=env)
-    assert (base / "calls").read_text().splitlines() == [
-        "watcher apply ", "watcher watch boot", "watcher watch screen_on"]
-    (base / "calls").write_text("")
-    env["HMG_SEOGAEMO_UPDATE_HEALTH"] = "1"
-    run(base / "svc/reconcile.sh", env=env)
-    assert (base / "calls").read_text().splitlines() == ["watcher apply "]
+               FAKE_CALLS=str(base / "calls"), FAKE_SLEEPS=str(base / "sleeps"),
+               SG_BOOT_ID_FILE=str(boot_id), HMG_SEOGAEMO_WATCH_MAX_POLLS="3")
+    calls = base / "calls"
+    # Nothing enabled: idle with the long interval, never dispatch, never exit early.
+    display.write_text("mWakefulness=Asleep")
+    run(base / "svc/watcher.sh", env=env)
+    assert not calls.exists()
+    assert (base / "sleeps").read_text().splitlines() == ["300", "300"]
+    (base / "sleeps").unlink()
+    # Enabled: boot dispatched once, screen_on on the off -> on transition only.
+    (state / "desired/watcher").write_text("on")
+    (state / "desired/plain").write_text("on")
+    display.write_text("mWakefulness=Asleep")
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch boot", "watcher watch screen_on"]
+    assert (base / "sleeps").read_text().splitlines() == ["5", "5"]
+    # Watcher restart in the same boot does not repeat the boot event; a new boot does.
+    calls.write_text("")
+    display.write_text("mWakefulness=Awake")
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text() == ""
+    boot_id.write_text("boot-b")
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch boot"]
+    # The watcher never applies or reverts.
+    assert "apply" not in calls.read_text() and "revert" not in calls.read_text()
+    # Unreadable display state never triggers a call.
+    calls.write_text("")
+    display.write_text("garbage")
+    script(fake / "sleep", 'echo "$1" >> "$FAKE_SLEEPS"\n')
+    boot_id.write_text("boot-c")
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch boot"]
+    # Screen off-> on recognises both Android 4.4 policy and wakefulness keys.
+    calls.write_text("")
+    script(fake / "dumpsys", 'if [ -f "$FAKE_DISPLAY.n" ]; then echo mDisplayPowerRequest.policy=BRIGHT; else : > "$FAKE_DISPLAY.n"; echo mDisplayPowerRequest.policy=OFF; fi\n')
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch screen_on"]
+
+
+def test_reconcile_does_not_watch(temp):
+    text = (ROOT / "nemesis/package/svc/reconcile.sh").read_text()
+    assert " watch " not in text and "dumpsys" not in text
 
 
 def test_lint(temp):
@@ -531,6 +564,7 @@ with tempfile.TemporaryDirectory() as directory:
     test_service_call_api(root)
     test_reconcile_and_uninstall(root)
     test_watch_dispatch(root)
+    test_reconcile_does_not_watch(root)
     test_lint(root)
     test_module_build_hook(root)
     test_zygote_and_dex(root)

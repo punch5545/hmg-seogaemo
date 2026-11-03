@@ -12,7 +12,7 @@ HMG-Seogaemo installs through [NEMESIS](https://github.com/xwtk/hmg_nemesis) by 
 
 ## HKMC Factory 82
 
-The `skip-consent-screen` module follows the observed behavior of [HKMC Factory 82](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (MIT). HMG-Seogaemo's module, fixed Binder-call API, and shared watcher are independently written; no HKMC Factory 82 source is included.
+The `skip-consent-screen` module follows the observed behavior of [HKMC Factory 82](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (MIT). HMG-Seogaemo's module, fixed Binder-call API, and shared `watcher` service are independently written; no HKMC Factory 82 source is included.
 
 ## HMG Leafia Plus and Xposed
 

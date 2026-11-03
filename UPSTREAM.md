@@ -29,4 +29,4 @@ Run `sh tools/upstream-diff.sh [path/to/HMG-API]` after updating a local clone. 
 
 ## Startup consent screen reference
 
-The community [HKMC Factory 82 package](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (`local.hkmc.factory82`, release `4.2.1`, MIT) is the behavioral reference for `skip-consent-screen`. Its `packages/hkmc-factory82/svc/watch.sh` calls `com.hkmc.factory` Binder transaction `82` after startup or display wake. HMG-Seogaemo independently implements a fixed-call API and shared watcher; it has not copied the package scripts. See [.agents/skip-consent-screen.md](.agents/skip-consent-screen.md).
+The community [HKMC Factory 82 package](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (`local.hkmc.factory82`, release `4.2.1`, MIT) is the behavioral reference for `skip-consent-screen`. Its `packages/hkmc-factory82/svc/watch.sh` calls `com.hkmc.factory` Binder transaction `82` after startup or display wake. HMG-Seogaemo independently implements a fixed-call API and shared `watcher` service; it has not copied the package scripts. See [.agents/skip-consent-screen.md](.agents/skip-consent-screen.md).
