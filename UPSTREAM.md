@@ -30,3 +30,13 @@ Run `sh tools/upstream-diff.sh [path/to/HMG-API]` after updating a local clone. 
 ## Startup consent screen reference
 
 The community [HKMC Factory 82 package](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (`local.hkmc.factory82`, release `4.2.1`, MIT) is the behavioral reference for `skip-consent-screen`. Its `packages/hkmc-factory82/svc/watch.sh` calls `com.hkmc.factory` Binder transaction `82` after startup or display wake. HMG-Seogaemo independently implements a fixed-call API and shared `watcher` service; it has not copied the package scripts. See [.agents/skip-consent-screen.md](.agents/skip-consent-screen.md).
+
+## User button shortcut reference
+
+`user-button-shortcut` follows action-broadcast / explicit-activity behavior in
+HMG-API `core/runtime/java/hmgapi/hook/StarKey.java:64-103` at `4fab437`. The
+owner-selected no-hook alternative omits stock-list injection (`:115-204`) and
+uses our guarded exact property restore instead of upstream's reset-to-None.
+Module and receiver code are independently written; no upstream source was copied.
+See [.agents/user-button-shortcut.md](.agents/user-button-shortcut.md) for KOR
+odex evidence and physical-car checks.
