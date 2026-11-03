@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.ByteArrayOutputStream;
 import org.json.JSONObject;
+import java.util.Iterator;
 
 final class HmgApi {
     private HmgApi() {}
@@ -18,25 +19,56 @@ final class HmgApi {
     static final Wireless ENTRY = new Wireless();
     static final ModContext MOD = new ModContext();
 
+    private static String read(File file) throws Exception {
+        FileInputStream in = new FileInputStream(file);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192]; int n;
+        try {
+            while ((n = in.read(buf)) > 0) {
+                if (out.size() + n > 4194304) throw new IllegalStateException("map too large");
+                out.write(buf, 0, n);
+            }
+        } finally { in.close(); }
+        return out.toString("UTF-8");
+    }
+
+    private static String property(Class<?> provider, String key) throws Exception {
+        return (String) provider.getMethod("get", String.class).invoke(null, key);
+    }
+
     static void zygoteInit() {
         try {
             Class<?> prop = Class.forName("android.os.SystemProperties");
-            String product = (String) prop.getMethod("get", String.class).invoke(null, "ro.build.product");
-            if (!"NEEV.KOR.0000.V039.001.260902".equals(product)) { i("hooks off: firmware " + product); return; }
+            String product = property(prop, "ro.build.product");
             File enabled = new File("/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/enabled");
             if (!enabled.isFile()) { i("hooks off: module disabled"); return; }
-            File mapFile = new File("/system/etc/seogaemo/wireless-carplay-and-aa/car-map.json");
-            FileInputStream in = new FileInputStream(mapFile);
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            byte[] buf = new byte[8192]; int n;
-            try { while ((n = in.read(buf)) > 0) out.write(buf, 0, n); } finally { in.close(); }
-            JSONObject map = new JSONObject(out.toString("UTF-8"));
-            JSONObject files = map.getJSONObject("files");
-            String[] required = { "/system/framework/framework.odex", "/system/app/HKMC_DiPO.odex",
-                    "/system/app/Iap2ServerApp.odex", "/system/app/HKMC_GPM.odex" };
-            for (String file : required) {
-                if (!files.getString(file).equals(ModContext.md5(file))) { i("hooks off: stock hash mismatch " + file); return; }
+            File root = new File("/data/nemesis/backup/hmg-seogaemo/car-maps");
+            String relative = read(new File(root, "active")).trim();
+            if (!relative.matches("[A-Za-z0-9._-]+/[0-9a-f]{32}/[0-9a-f]{32}")) {
+                i("hooks off: active map pointer invalid"); return;
             }
+            File selected = new File(root, relative);
+            JSONObject car = new JSONObject(read(new File(selected, "car.json")));
+            if (!product.equals(car.getString("product")) ||
+                    !property(prop, "ro.mobis.onebindir").equals(car.getString("onebin")) ||
+                    !property(prop, "ro.build.version.release").equals(car.getString("android"))) {
+                i("hooks off: car identity changed"); return;
+            }
+            String seal = product + "\n" + read(new File(selected, "hash-id")).trim() + "\n"
+                    + read(new File("/proc/sys/kernel/random/boot_id")).trim() + "\n";
+            if (!seal.equals(read(new File(selected, "verified")))) {
+                i("hooks off: map not verified this boot"); return;
+            }
+            JSONObject files = car.getJSONObject("files");
+            Iterator<String> paths = files.keys();
+            while (paths.hasNext()) {
+                String file = paths.next();
+                if (!file.matches("/system/(?:app|framework)/[A-Za-z0-9_.-]+") ||
+                        !files.getString(file).equals(ModContext.md5(file))) {
+                    i("hooks off: stock hash mismatch " + file); return;
+                }
+            }
+            JSONObject map = new JSONObject(read(new File(selected, "map.json")));
             Points.use(map);
             if (!Points.needAll("boot", "framework.activity_thread.handle_bind_application", "framework.app_bind_data.app_info", "framework.app_bind_data.process_name", "framework.activity_thread.initial_application")) return;
             Points.hook(null, "framework.activity_thread.handle_bind_application", new MethodHook() {
