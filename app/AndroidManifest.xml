@@ -26,5 +26,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <receiver android:name=".modules.userbuttonshortcut.UserButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.seogaemo.hmg.USER_BUTTON_SHORTCUT" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
