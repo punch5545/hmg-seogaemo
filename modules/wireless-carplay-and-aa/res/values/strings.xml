@@ -1,4 +1,4 @@
 <resources>
     <string name="wireless_carplay_and_aa_name">Wireless CarPlay and Android Auto</string>
-    <string name="wireless_carplay_and_aa_description">Future wireless phone projection module</string>
+    <string name="wireless_carplay_and_aa_description">Use the car hotspot for wireless phone projection. Requires a head-unit restart.</string>
 </resources>

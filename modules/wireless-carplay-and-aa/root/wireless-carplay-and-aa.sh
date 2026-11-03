@@ -1,17 +1,139 @@
 #!/bin/sh
+# Modified by HMG-Seogaemo: single-car port of HMG-API wireless projection.
 set -eu
 . "$SEOGAEMO_BASE/lib/common.sh"
+umask 077
 
-if [ "$#" -ne 1 ]; then
-    echo 'usage: wireless-carplay-and-aa.sh apply|revert|status|precheck' >&2
-    exit 2
+PRODUCT=NEEV.KOR.0000.V039.001.260902
+FEATURE=/system/onebin/neev_kr/featurexml.cfg
+ASSET=/system/etc/seogaemo/wireless-carplay-and-aa
+
+path() { printf '%s%s\n' "${SG_WIRELESS_TEST_ROOT:-}" "$1"; }
+exists() { [ -f "$(path "$1")" ]; }
+value() { getprop "$1"; }
+fail() { sg_status failed none "$1"; }
+conflict() { sg_status conflict none "$1"; }
+incompatible() { sg_status incompatible none "$1"; }
+
+stock_hashes() {
+    # Four files needed by this mod, recorded in the 2026-11-02 pre-install Car Report.
+    while read -r expected logical; do
+        actual=$(md5sum "$(path "$logical")" 2>/dev/null | cut -c1-32) || actual=
+        [ "$actual" = "$expected" ] || { incompatible "stock hash mismatch: $logical"; return 4; }
+    done <<'HASHES'
+ffe86fa1540c8dea3b5499b1191bb727 /system/framework/framework.odex
+3b26cdcbf3c43f75623311f2bdfc3471 /system/app/HKMC_DiPO.odex
+a672fd0e0070414f2eb70a2807117a6f /system/app/Iap2ServerApp.odex
+c38a7fd61f90973625401501215375db /system/app/HKMC_GPM.odex
+HASHES
+}
+
+compatibility() {
+    [ "$(value ro.build.product)" = "$PRODUCT" ] || { incompatible 'unsupported firmware'; return 4; }
+    [ "$(value ro.mobis.onebindir)" = neev_kr ] || { incompatible 'unsupported onebin'; return 4; }
+    [ "$(value ro.build.version.release)" = 4.4.2 ] || { incompatible 'requires Android 4.4.2'; return 4; }
+    for owner in hmgapi leafia nemesis-adb-tcp; do
+        if sg_owner_present "$owner"; then conflict "external owner: $owner"; return 3; fi
+    done
+    if exists /system/bin/app_process.hmgapi-stock; then conflict 'HMG-API app_process backup present'; return 3; fi
+    if exists /system/bin/app_process.seogaemo-stock && ! sg_applied /system/bin/app_process; then
+        conflict 'orphaned app_process backup'; return 3
+    fi
+    if ! sg_applied /system/bin/app_process; then stock_hashes || return $?; fi
+    exists "$FEATURE" || { incompatible 'featurexml.cfg absent'; return 4; }
+    for name in com.hkmc.software.connectivity.carplay_wireless com.hkmc.software.connectivity.androidauto_wireless com.hkmc.software.wifihotspot; do
+        target=/system/etc/permissions/$name.xml
+        if exists "$target" && ! grep -Fq "<feature name=\"$name\"" "$(path "$target")"; then
+            incompatible "feature XML content mismatch: $name"; return 4
+        fi
+        old="-/system/etc/permissions/$name.xml"
+        active=$(grep -Fxc -e "$old" "$(path "$FEATURE")" || :)
+        inactive=$(grep -Fxc -e "#$old" "$(path "$FEATURE")" || :)
+        [ "$((active + inactive))" -le 1 ] || { incompatible "featurexml line mismatch: $name"; return 4; }
+    done
+    exists /system/bin/app_process || { incompatible 'app_process absent'; return 4; }
+    for name in app_process libseogaemo_wireless_hook.so seogaemo-wireless-hook.jar libleafiaaac.so car-map.json; do
+        [ -s "$SEOGAEMO_MODULE_DIR/data/$name" ] || { fail "missing payload: $name"; return 1; }
+    done
+    case "$(value persist.service.adb.tcp.enable)" in
+        1) conflict 'stock ADB switch conflicts with hotspot'; return 3 ;;
+    esac
+}
+
+put_assets() {
+    sg_file_put /system/lib/libleafiaaac.so data/libleafiaaac.so 644 0:0 || return 1
+    sg_file_put "$ASSET/car-map.json" data/car-map.json 644 0:0 || return 1
+    for name in aa-tbt-48ee793a aa-tbt-a0bea1c4 carplay-core-wifi carplay-audio-formats carplay-utils-converter; do
+        sg_file_put "$ASSET/recipes/$name.recipe" "recipes/$name.recipe" 644 0:0 || return 1
+    done
+    for name in com.hkmc.software.connectivity.carplay_wireless com.hkmc.software.connectivity.androidauto_wireless com.hkmc.software.wifihotspot; do
+        target=/system/etc/permissions/$name.xml
+        if ! exists "$target"; then sg_file_put "$target" "feature/$name.xml" 644 0:0 || return 1; fi
+        old="-/system/etc/permissions/$name.xml"
+        new="#$old"
+        if grep -Fqx -e "$old" "$(path "$FEATURE")"; then
+            sg_file_replace_line "$FEATURE" "$old" "$new" || return 1
+        elif grep -Fqx -e "$new" "$(path "$FEATURE")"; then
+            :
+        fi
+    done
+}
+
+apply() {
+    compatibility || return $?
+    if sg_applied /system/bin/app_process; then status; return $?; fi
+    if ! put_assets ||
+       ! sg_prop_set persist.ium.support carplay ||
+       ! sg_prop_set persist.sys.iap2.wifi t ||
+       ! sg_prop_set persist.iap2.iden.wireless t ||
+       ! sg_dex_cache_track /system/framework/seogaemo-wireless-hook.jar com.daudio.app.dipo ||
+       ! sg_zygote_install data/app_process data/libseogaemo_wireless_hook.so data/seogaemo-wireless-hook.jar; then
+        sg_revert_all || sg_log 'rollback failed; ledger and baselines retained'
+        fail 'apply failed; inspect change ledger'; return 1
+    fi
+    sg_status pending-restart head_unit 'restart head unit to load projection features and hooks'
+}
+
+revert() {
+    if ! sg_applied /system/bin/app_process; then
+        # An interrupted apply can have feature/property changes without the wrapper.
+        sg_revert_all || { conflict 'partial apply restore blocked; ledger retained'; return 3; }
+        sg_status off none 'disabled'; return 0
+    fi
+    sg_revert_all || { conflict 'restore blocked by drift; ledger retained'; return 3; }
+    sg_status pending-restart head_unit 'restart head unit to finish restoration'
+}
+
+status() {
+    if ! command -v sg_applied >/dev/null 2>&1; then
+        sg_status not-implemented none 'not implemented'; return 0
+    fi
+    if ! sg_applied /system/bin/app_process; then sg_status off none 'disabled'; return 0; fi
+    if [ "$(value persist.service.adb.tcp.enable)" = 1 ]; then conflict 'stock ADB switch conflicts with hotspot'; return 3; fi
+    if [ "$(value persist.ium.support)" != carplay ]; then fail 'projection property drift'; return 1; fi
+    # Runtime loaded in the zygote only after a full head-unit restart. A boot guard
+    # that disabled preloading also leaves this pending instead of claiming success.
+    if pid=$(ps 2>/dev/null | grep '[z]ygote' | awk 'NR==1 {print $2}') &&
+       [ -n "$pid" ] && grep -q 'libseogaemo_wireless_hook.so' "$(path "/proc/$pid/maps")" 2>/dev/null; then
+        sg_status on none 'wireless projection hooks loaded'
+    else
+        sg_status pending-restart head_unit 'head unit restart or hook recovery required'
+    fi
+}
+
+[ "$#" -eq 1 ] || exit 2
+if ! command -v sg_applied >/dev/null 2>&1; then
+    case "$1" in
+        status|precheck) sg_status not-implemented none 'not implemented' ;;
+        apply|revert) sg_status failed none 'package mutation API unavailable' ;;
+        *) exit 2 ;;
+    esac
+    exit $?
 fi
 case "$1" in
-    apply|revert|status|precheck)
-        sg_status not-implemented none 'not implemented'
-        ;;
-    *)
-        echo 'usage: wireless-carplay-and-aa.sh apply|revert|status|precheck' >&2
-        exit 2
-        ;;
+    precheck) if sg_applied /system/bin/app_process; then status; else compatibility && sg_status off none 'compatible'; fi ;;
+    apply) apply ;;
+    revert) revert ;;
+    status) status ;;
+    *) exit 2 ;;
 esac

@@ -1,0 +1,56 @@
+package hmgapi.hook;
+
+// Modified by HMG-Seogaemo: single wireless projection entry, without the HMG-API app/engine.
+import android.app.Application;
+import android.content.Context;
+import android.content.pm.ApplicationInfo;
+import android.util.Log;
+import hmgapi.mods.wireless.Wireless;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.ByteArrayOutputStream;
+import org.json.JSONObject;
+
+final class HmgApi {
+    private HmgApi() {}
+    static void i(String msg) { Log.i("Seogaemo-Wireless", msg); }
+    static void e(String msg, Throwable t) { Log.e("Seogaemo-Wireless", msg, t); }
+    static final Wireless ENTRY = new Wireless();
+    static final ModContext MOD = new ModContext();
+
+    static void zygoteInit() {
+        try {
+            Class<?> prop = Class.forName("android.os.SystemProperties");
+            String product = (String) prop.getMethod("get", String.class).invoke(null, "ro.build.product");
+            if (!"NEEV.KOR.0000.V039.001.260902".equals(product)) { i("hooks off: firmware " + product); return; }
+            File enabled = new File("/data/nemesis/backup/seogaemo/modules/wireless-carplay-and-aa/enabled");
+            if (!enabled.isFile()) { i("hooks off: module disabled"); return; }
+            File mapFile = new File("/system/etc/seogaemo/wireless-carplay-and-aa/car-map.json");
+            FileInputStream in = new FileInputStream(mapFile);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192]; int n;
+            try { while ((n = in.read(buf)) > 0) out.write(buf, 0, n); } finally { in.close(); }
+            JSONObject map = new JSONObject(out.toString("UTF-8"));
+            JSONObject files = map.getJSONObject("files");
+            String[] required = { "/system/framework/framework.odex", "/system/app/HKMC_DiPO.odex",
+                    "/system/app/Iap2ServerApp.odex", "/system/app/HKMC_GPM.odex" };
+            for (String file : required) {
+                if (!files.getString(file).equals(ModContext.md5(file))) { i("hooks off: stock hash mismatch " + file); return; }
+            }
+            Points.use(map);
+            if (!Points.needAll("boot", "framework.activity_thread.handle_bind_application", "framework.app_bind_data.app_info", "framework.app_bind_data.process_name", "framework.activity_thread.initial_application")) return;
+            Points.hook(null, "framework.activity_thread.handle_bind_application", new MethodHook() {
+                @Override protected void afterHookedMethod(Param p) {
+                    try {
+                        Object data = p.args[0];
+                        String pkg = ((ApplicationInfo) Points.get(null, "framework.app_bind_data.app_info", data)).packageName;
+                        String process = (String) Points.get(null, "framework.app_bind_data.process_name", data);
+                        Application app = (Application) Points.get(null, "framework.activity_thread.initial_application", p.thisObject);
+                        if (app != null) ENTRY.appLoaded(MOD, new LoadedApp(pkg, process, app.getClassLoader(), (Context) app));
+                    } catch (Throwable t) { e("app hook", t); }
+                }
+            });
+            i("wireless hook ready");
+        } catch (Throwable t) { e("zygote hook setup", t); }
+    }
+}
