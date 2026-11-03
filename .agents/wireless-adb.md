@@ -26,7 +26,9 @@ truncated or invalid SSID in the ASCII status protocol.
 
 Run the off-car tests with `sh modules/wireless-adb/test/run.sh`. The fake
 helpers, properties and interface tools live under a disposable directory in
-`modules/wireless-adb/test/`. The shared `Makefile` currently calls
+`modules/wireless-adb/test/`. The module runs with a restricted PATH containing
+only head-unit-available commands, plus failing stubs for unavailable tools;
+the test fails if any stub is invoked. The shared `Makefile` currently calls
 `tools/test-package.py`, which assumes every module's `status` and `precheck`
 still return `not-implemented`. The runtime owner should replace that
 assertion with contract validation and add

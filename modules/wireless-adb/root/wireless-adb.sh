@@ -1,5 +1,7 @@
 #!/bin/sh
 set -efu
+# The package runtime supplies this file at a fixed path.
+# shellcheck disable=SC1091
 . "$SEOGAEMO_BASE/lib/common.sh"
 
 STOCK_PROP=persist.service.adb.tcp.enable
@@ -32,6 +34,8 @@ wa_ipv4() {
     case "$1" in ''|*[!0-9.]*|.*|*.|*..*) return 1 ;; esac
     old_ifs=$IFS
     IFS=.
+    # Intentional field split on dots; globbing is disabled.
+    # shellcheck disable=SC2086
     set -- $1
     IFS=$old_ifs
     [ "$#" -eq 4 ] || return 1
@@ -42,30 +46,35 @@ wa_ipv4() {
 }
 
 wa_ifconfig_ip() {
-    output=$(ifconfig "$1" 2>/dev/null) || return 1
-    set -- $output
-    next=0
-    for token do
-        if [ "$next" -eq 1 ]; then
-            candidate=${token#addr:}
-            candidate=${candidate%%/*}
-            if wa_ipv4 "$candidate"; then printf '%s' "$candidate"; return 0; fi
+    ifconfig "$1" 2>/dev/null | {
+        while IFS= read -r line; do
+            # Intentional splitting into ifconfig fields; globbing is disabled.
+            # shellcheck disable=SC2086
+            set -- $line
             next=0
-        fi
-        case "$token" in
-            inet) next=1 ;;
-            addr:*)
-                candidate=${token#addr:}
-                candidate=${candidate%%/*}
-                if wa_ipv4 "$candidate"; then printf '%s' "$candidate"; return 0; fi
-                ;;
-        esac
-    done
-    return 1
+            for token do
+                if [ "$next" -eq 1 ]; then
+                    candidate=${token#addr:}
+                    candidate=${candidate%%/*}
+                    if wa_ipv4 "$candidate"; then printf '%s' "$candidate"; return 0; fi
+                    next=0
+                fi
+                case "$token" in
+                    inet) next=1 ;;
+                    addr:*)
+                        candidate=${token#addr:}
+                        candidate=${candidate%%/*}
+                        if wa_ipv4 "$candidate"; then printf '%s' "$candidate"; return 0; fi
+                        ;;
+                esac
+            done
+        done
+        return 1
+    }
 }
 
 wa_netcfg_ip() {
-    netcfg 2>/dev/null | while read -r name state address rest; do
+    netcfg 2>/dev/null | while read -r name _state address rest; do
         [ "$name" = "$1" ] || continue
         candidate=${address%%/*}
         if wa_ipv4 "$candidate"; then printf '%s' "$candidate"; return 0; fi

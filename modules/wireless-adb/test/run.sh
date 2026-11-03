@@ -95,12 +95,30 @@ cat > "$tmp/bin/netcfg" <<'EOF'
 cat "$FAKE_ROOT/netcfg" 2>/dev/null || true
 EOF
 chmod +x "$tmp/bin/"*
+
+# The child module sees only KitKat-available commands. Forbidden names are
+# present as failing stubs so a swallowed command failure is still detected.
+mkdir -p "$tmp/restricted-bin"
+for name in getprop setprop ifconfig netcfg; do
+    ln -s "$tmp/bin/$name" "$tmp/restricted-bin/$name"
+done
+for name in cat cp rm; do
+    ln -s "$(command -v "$name")" "$tmp/restricted-bin/$name"
+done
+cat > "$tmp/bin/forbidden" <<'EOF'
+#!/bin/sh
+printf '%s\n' "${0##*/}" >> "$FAKE_ROOT/forbidden-calls"
+exit 99
+EOF
+chmod +x "$tmp/bin/forbidden"
+for name in awk sed tail head cut tr wc sort uniq xargs find stat readlink \
+    sha256sum sha1sum tar unzip busybox toybox; do
+    ln -s "$tmp/bin/forbidden" "$tmp/restricted-bin/$name"
+done
 export FAKE_ROOT="$tmp" SEOGAEMO_BASE="$tmp/base" SEOGAEMO_STATE="$tmp/state"
-PATH="$tmp/bin:$PATH"
-export PATH
 script="$module_dir/root/wireless-adb.sh"
 
-run() { sh "$script" "$1" > "$tmp/output"; }
+run() { PATH="$tmp/restricted-bin" /bin/sh "$script" "$1" > "$tmp/output"; }
 has() { rg -q -F "$1" "$tmp/output" || { cat "$tmp/output"; exit 1; }; }
 restarts() { count=$(rg -c '^ctl.restart adbd$' "$tmp/calls" 2>/dev/null) || count=0; printf '%s' "$count"; }
 assert_count() { [ "$(restarts)" = "$1" ] || { cat "$tmp/calls"; exit 1; }; }
@@ -198,5 +216,6 @@ printf 'wlan0 UP 10.0.0.23/24 0x00001043 00:00:00:00:00:00\n' > "$tmp/netcfg"
 run status
 has 'info.client_ip=10.0.0.23'
 has 'info.client_adb_endpoint=10.0.0.23:5555'
+[ ! -e "$tmp/forbidden-calls" ] || { cat "$tmp/forbidden-calls"; exit 1; }
 
 printf 'wireless-adb tests passed\n'
