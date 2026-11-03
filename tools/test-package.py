@@ -38,8 +38,13 @@ def run():
                     "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
                     "svc/reconcile.sh", "lib/common.sh", "modules.list", "modules.graph",
                     "core/map/mapper.jar", "hookpoints/framework.json",
-                    "hookpoints.required/wireless-carplay-and-aa"}
+                    "hookpoints.required/wireless-carplay-and-aa",
+                    "maps/hyundai/ioniq5/kor/260902/map.json",
+                    "maps/hyundai/ioniq5/kor/260902/car.json"}
         assert required <= entries, required - entries
+        for map_name in ("map.json", "car.json", "README.md"):
+            source = ROOT / "maps/hyundai/ioniq5/kor/260902" / map_name
+            assert package.read(f"maps/hyundai/ioniq5/kor/260902/{map_name}") == source.read_bytes()
         preuninstall = package.read("scripts/preuninstall.sh").decode()
         assert "id=hmg-seogaemo" in preuninstall
         assert "/data/local/tmp/nemesis/stage/hmg-seogaemo/NEMESIS.data" in preuninstall
