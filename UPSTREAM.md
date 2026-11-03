@@ -4,14 +4,14 @@ HMG-Seogaemo's core mapper and hookpoint catalogue are independently implemented
 
 | Our component | HMG-API path at `4fab437` |
 | --- | --- |
-| `core/map/src/.../DexIndex.java` | `core/runtime/java/hmgapi/engine/Dex.java` |
-| `core/map/src/.../JsonIO.java` | `core/runtime/java/hmgapi/engine/Json.java` |
-| `core/map/src/.../MapFiles.java`, `MapTool.java` | `core/runtime/java/hmgapi/engine/CarMap.java`, `MapProbe.java` |
-| `core/map/src/.../MapScanner.java` | `core/runtime/java/hmgapi/engine/MapProbe.java` |
-| `core/map/src/.../MapVerifier.java` | `core/runtime/java/hmgapi/engine/MapCheck.java` |
+| `core/map/src/.../HmgSeogaemoDexIndex.java` | `core/runtime/java/hmgapi/engine/Dex.java` |
+| `core/map/src/.../HmgSeogaemoJsonIO.java` | `core/runtime/java/hmgapi/engine/Json.java` |
+| `core/map/src/.../HmgSeogaemoMapFiles.java`, `HmgSeogaemoMapTool.java` | `core/runtime/java/hmgapi/engine/CarMap.java`, `MapProbe.java` |
+| `core/map/src/.../HmgSeogaemoMapScanner.java` | `core/runtime/java/hmgapi/engine/MapProbe.java` |
+| `core/map/src/.../HmgSeogaemoMapVerifier.java` | `core/runtime/java/hmgapi/engine/MapCheck.java` |
 | `tools/map-car.py` | `tools/map-car.py` |
 | `tools/verify-map`, `tools/validate-maps.py` | `tools/test-hooks.py` |
-| `tools/list-stock-files.py` | `core/hookpoints/*.json` |
+| `tools/hmg-seogaemo-list-stock-files.py` | `core/hookpoints/*.json` |
 | `tools/test-map-scanner.py`, `tools/test-map-car.py` | `tools/probe-test.py`, `tools/test-hooks.py` |
 | `core/hookpoints/btsettings.json` | `core/hookpoints/btsettings.json` |
 | `core/hookpoints/buttonsettings.json` | `core/hookpoints/buttonsettings.json` |

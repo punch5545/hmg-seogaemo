@@ -49,7 +49,7 @@ if [ "$1" = export ]; then
     SEOGAEMO_BASE=$base SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
     export SEOGAEMO_BASE SEOGAEMO_STATE SG_DATA_ROOT
     . "$base/lib/common.sh"
-    sg_map_active_dir >/dev/null 2>&1 && sg_map_export "$dest" || true
+    hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
     chmod -R 755 "$dest" || exit 1
     printf 'state=on\nrestart=none\ndetail=%s\n' "$dest"
     exit 0
@@ -58,7 +58,7 @@ if [ "$1" = map ]; then
     case "$2" in status|run|verify|export) ;; *) exit 2;; esac
     [ -L "$SG_DATA_ROOT/update/current" ] && base=$SG_DATA_ROOT/update/current
     export SG_DATA_ROOT
-    exec sh "$base/core/map.sh" "$2"
+    exec sh "$base/core/hmg-seogaemo-map.sh" "$2"
 fi
 if [ "$1" = update ]; then
     case "$2" in stage|apply|rollback|status) ;; *) exit 2 ;; esac

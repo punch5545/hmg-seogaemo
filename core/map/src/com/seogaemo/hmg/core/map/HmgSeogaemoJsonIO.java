@@ -7,12 +7,12 @@ import java.util.List;
 import java.util.Map;
 
 /** Small JSON codec shared by the host and API 19 mapper. */
-final class JsonIO {
+final class HmgSeogaemoJsonIO {
     private final String input;
     private int offset;
-    private JsonIO(String text) { input = text; }
+    private HmgSeogaemoJsonIO(String text) { input = text; }
     static Object decode(String text) {
-        JsonIO reader = new JsonIO(text);
+        HmgSeogaemoJsonIO reader = new HmgSeogaemoJsonIO(text);
         Object result = reader.readValue();
         reader.space();
         if (reader.offset != text.length()) throw new IllegalArgumentException("trailing JSON");

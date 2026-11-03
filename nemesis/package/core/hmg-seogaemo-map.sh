@@ -11,7 +11,7 @@ SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
 export SG_DATA_ROOT SEOGAEMO_BASE SEOGAEMO_STATE
 . "$base/lib/common.sh"
 mapper() {
-    CLASSPATH="$base/core/map/mapper.jar" app_process /system/bin com.seogaemo.hmg.core.map.MapTool \
+    CLASSPATH="$base/core/map/hmg-seogaemo-mapper.jar" app_process /system/bin com.seogaemo.hmg.core.map.HmgSeogaemoMapTool \
         "$1" "$base" "$SG_DATA_ROOT" "$2"
 }
 if [ "$1" = status ]; then
@@ -34,7 +34,7 @@ while ! mkdir "$lock" 2>/dev/null; do
 done
 printf '%s' "$$" > "$lock/pid"
 cleanup() {
-    [ -n "${SG_MAP_WORK:-}" ] && sg_map_work_cleanup
+    [ -n "${HMG_SEOGAEMO_MAP_WORK:-}" ] && hmg_seogaemo_map_work_cleanup
     rm -rf "$lock"
 }
 trap cleanup EXIT HUP INT TERM
@@ -46,20 +46,20 @@ if [ "$1" = export ]; then
         break
     done
     [ -n "$target" ] || target=${SG_EXPORT_ROOT:-/data/local/tmp/hmg-seogaemo-export}/$(date +%Y%m%d-%H%M%S)
-    sg_map_export "$target" || { printf 'state=failed\nrestart=none\ndetail=no verified map\n'; exit 1; }
+    hmg_seogaemo_map_export "$target" || { printf 'state=failed\nrestart=none\ndetail=no verified map\n'; exit 1; }
     chmod -R 755 "$target" || exit 1
     printf 'state=on\nrestart=none\ndetail=%s\n' "$target"
     exit 0
 fi
-sg_map_work || { printf 'state=failed\nrestart=none\ndetail=map work unavailable\n'; exit 1; }
-mapper "$1" "$SG_MAP_WORK" > "$SG_MAP_WORK/result" 2>&1
+hmg_seogaemo_map_work || { printf 'state=failed\nrestart=none\ndetail=map work unavailable\n'; exit 1; }
+mapper "$1" "$HMG_SEOGAEMO_MAP_WORK" > "$HMG_SEOGAEMO_MAP_WORK/result" 2>&1
 code=$?
 if [ "$code" -ne 0 ]; then
-    dd if="$SG_MAP_WORK/result" bs=1 count=4096 2>/dev/null
+    dd if="$HMG_SEOGAEMO_MAP_WORK/result" bs=1 count=4096 2>/dev/null
     exit "$code"
 fi
-if ! sg_map_publish "$SG_MAP_WORK"; then
+if ! hmg_seogaemo_map_publish "$HMG_SEOGAEMO_MAP_WORK"; then
     printf 'state=failed\nrestart=none\ndetail=map publish failed\n'
     exit 1
 fi
-dd if="$SG_MAP_WORK/result" bs=1 count=4096 2>/dev/null
+dd if="$HMG_SEOGAEMO_MAP_WORK/result" bs=1 count=4096 2>/dev/null

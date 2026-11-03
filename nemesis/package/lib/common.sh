@@ -591,83 +591,83 @@ sg_status() {
 
 # Core car maps are package-owned data. Publish immutable verified files, then
 # replace one pointer file so readers see either the prior map or the new map.
-sg_map_work() {
-    SG_MAP_WORK=$SG_DATA_ROOT/car-maps/.work.$$
-    [ ! -e "$SG_MAP_WORK" ] || return 1
-    mkdir -p "$SG_MAP_WORK" && chmod 700 "$SG_DATA_ROOT/car-maps" "$SG_MAP_WORK"
+hmg_seogaemo_map_work() {
+    HMG_SEOGAEMO_MAP_WORK=$SG_DATA_ROOT/car-maps/.work.$$
+    [ ! -e "$HMG_SEOGAEMO_MAP_WORK" ] || return 1
+    mkdir -p "$HMG_SEOGAEMO_MAP_WORK" && chmod 700 "$SG_DATA_ROOT/car-maps" "$HMG_SEOGAEMO_MAP_WORK"
 }
-sg_map_work_cleanup() {
-    case "$SG_MAP_WORK" in "$SG_DATA_ROOT"/car-maps/.work.*) rm -rf "$SG_MAP_WORK";; *) return 2;; esac
+hmg_seogaemo_map_work_cleanup() {
+    case "$HMG_SEOGAEMO_MAP_WORK" in "$SG_DATA_ROOT"/car-maps/.work.*) rm -rf "$HMG_SEOGAEMO_MAP_WORK";; *) return 2;; esac
 }
-sg_map_publish() {
-    sg_map_input=$1
-    [ "$sg_map_input" = "$SG_MAP_WORK" ] || return 2
-    for sg_map_name in map.json car.json verified hash-id map-id source layout; do
-        [ -s "$sg_map_input/$sg_map_name" ] && [ ! -L "$sg_map_input/$sg_map_name" ] || return 1
+hmg_seogaemo_map_publish() {
+    hmg_seogaemo_map_input=$1
+    [ "$hmg_seogaemo_map_input" = "$HMG_SEOGAEMO_MAP_WORK" ] || return 2
+    for hmg_seogaemo_map_name in map.json car.json verified hash-id map-id source layout; do
+        [ -s "$hmg_seogaemo_map_input/$hmg_seogaemo_map_name" ] && [ ! -L "$hmg_seogaemo_map_input/$hmg_seogaemo_map_name" ] || return 1
     done
-    sg_map_product=$(getprop ro.build.product)
-    case "$sg_map_product" in ''|*[!a-zA-Z0-9._-]*) return 2;; esac
-    sg_map_hash=$(cat "$sg_map_input/hash-id")
-    sg_map_id=$(cat "$sg_map_input/map-id")
-    printf '%s\n' "$sg_map_hash" "$sg_map_id" | grep -Eqv '^[0-9a-f]{32}$' && return 2
-    sg_map_source=$(cat "$sg_map_input/source")
-    case "$sg_map_source" in bundled|generated) ;; *) return 2;; esac
-    sg_map_layout=$(cat "$sg_map_input/layout")
-    case "$sg_map_layout" in
-        maps/*/*/*/*) case "$sg_map_layout" in *..*|*[!a-zA-Z0-9_./-]*) return 2;; esac ;;
+    hmg_seogaemo_map_product=$(getprop ro.build.product)
+    case "$hmg_seogaemo_map_product" in ''|*[!a-zA-Z0-9._-]*) return 2;; esac
+    hmg_seogaemo_map_hash=$(cat "$hmg_seogaemo_map_input/hash-id")
+    hmg_seogaemo_map_id=$(cat "$hmg_seogaemo_map_input/map-id")
+    printf '%s\n' "$hmg_seogaemo_map_hash" "$hmg_seogaemo_map_id" | grep -Eqv '^[0-9a-f]{32}$' && return 2
+    hmg_seogaemo_map_source=$(cat "$hmg_seogaemo_map_input/source")
+    case "$hmg_seogaemo_map_source" in bundled|generated) ;; *) return 2;; esac
+    hmg_seogaemo_map_layout=$(cat "$hmg_seogaemo_map_input/layout")
+    case "$hmg_seogaemo_map_layout" in
+        maps/*/*/*/*) case "$hmg_seogaemo_map_layout" in *..*|*[!a-zA-Z0-9_./-]*) return 2;; esac ;;
         *) return 2;;
     esac
-    sg_map_root=$SG_DATA_ROOT/car-maps
-    sg_map_rel=$sg_map_product/$sg_map_hash/$sg_map_id
-    sg_map_final=$sg_map_root/$sg_map_rel
-    sg_map_stage=$sg_map_root/.publish.$$
-    mkdir -p "${sg_map_final%/*}" "$sg_map_stage" || return 1
-    chmod 700 "$sg_map_root" "$sg_map_root/$sg_map_product" "$sg_map_root/$sg_map_product/$sg_map_hash" "$sg_map_stage" || return 1
-    for sg_map_name in map.json car.json verified hash-id map-id source layout; do
-        cp "$sg_map_input/$sg_map_name" "$sg_map_stage/$sg_map_name" &&
-            cmp "$sg_map_input/$sg_map_name" "$sg_map_stage/$sg_map_name" >/dev/null 2>&1 &&
-            chmod 600 "$sg_map_stage/$sg_map_name" || { rm -rf "$sg_map_stage"; return 1; }
+    hmg_seogaemo_map_root=$SG_DATA_ROOT/car-maps
+    hmg_seogaemo_map_rel=$hmg_seogaemo_map_product/$hmg_seogaemo_map_hash/$hmg_seogaemo_map_id
+    hmg_seogaemo_map_final=$hmg_seogaemo_map_root/$hmg_seogaemo_map_rel
+    hmg_seogaemo_map_stage=$hmg_seogaemo_map_root/.publish.$$
+    mkdir -p "${hmg_seogaemo_map_final%/*}" "$hmg_seogaemo_map_stage" || return 1
+    chmod 700 "$hmg_seogaemo_map_root" "$hmg_seogaemo_map_root/$hmg_seogaemo_map_product" "$hmg_seogaemo_map_root/$hmg_seogaemo_map_product/$hmg_seogaemo_map_hash" "$hmg_seogaemo_map_stage" || return 1
+    for hmg_seogaemo_map_name in map.json car.json verified hash-id map-id source layout; do
+        cp "$hmg_seogaemo_map_input/$hmg_seogaemo_map_name" "$hmg_seogaemo_map_stage/$hmg_seogaemo_map_name" &&
+            cmp "$hmg_seogaemo_map_input/$hmg_seogaemo_map_name" "$hmg_seogaemo_map_stage/$hmg_seogaemo_map_name" >/dev/null 2>&1 &&
+            chmod 600 "$hmg_seogaemo_map_stage/$hmg_seogaemo_map_name" || { rm -rf "$hmg_seogaemo_map_stage"; return 1; }
     done
-    if [ -d "$sg_map_final" ]; then
-        for sg_map_name in map.json car.json verified layout; do
-            cmp "$sg_map_stage/$sg_map_name" "$sg_map_final/$sg_map_name" >/dev/null 2>&1 ||
-                { rm -rf "$sg_map_stage"; return 3; }
+    if [ -d "$hmg_seogaemo_map_final" ]; then
+        for hmg_seogaemo_map_name in map.json car.json verified layout; do
+            cmp "$hmg_seogaemo_map_stage/$hmg_seogaemo_map_name" "$hmg_seogaemo_map_final/$hmg_seogaemo_map_name" >/dev/null 2>&1 ||
+                { rm -rf "$hmg_seogaemo_map_stage"; return 3; }
         done
-        rm -rf "$sg_map_stage" || return 1
+        rm -rf "$hmg_seogaemo_map_stage" || return 1
     else
-        mv "$sg_map_stage" "$sg_map_final" || { rm -rf "$sg_map_stage"; return 1; }
+        mv "$hmg_seogaemo_map_stage" "$hmg_seogaemo_map_final" || { rm -rf "$hmg_seogaemo_map_stage"; return 1; }
     fi
-    [ -f "$sg_map_root/active" ] && cp "$sg_map_root/active" "$sg_map_root/.before.$$" || true
-    printf '%s\n' "$sg_map_rel" > "$sg_map_root/active.tmp.$$" &&
-        chmod 600 "$sg_map_root/active.tmp.$$" &&
-        mv -f "$sg_map_root/active.tmp.$$" "$sg_map_root/active" || return 1
+    [ -f "$hmg_seogaemo_map_root/active" ] && cp "$hmg_seogaemo_map_root/active" "$hmg_seogaemo_map_root/.before.$$" || true
+    printf '%s\n' "$hmg_seogaemo_map_rel" > "$hmg_seogaemo_map_root/active.tmp.$$" &&
+        chmod 600 "$hmg_seogaemo_map_root/active.tmp.$$" &&
+        mv -f "$hmg_seogaemo_map_root/active.tmp.$$" "$hmg_seogaemo_map_root/active" || return 1
     SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
     mkdir -p "$SEOGAEMO_STATE" || return 1
-    sg_ledger map_publish "$sg_map_root/active" "$sg_map_root/.before.$$" "$sg_map_root/active" "" || return 1
-    sg_ledger map_contents "$sg_map_final/map.json" "" "$sg_map_final/map.json" "" || return 1
-    sg_ledger map_contents "$sg_map_final/car.json" "" "$sg_map_final/car.json" "" || return 1
-    rm -f "$sg_map_root/.before.$$"
+    sg_ledger map_publish "$hmg_seogaemo_map_root/active" "$hmg_seogaemo_map_root/.before.$$" "$hmg_seogaemo_map_root/active" "" || return 1
+    sg_ledger map_contents "$hmg_seogaemo_map_final/map.json" "" "$hmg_seogaemo_map_final/map.json" "" || return 1
+    sg_ledger map_contents "$hmg_seogaemo_map_final/car.json" "" "$hmg_seogaemo_map_final/car.json" "" || return 1
+    rm -f "$hmg_seogaemo_map_root/.before.$$"
 }
-sg_map_active_dir() {
+hmg_seogaemo_map_active_dir() {
     [ -f "$SG_DATA_ROOT/car-maps/active" ] || return 1
-    sg_map_rel=$(cat "$SG_DATA_ROOT/car-maps/active")
-    case "$sg_map_rel" in
+    hmg_seogaemo_map_rel=$(cat "$SG_DATA_ROOT/car-maps/active")
+    case "$hmg_seogaemo_map_rel" in
         *..*|/*|*[!a-zA-Z0-9_./-]*) return 2;;
         */*/*) ;;
         *) return 2;;
     esac
-    [ -f "$SG_DATA_ROOT/car-maps/$sg_map_rel/verified" ] || return 1
-    printf '%s\n' "$SG_DATA_ROOT/car-maps/$sg_map_rel"
+    [ -f "$SG_DATA_ROOT/car-maps/$hmg_seogaemo_map_rel/verified" ] || return 1
+    printf '%s\n' "$SG_DATA_ROOT/car-maps/$hmg_seogaemo_map_rel"
 }
-sg_map_export() {
-    sg_map_from=$(sg_map_active_dir) || return 1
-    sg_map_layout=$(cat "$sg_map_from/layout") || return 1
-    case "$sg_map_layout" in maps/*/*/*/*) ;; *) return 2;; esac
-    case "$sg_map_layout" in *..*|*[!a-zA-Z0-9_./-]*) return 2;; esac
-    sg_map_to=$1/$sg_map_layout
-    mkdir -p "$sg_map_to" || return 1
-    cp "$sg_map_from/map.json" "$sg_map_to/map.json" &&
-        cp "$sg_map_from/car.json" "$sg_map_to/car.json" &&
-        cmp "$sg_map_from/map.json" "$sg_map_to/map.json" >/dev/null 2>&1 &&
-        cmp "$sg_map_from/car.json" "$sg_map_to/car.json" >/dev/null 2>&1
+hmg_seogaemo_map_export() {
+    hmg_seogaemo_map_from=$(hmg_seogaemo_map_active_dir) || return 1
+    hmg_seogaemo_map_layout=$(cat "$hmg_seogaemo_map_from/layout") || return 1
+    case "$hmg_seogaemo_map_layout" in maps/*/*/*/*) ;; *) return 2;; esac
+    case "$hmg_seogaemo_map_layout" in *..*|*[!a-zA-Z0-9_./-]*) return 2;; esac
+    hmg_seogaemo_map_to=$1/$hmg_seogaemo_map_layout
+    mkdir -p "$hmg_seogaemo_map_to" || return 1
+    cp "$hmg_seogaemo_map_from/map.json" "$hmg_seogaemo_map_to/map.json" &&
+        cp "$hmg_seogaemo_map_from/car.json" "$hmg_seogaemo_map_to/car.json" &&
+        cmp "$hmg_seogaemo_map_from/map.json" "$hmg_seogaemo_map_to/map.json" >/dev/null 2>&1 &&
+        cmp "$hmg_seogaemo_map_from/car.json" "$hmg_seogaemo_map_to/car.json" >/dev/null 2>&1
 }

@@ -36,6 +36,6 @@ with tempfile.TemporaryDirectory(prefix="seogaemo-map-test-") as tmp:
     (maps/"map.json").write_text(json.dumps({"schema":1,"points":{"example.target.reference":
         {"method":"unique","params":[],"ret":"void","static":False}}}))
     output=temp/"compiled";output.mkdir()
-    source=list((ROOT/"core/map/src").rglob("*.java"))+[ROOT/"tools/MapScannerTest.java"]
+    source=list((ROOT/"core/map/src").rglob("*.java"))+[ROOT/"tools/HmgSeogaemoMapScannerTest.java"]
     subprocess.run(["javac","-source","7","-target","7","-d",str(output),*map(str,source)],check=True,stdout=subprocess.DEVNULL)
-    subprocess.run(["java","-cp",str(output),"com.seogaemo.hmg.core.map.MapScannerTest",str(system),str(catalogue),str(temp/"maps")],check=True)
+    subprocess.run(["java","-cp",str(output),"com.seogaemo.hmg.core.map.HmgSeogaemoMapScannerTest",str(system),str(catalogue),str(temp/"maps")],check=True)

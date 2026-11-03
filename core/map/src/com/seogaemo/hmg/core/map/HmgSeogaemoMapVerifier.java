@@ -12,8 +12,8 @@ import java.util.List;
 import java.util.Map;
 
 /** Resolves mapped names against each stock app's class path without starting the app. */
-final class MapVerifier {
-    private MapVerifier() {}
+final class HmgSeogaemoMapVerifier {
+    private HmgSeogaemoMapVerifier() {}
     @SuppressWarnings("unchecked")
     static Map<String,String> check(Map<String,Object> car,Map<String,Map<String,Object>> points) throws Exception {
         Map<String,String> failures=new LinkedHashMap<String,String>();

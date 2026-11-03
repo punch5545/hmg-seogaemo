@@ -8,9 +8,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.MessageDigest;
 
-final class MapFiles {
-    private MapFiles() {}
-    static String read(File file) throws Exception { return new String(DexIndex.all(new FileInputStream(file)),"UTF-8"); }
+final class HmgSeogaemoMapFiles {
+    private HmgSeogaemoMapFiles() {}
+    static String read(File file) throws Exception { return new String(HmgSeogaemoDexIndex.all(new FileInputStream(file)),"UTF-8"); }
     static void write(File file,String text) throws Exception {
         OutputStream output=new FileOutputStream(file);
         try { output.write(text.getBytes("UTF-8")); output.flush(); } finally { output.close(); }

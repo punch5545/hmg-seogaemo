@@ -14,7 +14,7 @@ import java.util.Set;
 import java.util.zip.ZipFile;
 
 /** Extracts class signatures and const-string facts from Dalvik 035 files. */
-final class DexIndex {
+final class HmgSeogaemoDexIndex {
     static final class Member {
         String name, valueType, returnType;
         List<String> arguments = new ArrayList<String>();
@@ -31,7 +31,7 @@ final class DexIndex {
     private final int start;
     private int cursor;
     private final String[] stringCache, typeCache;
-    private DexIndex(byte[] content) {
+    private HmgSeogaemoDexIndex(byte[] content) {
         bytes = content;
         if (content.length < 112) throw new IllegalArgumentException("short DEX");
         if (content[0]=='d' && content[1]=='e' && content[2]=='y' && content[3]=='\n') start=word(8);
@@ -46,7 +46,7 @@ final class DexIndex {
             try { if (zip.getEntry("classes.dex")==null) return new LinkedHashMap<String,Type>(); content=all(zip.getInputStream(zip.getEntry("classes.dex"))); }
             finally { zip.close(); }
         } else content=all(new FileInputStream(file));
-        return new DexIndex(content).classes();
+        return new HmgSeogaemoDexIndex(content).classes();
     }
     static byte[] all(InputStream input) throws Exception {
         try {

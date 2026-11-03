@@ -15,9 +15,9 @@ adb shell getprop ro.build.version.release
 The exact stock file list comes from the catalogue:
 
 ```sh
-python3 tools/list-stock-files.py
-python3 tools/list-stock-files.py --adb-pull > /tmp/pull-seogaemo-stock.sh
-sh /tmp/pull-seogaemo-stock.sh
+python3 tools/hmg-seogaemo-list-stock-files.py
+python3 tools/hmg-seogaemo-list-stock-files.py --adb-pull > /tmp/pull-hmg-seogaemo-stock.sh
+sh /tmp/pull-hmg-seogaemo-stock.sh
 ```
 
 This pulls the current 18 catalogue files into `stock/system/{app,framework}/`. Re-run the generator after catalogue changes. If adb shell cannot read a stock file, use NEMESIS full root to copy that exact file to a shell-readable temporary location, then `adb pull` it. Keep stock binaries out of git and out of the PR.
@@ -72,4 +72,4 @@ Commit only `maps/<make>/<model>/<region>/<firmware>/{map.json,car.json,README.m
 
 ## Prompt for an AI agent with adb access
 
-> HMG-Seogaemo의 새 Gen5W 펌웨어 매핑을 조사해 줘. 먼저 `AGENTS.md`, `.agents/module-runtime-contract.md`, `docs/mapping-new-firmware.md`, `UPSTREAM.md`를 읽어. adb에서 `ro.build.product`, `ro.mobis.onebindir`, Android 버전을 기록하고 `tools/list-stock-files.py`가 출력한 파일만 `stock/system/`으로 가져와. 원본 파일과 Car Report는 git에 넣지 마. `tools/map-car.py`로 host 매핑을 만들고, `hmg-seogaemo-root map run` 및 `map export`로 차량 매핑을 내보내. `tools/verify-map --against`로 이름과 MD5 차이를 설명하고, 필수 hook point가 모두 검증됐는지 확인해. 실패한 점은 추측으로 채우지 말고 ID와 근거를 보고해. PR에는 `maps/.../map.json`, `car.json`, `README.md`와 필요한 독립 구현 변경만 포함해. CarPlay, Android Auto, Wi-Fi, NEMESIS, HMG-API, HMG-Seogaemo 같은 고유명사는 그대로 써.
+> HMG-Seogaemo의 새 Gen5W 펌웨어 매핑을 조사해 줘. 먼저 `AGENTS.md`, `.agents/module-runtime-contract.md`, `docs/mapping-new-firmware.md`, `UPSTREAM.md`를 읽어. adb에서 `ro.build.product`, `ro.mobis.onebindir`, Android 버전을 기록하고 `tools/hmg-seogaemo-list-stock-files.py`가 출력한 파일만 `stock/system/`으로 가져와. 원본 파일과 Car Report는 git에 넣지 마. `tools/map-car.py`로 host 매핑을 만들고, `hmg-seogaemo-root map run` 및 `map export`로 차량 매핑을 내보내. `tools/verify-map --against`로 이름과 MD5 차이를 설명하고, 필수 hook point가 모두 검증됐는지 확인해. 실패한 점은 추측으로 채우지 말고 ID와 근거를 보고해. PR에는 `maps/.../map.json`, `car.json`, `README.md`와 필요한 독립 구현 변경만 포함해. CarPlay, Android Auto, Wi-Fi, NEMESIS, HMG-API, HMG-Seogaemo 같은 고유명사는 그대로 써.

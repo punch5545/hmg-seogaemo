@@ -213,13 +213,13 @@ the root dispatcher is `hmg-seogaemo-root`. Installed files live under
 and every stock MD5 with bundled or generated `car.json`; it is read-only.
 `run` scans the full catalogue in a separate root `app_process` and reflects over the
 mapped classes and members. `verify` repeats the reflection check for a matching map.
-Both write only to package-allocated private scratch, then call `sg_map_publish`.
+Both write only to package-allocated private scratch, then call `hmg_seogaemo_map_publish`.
 `export` writes `maps/<make>/<model>/<region>/<firmware>/map.json` and `car.json`
 to USB when mounted, otherwise the adb export directory. The existing `export usb|adb`
 also includes the active PR-ready map folder.
 
-The package API owns `sg_map_work`, `sg_map_publish`, `sg_map_work_cleanup`, and
-`sg_map_export`. Publish validates fixed scratch filenames, product and hash IDs,
+The package API owns `hmg_seogaemo_map_work`, `hmg_seogaemo_map_publish`, `hmg_seogaemo_map_work_cleanup`, and
+`hmg_seogaemo_map_export`. Publish validates fixed scratch filenames, product and hash IDs,
 copies the verified map to an immutable directory under
 `/data/nemesis/backup/hmg-seogaemo/car-maps/<product>/<stock-hash-id>/<map-id>/`,
 records pointer and content changes in the ledger, then atomically replaces the

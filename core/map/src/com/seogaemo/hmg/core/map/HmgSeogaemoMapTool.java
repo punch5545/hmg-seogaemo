@@ -11,23 +11,23 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /** Fixed root app_process commands. Result files stay in root-owned scratch until published by the package API. */
-public final class MapTool {
+public final class HmgSeogaemoMapTool {
     private final File packageRoot, stateRoot, scratch;
     private final String systemRoot, product, onebin, android, boot;
-    private MapTool(File installed,File state,File work) throws Exception {
+    private HmgSeogaemoMapTool(File installed,File state,File work) throws Exception {
         packageRoot=installed;stateRoot=state;scratch=work;
-        systemRoot=environment("SG_MAP_SYSTEM","/system");
-        product=fact("SG_MAP_PRODUCT","ro.build.product");
-        onebin=fact("SG_MAP_ONEBIN","ro.mobis.onebindir");
-        android=fact("SG_MAP_ANDROID","ro.build.version.release");
-        File bootFile=new File(environment("SG_MAP_BOOT_FILE","/proc/sys/kernel/random/boot_id"));
-        boot=bootFile.isFile()?MapFiles.read(bootFile).trim():"";
+        systemRoot=environment("HMG_SEOGAEMO_MAP_SYSTEM","/system");
+        product=fact("HMG_SEOGAEMO_MAP_PRODUCT","ro.build.product");
+        onebin=fact("HMG_SEOGAEMO_MAP_ONEBIN","ro.mobis.onebindir");
+        android=fact("HMG_SEOGAEMO_MAP_ANDROID","ro.build.version.release");
+        File bootFile=new File(environment("HMG_SEOGAEMO_MAP_BOOT_FILE","/proc/sys/kernel/random/boot_id"));
+        boot=bootFile.isFile()?HmgSeogaemoMapFiles.read(bootFile).trim():"";
     }
     private static String environment(String name,String fallback) {String value=System.getenv(name);return value==null?fallback:value;}
     private static String fact(String name,String property) throws Exception {
         String injected=System.getenv(name); if(injected!=null)return injected;
         Process process=new ProcessBuilder("getprop",property).start();
-        String value=new String(DexIndex.all(process.getInputStream()),"UTF-8").trim();
+        String value=new String(HmgSeogaemoDexIndex.all(process.getInputStream()),"UTF-8").trim();
         if(process.waitFor()!=0)throw new IOException("getprop failed");
         return value;
     }
@@ -40,7 +40,7 @@ public final class MapTool {
         for(Map.Entry<String,Object> item:hashes.entrySet()) {
             if(!item.getKey().matches("/system/(?:app|framework)/[A-Za-z0-9_.-]+"))return false;
             File file=stock(item.getKey());
-            if(!file.isFile()||!MapFiles.md5(file).equals(item.getValue()))return false;
+            if(!file.isFile()||!HmgSeogaemoMapFiles.md5(file).equals(item.getValue()))return false;
         }
         return true;
     }
@@ -55,14 +55,14 @@ public final class MapTool {
         locate(new File(packageRoot,"maps"),options);
         locate(new File(stateRoot,"car-maps"),options);
         for(File option:options) {
-            try {if(sameCar(JsonIO.object(MapFiles.read(new File(option,"car.json")))))return option;}
+            try {if(sameCar(HmgSeogaemoJsonIO.object(HmgSeogaemoMapFiles.read(new File(option,"car.json")))))return option;}
             catch(Exception ignored) { }
         }
         return null;
     }
     private static String hashId(Map<String,Object> car) throws Exception {
         MessageDigest digest=MessageDigest.getInstance("MD5");
-        digest.update(JsonIO.encode(car.get("files")).getBytes("UTF-8"));
+        digest.update(HmgSeogaemoJsonIO.encode(car.get("files")).getBytes("UTF-8"));
         StringBuilder id=new StringBuilder();
         for(byte b:digest.digest()){int v=b&255;if(v<16)id.append('0');id.append(Integer.toHexString(v));}
         return id.toString();
@@ -71,26 +71,26 @@ public final class MapTool {
     private File active(String filename) throws Exception {
         File pointer=new File(stateRoot,"car-maps/active");
         if(!pointer.isFile())return new File(stateRoot,"car-maps/none/"+filename);
-        String relative=MapFiles.read(pointer).trim();
+        String relative=HmgSeogaemoMapFiles.read(pointer).trim();
         if(!relative.matches("[A-Za-z0-9._-]+/[0-9a-f]{32}/[0-9a-f]{32}"))
             throw new IllegalStateException("invalid active map pointer");
         return new File(stateRoot,"car-maps/"+relative+"/"+filename);
     }
     private boolean verified(Map<String,Object> car) throws Exception {
-        return !boot.isEmpty()&&active("verified").isFile()&&seal(car).equals(MapFiles.read(active("verified")))&&
-            sameCar(JsonIO.object(MapFiles.read(active("car.json"))));
+        return !boot.isEmpty()&&active("verified").isFile()&&seal(car).equals(HmgSeogaemoMapFiles.read(active("verified")))&&
+            sameCar(HmgSeogaemoJsonIO.object(HmgSeogaemoMapFiles.read(active("car.json"))));
     }
     @SuppressWarnings("unchecked")
     private void status() throws Exception {
         File selected=selection();
-        Map<String,Object> car=selected==null?null:JsonIO.object(MapFiles.read(new File(selected,"car.json")));
-        Map<String,Object> map=selected==null?null:JsonIO.object(MapFiles.read(new File(selected,"map.json")));
+        Map<String,Object> car=selected==null?null:HmgSeogaemoJsonIO.object(HmgSeogaemoMapFiles.read(new File(selected,"car.json")));
+        Map<String,Object> map=selected==null?null:HmgSeogaemoJsonIO.object(HmgSeogaemoMapFiles.read(new File(selected,"map.json")));
         Map<String,Object> entries=map==null?null:(Map<String,Object>)map.get("points");
         boolean ready=car!=null&&verified(car);
-        Map<String,Object> activeMap=ready?JsonIO.object(MapFiles.read(active("map.json"))):null;
+        Map<String,Object> activeMap=ready?HmgSeogaemoJsonIO.object(HmgSeogaemoMapFiles.read(active("map.json"))):null;
         int verifiedCount=ready?((Map<String,Object>)activeMap.get("points")).size():0;
         String source=selected==null?"none":selected.getAbsolutePath().startsWith(new File(packageRoot,"maps").getAbsolutePath())?"bundled":"generated";
-        if(ready)source=MapFiles.read(active("source")).trim();
+        if(ready)source=HmgSeogaemoMapFiles.read(active("source")).trim();
         System.out.println("state="+(ready?"on":selected==null?"incompatible":"off"));
         System.out.println("restart=none");
         System.out.println("detail="+(ready?"map verified":selected==null?"mapping needed":"verification needed"));
@@ -100,7 +100,7 @@ public final class MapTool {
         System.out.println("info.verified="+verifiedCount);
         System.out.println("info.failed="+(ready?entries.size()-verifiedCount:0));
         if(ready) {
-            Map<String,Object> activeCar=JsonIO.object(MapFiles.read(active("car.json")));
+            Map<String,Object> activeCar=HmgSeogaemoJsonIO.object(HmgSeogaemoMapFiles.read(active("car.json")));
             Map<String,Object> failures=(Map<String,Object>)activeCar.get("missing");
             StringBuilder ids=new StringBuilder();
             if(failures!=null)for(String key:failures.keySet()) {if(ids.length()>145)break;if(ids.length()>0)ids.append(',');ids.append(key);}
@@ -109,39 +109,39 @@ public final class MapTool {
     }
     @SuppressWarnings("unchecked")
     private void verify(File directory,String source) throws Exception {
-        Map<String,Object> car=JsonIO.object(MapFiles.read(new File(directory,"car.json")));
+        Map<String,Object> car=HmgSeogaemoJsonIO.object(HmgSeogaemoMapFiles.read(new File(directory,"car.json")));
         if(!sameCar(car))throw new IllegalStateException("firmware changed");
-        Map<String,Object> map=JsonIO.object(MapFiles.read(new File(directory,"map.json")));
+        Map<String,Object> map=HmgSeogaemoJsonIO.object(HmgSeogaemoMapFiles.read(new File(directory,"map.json")));
         Map<String,Map<String,Object>> entries=new TreeMap<String,Map<String,Object>>((Map<String,Map<String,Object>>)map.get("points"));
-        Map<String,String> bad=MapVerifier.check(car,entries);
+        Map<String,String> bad=HmgSeogaemoMapVerifier.check(car,entries);
         Map<String,Object> missing=(Map<String,Object>)car.get("missing");
         if(missing==null){missing=new TreeMap<String,Object>();car.put("missing",missing);}
         for(Map.Entry<String,String> item:bad.entrySet()){entries.remove(item.getKey());missing.put(item.getKey(),item.getValue());}
         File required=new File(packageRoot,"hookpoints.required");
         File[] manifests=required.listFiles();
-        if(manifests!=null)for(File manifest:manifests)if(manifest.isFile())for(String line:MapFiles.read(manifest).split("\n")){
+        if(manifests!=null)for(File manifest:manifests)if(manifest.isFile())for(String line:HmgSeogaemoMapFiles.read(manifest).split("\n")){
             String point=line.trim(); if(!point.isEmpty()&&!point.startsWith("#")&&!entries.containsKey(point))
                 throw new IllegalStateException("required point failed: "+point);
         }
         if(entries.isEmpty())throw new IllegalStateException("no verified points");
         if(!scratch.isDirectory()&&!scratch.mkdirs())throw new IOException("scratch unavailable");
         Map<String,Object> published=new LinkedHashMap<String,Object>();published.put("schema",1);published.put("points",entries);
-        MapFiles.write(new File(scratch,"map.json"),JsonIO.encode(published)+"\n");
-        MapFiles.write(new File(scratch,"car.json"),JsonIO.encode(car)+"\n");
-        MapFiles.write(new File(scratch,"verified"),seal(car));
-        MapFiles.write(new File(scratch,"hash-id"),hashId(car)+"\n");
+        HmgSeogaemoMapFiles.write(new File(scratch,"map.json"),HmgSeogaemoJsonIO.encode(published)+"\n");
+        HmgSeogaemoMapFiles.write(new File(scratch,"car.json"),HmgSeogaemoJsonIO.encode(car)+"\n");
+        HmgSeogaemoMapFiles.write(new File(scratch,"verified"),seal(car));
+        HmgSeogaemoMapFiles.write(new File(scratch,"hash-id"),hashId(car)+"\n");
         MessageDigest mapDigest=MessageDigest.getInstance("MD5");
-        mapDigest.update(JsonIO.encode(published).getBytes("UTF-8"));
+        mapDigest.update(HmgSeogaemoJsonIO.encode(published).getBytes("UTF-8"));
         mapDigest.update(seal(car).getBytes("UTF-8"));
         StringBuilder mapId=new StringBuilder();
         for(byte b:mapDigest.digest()){int value=b&255;if(value<16)mapId.append('0');mapId.append(Integer.toHexString(value));}
-        MapFiles.write(new File(scratch,"map-id"),mapId+"\n");
-        MapFiles.write(new File(scratch,"source"),source+"\n");
+        HmgSeogaemoMapFiles.write(new File(scratch,"map-id"),mapId+"\n");
+        HmgSeogaemoMapFiles.write(new File(scratch,"source"),source+"\n");
         if(source.equals("bundled")) {
             String root=new File(packageRoot,"maps").getCanonicalPath()+File.separator;
             String path=directory.getCanonicalPath();
             if(!path.startsWith(root))throw new IllegalStateException("bundle path");
-            MapFiles.write(new File(scratch,"layout"),"maps/"+path.substring(root.length()).replace(File.separatorChar,'/')+"\n");
+            HmgSeogaemoMapFiles.write(new File(scratch,"layout"),"maps/"+path.substring(root.length()).replace(File.separatorChar,'/')+"\n");
         }
         System.out.println("state=on\nrestart=none\ndetail=map verified");
         System.out.println("info.source="+source);
@@ -151,7 +151,7 @@ public final class MapTool {
         System.out.println("info.failed="+bad.size());
     }
     private void run() throws Exception {
-        MapScanner scanner=new MapScanner(systemRoot,new File(packageRoot,"maps"));
+        HmgSeogaemoMapScanner scanner=new HmgSeogaemoMapScanner(systemRoot,new File(packageRoot,"maps"));
         scanner.scan(new File(packageRoot,"hookpoints"));
         if(!product.matches("[A-Za-z0-9._-]+"))throw new IllegalStateException("invalid product");
         String[] parts=product.split("\\.");if(parts.length<3)throw new IllegalStateException("invalid product");
@@ -164,15 +164,15 @@ public final class MapTool {
         car.put("by_reference",new ArrayList<String>(scanner.byReference));
         Map<String,Object> map=new LinkedHashMap<String,Object>();map.put("schema",1);map.put("points",scanner.points);
         File candidate=new File(scratch,"candidate");if(!candidate.isDirectory()&&!candidate.mkdirs())throw new IOException("scratch unavailable");
-        MapFiles.write(new File(candidate,"car.json"),JsonIO.encode(car)+"\n");
-        MapFiles.write(new File(candidate,"map.json"),JsonIO.encode(map)+"\n");
+        HmgSeogaemoMapFiles.write(new File(candidate,"car.json"),HmgSeogaemoJsonIO.encode(car)+"\n");
+        HmgSeogaemoMapFiles.write(new File(candidate,"map.json"),HmgSeogaemoJsonIO.encode(map)+"\n");
         verify(candidate,"generated");
-        MapFiles.write(new File(scratch,"layout"),layout+"\n");
+        HmgSeogaemoMapFiles.write(new File(scratch,"layout"),layout+"\n");
     }
     public static void main(String[] args) {
         if(args.length!=4||!(args[0].equals("status")||args[0].equals("run")||args[0].equals("verify"))){System.exit(2);return;}
         try {
-            MapTool tool=new MapTool(new File(args[1]),new File(args[2]),new File(args[3]));
+            HmgSeogaemoMapTool tool=new HmgSeogaemoMapTool(new File(args[1]),new File(args[2]),new File(args[3]));
             if(args[0].equals("status"))tool.status();
             else if(args[0].equals("run"))tool.run();
             else {

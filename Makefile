@@ -16,8 +16,8 @@ map-build:
 	javac -source 1.7 -target 1.7 -bootclasspath $(ANDROID_JAR) -cp $(ANDROID_JAR) -d out/map-classes $$(find core/map/src -name '*.java' | sort)
 	$(BT)/d8 --min-api 19 --lib $(ANDROID_JAR) --release --output out/map-dex $$(find out/map-classes -name '*.class' | sort)
 	touch -t 198001010000 out/map-dex/classes.dex
-	rm -f out/package/core/map/mapper.jar
-	cd out/map-dex && zip -q -X ../package/core/map/mapper.jar classes.dex
+	rm -f out/package/core/map/hmg-seogaemo-mapper.jar
+	cd out/map-dex && zip -q -X ../package/core/map/hmg-seogaemo-mapper.jar classes.dex
 
 generate:
 	sh tools/gen-modules.sh
