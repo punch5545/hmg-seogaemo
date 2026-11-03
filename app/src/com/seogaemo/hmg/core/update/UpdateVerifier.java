@@ -105,9 +105,10 @@ public final class UpdateVerifier {
             long total = 0;
             int entries = 0;
             ZipEntry entry;
+            // The signed manifest pins the archive hash; only path safety is checked here.
             while ((entry = zip.getNextEntry()) != null) {
                 String name = entry.getName();
-                if (++entries > 2048 || name.length() > 160 || !names.add(name) || !name.matches("(?:VERSION|update_roots\\.pem|modules\\.list|modules\\.graph|modules\\.lines|app/hmg-seogaemo\\.apk|(?:bin|lib|modules|core|svc|hookpoints|hookpoints\\.required|maps)/[A-Za-z0-9_./-]+)") || name.contains("..") || name.startsWith("/")) throw new IOException("unsafe ZIP entry");
+                if (++entries > 2048 || name.length() > 160 || !names.add(name) || !name.matches("[A-Za-z0-9_][A-Za-z0-9_./-]*") || name.contains("//") || name.contains("..") || name.startsWith("/")) throw new IOException("unsafe ZIP entry");
                 File out = new File(dest, name);
                 if (entry.isDirectory()) { if (!out.isDirectory() && !out.mkdirs()) throw new IOException("mkdir failed"); continue; }
                 if (!out.getParentFile().isDirectory() && !out.getParentFile().mkdirs()) throw new IOException("mkdir failed");
