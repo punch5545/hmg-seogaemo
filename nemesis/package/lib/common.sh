@@ -949,7 +949,7 @@ sg_revert_all() {
 sg_owner_present() {
     case "$1" in
         nemesis-adb-tcp) [ -d /data/nemesis/apps/adb.tcp ] || [ -d /data/nemesis/backup/adb.tcp ] ;;
-        hmgapi) [ -d /data/nemesis/apps/hmgapi ] || [ -f /data/hmgapi/uninstall.sh ] ;;
+        hmgapi) [ -d /data/nemesis/apps/hmgapi ] || [ -f /data/hmgapi/installed.txt ] ;;
         leafia) [ -d /data/nemesis/apps/wireless.carplay.aa ] || [ -d /data/nemesis/backup/wireless.carplay.aa ] ;;
         local-hkmc-factory82) [ -d /data/nemesis/apps/local.hkmc.factory82 ] || [ -d /data/nemesis/backup/local.hkmc.factory82 ] ;;
         *) return 2 ;;
