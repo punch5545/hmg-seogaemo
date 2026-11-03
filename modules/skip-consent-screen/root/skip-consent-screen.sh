@@ -57,7 +57,7 @@ boot_ready() {
 factory_ready() {
     attempts=0
     while [ "$attempts" -lt 20 ]; do
-        response=$("${HMG_SEOGAEMO_SERVICE_BIN:-/system/bin/service}" check com.hkmc.factory 2>&1) || response=
+        response=$("${HMG_SEOGAEMO_SERVICE_BIN:-/system/bin/service}" check com.hkmc.factory 2>&1) || response= # android44-shell: allow -- service binary defaults to /system/bin/service; override is a host-test seam
         case "$response" in *'com.hkmc.factory: found'*) return 0;; esac
         sleep 1
         attempts=$((attempts + 1))

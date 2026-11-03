@@ -18,8 +18,10 @@ Status: current — off-car runtime and host-test findings; physical-car behavio
 # Host shell test parity (2026-11-03)
 
 Root script tests prepend `tools/testlib/fakebin`, whose `md5` prints the Android
-4.4 toolbox digest format (two spaces before the path) and hashes stdin for
-`sg_file_key`. The updater checks digest fields independently of spacing.
+4.4 toolbox digest format (two spaces before the path), rejects absent filename
+arguments, and maps explicit `/proc/self/fd/0` to host stdin for `sg_file_key`.
+The updater checks digest fields independently of spacing. The source audit in
+`android44-shell-audit.md` supersedes earlier tool-availability assumptions.
 CI and release install `mksh`; root regression suites run under both `sh` and
 `mksh` when installed. The module tests keep restricted command paths; `stat` remains forbidden,
 while their tested `cmp` and `grep -E` options work on the host implementations.

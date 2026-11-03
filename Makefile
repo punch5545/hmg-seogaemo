@@ -61,6 +61,8 @@ test: package
 	python3 tools/test-confirm-routing.py
 	sh tools/test-gen-modules.sh
 	python3 tools/test-root-shells.py --aapt $(BT)/aapt
+	python3 tools/test-android44-shell.py
+	python3 tools/lint-android44-shell.py
 	python3 tools/lint-module-root.py
 	python3 tools/lint-names.py
 	mkdir -p out/planner-test
