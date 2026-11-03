@@ -2,6 +2,7 @@ package com.seogaemo.app.module;
 
 /** Shared compile-only adapter for built-in root modules. */
 public abstract class RootBackedModule implements Module {
+    public HomeTile[] homeTiles() { return new HomeTile[0]; }
     public ModuleStatus apply() { return map(RootClient.run(id(), "apply")); }
     public ModuleStatus revert() { return map(RootClient.run(id(), "revert")); }
     public ModuleStatus status() { return map(RootClient.run(id(), "status")); }

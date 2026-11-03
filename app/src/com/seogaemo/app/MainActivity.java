@@ -18,6 +18,7 @@ import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import com.seogaemo.app.ui.HomeView;
 import java.util.Locale;
 
 /** Gen5W visual mock. No vehicle or settings operations are performed. */
@@ -200,30 +201,9 @@ public final class MainActivity extends Activity {
         settingsVisible = false;
         LinearLayout r = root();
         header(r, false);
-        LinearLayout body = vertical();
-        body.setGravity(Gravity.CENTER);
-        r.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
-        LinearLayout intro = horizontal();
-        TextView title = text(getString(R.string.home_title), 26, WHITE, medium);
-        title.setTextScaleX(0.97f);
-        intro.addView(title, new LinearLayout.LayoutParams(0, dp(42), 1));
-        TextView note = text(getString(R.string.placeholder_note), 15, MUTED, mono);
-        note.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-        intro.addView(note, new LinearLayout.LayoutParams(-2, dp(42)));
-        body.addView(intro, new LinearLayout.LayoutParams(dp(840), dp(42)));
-        for (int row = 0; row < 2; row++) {
-            LinearLayout strip = horizontal();
-            for (int col = 0; col < 4; col++) {
-                int index = row * 4 + col;
-                FrameLayout tile = makeAction(index);
-                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(204), dp(166));
-                if (col > 0) p.leftMargin = dp(8);
-                strip.addView(tile, p);
-            }
-            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-2, dp(166));
-            if (row > 0) rp.topMargin = dp(8);
-            body.addView(strip, rp);
-        }
+        r.addView(new HomeView(this, new Runnable() {
+            public void run() { showSettings(); }
+        }), new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private FrameLayout makeAction(final int index) {

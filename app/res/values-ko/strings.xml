@@ -1,6 +1,14 @@
 <resources>
     <string name="app_name">HMG-Seogaemo</string>
     <string name="home_title">빠른 실행</string>
+    <string name="home_page">홈  /  %1$d / %2$d</string>
+    <string name="tile_wireless_adb">무선 ADB</string>
+    <string name="tile_wifi_client">Wi-Fi 클라이언트</string>
+    <string name="tile_projection">무선 CarPlay / AA</string>
+    <string name="tile_export">변경 내보내기</string>
+    <string name="tile_logs">로그</string>
+    <string name="tile_display">화면</string>
+    <string name="tile_about">정보</string>
     <string name="placeholder_note">화면 예시  ·  차량 제어 기능 없음</string>
     <string name="meta">GEN5W  /  화면 미리보기</string>
     <string name="back">홈으로</string>

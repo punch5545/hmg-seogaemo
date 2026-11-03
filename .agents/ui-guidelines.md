@@ -71,4 +71,8 @@ ANDROID_AVD_HOME=/private/tmp/hmg_avd ~/Library/Android/sdk/emulator/emulator -a
 ~/Library/Android/sdk/platform-tools/adb -s emulator-5580 emu kill
 ```
 
-`assets/home-pressed.png` was captured while `adb shell input swipe 1118 565 1118 565 3000` held the Restart tile on Korean Home. The PNGs come from the Android 28 arm64 emulator at the requested pixel size/density. No API 19 runtime image or physical car was available for runtime verification.
+The PNGs come from the Android 28 arm64 emulator at the requested pixel size/density. No API 19 runtime image or physical car was available for runtime verification.
+
+## Portrait Home mock (2026-11-03)
+
+The new Home uses six portrait tiles per page in a horizontal `HorizontalScrollView` pager, with swipe, arrow buttons, and page dots. The visual demo list lives in `HomeView`; only Settings navigates. `HomeTile` and the empty `Module.homeTiles()` implementations establish the module metadata seam without displaying disabled modules as live actions. At 1920×720, the pager viewport is about 1104dp wide and each card is about 174dp wide. Page widths must be synchronized after the view is laid out: `onSizeChanged()` can run before pages are appended, leaving one-pixel or screen-width pages when Home is recreated after the language change. The Korean screenshots in `assets/home.png`, `assets/home-page2.png`, and `assets/home-pressed.png` were captured on the Android 28 AVD; the last holds Restart early in the touch, before Android clears long-press feedback.

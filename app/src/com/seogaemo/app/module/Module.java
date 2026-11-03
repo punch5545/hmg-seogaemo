@@ -32,6 +32,7 @@ public interface Module {
     InfoRow[] infoRows();
     int[] notes();
     ModuleAction[] actions();
+    HomeTile[] homeTiles();
     Warning[] enableWarnings();
     RestartRequirement restartRequirement();
     String checkCompatibility();

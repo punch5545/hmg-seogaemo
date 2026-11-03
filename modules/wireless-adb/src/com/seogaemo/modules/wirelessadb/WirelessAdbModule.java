@@ -5,6 +5,7 @@ import com.seogaemo.app.module.Module;
 import com.seogaemo.app.module.RootBackedModule;
 import com.seogaemo.app.module.InfoRow;
 import com.seogaemo.app.module.ModuleAction;
+import com.seogaemo.app.module.HomeTile;
 import com.seogaemo.app.module.Warning;
 
 /** Placeholder only: no property, daemon, or NEMESIS operation. */
@@ -29,5 +30,6 @@ public final class WirelessAdbModule extends RootBackedModule {
     public InfoRow[] infoRows() { return new InfoRow[0]; }
     public int[] notes() { return new int[0]; }
     public ModuleAction[] actions() { return new ModuleAction[0]; }
+    public HomeTile[] homeTiles() { return new HomeTile[0]; }
     public Warning[] enableWarnings() { return new Warning[0]; }
 }
