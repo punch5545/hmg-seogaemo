@@ -311,6 +311,16 @@ sg_prop_set() {
     sg_ledger prop_set "$1" "$HMG_SEOGAEMO_STATE/prop.$1/live" "$HMG_SEOGAEMO_STATE/prop.$1/applied" "" || return 1
     sg_changed prop "$1"
 }
+# Directories created under /system must be searchable by the apps that read the
+# payload (DiPO runs as the system user). The module scripts run with umask 077, which
+# left them 0700 and made every recipe file under them unreadable. State directories
+# keep the private mode.
+sg_mkdir_target() {
+    case "${1#"${SG_TARGET_ROOT:-}"}" in
+        /system/*) (umask 022; mkdir -p "$1") ;;
+        *) mkdir -p "$1" ;;
+    esac
+}
 sg_commit_file() {
     sg_target=$1; sg_input=$2; sg_mode=$3; sg_owner=$4
     sg_validate owns_files "$sg_target" || return 2
@@ -329,7 +339,7 @@ sg_commit_file() {
     case "$sg_target" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
     sg_tmp=$sg_target.hmg-seogaemo.$$
     sg_rc=0
-    mkdir -p "${sg_target%/*}" &&
+    sg_mkdir_target "${sg_target%/*}" &&
         cp "$sg_input" "$sg_tmp" &&
         chmod "$sg_mode" "$sg_tmp" &&
         { chown "${sg_owner%:*}.${sg_owner#*:}" "$sg_tmp" 2>/dev/null ||

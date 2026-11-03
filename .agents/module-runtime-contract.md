@@ -215,6 +215,11 @@ or removing a loaded JAR leaves the old file open, so `remount ro` fails with EB
 Failing the change there left the wrapper written but not ledgered, and the rollback failed the same way,
 which blocked `revert`, `stock restore` and the next `apply` (`orphaned app_process backup`).
 
+Directories created under `/system` for a payload file (`sg_mkdir_target`) are mode 0755. The module scripts run
+with umask 077, which left `/system/etc/hmg-seogaemo/<module>/recipes` at 0700 on the Ioniq 5 (2026-11-04): the hook
+runs as the system user inside DiPO, got EACCES on every recipe, and the native audio patch (AAC/Opus over Wi-Fi) was
+never applied, so the phone did not offer CarPlay as an audio output. State directories keep the private mode.
+
 `watch=boot,screen_on` may declare only these fixed events. The package's single
 watcher service (`svc/watcher.sh`, `mode=restart`, separate from the `mode=once`
 `reconcile` service, and never calling apply/revert) invokes `root/<id>.sh watch

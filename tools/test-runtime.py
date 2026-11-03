@@ -617,6 +617,24 @@ grep -Fq 'warning: /system stays read-write until restart' "$HMG_SEOGAEMO_STATE/
     assert (base / "remounts").read_text().splitlines() == ["remount ro", "remount ro"]
 
 
+def test_system_directory_mode(temp):
+    base = temp / "dir-mode"
+    base.mkdir()
+    runner = base / "runner"
+    script(runner, f'''
+set -eu
+umask 077
+SG_TARGET_ROOT="{base}"
+# Directories under /system are readable by the system user; state directories stay private.
+sg_mkdir_target "{base}/system/etc/hmg-seogaemo/x/recipes"
+sg_mkdir_target "{base}/state/a/b"
+case "$(ls -ldn "{base}/system/etc/hmg-seogaemo/x/recipes")" in drwxr-xr-x*) ;; *) exit 1 ;; esac
+case "$(ls -ldn "{base}/system/etc/hmg-seogaemo/x")" in drwxr-xr-x*) ;; *) exit 1 ;; esac
+case "$(ls -ldn "{base}/state/a/b")" in drwx------*) ;; *) exit 1 ;; esac
+''')
+    run(runner, env=dict(os.environ))
+
+
 def test_zygote_and_dex(temp):
     base = temp / "zygote"
     state = base / "data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa"
@@ -725,4 +743,5 @@ with tempfile.TemporaryDirectory() as directory:
     test_module_build_hook(root)
     test_zygote_and_dex(root)
     test_remount_ro_busy(root)
+    test_system_directory_mode(root)
 print("shared runtime tests passed")
