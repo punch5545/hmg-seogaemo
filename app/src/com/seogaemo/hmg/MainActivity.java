@@ -193,7 +193,7 @@ public final class MainActivity extends Activity {
         bar.setBackgroundColor(SURFACE);
         View inset = new View(this);
         bar.addView(inset, new LinearLayout.LayoutParams(dp(22), dp(60)));
-        bar.addView(new BrandMark(), new LinearLayout.LayoutParams(dp(46), dp(46)));
+        bar.addView(new BrandMark(), new LinearLayout.LayoutParams(dp(32), dp(32)));
         View gap = new View(this);
         bar.addView(gap, new LinearLayout.LayoutParams(dp(12), dp(60)));
         TextView brand = text(getString(R.string.app_name), 28, WHITE, medium);
