@@ -201,7 +201,8 @@ sg_print "wlan0 UP 0.0.0.0/0 0x00001002" > "$work/netcfg"
 run status
 if grep -q '^info.client_ip=' "$work/output"; then exit 1; fi
 : > "$work/netcfg"
-run revert; assert_state pending-restart
+run revert; assert_state pending-restart; assert_line info.desired=off
+run status; assert_state pending-restart; assert_line info.desired=off
 cmp -s "$work/original.cfg" "$cfg"
 [ ! -e "$xml" ]
 [ -z "$(prop_value)" ]

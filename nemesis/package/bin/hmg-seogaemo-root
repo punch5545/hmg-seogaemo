@@ -9,6 +9,11 @@ base=${0%/*}
 base=${base%/bin}
 SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 . "$base/lib/common.sh"
+if [ "$1" = device ]; then
+    [ "$#" -eq 2 ] && [ "$2" = reboot ] || exit 2
+    sync && reboot
+    exit $?
+fi
 if [ "$1" = stock ] || [ "$1" = package ]; then
     [ "$#" -eq 2 ] || exit 2
     case "$1:$2" in stock:restore|stock:status) stock_verb=$2;;
@@ -17,6 +22,7 @@ if [ "$1" = stock ] || [ "$1" = package ]; then
     exec /system/bin/sh "$base/core/stock.sh" "$stock_verb"
 fi
 if [ "$1" = export ]; then
+    export_mode=$2
     case "$2" in usb|adb) ;; *) exit 2;; esac
     [ -f "$SG_DATA_ROOT/ledger/ledger.tsv" ] || {
         echo 'state=failed'; echo 'restart=none'; echo 'detail=No change ledger'; exit 1;
@@ -60,6 +66,10 @@ if [ "$1" = export ]; then
     . "$base/lib/common.sh"
     hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
     chmod -R 755 "$dest" || exit 1
+    # umask 077 also protects mkdir -p parents; adb must traverse this root.
+    if [ "$export_mode" = adb ]; then
+        chmod 755 "$export_base" || exit 1
+    fi
     sg_print "state=on" "restart=none" "detail=$dest"
     exit 0
 fi
@@ -176,8 +186,7 @@ if [ "$code" -eq 0 ]; then
         apply) grep -q '^state=on$' "$result" ||
             grep -q '^state=pending-restart$' "$result" || code=1 ;;
         revert) grep -q '^state=off$' "$result" || {
-            grep -Fxq 'restore=reboot' "$base/modules/$1.properties" &&
-                grep -q '^state=pending-restart$' "$result" &&
+            grep -q '^state=pending-restart$' "$result" &&
                 grep -q '^restart=head_unit$' "$result" &&
                 grep -q '^info.desired=off$' "$result" || code=1
         } ;;

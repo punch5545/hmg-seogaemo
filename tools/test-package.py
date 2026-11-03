@@ -34,7 +34,7 @@ def run():
     ota_path = DIST / f"{prefix}-ota.zip"
     with zipfile.ZipFile(package_path) as package, zipfile.ZipFile(usb_path) as usb, zipfile.ZipFile(ota_path) as ota:
         # Every Java root command must explicitly select the device interpreter.
-        for source, expected_count in (("module/RootClient.java", 5),
+        for source, expected_count in (("module/RootClient.java", 6),
                                        ("core/update/UpdateClient.java", 1)):
             java = (ROOT / "app/src/com/seogaemo/hmg" / source).read_text()
             commands = re.findall(r'"([^"\n]*bin/hmg-seogaemo-root [^"\n]*)"', java)
@@ -61,8 +61,9 @@ def run():
         for script_name in ("core/update.sh", "core/hmg-seogaemo-map.sh", "svc/reconcile.sh", "svc/watcher.sh"):
             body = package.read(script_name).decode()
             assert not re.search(r"\b(?:printf|awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|sha256sum|sha1sum|tar|unzip|busybox|toybox)\b", body), script_name
-        assert set(usb.namelist()) == {"NEMESIS.data", "packages/hmg-seogaemo.zip"}
+        assert set(usb.namelist()) == {"NEMESIS.data", "install.sh", "packages/hmg-seogaemo.zip"}
         assert usb.read("packages/hmg-seogaemo.zip") == package_path.read_bytes()
+        assert b'install --update "$PWD/packages/hmg-seogaemo.zip"' in usb.read("install.sh")
         assert ota.read("VERSION") == (version + "\n").encode()
         assert ota.read("app/hmg-seogaemo.apk") == package.read("app/hmg-seogaemo.apk")
         assert ota.read("update_roots.pem") == (ROOT / "app/res/raw/update_roots.pem").read_bytes()
@@ -71,7 +72,7 @@ def run():
             if name in entries:
                 assert ota.read(name) == package.read(name)
         usb_meta = descriptor(usb.read("NEMESIS.data"))
-        assert dict(usb_meta["nemesis"]) == {"version": "1.0", "type": "install", "path": "packages/hmg-seogaemo.zip"}
+        assert dict(usb_meta["nemesis"]) == {"version": "1.0", "type": "execute", "path": "install.sh"}
         meta = descriptor(package.read("NEMESIS.data"))
         assert dict(meta["nemesis"]) == {
             "version": "1.1", "id": "hmg-seogaemo", "name": "HMG-Seogaemo", "type": "application,service",

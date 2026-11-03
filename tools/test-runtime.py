@@ -87,6 +87,9 @@ def test_common(temp):
     script(runner, f'''
 set -eu
 . "{common}"
+# Fresh status probes must not create state or report a firmware conflict.
+if sg_applied absent; then exit 1; fi
+[ ! -e "$HMG_SEOGAEMO_STATE/module.log" ]
 sg_prop_baseline absent
 sg_prop_set absent changed
 sg_prop_restore absent
@@ -233,7 +236,7 @@ esac
 echo detail=
 ''')
     (base / "modules/a.properties").write_text("watch=boot,screen_on\n")
-    (base / "modules/c.properties").write_text("restore=reboot\n")
+    (base / "modules/c.properties").write_text("restore=exact\n")
     # All module entry points and the dispatcher are non-executable after extraction.
     for path in base.rglob("*"):
         if path.is_file():
@@ -241,6 +244,21 @@ echo detail=
     state = base / "state"
     env = dict(os.environ, SG_DATA_ROOT=str(state))
     root = base / "bin/hmg-seogaemo-root"
+    fake = base / "fake"
+    fake.mkdir()
+    for command in ("sync", "reboot"):
+        script(fake / command, 'echo ' + command + ' >> "$FAKE_DEVICE_CALLS"\n' +
+               ('[ "${FAKE_SYNC_FAIL:-0}" = 0 ]\n' if command == "sync" else 'exit 0\n'))
+    calls = base / "device-calls"
+    device_env = dict(env, PATH=str(fake) + ":" + os.environ["PATH"], FAKE_DEVICE_CALLS=str(calls))
+    for args in [("device", "bad"), ("device", "reboot", "extra")]:
+        run(root, *args, env=device_env, ok=False)
+    assert not calls.exists()
+    run(root, "device", "reboot", env=device_env)
+    assert calls.read_text() == "sync\nreboot\n"
+    calls.write_text("")
+    run(root, "device", "reboot", env=dict(device_env, FAKE_SYNC_FAIL="1"), ok=False)
+    assert calls.read_text() == "sync\n"
     run(root, "b", "apply", env=env, ok=False)
     run(root, "a", "apply", env=env)
     run(root, "b", "apply", env=env)
@@ -344,11 +362,16 @@ sg_revert_all
     export_root = base / "hmg-seogaemo-export"
     (base / "lib").mkdir(exist_ok=True)
     copy_shell_script(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
+    export_root.mkdir(mode=0o700)
     env["SG_EXPORT_ROOT"] = str(export_root)
     result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
     assert "state=on" in result.stdout
     exported = next(export_root.glob("*/ledger/ledger.tsv"))
     assert exported.read_bytes() == ledger.read_bytes()
+    assert export_root.stat().st_mode & 0o777 == 0o755
+    # Every exported ancestor is traversable and every file readable by shell.
+    for entry in export_root.rglob("*"):
+        assert entry.stat().st_mode & (0o005 if entry.is_dir() else 0o004) == (0o005 if entry.is_dir() else 0o004)
     assert (exported.parents[1] / "ro.build.product").read_text().strip() == "NEEV.KOR.260902"
     usb = base / "usb0"
     usb.mkdir()

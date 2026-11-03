@@ -83,6 +83,8 @@
     <string name="module_status_conflict">Changes conflict with the saved original</string>
     <string name="module_status_incompatible">This head unit is not compatible</string>
     <string name="module_status_unsupported">Status is not supported</string>
+    <string name="module_pending_enable">Restart the head unit to finish enabling this module</string>
+    <string name="module_pending_disable">Restart the head unit to finish disabling this module</string>
     <string name="module_restart">Head unit restart required for this change</string>
     <string name="module_restore_reboot">Restart the head unit after disabling to restore the stock startup notice</string>
     <string name="module_confirm">Apply module changes?</string>
@@ -152,4 +154,7 @@
     <string name="stock_not_attempted">Not attempted</string>
     <string name="stock_restart">Restart the head unit to complete stock restoration.</string>
     <string name="stock_uninstall_failed">NEMESIS could not finish removal. HMG-Seogaemo remains installed; export the change ledger and retry after resolving the problem.</string>
+    <string name="device_reboot">Restart head unit</string>
+    <string name="device_reboot_confirm">Restart the head unit now? Current connections will be interrupted.</string>
+    <string name="device_reboot_failed">Could not restart the head unit.</string>
 </resources>

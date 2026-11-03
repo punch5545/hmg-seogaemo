@@ -93,6 +93,18 @@ created by OTA extraction; no archive mode metadata is required.
 
 ## Root side
 
+### Head-unit restart
+
+Fixed command `hmg-seogaemo-root device reboot` accepts exactly two arguments,
+no paths or free-form input. The dispatcher runs toolbox `sync` then the KitKat `reboot` binary,
+stopping if sync fails. `RootClient.rebootDevice()` exposes only that literal
+command. Settings → General offers Restart head unit (KO 헤드 유닛 재시작),
+with the shared destructive/error ConfirmDialog and Cancel focused on the left.
+Only confirmation starts the background root call; failure is localized in UI.
+Pinned AOSP `android-4.4.2_r1` implements reboot in `system/core/reboot/reboot.c`
+(a standalone binary, not a toolbox applet); its no-argument form requests the
+normal init reboot and waits for it to occur. The shell profile permits that form.
+
 ### Stock restore and package removal
 
 Fixed commands `hmg-seogaemo-root stock restore|status` and
@@ -256,7 +268,12 @@ detail=<short reason>
 
 Optional extra lines `info.<key>=<value>` (`[a-z0-9_]` keys, ASCII values ≤ 200 chars) carry
 read-only facts the module wants shown in its Settings pane (e.g. `info.hotspot_ssid`,
-`info.hotspot_ip`, `info.adb_endpoint`). `status` must be cheap and side-effect free.
+`info.hotspot_ip`, `info.adb_endpoint`). `status` must be cheap and side-effect free. A pending disable reports
+`info.desired=off`; the UI uses this for its off toggle and disable restart text.
+A successful revert may return `pending-restart`, `restart=head_unit`, and
+`info.desired=off` for either exact file restore (PackageManager still caches a
+removed feature) or `restore=reboot`. The dispatcher commits desired off in
+both cases. Pending enable retains the on toggle and distinct enable text.
 
 Exit codes: `0` ok, `1` failed, `3` conflict, `4` incompatible, `2` usage.
 

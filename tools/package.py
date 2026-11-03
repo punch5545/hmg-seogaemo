@@ -88,6 +88,7 @@ def build(aapt):
     add_zip(package_zip, files)
     add_zip(usb_zip, {
         "NEMESIS.data": ROOT / "nemesis/usb/NEMESIS.data",
+        "install.sh": ROOT / "nemesis/usb/install.sh",
         "packages/hmg-seogaemo.zip": package_zip,
     })
     ota_files = {"app/hmg-seogaemo.apk": apk, "VERSION": (version + "\n").encode(),

@@ -123,6 +123,10 @@
         "+%Y%m%d-%H%M%S"
       ]
     },
+    "reboot": {
+      "short": {},
+      "source": "system/core/reboot/reboot.c (standalone KitKat binary; no-argument reboot only)"
+    },
     "sync": {
       "short": {},
       "source": "system/core/toolbox/sync.c"
@@ -718,6 +722,7 @@
     "/system/bin/rmdir": "rmdir",
     "/system/bin/date": "date",
     "/system/bin/sync": "sync",
+    "/system/bin/reboot": "reboot",
     "/system/bin/umount": "umount",
     "/system/bin/start": "start",
     "/system/bin/stop": "stop",

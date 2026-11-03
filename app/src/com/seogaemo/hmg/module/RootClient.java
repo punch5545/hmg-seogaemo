@@ -18,6 +18,10 @@ public final class RootClient {
         return invoke(command);
     }
 
+    public static RootResult rebootDevice() {
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root device reboot");
+    }
+
     public static RootResult exportUsb() {
         return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb");
     }
