@@ -2,6 +2,12 @@ Status: current — implemented off-car; physical-car behavior remains unverifie
 
 # Wi-Fi client module implementation
 
+The feature XML has exclusive `owns_files` ownership. The exact stock removal
+line in `featurexml.cfg` is declared in `owns_lines.1`; the shared runtime
+composes it from one stock baseline with other modules' distinct line patches.
+The projection exclusion remains for STA versus AP on one Wi-Fi radio, not for
+file sharing. The build and runtime reject overlapping stock-line claims.
+
 Implemented against `.agents/module-runtime-contract.md`, including the
 2026-11-03 package mutation API. This is an independent implementation
 of the observed feature-file behavior; no upstream source was copied.

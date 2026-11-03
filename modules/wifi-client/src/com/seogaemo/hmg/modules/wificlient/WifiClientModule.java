@@ -26,8 +26,7 @@ public final class WifiClientModule extends RootBackedModule {
     public String checkConflicts() { return null; }
     public String[] ownedFiles() {
         return new String[] {
-            "/system/etc/permissions/android.hardware.wifi.xml",
-            "/system/onebin/neev_kr/featurexml.cfg"
+            "/system/etc/permissions/android.hardware.wifi.xml"
         };
     }
     public InfoRow[] infoRows() {

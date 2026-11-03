@@ -54,10 +54,15 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
   `nemesis/package/lib/common.sh` (`sg_prop_set`, `sg_file_put`, `sg_file_replace_line`,
   `sg_file_delete`, `sg_bind_mount`, `sg_service_restart`, `sg_zygote_install`,
   `sg_dex_cache_track`, `sg_revert_all`), which validates ownership (`module.properties`
-  `owns_props`/`owns_files`/`services`), baselines, writes, verifies and appends to the ledger.
+  `owns_props`/`owns_files`/`owns_lines.N`/`services`), baselines, writes, verifies and appends to the ledger.
   `sg_service_call` accepts only exact `service_calls=` pairs, times out, and records every call.
   Module scripts may only read. Need a new kind of write? Add an API function to the runtime and
   the contract; never work around it in a module.
+- **Text files may be shared between modules only at line level:** declare each changed stock
+  line in `owns_lines`; two modules may never own the same line; whole-file operations
+  (`sg_file_put`, `sg_file_delete`, zygote install, bind mounts) require exclusive `owns_files`
+  ownership; the build and the runtime both enforce this. `excludes` is for functional conflicts
+  (e.g. one Wi-Fi radio), not for file sharing.
 - **Exact restore on uninstall is the top priority.** Restores are guarded: only undo bytes/values
   we wrote; if the target changed since (e.g. an official firmware update), report conflict, keep
   backups and fail the uninstall closed. Baselines are bound to `ro.build.product`.
@@ -105,6 +110,9 @@ The module list/graph is generated at build time from `modules/*/module.properti
 hand-edited list. Current modules: `wifi-client` (excludes `wireless-carplay-and-aa`),
 `wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`,
 and `skip-consent-screen` (factory Binder call on boot and screen wake).
+`wifi-client` and `wireless-carplay-and-aa` share `featurexml.cfg` through distinct stock-line
+claims. Their exclusion remains for STA versus AP on one radio; shared file safety does not
+depend on it.
 Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, baselines, ledger).
 
 ## Car mapping
@@ -178,9 +186,6 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   unknown. `persist.wifi.state=3` is deliberately not set yet (to be tested later).
 - OTA: TLS 1.2 to GitHub on 4.4 with bundled roots (`update_roots.pem`), the reboot/resume flow
   through `wifi-client`, and rollback are untested on a car.
-- `wifi-client` and `wireless-carplay-and-aa` both own `/system/onebin/neev_kr/featurexml.cfg`.
-  This is safe only because they exclude each other (one is fully reverted before the other
-  applies). Never remove that exclusion without moving to line-level ownership first.
 - An official firmware OTA while modules are applied makes restores conflict by design.
 - Removing only the APK (not via NEMESIS) skips the uninstall hook; reconcile must clean up.
 
@@ -193,3 +198,21 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   bundle unrelated fixes into one commit.
 - Merge feature branches into `main` with `--no-ff`; keep worktrees after merging.
 - Interface changes go into `.agents/module-runtime-contract.md` first, then code.
+
+## Module manifest template guidance
+
+For a new module, copy the metadata shape from an existing module and declare
+only the operations it performs. Use `owns_files=/absolute/path,...` for exclusive
+whole-file operations. For a shared text file, add one numbered entry per changed
+stock line, for example:
+
+```properties
+owns_lines.1=/system/onebin/neev_kr/featurexml.cfg:-/system/etc/permissions/android.hardware.wifi.xml
+```
+
+Numbers are unique positive decimals without leading zero. The first colon
+separates the path from the exact stock line; everything after it is literal,
+including commas, colons, equals signs, backslashes and spaces (no escaping).
+Control characters are forbidden. Do not also list that path in `owns_files`.
+Pass this exact stock line to `sg_file_replace_line`, including on reapply.
+See `.agents/module-runtime-contract.md` for composition and recovery semantics.

@@ -14,7 +14,8 @@ if mksh:
 for shell in shells:
     print(f"Testing root scripts with {shell}", flush=True)
     env = dict(os.environ, HMG_SEOGAEMO_TEST_SHELL=shell)
-    for suite in ("test-map-root.py", "test-package.py", "test-runtime.py", "test-stock.py"):
+    for suite in ("test-map-root.py", "test-package.py", "test-runtime.py", "test-stock.py",
+                  "test-line-ownership.py"):
         args = sys.argv[1:] if suite == "test-package.py" else []
         subprocess.run([sys.executable, str(root / "tools" / suite), *args],
                        cwd=root, env=env, check=True)

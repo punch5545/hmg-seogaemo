@@ -36,7 +36,7 @@ for id in $reverse; do
     desired=$(cat "$state/desired/$id" 2>/dev/null)
     [ "$desired" = on ] && [ "$missing_apk" -eq 0 ] && continue
     baseline=0
-    for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready; do
+    for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready "$state/modules/$id"/line.*/ready; do
         [ -f "$item" ] && baseline=1
     done
     [ "$baseline" -eq 1 ] || continue
