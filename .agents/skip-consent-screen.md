@@ -1,0 +1,23 @@
+Status: research, 2026-11-03. No HMG-Seogaemo module is implemented.
+
+# Startup consent screen investigation
+
+The requested module would skip the driver-safety notice at startup. The driver remains responsible for safe operation. The current module contract requires exact guarded restore, including on disable and uninstall; this behavior cannot yet meet that contract.
+
+## Reference package
+
+NEMESIS Manager's source defines the read-only Store index as `https://portal.xwtk.cloud/nemesis/v1/store/catalog` and package descriptors as `/store/packages/<id>` (`tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/Portal.java`). On 2026-11-03 the Store host did not resolve from this workspace and the web reader could not open it. No Store descriptor or ZIP could be obtained or inspected, so its listing, current artifact, and ZIP contents are unverified.
+
+The public [HKMC Factory 82 repository](https://github.com/armandodollia/nemesis-package-builds) identifies the likely package as `local.hkmc.factory82`, author `armandodollia`, release `4.2.1`, MIT license. The [release notes](https://github.com/armandodollia/nemesis-package-builds/releases/tag/v4.2.1) say 4.2.1 changes metadata/build only; the service remains v4.2. The source descriptor previously exposed `types=application,service`, a diagnostic shell app, a restarting `apply` service, and a preuninstall script. The exact 4.2.1 descriptor and preuninstall script were not accessible.
+
+The readable [service source](https://raw.githubusercontent.com/armandodollia/nemesis-package-builds/main/packages/hkmc-factory82/svc/watch.sh) polls for startup, screen wake, QuickBoot marker loss, and a long resume gap. It waits for factory Binder registration and boot readiness, then issues `service call com.hkmc.factory 82`, with one limited retry for a boot-incomplete exception. It records diagnostics under `/data/nemesis/state/local.hkmc.factory82/` and a session marker at `/data/local/tmp/hkmc.factory82.session`. The diagnostic app can export data to USB. The readable script has no property change, feature XML edit, settings DB key, stock APK patch, or stock-file replacement. Because the ZIP was unavailable, this is a statement about the readable source, not a complete audit of the release artifact.
+
+The [package README](https://github.com/armandodollia/nemesis-package-builds) says only an earlier v4 build was observed to dismiss the screen on a 2022 Kia EV6. Version 4.2.1 was simulated but not vehicle-tested. It explicitly says Binder transaction 82 is undocumented, a zero Parcel is not proof of dismissal, and uninstall stops future invocations but does not establish reversal of any persistent effect.
+
+## NEEV KOR evidence and design boundary
+
+The owner's private Car Report resolves `framework.factory_service.hide_consent_screen` to `IMicomFactoryService.hideConsentScreen()` on `NEEV.KOR.0000.V039.001.260902`. The same point is already in `core/hookpoints/framework.json` and `maps/hyundai/ioniq5/kor/260902/map.json`; the bundled map hashes `/system/framework/framework.odex` as `ffe86fa1540c8dea3b5499b1191bb727`. The report establishes a member name, not that transaction 82 works on this car or has a reversible effect. HMG-API's `docs/vehicle-commands.md` also records no known inverse.
+
+The existing `hmg-seogaemo-root <id> apply|revert|status|precheck` and package mutation API manage baselined files and properties. They have no operation for a Binder call, no module-owned long-running wake service, and no guarded inverse for its effects. Implementing the reference behavior directly in a module script would bypass the mutation API and would leave an unverifiable state after disable/uninstall. A one-shot call at enable would also fail the requested startup behavior. A launcher hook might avoid the factory call, but the current catalogue has only launcher menu points, not a proven consent-screen lifecycle point; its stock code and exact restoration behavior need separate on-car evidence.
+
+Before implementation, choose and verify a reversible mechanism: establish the factory call's effects and inverse on the target car, or identify a consent-screen hook whose removal restores stock behavior without a persistent side effect. Then extend the runtime contract first for the needed wake/service or hook lifecycle, fixed root arguments, ownership, status, and guarded restore. Gate on the product glob and relevant stock hashes, and reject `local.hkmc.factory82` as an external owner. No module should be shipped until enable, repeat wake, disable, reboot, and uninstall are observed on the target car with original behavior restored.
