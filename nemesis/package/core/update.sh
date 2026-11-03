@@ -78,7 +78,8 @@ check_md5() {
         case "$relative" in ''|/*|*..*|*'|'*) return 1 ;; esac
         [ -f "$dir/$relative" ] || return 1
         actual=$(md5 "$dir/$relative") || return 1
-        [ "$actual" = "$expected $dir/$relative" ] || return 1
+        set -- $actual
+        [ "$1" = "$expected" ] && [ "$2" = "$dir/$relative" ] || return 1
         count=$((count + 1))
     done < "$dir/files.md5"
     [ "$count" -gt 3 ]

@@ -2,6 +2,7 @@
 # Module-local fake-root test. No host firmware paths are touched.
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+car_shell=$(command -v mksh || command -v sh)
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 export SG_WIRELESS_TEST_ROOT=$T/root SEOGAEMO_BASE=$T/base SEOGAEMO_STATE=$T/state SEOGAEMO_MODULE_DIR=$HERE/payload
@@ -130,7 +131,7 @@ printf 'stock-app-process\n' > "$T/root/system/bin/app_process"
 printf 'boot-one\n' > "$T/root/proc/sys/kernel/random/boot_id"
 printf '%s\n' '-/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml' '-/system/etc/permissions/com.hkmc.software.connectivity.androidauto_wireless.xml' '-/system/etc/permissions/com.hkmc.software.wifihotspot.xml' > "$T/root/system/onebin/neev_kr/featurexml.cfg"
 SCRIPT=$HERE/root/wireless-carplay-and-aa.sh
-run() { sh "$SCRIPT" "$1" > "$T/output"; }
+run() { "$car_shell" "$SCRIPT" "$1" > "$T/output"; }
 fail() { echo "FAIL: $1" >&2; cat "$T/output" >&2; exit 1; }
 printf 'OTHER.KOR.0000.V039.001.260902' > "$T/props/ro.build.product"
 run precheck && fail wrong-firmware-accepted

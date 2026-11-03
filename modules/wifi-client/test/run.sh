@@ -2,6 +2,7 @@
 set -eu
 
 repo=$(CDPATH= cd "$(dirname "$0")/../../.." && pwd)
+car_shell=$(command -v mksh || command -v sh)
 work=$(mktemp -d "${TMPDIR:-/tmp}/wifi-client-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 mkdir -p "$work/base/lib" "$work/bin" "$work/system/onebin/neev_kr" \
@@ -125,9 +126,11 @@ export TEST_WORK=$work SEOGAEMO_BASE=$work/base SEOGAEMO_STATE=$work/state SEOGA
 # Keep the test harness on the host PATH, but execute the module with only
 # toolbox-like commands. Forbidden names are explicit failing stubs.
 mkdir "$work/allowed"
-for tool in sh cat cmp cp grep rm; do
+for tool in cat cmp cp grep rm; do
     ln -s "$(command -v "$tool")" "$work/allowed/$tool"
 done
+ln -s "$repo/tools/testlib/fakebin/md5" "$work/allowed/md5"
+ln -s "$(command -v python3)" "$work/allowed/python3"
 for tool in getprop setprop pm ifconfig netcfg wpa_cli; do
     ln -s "$work/bin/$tool" "$work/allowed/$tool"
 done
@@ -139,7 +142,7 @@ exit 99
 EOF
     chmod +x "$work/allowed/$tool"
 done
-run() { PATH=$work/allowed sh "$work/wifi-client.sh" "$1" > "$work/output"; }
+run() { PATH=$work/allowed "$car_shell" "$work/wifi-client.sh" "$1" > "$work/output"; }
 assert_state() { grep -Fxq "state=$1" "$work/output" || { cat "$work/output"; exit 1; }; }
 assert_line() { grep -Fxq "$1" "$work/output" || { cat "$work/output"; exit 1; }; }
 

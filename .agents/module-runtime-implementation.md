@@ -13,3 +13,11 @@
 - Off-car tests use fake roots and a fake NEMESIS command. They do not establish
   that the wrapper boots, Dalvik loads the JAR, or wireless projection works on
   the target head unit.
+# Host shell test parity (2026-11-03)
+
+Root script tests prepend `tools/testlib/fakebin`, whose `md5` prints the Android
+4.4 toolbox digest format (two spaces before the path) and hashes stdin for
+`sg_file_key`. The updater checks digest fields independently of spacing.
+CI and release install `mksh`; test runners use it when present and otherwise
+use `sh`. The module tests keep restricted command paths; `stat` remains forbidden,
+while their tested `cmp` and `grep -E` options work on the host implementations.

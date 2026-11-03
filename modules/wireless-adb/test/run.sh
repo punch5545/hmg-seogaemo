@@ -2,6 +2,8 @@
 set -eu
 
 module_dir=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+repo=$(CDPATH= cd -- "$module_dir/../.." && pwd)
+car_shell=$(command -v mksh || command -v sh)
 tmp=$(mktemp -d "$module_dir/test/.tmp.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 mkdir -p "$tmp/base/lib" "$tmp/bin" "$tmp/props" "$tmp/state" "$tmp/baseline" "$tmp/applied" "$tmp/interfaces"
@@ -105,6 +107,8 @@ done
 for name in cat cp rm; do
     ln -s "$(command -v "$name")" "$tmp/restricted-bin/$name"
 done
+ln -s "$repo/tools/testlib/fakebin/md5" "$tmp/restricted-bin/md5"
+ln -s "$(command -v python3)" "$tmp/restricted-bin/python3"
 cat > "$tmp/bin/forbidden" <<'EOF'
 #!/bin/sh
 printf '%s\n' "${0##*/}" >> "$FAKE_ROOT/forbidden-calls"
@@ -118,7 +122,7 @@ done
 export FAKE_ROOT="$tmp" SEOGAEMO_BASE="$tmp/base" SEOGAEMO_STATE="$tmp/state"
 script="$module_dir/root/wireless-adb.sh"
 
-run() { PATH="$tmp/restricted-bin" /bin/sh "$script" "$1" > "$tmp/output"; }
+run() { PATH="$tmp/restricted-bin" "$car_shell" "$script" "$1" > "$tmp/output"; }
 has() { rg -q -F "$1" "$tmp/output" || { cat "$tmp/output"; exit 1; }; }
 restarts() { count=$(rg -c '^ctl.restart adbd$' "$tmp/calls" 2>/dev/null) || count=0; printf '%s' "$count"; }
 assert_count() { [ "$(restarts)" = "$1" ] || { cat "$tmp/calls"; exit 1; }; }

@@ -5,8 +5,21 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from testlib import car_env, SHELL
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_toolbox_md5(temp):
+    sample = temp / "md5-sample"
+    sample.write_bytes(b"abc")
+    result = subprocess.run(["md5", str(sample)], env=car_env(), capture_output=True, text=True)
+    assert result.returncode == 0
+    assert result.stdout == f"900150983cd24fb0d6963f7d28e17f72  {sample}\n"
+    missing = subprocess.run(["md5", str(temp / "missing")], env=car_env(), capture_output=True)
+    assert missing.returncode != 0
+    stdin = subprocess.run(["md5"], input=b"abc", env=car_env(), capture_output=True)
+    assert stdin.stdout == b"900150983cd24fb0d6963f7d28e17f72  -\n"
 
 
 def script(path, body):
@@ -16,7 +29,7 @@ def script(path, body):
 
 
 def run(path, *args, env, ok=True):
-    result = subprocess.run(["sh", str(path), *args], env=env, text=True,
+    result = subprocess.run([SHELL, str(path), *args], env=car_env(env), text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if ok:
         assert result.returncode == 0, (path, args, result.stdout, result.stderr)
@@ -416,6 +429,7 @@ if sg_revert_all; then exit 1; fi
 
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)
+    test_toolbox_md5(root)
     test_common(root)
     test_root(root)
     test_mutation_api_and_export(root)

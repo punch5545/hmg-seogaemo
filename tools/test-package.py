@@ -2,6 +2,7 @@
 """Off-car checks for the archives and shell interface."""
 import argparse
 import configparser
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -11,6 +12,7 @@ import zipfile
 
 from package import DIST, ROOT, apk_version, verify
 from version import read_version
+from testlib import car_env, SHELL
 
 
 def descriptor(data):
@@ -23,6 +25,7 @@ def run():
     parser = argparse.ArgumentParser()
     parser.add_argument("--aapt", required=True)
     args = parser.parse_args()
+    os.environ.update(car_env())
     version, code = read_version(ROOT / "VERSION")
     prefix = f"hmg-seogaemo-{version}"
     verify(args.aapt)
@@ -91,7 +94,7 @@ def run():
                     path.write_text("#!/bin/sh\nexit 0\n")
                     path.chmod(0o755)
                 for verb in ("status", "precheck"):
-                    result = subprocess.run(["sh", str(script), verb],
+                    result = subprocess.run([SHELL, str(script), verb],
                                             env=dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}",
                                                      SEOGAEMO_BASE=str(module_root),
                                                      SEOGAEMO_STATE=str(module_root / "state"),
@@ -111,11 +114,11 @@ def run():
                     path = temp / name
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(package.read(name))
-                    subprocess.run(["sh", "-n", str(path)], check=True)
+                    subprocess.run([SHELL, "-n", str(path)], check=True)
             # Run a copied dispatcher against an isolated fake module tree.
             (temp / "modules.list").write_text("good\n")
             (temp / "modules/good.sh").write_text("#!/bin/sh\nprintf 'action=%s\\nbase=%s\\nstate=%s\\nmodule_dir=%s\\n' \"$1\" \"$SEOGAEMO_BASE\" \"$SEOGAEMO_STATE\" \"$SEOGAEMO_MODULE_DIR\"\n")
-            command = ["sh", str(temp / "bin/hmg-seogaemo-root")]
+            command = [SHELL, str(temp / "bin/hmg-seogaemo-root")]
             result = subprocess.run(command + ["good", "status"], capture_output=True, text=True)
             expected = f"action=status\nbase={temp}\nstate=/data/nemesis/backup/hmg-seogaemo/modules/good\nmodule_dir={temp}/modules/good.d\n"
             assert result.returncode == 0 and result.stdout == expected
@@ -142,7 +145,7 @@ def run():
             for output, succeeds in (("Success", True), ("Failure [INSTALL_FAILED]", False)):
                 state.write_text("1")
                 env["FAKE_PM_RESULT"] = output
-                result = subprocess.run(["sh", str(temp / "bin/install-apk.sh")], env=env, capture_output=True)
+                result = subprocess.run([SHELL, str(temp / "bin/install-apk.sh")], env=env, capture_output=True)
                 assert (result.returncode == 0) == succeeds
                 assert state.read_text() == "1"
         with tempfile.NamedTemporaryFile(suffix=".apk") as temp:
@@ -171,24 +174,24 @@ def run():
             (incoming / "payload/app").mkdir(parents=True)
             for name in ("VERSION", "app/Seogaemo.apk", "modules.list", "modules.graph"):
                 (incoming / "payload" / name).write_text("test\n")
-            md5_lines = "".join("a" * 32 + "|" + name + "\n" for name in ("VERSION", "app/Seogaemo.apk", "modules.list", "modules.graph"))
+            (incoming / "payload/VERSION").write_text("0.1.1\n")
+            md5_lines = "".join(hashlib.md5((incoming / "payload" / name).read_bytes()).hexdigest() + "|" + name + "\n" for name in ("VERSION", "app/Seogaemo.apk", "modules.list", "modules.graph"))
             (incoming / "payload/files.md5").write_text(md5_lines)
             fake_bin = fake_root / "bin"
             fake_bin.mkdir()
             (fake_bin / "app_process").write_text("""#!/bin/sh
 case "$3" in
-  copy) mkdir "$5"; cp "$4"/hmg-seogaemo-* "$5/";;
+  copy) mkdir "$5"; cp "$4"/hmg-seogaemo-* "$5/"; cp -R "$4/payload" "$5/";;
   verify) echo 0.1.1;;
-  extract) mkdir -p "$6/app" "$6/bin" "$6/svc"; echo 0.1.1 > "$6/VERSION"; echo graph > "$6/modules.graph"; echo list > "$6/modules.list"; echo apk > "$6/app/Seogaemo.apk"; echo '#!/bin/sh' > "$6/bin/install-apk.sh"; echo 'exit 0' >> "$6/bin/install-apk.sh"; echo '#!/bin/sh' > "$6/bin/hmg-seogaemo-root"; echo 'exit 0' >> "$6/bin/hmg-seogaemo-root"; echo '#!/bin/sh' > "$6/svc/reconcile.sh"; echo 'exit 0' >> "$6/svc/reconcile.sh"; printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|VERSION\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|app/Seogaemo.apk\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|modules.list\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|modules.graph\n' > "$6/files.md5";;
+  extract) mkdir -p "$6/app" "$6/bin" "$6/svc"; cp "$4/payload/VERSION" "$6/VERSION"; cp "$4/payload/modules.graph" "$6/modules.graph"; cp "$4/payload/modules.list" "$6/modules.list"; cp "$4/payload/app/Seogaemo.apk" "$6/app/Seogaemo.apk"; echo '#!/bin/sh' > "$6/bin/install-apk.sh"; echo 'exit 0' >> "$6/bin/install-apk.sh"; echo '#!/bin/sh' > "$6/bin/hmg-seogaemo-root"; echo 'exit 0' >> "$6/bin/hmg-seogaemo-root"; echo '#!/bin/sh' > "$6/svc/reconcile.sh"; echo 'exit 0' >> "$6/svc/reconcile.sh"; cp "$4/payload/files.md5" "$6/files.md5";;
   switch) python3 -c 'import os,sys; os.replace(sys.argv[1],sys.argv[2])' "$4" "$5";;
 esac
 """)
-            (fake_bin / "md5").write_text("#!/bin/sh\necho aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \"$1\"\n")
             (fake_bin / "dumpsys").write_text("#!/bin/sh\necho versionName=0.1.1\n")
-            for name in ("app_process", "dumpsys", "md5"):
+            for name in ("app_process", "dumpsys"):
                 (fake_bin / name).chmod(0o755)
             env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}")
-            updater_cmd = ["sh", str(package_root / "core/update.sh")]
+            updater_cmd = [SHELL, str(package_root / "core/update.sh")]
             for verb in ("stage", "apply", "rollback"):
                 result = subprocess.run(updater_cmd + [verb], env=env, capture_output=True, text=True)
                 assert result.returncode == 0, (verb, result.stdout, result.stderr)

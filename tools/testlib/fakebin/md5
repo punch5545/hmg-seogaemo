@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Android 4.4 toolbox md5 output for host-side root script tests."""
+import hashlib
+import sys
+
+
+def digest(stream):
+    value = hashlib.md5()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        value.update(chunk)
+    return value.hexdigest()
+
+
+if len(sys.argv) == 1:
+    print(f"{digest(sys.stdin.buffer)}  -")
+else:
+    failed = False
+    for name in sys.argv[1:]:
+        try:
+            with open(name, "rb") as source:
+                print(f"{digest(source)}  {name}")
+        except OSError as error:
+            print(f"md5: {name}: {error.strerror}", file=sys.stderr)
+            failed = True
+    if failed:
+        sys.exit(1)

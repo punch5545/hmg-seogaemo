@@ -43,6 +43,7 @@ package: $(OUT)
 verify-dist:
 	python3 tools/package.py verify --aapt $(BT)/aapt
 
+test: export PATH := $(CURDIR)/tools/testlib/fakebin:$(PATH)
 test: package
 	sh tools/test-gen-modules.sh
 	python3 tools/test-package.py --aapt $(BT)/aapt
