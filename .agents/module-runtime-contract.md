@@ -105,7 +105,7 @@ mutations: `setprop`, `mount`/`umount`, `cp`, `mv`, `rm`, `dd`, `ln`, `chmod`, `
 output redirection to absolute paths outside `$HMG_SEOGAEMO_STATE`, `nemesis remount`,
 `pm install|uninstall|enable|disable`, `settings put`, `start`/`stop`, `iptables`, `am`.
 
-Mutation API (each call: validate target against the module's `owns_props`/`owns_files`,
+Mutation API (each call: validate target against the module's `owns_props`/`owns_files`/`owns_lines.N`,
 baseline on first touch, perform, verify, mark applied, append ledger; non-zero on failure):
 
 | Function | Meaning |

@@ -2,6 +2,24 @@ Status: current — off-car runtime and host-test findings; physical-car behavio
 
 # Shared runtime implementation findings
 
+Shared line ownership (2026-11-03) is an independent implementation. HMG-API's
+`Engine.java` `rebaseWhy` was read as background for stock-based composition;
+HMG-Seogaemo refuses external drift rather than rebasing it. The Python ownership
+validator emits the graph companion `modules.lines`; root APIs enforce the same
+claims. On-car code uses only mksh/toolbox commands.
+
+`tools/test-line-ownership.py` runs in the sh/mksh parity suite and covers both
+apply orders, selective revert, byte-exact stock with/without a final newline,
+metadata, product and byte drift, missing/duplicate stock lines, literal text,
+repeat applies, non-cascading patches and interruption at copy, replacement and
+ledger publication. Journals are synced before replacement and after active
+pointer publication. Audit publication is at least once across interruption.
+Regressions also cover same-second audit references, cancelled sibling markers,
+special mode bits, and reconciliation/uninstall of line-only state. The merged
+runtime passes the source-derived Android 4.4 shell profile without new waivers.
+Real filesystem durability and numeric ownership restoration still require
+Android 4.4 head-unit confirmation.
+
 - Android 4.4 toolbox `ls -ln` omits the link-count field printed by desktop `ls`.
   The runtime detects the format before reading size, uid, and gid. Off-car tests
   include a synthetic toolbox listing.

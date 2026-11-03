@@ -8,11 +8,37 @@ Earlier references below to three modules are historical.
 
 # Built-in module architecture
 
+Shared text ownership (2026-11-03): declare one literal
+`owns_lines.N=/path:<exact stock line>` per changed line. Split at the first
+colon only; preserve punctuation, backslashes and spaces. Each stock line has
+one owner. Whole-file put/delete, bind mounts and zygote installation require
+exclusive `owns_files`. The generator validates claims and emits `modules.lines`
+in generated module order; runtime independently enforces ownership.
+
+The runtime keeps one product-bound baseline per shared path under
+`shared-lines/<path-md5>/`, with stock bytes, mode/UID/GID, composed version
+snapshots, per-module old/new patches, an active pointer and pending journal.
+Composition starts from stock and preserves final-newline presence. Atomic
+replacement and journal recovery accept only previous or prepared next bytes;
+unexpected bytes, metadata or firmware fail closed. Module-local line markers
+expose interrupted line-only applies to reconciliation and uninstall.
+
+Revert preflights every module target, then recomposes without that module.
+Other patches stay applied. Last revert verifies stock bytes and metadata before
+clearing the shared baseline. Ledger exports include patch text and composed
+before/after bytes with toolbox MD5 hashes. Existing whole-file baselines must
+be reverted before using line claims. See the runtime contract for details.
+
+Wi-Fi client owns only its feature XML as a whole file and claims the exact
+Wi-Fi removal line in `featurexml.cfg` via `owns_lines.1`. Projection claims
+three different removal lines. The STA/AP exclusion remains a functional radio
+constraint; shared-file safety does not depend on it.
+
 Design for HMG-Seogaemo on Gen5W (Android 4.4.2/API 19, 1920×720 hdpi, English default and Korean), installed by NEMESIS 1.16.4+. This is an implemented off-car architecture; physical-car behavior remains untested. The target setup is **NEMESIS + HMG-Seogaemo only**: HMG-API is not installed. The built-in modules are `wifi-client`, `wireless-adb`, and `wireless-carplay-and-aa`, compiled into one APK and NEMESIS package; there is no third-party loader. Wi-Fi client and ADB behavior are independently implemented; wireless projection ports AGPL-covered HMG-API code with retained attribution (see `.agents/wireless-carplay-and-aa.md`).
 
 ## Module contract
 
-Each `Module` has a stable ID; English/Korean name and description resource IDs; Settings category and optional Home action; `requiresRoot`; a typed settings interface (currently no module settings); `checkCompatibility`, `checkConflicts`, `apply`, `revert`, and `status`; and a restart requirement (`NONE`, `ADBD`, or `HEAD_UNIT`). Root status reports state, restart, and detail. The Java `ModuleStatus` adapter currently derives desired/observed from that state and leaves last-operation time at zero. The registry lists only built-in modules and is generated at build time from `modules/*/module.properties` (see layout below). `owns_props` and `owns_files` name state a module may change; `conflicts` lists external owners to detect and refuse, while `depends` and `excludes` relate built-in IDs.
+Each `Module` has a stable ID; English/Korean name and description resource IDs; Settings category and optional Home action; `requiresRoot`; a typed settings interface (currently no module settings); `checkCompatibility`, `checkConflicts`, `apply`, `revert`, and `status`; and a restart requirement (`NONE`, `ADBD`, or `HEAD_UNIT`). Root status reports state, restart, and detail. The Java `ModuleStatus` adapter currently derives desired/observed from that state and leaves last-operation time at zero. The registry lists only built-in modules and is generated at build time from `modules/*/module.properties` (see layout below). `owns_props`, `owns_files` and `owns_lines.N` name state a module may change; `conflicts` lists external owners to detect and refuse, while `depends` and `excludes` relate built-in IDs.
 
 `wireless-adb` does not depend on `wifi-client` (optional; see `module-runtime-contract.md`, "Current module decisions"). `wifi-client` excludes `wireless-carplay-and-aa`; exclusion is symmetric even if declared on one side. Enabling a module auto-enables its full dependency chain after UI confirmation. Disabling a module auto-disables all dependents. Enabling either excluded module prompts with the exact enabled modules that will be turned off, including dependents, then disables them before enabling the requested module. The root side independently re-checks dependencies and exclusions and refuses inconsistent states. Boot reconciliation applies in dependency order and reverts in reverse dependency order. The generated relations, UI planning, and root operations are implemented and exercised off-car.
 
@@ -44,7 +70,7 @@ modules/
   wireless-adb/
   wireless-carplay-and-aa/          # implemented projection port; untested on-car
     module.properties               # id, class, version, requires_root, restart,
-                                    # owns_props, owns_files, depends, excludes, conflicts
+                                    # owns_props, owns_files, owns_lines.N, depends, excludes, conflicts
     src/com/seogaemo/hmg/modules/wirelessadb/WirelessAdbModule.java
     res/values/strings.xml          # wireless_adb_* strings (EN)
     res/values-ko/strings.xml       # (KO)
@@ -77,7 +103,7 @@ Adding a module = adding a directory; removing it = deleting the directory. No h
 
 ## Wi-Fi client module (`wifi-client`)
 
-Off by default. Gate apply on `ro.build.product` matching `NEEV.KOR.*.260902` (real value `NEEV.KOR.0000.V039.001.260902`), detected physical Wi-Fi chip, validated stock `featurexml.cfg` pattern, NEMESIS 1.16.4+, and no HMG-API/Leafia/NEMESIS wireless package leftovers claiming the files. `owns_files` is `/system/etc/permissions/android.hardware.wifi.xml` and `/system/onebin/neev_kr/featurexml.cfg`; `owns_props` is empty. First version adds the PackageManager Wi-Fi feature XML and handles only its active removal line in `featurexml.cfg`. Capture each file's existence, exact bytes, mode, and owner before mutation; preserve the baseline through reapply/update; revert exact bytes or absence, then verify before clearing it. Apply/status distinguishes incompatible, conflict, pending head-unit reboot, and the observed PackageManager Wi-Fi feature; actual stock Settings menu visibility requires an on-car check. Network selection uses that stock menu; HMG-Seogaemo has no picker. `restart=HEAD_UNIT`. It excludes `wireless-carplay-and-aa`, which also disables its dependents when `wifi-client` is enabled. `wireless-adb` offers it as an optional "Connect to another Wi-Fi" action. See the on-car checklist in `.agents/research-wifi-client.md` for apply, reboot, menu/network, conflict, and exact-restore checks.
+Off by default. Gate apply on `ro.build.product` matching `NEEV.KOR.*.260902` (real value `NEEV.KOR.0000.V039.001.260902`), detected physical Wi-Fi chip, validated stock `featurexml.cfg` pattern, NEMESIS 1.16.4+, and no HMG-API/Leafia/NEMESIS wireless package leftovers claiming the files. `owns_files` is `/system/etc/permissions/android.hardware.wifi.xml`; `owns_lines.1` claims the exact Wi-Fi removal line in `/system/onebin/neev_kr/featurexml.cfg`; `owns_props` is empty. First version adds the PackageManager Wi-Fi feature XML and handles only its active removal line in `featurexml.cfg`. Capture each file's existence, exact bytes, mode, and owner before mutation; preserve the baseline through reapply/update; revert exact bytes or absence, then verify before clearing it. Apply/status distinguishes incompatible, conflict, pending head-unit reboot, and the observed PackageManager Wi-Fi feature; actual stock Settings menu visibility requires an on-car check. Network selection uses that stock menu; HMG-Seogaemo has no picker. `restart=HEAD_UNIT`. It excludes `wireless-carplay-and-aa`, which also disables its dependents when `wifi-client` is enabled. `wireless-adb` offers it as an optional "Connect to another Wi-Fi" action. See the on-car checklist in `.agents/research-wifi-client.md` for apply, reboot, menu/network, conflict, and exact-restore checks.
 
 `persist.wifi.state=3` will be tested later.
 
