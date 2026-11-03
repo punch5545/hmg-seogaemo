@@ -36,7 +36,9 @@ def run():
         entries = set(package.namelist())
         required = {"NEMESIS.data", "app/Seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
                     "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
-                    "svc/reconcile.sh", "lib/common.sh", "modules.list", "modules.graph"}
+                    "svc/reconcile.sh", "lib/common.sh", "modules.list", "modules.graph",
+                    "core/map/mapper.jar", "hookpoints/framework.json",
+                    "hookpoints.required/wireless-carplay-and-aa"}
         assert required <= entries, required - entries
         preuninstall = package.read("scripts/preuninstall.sh").decode()
         assert "id=hmg-seogaemo" in preuninstall
@@ -50,7 +52,7 @@ def run():
         assert ota.read("app/Seogaemo.apk") == package.read("app/Seogaemo.apk")
         assert ota.read("update_roots.pem") == (ROOT / "app/res/raw/update_roots.pem").read_bytes()
         for name in ota.namelist():
-            assert name in ("VERSION", "update_roots.pem", "app/Seogaemo.apk", "modules.list", "modules.graph") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/"))
+            assert name in ("VERSION", "update_roots.pem", "app/Seogaemo.apk", "modules.list", "modules.graph") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/"))
             if name in entries:
                 assert ota.read(name) == package.read(name)
         usb_meta = descriptor(usb.read("NEMESIS.data"))
