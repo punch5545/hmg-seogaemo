@@ -526,8 +526,8 @@ public final class MainActivity extends Activity {
         row.setBackgroundDrawable(selectable(RAISED, HAIRLINE, 8, false));
         LinearLayout copy = vertical();
         copy.setGravity(Gravity.CENTER_VERTICAL);
-        copy.addView(text(getString(module.nameResId()), 23, WHITE, medium));
-        copy.addView(text(getString(module.descriptionResId()), 17, MUTED, sans));
+        SettingsUi.titleBlock(this, copy, text(getString(module.nameResId()), 23, WHITE, medium),
+                text(getString(module.descriptionResId()), 17, MUTED, sans));
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
         TextView toggle = text(getString(observed ? (enabled ? R.string.on : R.string.off)
                 : R.string.module_unavailable), 20, enabled ? BLUE : MUTED, medium);
@@ -919,10 +919,7 @@ public final class MainActivity extends Activity {
         copy.setPadding(dp(SettingsUi.MD), 0, 0, 0);
         TextView name = text(getString(CATEGORIES[index]), 23, index == category ? WHITE : 0xFFD0D0D0, medium);
         TextView sub = text(getString(CATEGORY_SUBS[index]), 17, MUTED, sans);
-        LinearLayout.LayoutParams subp = new LinearLayout.LayoutParams(-1, -2);
-        subp.topMargin = dp(SettingsUi.XS);
-        copy.addView(name);
-        copy.addView(sub, subp);
+        SettingsUi.titleBlock(this, copy, name, sub);
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
         row.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { category = index; showSettings(); if (index == 1) refreshMap(false); }
@@ -973,10 +970,7 @@ public final class MainActivity extends Activity {
         copy.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = text(getString(label), 24, WHITE, medium);
         TextView detail = text(getString(sub), 18, MUTED, sans);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1, -2);
-        sp.topMargin = dp(SettingsUi.XS);
-        copy.addView(title);
-        copy.addView(detail, sp);
+        SettingsUi.titleBlock(this, copy, title, detail);
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
         TextView trailing = text(value, 20, WHITE, sans);
         trailing.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
