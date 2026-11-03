@@ -28,6 +28,26 @@ The UI is an ordinary, unprivileged APK. It calls a fixed root entry point throu
 
 ## Source and package layout
 
+Settings → General has **Restore stock state** and **Uninstall HMG-Seogaemo**.
+Both use the shared confirmation dialog; uninstall uses the destructive style.
+`core/stock.sh` and `lib/stock.sh` serialize one restore across all modules in
+reverse generated dependency order, preflight all snapshots, pause watch and
+boot reapply, invoke guarded module reverts, and commit desired off after each
+verified success. Failure retains the failed/unvisited desired state and recovery
+material; no force path exists. Per-module receipts and restart requirements
+remain readable through `stock status`, and the change ledger remains exportable.
+The real `preuninstall` hook uses this same transaction before removing the APK.
+
+App uninstall first restores, then launches a root-owned runner copied under
+the retained backup directory. It ignores HUP, disconnects stdio and cwd from
+the caller, and waits for an explicit PID handoff after lock release before
+calling `nemesis uninstall hmg-seogaemo`. NEMESIS stops package services and
+runs the shared hook again. The copied runner survives package/APK removal and
+records the final result. Cancel changes nothing; confirmed work cannot be
+cancelled. Failed restore leaves HMG-Seogaemo installed with automatic module
+calls paused. A successful explicit module apply resumes normal dispatch.
+See [stock-restore.md](stock-restore.md) for evidence and on-car checks.
+
 **Decided: one module = one directory under `modules/`, and the module list is generated at build time from day one.**
 
 ```text
