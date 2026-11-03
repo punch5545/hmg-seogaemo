@@ -50,11 +50,15 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
   `sg_file_delete`, `sg_bind_mount`, `sg_service_restart`, `sg_zygote_install`,
   `sg_dex_cache_track`, `sg_revert_all`), which validates ownership (`module.properties`
   `owns_props`/`owns_files`/`services`), baselines, writes, verifies and appends to the ledger.
+  `sg_service_call` accepts only exact `service_calls=` pairs, times out, and records every call.
   Module scripts may only read. Need a new kind of write? Add an API function to the runtime and
   the contract; never work around it in a module.
 - **Exact restore on uninstall is the top priority.** Restores are guarded: only undo bytes/values
   we wrote; if the target changed since (e.g. an official firmware update), report conflict, keep
   backups and fail the uninstall closed. Baselines are bound to `ro.build.product`.
+  The owner-approved `restore=reboot` class is only for a module with no persistent stock
+  file/property writes: disabling stops future calls; stock behavior returns after a head-unit
+  restart, and status remains pending until that restart.
 - **Root channel:** the app is unprivileged and calls only fixed `hmg-seogaemo-root <id> <verb>`
   or `hmg-seogaemo-root map status|run|verify|export` commands with
   fixed, validated arguments. NEMESIS root is reachable by any UID; never add a verb that takes
@@ -94,7 +98,8 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 
 The module list/graph is generated at build time from `modules/*/module.properties`; there is no
 hand-edited list. Current modules: `wifi-client` (excludes `wireless-carplay-and-aa`),
-`wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`.
+`wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`,
+and `skip-consent-screen` (factory Binder call on boot and screen wake).
 Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, baselines, ledger).
 
 ## Car mapping
