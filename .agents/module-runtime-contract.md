@@ -38,9 +38,10 @@ Module scripts start with `. "$SEOGAEMO_BASE/lib/common.sh"` and use only these 
 | `sg_log <msg>` | append to the module log (bounded) |
 | `sg_prop_baseline <key>` | first call per enable session records live value + `/data/property/<key>` presence/content; later calls are no-ops |
 | `sg_prop_set <key> <value>` | `setprop` + readback check; non-zero on mismatch |
-| `sg_prop_restore <key>` | restore the recorded baseline exactly (incl. "was absent") |
+| `sg_prop_restore <key>` | restore the recorded baseline exactly (incl. "was absent"); if the live value differs from what the module set, refuse with conflict instead of overwriting |
 | `sg_file_baseline <path>` | first call records bytes, existence, mode, owner |
-| `sg_file_restore <path>` | restore the recorded file exactly (incl. "was absent") |
+| `sg_file_mark_applied <path>` | after a module writes `<path>`, record a copy of the bytes it wrote |
+| `sg_file_restore <path>` | restore the recorded file exactly (incl. "was absent") **only if** the current bytes equal the marked applied copy (or already equal the baseline → no-op); otherwise refuse with conflict and keep the baseline (firmware OTA or another tool changed it) |
 | `sg_remount rw\|ro` | `/system` remount through `nemesis remount` |
 | `sg_baseline_clear` | drop this module's baselines after a verified revert |
 | `sg_owner_present <name>` | 0 if a known external owner is installed: `nemesis-adb-tcp`, `hmgapi`, `leafia` |
@@ -102,3 +103,13 @@ Module tests (`modules/<id>/test/*.sh`, run by `make test`) use a fake `common.s
   after the head-unit restart), its pane offers `OPEN_STOCK_WIFI_SETTINGS` to pick a network.
 
 Strings: modules add only `<snake_id>_*` resources in their own `res/values{,-ko}/strings.xml`.
+
+## Restore-on-uninstall guarantees (owner priority)
+
+- Every `/system` or `/data` change made by a module is baselined before the first write and
+  restored byte-exactly on revert/uninstall. Nothing outside baselined paths/props may be written.
+- Restore is guarded: only undo what we wrote. If the current content is neither our applied copy
+  nor the baseline (e.g. an official firmware update replaced `/system`), do not write stock bytes
+  from an older firmware; report conflict, keep backups, and let the uninstall fail closed.
+- Baselines are bound to `ro.build.product`; a different firmware build invalidates them (conflict).
+- Uninstall aborts (non-zero preuninstall) rather than leaving a half-restored system.
