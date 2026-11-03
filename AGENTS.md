@@ -144,6 +144,21 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 
 ## On-car operations
 
+- Settings → General offers **Restore stock state** (KO **순정 상태로 되돌리기**)
+  and **Uninstall HMG-Seogaemo**, both confirmed with progress and per-module
+  results. Fixed root commands are `hmg-seogaemo-root stock restore|status` and
+  `hmg-seogaemo-root package uninstall`. Restore keeps the app installed; uninstall
+  restores first, then queues NEMESIS removal without force. Cancel changes nothing.
+  On failure automatic module calls remain paused, backups stay available, and
+  failed/unvisited desired states remain unchanged. A successful explicit module
+  apply resumes dispatch. Restart when requested to complete transient restoration.
+- Before car approval, verify exact property/backing-file and file restoration,
+  bind/dex cleanup, no further watcher calls after wake/reboot, conflict retention,
+  and ledger export. Then verify app-initiated NEMESIS removal survives the caller
+  closing, removes both package and APK, and retains uninstall result/logs under
+  `/data/nemesis/backup/hmg-seogaemo/uninstall/`. Detailed checklist:
+  `.agents/stock-restore.md`. These paths have only been tested off-car.
+
 - First install: release `hmg-seogaemo-<v>-nemesis-usb.zip` unzipped to an empty FAT32/exFAT stick.
 - Full root over adb: `adb shell cp /system/xbin/nemesis /data/local/tmp/nemesis-d` then
   `adb shell /data/local/tmp/nemesis-d root -c '<cmd>'` (plain `nemesis root -c` from adb is a weak

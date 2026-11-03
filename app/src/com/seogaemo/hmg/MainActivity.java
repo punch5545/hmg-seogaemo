@@ -73,6 +73,8 @@ public final class MainActivity extends Activity {
     private boolean mapRefreshing;
     private boolean mapBusy;
     private String mapResult;
+    private TextView stockStatus;
+    private boolean stockBusy;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -95,7 +97,11 @@ public final class MainActivity extends Activity {
                 }
             } catch (Exception ignored) { }
         } else if (getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
-            new Thread(new Runnable() { public void run() { if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending)); } }, "hmg-seogaemo-update-restore").start();
+            updateBusy = true;
+            new Thread(new Runnable() { public void run() {
+                if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending));
+                finishUpdateWork(null);
+            } }, "hmg-seogaemo-update-restore").start();
         }
     }
 
@@ -315,6 +321,7 @@ public final class MainActivity extends Activity {
             content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
             showLanguage(general);
             showUpdate(general);
+            showStock(general);
             return;
         } else if (category == 1) {
             showMapping(content);
@@ -455,14 +462,14 @@ public final class MainActivity extends Activity {
     }
 
     private void confirmMapRun() {
-        if (mapBusy) return;
+        if (mapBusy || stockBusy) return;
         ConfirmDialog.show(this, getString(R.string.mapping_run), getString(R.string.mapping_run_confirm),
                 getString(R.string.mapping_run), getString(R.string.cancel), false,
                 new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { mapOperation("run", dialog); } }, null);
     }
 
     private void confirmMapExport() {
-        if (mapBusy) return;
+        if (mapBusy || stockBusy) return;
         ConfirmDialog.show(this, getString(R.string.mapping_export), getString(R.string.mapping_export_confirm),
                 getString(R.string.mapping_export), getString(R.string.cancel), false,
                 new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { mapOperation("export", dialog); } }, null);
@@ -643,7 +650,7 @@ public final class MainActivity extends Activity {
 
     private void prepareModuleChange(final Module module, final boolean enable,
             final boolean forUpdate) {
-        if (modulePlanning || moduleWorking) return;
+        if (modulePlanning || moduleWorking || stockBusy) return;
         modulePlanning = true;
         new Thread(new Runnable() {
             public void run() {
@@ -771,12 +778,93 @@ public final class MainActivity extends Activity {
         content.addView(rollback, rp);
     }
 
+    private void showStock(LinearLayout content) {
+        TextView restore = action(getString(R.string.stock_restore), false);
+        restore.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) { confirmStock(false); }
+        });
+        LinearLayout.LayoutParams restoreParams = SettingsUi.contentAction(this);
+        restoreParams.topMargin = dp(SettingsUi.LG);
+        content.addView(restore, restoreParams);
+        TextView uninstall = action(getString(R.string.stock_uninstall), false);
+        uninstall.setTextColor(ERROR);
+        uninstall.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) { confirmStock(true); }
+        });
+        LinearLayout.LayoutParams uninstallParams = SettingsUi.contentAction(this);
+        uninstallParams.topMargin = dp(SettingsUi.SM);
+        content.addView(uninstall, uninstallParams);
+        stockStatus = text(getString(R.string.stock_hint), 20, MUTED, sans);
+        stockStatus.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.MD),
+                dp(SettingsUi.PAGE), dp(SettingsUi.LG));
+        content.addView(stockStatus, new LinearLayout.LayoutParams(-1, -2));
+        final TextView target = stockStatus;
+        new Thread(new Runnable() { public void run() {
+            final RootResult result = RootClient.stock("status");
+            runOnUiThread(new Runnable() { public void run() {
+                if (!stockBusy && stockStatus == target && !result.info.isEmpty())
+                    target.setText(stockResultText(result));
+            }});
+        }}, "hmg-seogaemo-stock-status").start();
+    }
+
+    private void confirmStock(final boolean uninstall) {
+        if (stockBusy || updateBusy || moduleWorking || modulePlanning || mapBusy) return;
+        final int title = uninstall ? R.string.stock_uninstall : R.string.stock_restore;
+        ConfirmDialog.show(this, getString(title),
+                getString(uninstall ? R.string.stock_uninstall_confirm : R.string.stock_restore_confirm),
+                getString(title), getString(R.string.cancel), uninstall, new ConfirmDialog.Action() {
+            public void run(final ConfirmDialog dialog) {
+                stockBusy = true;
+                // The confirmed stock action supersedes any saved OTA resume.
+                // Commit before the root call in case removing the APK closes us.
+                if (!getSharedPreferences("update", MODE_PRIVATE).edit().clear().commit() ||
+                        !getSharedPreferences("module_resume", MODE_PRIVATE).edit().clear().commit()) {
+                    stockBusy = false;
+                    dialog.dismiss();
+                    stockStatus.setText(getString(R.string.stock_failed));
+                    return;
+                }
+                dialog.showProgress();
+                stockStatus.setText(getString(R.string.stock_working));
+                new Thread(new Runnable() { public void run() {
+                    final RootResult result = uninstall ? RootClient.uninstallPackage() : RootClient.stock("restore");
+                    runOnUiThread(new Runnable() { public void run() {
+                        stockBusy = false;
+                        dialog.dismiss();
+                        stockStatus.setText(stockResultText(result));
+                    }});
+                }}, "hmg-seogaemo-stock-operation").start();
+            }
+        }, null);
+    }
+
+    private String stockResultText(RootResult result) {
+        boolean queued = "queued".equals(result.info.get("uninstall"));
+        StringBuilder message = new StringBuilder(getString(result.exitCode != 0 ||
+                "failed".equals(result.info.get("uninstall"))
+                ? R.string.stock_failed : queued ? R.string.stock_queued : R.string.stock_complete));
+        for (Module module : ModuleRegistry.all()) {
+            String value = result.info.get("module_" + module.id().replace('-', '_'));
+            if (value == null) continue;
+            int label = "reverted".equals(value) ? R.string.stock_reverted
+                    : "conflict".equals(value) ? R.string.stock_conflict
+                    : "failed".equals(value) ? R.string.stock_module_failed : R.string.stock_not_attempted;
+            message.append("\n• ").append(getString(module.nameResId())).append(": ").append(getString(label));
+        }
+        if ("head_unit".equals(result.restart))
+            message.append("\n\n").append(getString(R.string.stock_restart));
+        if ("failed".equals(result.info.get("uninstall")))
+            message.append("\n\n").append(getString(R.string.stock_uninstall_failed));
+        return message.toString();
+    }
+
     private void updateMessage(final String value) {
         runOnUiThread(new Runnable() { public void run() { if (updateStatus != null) updateStatus.setText(value); } });
     }
 
     private void confirmCheckUpdate() {
-        if (updateBusy) return;
+        if (updateBusy || stockBusy) return;
         ConfirmDialog.show(this, getString(R.string.update_check),
                 getString(R.string.update_check_confirm), getString(R.string.update_check),
                 getString(R.string.cancel), false, new ConfirmDialog.Action() {
@@ -787,7 +875,7 @@ public final class MainActivity extends Activity {
     private void checkUpdate() { checkUpdate(null); }
 
     private void checkUpdate(final ConfirmDialog dialog) {
-        if (updateBusy) { if (dialog != null) dialog.dismiss(); return; }
+        if (updateBusy || stockBusy) { if (dialog != null) dialog.dismiss(); return; }
         try {
             final UpdateClient client = new UpdateClient(this);
             if (!client.hasUsableNetwork()) {
@@ -834,14 +922,20 @@ public final class MainActivity extends Activity {
                 getString(R.string.cancel), false, new ConfirmDialog.Action() {
             public void run(ConfirmDialog dialog) { rootUpdate(true, dialog); }
         }, new Runnable() {
-            public void run() { new Thread(new Runnable() {
-                public void run() { if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending)); }
-            }, "hmg-seogaemo-update-restore").start(); }
+            public void run() {
+                updateBusy = true;
+                new Thread(new Runnable() {
+                    public void run() {
+                        if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending));
+                        finishUpdateWork(null);
+                    }
+                }, "hmg-seogaemo-update-restore").start();
+            }
         });
     }
 
     private void confirmRollback() {
-        if (updateBusy) return;
+        if (updateBusy || stockBusy) return;
         ConfirmDialog.show(this, getString(R.string.update_rollback),
                 getString(R.string.update_rollback_confirm), getString(R.string.update_rollback),
                 getString(R.string.cancel), true, new ConfirmDialog.Action() {

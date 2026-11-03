@@ -38,6 +38,15 @@ assert "ConfirmDialog.show" in method("confirmMapRun")
 assert "ConfirmDialog.show" in method("confirmMapExport")
 assert "mapOperation(\"run\", dialog)" in method("confirmMapRun")
 assert "mapOperation(\"export\", dialog)" in method("confirmMapExport")
+assert "confirmStock(false)" in method("showStock")
+assert "confirmStock(true)" in method("showStock")
+assert "RootClient.stock(" not in method("showStock").replace('RootClient.stock("status")', '')
+stock = method("confirmStock")
+assert "ConfirmDialog.show" in stock
+assert "getString(R.string.cancel), uninstall, new ConfirmDialog.Action()" in stock
+assert stock.index("ConfirmDialog.show") < stock.index(".edit().clear().commit()")
+assert stock.index("ConfirmDialog.show") < stock.index("RootClient.uninstallPackage()")
+assert stock.index("ConfirmDialog.show") < stock.index('RootClient.stock("restore")')
 assert "setCanceledOnTouchOutside(false)" in dialog
 assert "confirm.setEnabled(false)" in dialog
 assert "cancel.requestFocus()" in dialog

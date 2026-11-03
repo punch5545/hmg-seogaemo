@@ -20,6 +20,61 @@ notes). Anything outside needs a note in the final report instead of an edit.
 
 ## Root side
 
+### Stock restore and package removal
+
+Fixed commands `hmg-seogaemo-root stock restore|status` and
+`hmg-seogaemo-root package uninstall` accept exactly two arguments.
+`core/stock.sh` owns one shared restore transaction, also used by the real
+NEMESIS `preuninstall` hook (the staged-update exception still preserves state).
+It holds the operation lock across preflight, reverse generated dependency order
+reverts, verification, desired-state commits, and result publication. It visits
+all modules, including interrupted applies with snapshots but desired off.
+
+Before restore, a persistent `stock/paused` marker blocks apply and watcher
+dispatch, including reconcile after a reboot. All snapshots are preflighted
+before any module is reverted, using the existing runtime guards (including
+zygote counters and derived dex-cache tracking). A conflict or failure stops
+the operation without force; the failed and unvisited modules keep desired
+state and backups. Earlier successful modules stay off. The pause survives
+failure; a subsequent explicitly confirmed successful module apply clears it.
+An operation copy under `stock/recovery.<time>.<pid>/<module>/` retains recovery
+material if service cleanup fails after the runtime consumed a verified baseline.
+Successful restore writes desired off for every module. Module reverts use
+`sg_revert_all` and their service cleanup; bind mounts, wrapper guards and
+tracked dex-cache entries follow that API's exact-restore rules. Maps, ledger,
+and OTA recovery payloads remain available for diagnostics and recovery.
+
+The bounded status receipt has `state=off|pending-restart|conflict|failed`,
+`restart=none|head_unit`, `detail`, and `info.module_<snake_id>` for every
+module (`reverted`, `conflict`, `failed`, or `not_attempted`). Pending restart
+is a successful guarded restore with no remaining baseline and desired off;
+it never claims transient framework behavior is restored before a kernel boot.
+`stock status` is read-only, returns the last receipt, and clears the displayed
+restart requirement after a different boot ID. No receipt reports no operation.
+Start, module outcomes, and completion/failure are recorded in the change ledger;
+ordinary USB/adb export continues to work. An interrupted receipt fails closed.
+
+`package uninstall` first runs that restore; any failure prevents NEMESIS dispatch.
+On success it queues a fixed runner copied into the root-owned
+`/data/nemesis/backup/hmg-seogaemo/uninstall/` directory, outside the package/APK.
+The background runner ignores HUP, disconnects all caller stdio, changes to `/`,
+and invokes only `nemesis uninstall hmg-seogaemo` (never `--force`). The root
+caller publishes the runner PID as ready only after its result and lock release;
+without that handoff the runner expires after 30 seconds without removing anything.
+The runner does not use a fixed delay to decide whether removal is safe. The root
+caller is a NEMESIS daemon child, independent of the app UID and package services.
+A persistent pending marker blocks new applies until removal finishes/fails;
+failed dispatch retains its log/result for diagnosis and retry. Queued means
+accepted, not removed. NEMESIS stops services, calls the same restore hook again,
+then the hook removes/verifies the APK before permitting package removal.
+The copied runner records the NEMESIS exit result after the package disappears.
+
+Settings → General exposes both actions through `ui.ConfirmDialog`, with
+progress and per-module results in EN/KO. Uninstall is destructive. Cancel
+before confirmation changes nothing; once confirmed work is not cancellable.
+Restore failure leaves the app/package installed, backups retained and watch
+calls paused. A head-unit restart may still be required after successful removal.
+
 `hmg-seogaemo-root <id> apply|revert|status|precheck` runs `modules/<id>.sh <verb>` as root with:
 
 - `HMG_SEOGAEMO_BASE`: installed package root (contains `lib/`, `modules/`, `modules.list`, `modules.graph`).

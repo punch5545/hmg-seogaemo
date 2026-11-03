@@ -32,7 +32,7 @@ class ShellProfileTest(unittest.TestCase):
             "sh -ec 'unknown_command'", 'sh -ec "$code"',
             '/system/bin/cat -u x', '/system/bin/kill -s TERM 1',
             '/system/bin/sleep -- 1',
-            'pm unsupported', 'read -z x', 'typeset -A a',
+            'pm unsupported', 'nemesis unsupported', 'read -z x', 'typeset -A a',
             "case x in a) echo ok ;;& b) echo ok;; esac",
         ):
             with self.subTest(source=source):
@@ -61,6 +61,7 @@ class ShellProfileTest(unittest.TestCase):
             'exec /system/bin/sh -c "echo hi"',
             'set -eu; set -- "$x"; set -o posix',
             'pm install -r /x; am start -n x; service check x',
+            'nemesis uninstall hmg-seogaemo',
             'logcat -r -f /x; logcat -r1024 -f /x',
         ):
             with self.subTest(source=source):
@@ -77,6 +78,9 @@ class ShellProfileTest(unittest.TestCase):
         paths = {p.relative_to(lint.ROOT).as_posix() for p in lint.paths()}
         self.assertIn('nemesis/package/bin/hmg-seogaemo-root', paths)
         self.assertIn('nemesis/package/scripts/preuninstall.sh', paths)
+        self.assertIn('nemesis/package/core/stock.sh', paths)
+        self.assertIn('nemesis/package/core/uninstall-detached.sh', paths)
+        self.assertIn('nemesis/package/lib/stock.sh', paths)
         for module in (lint.ROOT / 'modules').glob('*/root/*.sh'):
             self.assertIn(module.relative_to(lint.ROOT).as_posix(), paths)
         for host in lint.PROFILE['host_only_scripts']:

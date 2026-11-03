@@ -137,4 +137,19 @@
     <string name="mapping_export">PR용 매핑 내보내기</string>
     <string name="mapping_export_confirm">검증된 매핑을 USB로 복사할까요? USB가 없으면 adb 내보내기 폴더로 복사합니다.</string>
     <string name="mapping_pr_hint">이 펌웨어를 다음 버전에서 지원하려면 내보낸 maps 폴더를 GitHub Pull Request로 제출해 주세요.</string>
+    <string name="stock_restore">순정 상태로 되돌리기</string>
+    <string name="stock_uninstall">HMG-Seogaemo 제거</string>
+    <string name="stock_hint">모든 모듈을 순정 상태로 되돌리거나 NEMESIS를 통해 HMG-Seogaemo를 제거합니다.</string>
+    <string name="stock_restore_confirm">모든 모듈을 끄고 저장된 순정 상태로 되돌립니다. HMG-Seogaemo는 설치된 상태로 유지됩니다. 자동 모듈 호출과 저장된 업데이트 재개를 중단합니다. 헤드 유닛 재시작이 필요할 수 있습니다. 충돌이나 실패가 발생하면 복원을 중단하고 백업을 보관합니다. 취소하면 아무것도 변경하지 않습니다.</string>
+    <string name="stock_uninstall_confirm">먼저 모든 모듈을 끄고 저장된 순정 상태로 되돌립니다. 복원에 성공한 경우에만 NEMESIS를 통해 HMG-Seogaemo와 앱 데이터를 제거합니다. 앱이 종료됩니다. 헤드 유닛 재시작이 필요할 수 있습니다. 복원 중 충돌이나 실패가 발생하면 HMG-Seogaemo와 백업을 유지합니다. 취소하면 아무것도 변경하지 않습니다.</string>
+    <string name="stock_working">모듈 복원 중…</string>
+    <string name="stock_complete">순정 복원을 완료했습니다. HMG-Seogaemo는 설치된 상태로 유지됩니다.</string>
+    <string name="stock_failed">작업을 중단했습니다. HMG-Seogaemo와 백업을 유지하고 자동 모듈 호출을 일시 중단합니다. 변경 기록을 내보내 확인하세요.</string>
+    <string name="stock_queued">복원에 성공했습니다. NEMESIS 제거를 요청했으며 제거되면 앱이 종료됩니다. 아직 제거가 완료된 것은 아닙니다.</string>
+    <string name="stock_reverted">복원됨</string>
+    <string name="stock_conflict">충돌 · 백업 유지</string>
+    <string name="stock_module_failed">실패 · 백업 유지</string>
+    <string name="stock_not_attempted">시도하지 않음</string>
+    <string name="stock_restart">순정 복원을 완료하려면 헤드 유닛을 재시작하세요.</string>
+    <string name="stock_uninstall_failed">NEMESIS가 제거를 완료하지 못했습니다. HMG-Seogaemo는 설치된 상태로 유지됩니다. 변경 기록을 내보내고 문제를 해결한 뒤 다시 시도하세요.</string>
 </resources>

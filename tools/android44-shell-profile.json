@@ -40,7 +40,8 @@
       "commit": "da77eef6654e1f321ef3b979704681a0abc398f0",
       "forms": [
         "remount rw",
-        "remount ro"
+        "remount ro",
+        "uninstall hmg-seogaemo"
       ]
     }
   },
@@ -692,7 +693,8 @@
       "short": {},
       "source": "NEMESIS Sources/native/main.c",
       "subcommands": [
-        "remount"
+        "remount",
+        "uninstall"
       ]
     },
     "readlink": {
