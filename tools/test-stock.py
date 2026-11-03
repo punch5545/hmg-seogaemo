@@ -268,9 +268,58 @@ def test_missing_handoff(folder):
     assert car.calls.read_text() == '' and car.apk.exists()
 
 
+def test_shared_lines(folder):
+    car = Car(folder)
+    target = folder / 'featurexml.cfg'
+    stock = b'alpha\nbeta\nkeep\n'
+    target.write_bytes(stock)
+    target.chmod(0o640)
+    for name, line in (('a', 'alpha'), ('b', 'beta')):
+        (car.base / f'modules/{name}.properties').write_text(
+            f'owns_lines.1={target}:{line}\nwatch=boot,screen_on\n')
+    car.env['FAKE_TARGET'] = str(target)
+    for name, old, new in (('a', 'alpha', 'A'), ('b', 'beta', 'B')):
+        script(car.base / f'modules/{name}.sh', f'''
+case "$1" in
+    apply) sg_file_replace_line "$FAKE_TARGET" {old} {new} || exit $?; sg_status on none enabled ;;
+    revert)
+        sg_print "${{HMG_SEOGAEMO_STATE##*/}} revert" >> "$FAKE_CALLS"
+        sg_revert_all || {{ sg_status conflict none drift; exit 3; }}
+        sg_status off none restored ;;
+    status) sg_status off none restored ;;
+esac
+''')
+    car.enable()
+    composed = target.read_bytes()
+    assert composed == b'A\nB\nkeep\n'
+    shared = car.state / 'shared-lines'
+    # Drift in the shared file blocks every module before any restore.
+    target.write_bytes(b'external\n')
+    result = car.run('stock', 'restore', ok=False)
+    assert 'state=conflict' in result.stdout and car.calls.read_text() == ''
+    car.hook(ok=False)
+    assert target.read_bytes() == b'external\n' and car.apk.exists()
+    target.write_bytes(composed)
+    # Interrupted applies (desired off) still count as line-owned snapshots.
+    for name in 'ab':
+        (car.state / f'desired/{name}').write_text('off')
+    result = car.run('stock', 'restore')
+    assert 'info.module_a=reverted' in result.stdout and 'info.module_b=reverted' in result.stdout
+    assert target.read_bytes() == stock and oct(target.stat().st_mode & 0o7777) == '0o640'
+    assert not shared.exists() or not any(shared.iterdir())
+    assert not list(car.state.glob('modules/*/line.*'))
+    # The NEMESIS hook uses the same restore path.
+    car.enable()
+    assert target.read_bytes() == composed
+    car.hook()
+    assert target.read_bytes() == stock and not car.apk.exists()
+    assert not shared.exists() or not any(shared.iterdir())
+
+
 with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
-                 test_late_failure, test_detached_failure, test_missing_handoff):
+                 test_late_failure, test_detached_failure, test_missing_handoff,
+                 test_shared_lines):
         folder = Path(directory) / test.__name__
         folder.mkdir()
         test(folder)

@@ -18,6 +18,7 @@ hmg_seogaemo_stock_context() {
 }
 hmg_seogaemo_stock_snapshots() {
     for stock_item in "$HMG_SEOGAEMO_STATE"/prop.*/ready "$HMG_SEOGAEMO_STATE"/file.*/ready \
+        "$HMG_SEOGAEMO_STATE"/line.*/ready \
         "$HMG_SEOGAEMO_STATE"/bind.* "$HMG_SEOGAEMO_STATE"/changes \
         "$HMG_SEOGAEMO_STATE"/dex.cache; do
         [ ! -f "$stock_item" ] || return 0
