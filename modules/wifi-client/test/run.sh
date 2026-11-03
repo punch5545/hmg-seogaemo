@@ -2,7 +2,9 @@
 set -eu
 
 repo=$(CDPATH= cd "$(dirname "$0")/../../.." && pwd)
-car_shell=$(command -v mksh || command -v sh)
+car_shell=${HMG_SEOGAEMO_TEST_SHELL:-$(command -v mksh || command -v sh)}
+export HMG_SEOGAEMO_TEST_COMMON="$repo/nemesis/package/lib/common.sh"
+. "$HMG_SEOGAEMO_TEST_COMMON"
 work=$(mktemp -d "${TMPDIR:-/tmp}/wifi-client-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 mkdir -p "$work/base/lib" "$work/bin" "$work/system/onebin/neev_kr" \
@@ -11,14 +13,15 @@ mkdir -p "$work/base/lib" "$work/bin" "$work/system/onebin/neev_kr" \
     "$work/sys/class/net" "$work/state"
 cfg=$work/system/onebin/neev_kr/featurexml.cfg
 xml=$work/system/etc/permissions/android.hardware.wifi.xml
-printf 'before\n-/system/etc/permissions/android.hardware.wifi.xml\nafter\n' > "$cfg"
+sg_print "before" "-/system/etc/permissions/android.hardware.wifi.xml" "after" > "$cfg"
 cp "$cfg" "$work/original.cfg"
 : > "$work/sys/bus/sdio/devices/chip"
-printf '%s\n' NEEV.KOR.0000.V039.001.260902 > "$work/product"
+sg_print NEEV.KOR.0000.V039.001.260902 > "$work/product"
 : > "$work/owners"
 : > "$work/pm-feature"
 
 cat > "$work/base/lib/common.sh" <<'EOF'
+. "$HMG_SEOGAEMO_TEST_COMMON"
 sg_log() { :; }
 sg_snapshot() {
     name=${1##*/}
@@ -30,7 +33,7 @@ sg_snapshot() {
 sg_mark() {
     name=${1##*/}
     cp -p "$1" "$HMG_SEOGAEMO_STATE/$name.applied"
-    printf '%s\n' "$name" >> "$TEST_WORK/marks"
+    sg_print "$name" >> "$TEST_WORK/marks"
 }
 sg_applied() {
     name=${1##*/}
@@ -48,7 +51,7 @@ sg_file_replace_line() {
     sg_snapshot "$1" || return 1
     while IFS= read -r line || [ -n "$line" ]; do
         [ "$line" != "$2" ] || line=$3
-        printf '%s\n' "$line"
+        sg_print "$line"
     done < "$1" > "$1.tmp" || return 1
     cat "$1.tmp" > "$1" || return 1
     rm "$1.tmp"
@@ -72,42 +75,49 @@ sg_revert_all() {
 }
 sg_owner_present() { grep -Fxq "$1" "$TEST_WORK/owners"; }
 sg_status() {
-    printf 'state=%s\nrestart=%s\ndetail=%s\n' "$1" "$2" "${3:-}"
+    sg_print "state=$1" "restart=$2" "detail=${3:-}"
     case "$1" in conflict) return 3;; incompatible) return 4;; failed) return 1;; esac
     return 0
 }
 EOF
 cat > "$work/bin/getprop" <<'EOF'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 case "$1" in ro.build.product) cat "$TEST_WORK/product";; init.svc.hostapd) cat "$TEST_WORK/hostapd" 2>/dev/null || :;; esac
 EOF
 cat > "$work/bin/setprop" <<'EOF'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 echo 'wifi-client must not change properties' >&2
 exit 1
 EOF
 cat > "$work/bin/pm" <<'EOF'
 #!/bin/sh
-[ "$*" = 'list features' ] && [ -s "$TEST_WORK/pm-feature" ] && printf 'feature:android.hardware.wifi\n'
+. "$HMG_SEOGAEMO_TEST_COMMON"
+[ "$*" = 'list features' ] && [ -s "$TEST_WORK/pm-feature" ] && sg_print "feature:android.hardware.wifi"
 exit 0
 EOF
 cat > "$work/bin/ifconfig" <<'EOF'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 cat "$TEST_WORK/ifconfig" 2>/dev/null || :
 EOF
 cat > "$work/bin/netcfg" <<'EOF'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 cat "$TEST_WORK/netcfg" 2>/dev/null || :
 EOF
 cat > "$work/bin/wpa_cli" <<'EOF'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 cat "$TEST_WORK/wpa-status" 2>/dev/null || :
 EOF
 cat > "$work/base/bin/hmg-seogaemo-root" <<'EOF'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 [ "$1 $2" = 'wireless-carplay-and-aa status' ] || exit 2
-if [ -f "$TEST_WORK/projection-on" ]; then printf 'state=on\n';
-else printf 'state=off\n'; fi
+if [ -f "$TEST_WORK/projection-on" ]; then sg_print "state=on";
+else sg_print "state=off"; fi
 EOF
 chmod +x "$work/bin/"*
 chmod +x "$work/base/bin/hmg-seogaemo-root"
@@ -126,7 +136,7 @@ export TEST_WORK=$work HMG_SEOGAEMO_BASE=$work/base HMG_SEOGAEMO_STATE=$work/sta
 # Keep the test harness on the host PATH, but execute the module with only
 # toolbox-like commands. Forbidden names are explicit failing stubs.
 mkdir "$work/allowed"
-for tool in cat cmp cp grep rm; do
+for tool in cat cmp cp dd grep rm; do
     ln -s "$(command -v "$tool")" "$work/allowed/$tool"
 done
 ln -s "$repo/tools/testlib/fakebin/md5" "$work/allowed/md5"
@@ -137,6 +147,7 @@ done
 for tool in awk sed tail head cut tr wc sort uniq xargs find stat readlink sha256sum sha1sum tar unzip busybox toybox; do
     cat > "$work/allowed/$tool" <<'EOF'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 echo "forbidden tool called: ${0##*/}" >&2
 exit 99
 EOF
@@ -154,16 +165,16 @@ grep -Fqx '#-/system/etc/permissions/android.hardware.wifi.xml' "$cfg"
 [ -f "$xml" ]
 run apply; assert_state pending-restart
 [ "$(wc -l < "$work/marks")" -eq 2 ]
-printf 'yes\n' > "$work/pm-feature"
+sg_print "yes" > "$work/pm-feature"
 run status; assert_state on
 : > "$work/sys/class/net/wlan0"
-printf 'wpa_state=COMPLETED\n' > "$work/wpa-status"
-printf 'wlan0: inet addr:10.7.0.15 Bcast:10.7.0.255 Mask:255.255.255.0\n' > "$work/ifconfig"
+sg_print "wpa_state=COMPLETED" > "$work/wpa-status"
+sg_print "wlan0: inet addr:10.7.0.15 Bcast:10.7.0.255 Mask:255.255.255.0" > "$work/ifconfig"
 run status; assert_line info.client_ip=10.7.0.15
 : > "$work/ifconfig"
-printf 'wlan0 UP 10.7.0.16/24 0x00001043\n' > "$work/netcfg"
+sg_print "wlan0 UP 10.7.0.16/24 0x00001043" > "$work/netcfg"
 run status; assert_line info.client_ip=10.7.0.16
-printf 'wpa_state=DISCONNECTED\n' > "$work/wpa-status"
+sg_print "wpa_state=DISCONNECTED" > "$work/wpa-status"
 run status
 if grep -q '^info.client_ip=' "$work/output"; then exit 1; fi
 run revert; assert_state pending-restart
@@ -173,21 +184,21 @@ cmp -s "$work/original.cfg" "$cfg"
 : > "$work/pm-feature"
 run status; assert_state off
 
-printf '%s\n' WRONG.KOR.260902 > "$work/product"
+sg_print WRONG.KOR.260902 > "$work/product"
 if run apply; then exit 1; fi
 assert_state incompatible
-printf '%s\n' NEEV.KOR.0000.V039.001.260902 > "$work/product"
+sg_print NEEV.KOR.0000.V039.001.260902 > "$work/product"
 rm "$work/sys/bus/sdio/devices/chip"
 rm "$work/sys/class/net/wlan0"
 if run apply; then exit 1; fi
 assert_state incompatible
 : > "$work/sys/bus/sdio/devices/chip"
-printf 'hmgapi\n' > "$work/owners"
+sg_print "hmgapi" > "$work/owners"
 if run apply; then exit 1; fi
 assert_state conflict
 : > "$work/owners"
 
-printf 'running\n' > "$work/hostapd"
+sg_print "running" > "$work/hostapd"
 run precheck; assert_line warn.carplay_active=1
 : > "$work/hostapd"
 run precheck
@@ -197,7 +208,7 @@ run precheck; assert_line warn.carplay_active=1
 rm "$work/projection-on"
 
 run apply; assert_state pending-restart
-printf 'drift\n' >> "$cfg"
+sg_print "drift" >> "$cfg"
 if run revert; then exit 1; fi
 assert_state conflict
 [ -e "$work/state/featurexml.cfg.applied" ]

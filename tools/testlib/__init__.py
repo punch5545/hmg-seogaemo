@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 
 FAKEBIN = Path(__file__).resolve().parent / "fakebin"
-SHELL = shutil.which("mksh") or shutil.which("sh")
+SHELL = os.environ.get("HMG_SEOGAEMO_TEST_SHELL") or shutil.which("mksh") or "/bin/sh"
 
 
 def car_env(values=None):

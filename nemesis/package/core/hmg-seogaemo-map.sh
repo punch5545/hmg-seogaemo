@@ -29,10 +29,10 @@ while ! mkdir "$lock" 2>/dev/null; do
         esac
     fi
     tries=$((tries + 1))
-    [ "$tries" -lt 10 ] || { printf 'state=failed\nrestart=none\ndetail=operation busy\n'; exit 1; }
+    [ "$tries" -lt 10 ] || { sg_print "state=failed" "restart=none" "detail=operation busy"; exit 1; }
     sleep 1
 done
-printf '%s' "$$" > "$lock/pid"
+sg_write "$$" > "$lock/pid"
 cleanup() {
     [ -n "${HMG_SEOGAEMO_MAP_WORK:-}" ] && hmg_seogaemo_map_work_cleanup
     rm -rf "$lock"
@@ -46,12 +46,12 @@ if [ "$1" = export ]; then
         break
     done
     [ -n "$target" ] || target=${SG_EXPORT_ROOT:-/data/local/tmp/hmg-seogaemo-export}/$(date +%Y%m%d-%H%M%S)
-    hmg_seogaemo_map_export "$target" || { printf 'state=failed\nrestart=none\ndetail=no verified map\n'; exit 1; }
+    hmg_seogaemo_map_export "$target" || { sg_print "state=failed" "restart=none" "detail=no verified map"; exit 1; }
     chmod -R 755 "$target" || exit 1
-    printf 'state=on\nrestart=none\ndetail=%s\n' "$target"
+    sg_print "state=on" "restart=none" "detail=$target"
     exit 0
 fi
-hmg_seogaemo_map_work || { printf 'state=failed\nrestart=none\ndetail=map work unavailable\n'; exit 1; }
+hmg_seogaemo_map_work || { sg_print "state=failed" "restart=none" "detail=map work unavailable"; exit 1; }
 mapper "$1" "$HMG_SEOGAEMO_MAP_WORK" > "$HMG_SEOGAEMO_MAP_WORK/result" 2>&1
 code=$?
 if [ "$code" -ne 0 ]; then
@@ -59,7 +59,7 @@ if [ "$code" -ne 0 ]; then
     exit "$code"
 fi
 if ! hmg_seogaemo_map_publish "$HMG_SEOGAEMO_MAP_WORK"; then
-    printf 'state=failed\nrestart=none\ndetail=map publish failed\n'
+    sg_print "state=failed" "restart=none" "detail=map publish failed"
     exit 1
 fi
 dd if="$HMG_SEOGAEMO_MAP_WORK/result" bs=1 count=4096 2>/dev/null

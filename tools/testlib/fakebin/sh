@@ -1,5 +1,8 @@
 #!/bin/sh
 # Nested shell calls in head-unit scripts use the same shell as their test runner.
+if [ -n "${HMG_SEOGAEMO_TEST_SHELL:-}" ]; then
+    exec "$HMG_SEOGAEMO_TEST_SHELL" "$@"
+fi
 if command -v mksh >/dev/null 2>&1; then
     exec mksh "$@"
 fi

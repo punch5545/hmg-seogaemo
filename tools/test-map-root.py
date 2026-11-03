@@ -5,9 +5,10 @@ import os
 import shutil
 import subprocess
 import tempfile
+from testlib import car_env, SHELL
 
 ROOT=Path(__file__).resolve().parent.parent
-SHELL=os.environ.get("MKSH","sh")
+os.environ.update(car_env())
 with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-root-") as tmp:
     t=Path(tmp);base=t/"package";state=t/"state";fake=t/"bin"
     for folder in (base/"bin",base/"core",base/"lib",fake,state):folder.mkdir(parents=True,exist_ok=True)
@@ -17,16 +18,17 @@ with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-root-") as tmp:
         shutil.copyfile(ROOT/source,base/dest)
     (fake/"getprop").write_text("#!/bin/sh\ncase \"$1\" in ro.build.product) echo NEEV.KOR.0000.V039.001.260902;; esac\n")
     (fake/"app_process").write_text('''#!/bin/sh
-if [ "$3" = status ]; then printf 'state=off\\nrestart=none\\ndetail=verification needed\\n'; exit 0; fi
+. "$HMG_SEOGAEMO_BASE/lib/common.sh"
+if [ "$3" = status ]; then sg_print state=off restart=none "detail=verification needed"; exit 0; fi
 [ "$3" = run ] || [ "$3" = verify ] || exit 2
 work=$6
 for name in map.json car.json; do cp "$SG_FAKE_MAP/$name" "$work/$name" || exit 1; done
-printf 'NEEV.KOR.0000.V039.001.260902\\nabc\\nboot\\n' > "$work/verified"
-printf '0123456789abcdef0123456789abcdef\\n' > "$work/hash-id"
-printf 'abcdef0123456789abcdef0123456789\\n' > "$work/map-id"
-printf 'generated\\n' > "$work/source"
-printf 'maps/hyundai/ioniq5/kor/260902\\n' > "$work/layout"
-printf 'state=on\\nrestart=none\\ndetail=map verified\\n'
+sg_print NEEV.KOR.0000.V039.001.260902 abc boot > "$work/verified"
+sg_print 0123456789abcdef0123456789abcdef > "$work/hash-id"
+sg_print abcdef0123456789abcdef0123456789 > "$work/map-id"
+sg_print generated > "$work/source"
+sg_print maps/hyundai/ioniq5/kor/260902 > "$work/layout"
+sg_print state=on restart=none "detail=map verified"
 ''')
     for f in fake.iterdir():f.chmod(0o755)
     env=dict(os.environ,PATH=str(fake)+":"+os.environ["PATH"],SG_DATA_ROOT=str(state),

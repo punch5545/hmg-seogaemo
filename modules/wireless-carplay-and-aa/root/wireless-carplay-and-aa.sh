@@ -7,7 +7,7 @@ umask 077
 FEATURE=/system/onebin/neev_kr/featurexml.cfg
 ASSET=/system/etc/hmg-seogaemo/wireless-carplay-and-aa
 
-path() { printf '%s%s\n' "${SG_WIRELESS_TEST_ROOT:-}" "$1"; }
+path() { sg_print "${SG_WIRELESS_TEST_ROOT:-}$1"; }
 exists() { [ -f "$(path "$1")" ]; }
 value() { getprop "$1"; }
 fail() { sg_status failed none "$1"; }
@@ -16,7 +16,7 @@ incompatible() { sg_status incompatible none "$1"; }
 
 compatibility() {
     map_state=$("$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state=
-    printf '%s\n' "$map_state" | grep -Fxq 'state=on' ||
+    sg_print "$map_state" | grep -Fxq 'state=on' ||
         { incompatible 'verified car map required'; return 4; }
     [ "$(value ro.mobis.onebindir)" = neev_kr ] || { incompatible 'unsupported onebin'; return 4; }
     [ "$(value ro.build.version.release)" = 4.4.2 ] || { incompatible 'requires Android 4.4.2'; return 4; }

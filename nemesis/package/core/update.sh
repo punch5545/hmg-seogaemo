@@ -4,6 +4,7 @@ set -eu
 umask 077
 base=${0%/*}
 base=${base%/core}
+. "$base/lib/common.sh"
 state=/data/nemesis/backup/hmg-seogaemo
 root=$state/update
 input=/data/data/com.seogaemo.hmg/files/update
@@ -16,14 +17,14 @@ mkdir -p "$state" "$root" "$root/versions"
 
 descriptor_version() {
     while IFS= read -r line; do
-        case "$line" in package-version=*) printf '%s\n' "${line#package-version=}"; return ;; esac
+        case "$line" in package-version=*) sg_print "${line#package-version=}"; return ;; esac
     done < "$descriptor"
     return 1
 }
 current_version() {
     if [ -f "$root/current/VERSION" ]; then
         IFS= read -r value < "$root/current/VERSION" || :
-        printf '%s\n' "$value"
+        sg_print "$value"
     else
         descriptor_version
     fi
@@ -31,10 +32,10 @@ current_version() {
 installed=$(current_version)
 case "$installed" in *[!0-9.]*|'') echo 'invalid installed version' >&2; exit 1 ;; esac
 if [ "$verb" = status ]; then
-    printf 'version=%s\n' "$installed"
+    sg_print "version=$installed"
     if [ -f "$root/journal" ]; then
         IFS= read -r phase < "$root/journal" || :
-        printf '%s\n' "$phase"
+        sg_print "$phase"
     else
         echo 'phase=idle'
     fi
@@ -53,7 +54,7 @@ switch_to() {
     rm -f "$root/next"
     ln -s "$1" "$root/next"
     java_update switch "$root/next" "$root/current"
-    printf '%s\n' "$1" > "$root/current-path.next"
+    sg_print "$1" > "$root/current-path.next"
     mv -f "$root/current-path.next" "$root/current-path"
     sync
 }
@@ -61,8 +62,8 @@ rewrite_descriptor() {
     found=0
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
-            package-version=*) printf 'package-version=%s\n' "$1"; found=1 ;;
-            *) printf '%s\n' "$line" ;;
+            package-version=*) sg_print "package-version=$1"; found=1 ;;
+            *) sg_print "$line" ;;
         esac
     done < "$descriptor" > "$descriptor.ota-new"
     [ "$found" -eq 1 ] || return 1
@@ -98,9 +99,9 @@ if [ "$verb" = stage ]; then
     check_md5 "$dest" || { rm -rf "$dest"; exit 1; }
     [ -s "$dest/modules.list" ] && [ -s "$dest/modules.graph" ] && [ -f "$dest/bin/install-apk.sh" ] && [ -f "$dest/bin/hmg-seogaemo-root" ] && [ -f "$dest/svc/reconcile.sh" ] || exit 1
     sync
-    printf '%s\n' "$version" > "$root/staged"
+    sg_print "$version" > "$root/staged"
     echo 'phase=staged' > "$root/journal"
-    printf 'version=%s\n' "$version"
+    sg_print "version=$version"
     exit 0
 fi
 
@@ -129,8 +130,8 @@ check_md5 "$new" || exit 1
 old=$base
 if [ -f "$root/current-path" ]; then IFS= read -r old < "$root/current-path" || :; fi
 case "$old" in "$base"|"$root"/versions/*) ;; *) exit 1 ;; esac
-printf '%s\n' "$old" > "$root/previous-path"
-printf '%s\n' "$installed" > "$root/previous-version"
+sg_print "$old" > "$root/previous-path"
+sg_print "$installed" > "$root/previous-version"
 echo 'phase=applying' > "$root/journal"
 sync
 switch_to "$new"
@@ -148,4 +149,4 @@ if ! rewrite_descriptor "$version"; then
 fi
 rm -f "$root/staged"
 echo 'phase=healthy' > "$root/journal"
-printf 'version=%s\n' "$version"
+sg_print "version=$version"

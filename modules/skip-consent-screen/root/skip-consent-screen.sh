@@ -24,7 +24,7 @@ status() {
         result pending-restart head_unit 'Restart head unit to activate startup notice skip'
     fi
     if sg_service_call_this_boot; then
-        printf 'info.desired=off\n'
+        sg_print "info.desired=off"
         result pending-restart head_unit 'Restart head unit to restore the stock startup notice'
     fi
     result off none 'Stock startup notice enabled'
@@ -41,7 +41,7 @@ apply() {
 }
 revert() {
     if sg_service_call_this_boot; then
-        printf 'info.desired=off\n'
+        sg_print "info.desired=off"
         result pending-restart head_unit 'Restart head unit to restore the stock startup notice'
     fi
     result off none 'Stock startup notice enabled'

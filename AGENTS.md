@@ -42,7 +42,7 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 
 - **Android 4.4 only:** API 19, Java 1.7, framework views, no AndroidX/Kotlin/Compose/Material.
   Compile against `platforms/android-19`. APK v1 (JAR) SHA1withRSA signing.
-- **Head-unit shell = toolbox + mksh.** No `awk`, `sed`, `tail`, `head`, `cut`, `tr`, `wc`, `sort`,
+- **Head-unit shell = toolbox + mksh.** No `printf`, `awk`, `sed`, `tail`, `head`, `cut`, `tr`, `wc`, `sort`,
   `find`, `stat`, `sha256sum`, `tar`, `unzip`, `busybox`. Hashing on the unit: toolbox `md5`
   (`<hex>  <path>`). `make test` lints every on-car script. Full list: contract, "Shell tools".
 - **Modules never mutate the system directly.** All writes go through the package API in

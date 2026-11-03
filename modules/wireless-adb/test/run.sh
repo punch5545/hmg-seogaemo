@@ -3,12 +3,15 @@ set -eu
 
 module_dir=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 repo=$(CDPATH= cd -- "$module_dir/../.." && pwd)
-car_shell=$(command -v mksh || command -v sh)
+car_shell=${HMG_SEOGAEMO_TEST_SHELL:-$(command -v mksh || command -v sh)}
+export HMG_SEOGAEMO_TEST_COMMON="$repo/nemesis/package/lib/common.sh"
+. "$HMG_SEOGAEMO_TEST_COMMON"
 tmp=$(mktemp -d "$module_dir/test/.tmp.XXXXXX")
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 mkdir -p "$tmp/base/lib" "$tmp/bin" "$tmp/props" "$tmp/state" "$tmp/baseline" "$tmp/applied" "$tmp/interfaces"
 
 cat > "$tmp/base/lib/common.sh" <<'EOF'
+. "$HMG_SEOGAEMO_TEST_COMMON"
 sg_log() { :; }
 sg_prop_baseline() {
     key=$1
@@ -20,16 +23,16 @@ sg_prop_baseline() {
     [ -f "$FAKE_ROOT/baseline/$key.saved" ] && return 0
     if [ -f "$FAKE_ROOT/props/$key" ]; then
         cp "$FAKE_ROOT/props/$key" "$FAKE_ROOT/baseline/$key.value"
-        printf 'present' > "$FAKE_ROOT/baseline/$key.saved"
+        sg_write "present" > "$FAKE_ROOT/baseline/$key.saved"
     else
-        printf 'absent' > "$FAKE_ROOT/baseline/$key.saved"
+        sg_write "absent" > "$FAKE_ROOT/baseline/$key.saved"
     fi
 }
 sg_prop_set() {
     sg_prop_baseline "$1" || return $?
     setprop "$1" "$2"
     [ "$(getprop "$1")" = "$2" ] || return 1
-    printf '%s' "$2" > "$FAKE_ROOT/applied/$1"
+    sg_write "$2" > "$FAKE_ROOT/applied/$1"
 }
 sg_applied() {
     [ -f "$FAKE_ROOT/applied/$1" ] &&
@@ -72,28 +75,32 @@ sg_status() {
     case "$1" in
         conflict) code=3 ;; incompatible) code=4 ;; failed) code=1 ;; *) code=0 ;;
     esac
-    printf 'state=%s\nrestart=%s\ndetail=%s\n' "$1" "$2" "${3:-}"
+    sg_print "state=$1" "restart=$2" "detail=${3:-}"
     return "$code"
 }
 EOF
 cat > "$tmp/bin/getprop" <<'EOF'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 [ -f "$FAKE_ROOT/props/$1" ] && cat "$FAKE_ROOT/props/$1"
 exit 0
 EOF
 cat > "$tmp/bin/setprop" <<'EOF'
 #!/bin/sh
-printf '%s %s\n' "$1" "$2" >> "$FAKE_ROOT/calls"
+. "$HMG_SEOGAEMO_TEST_COMMON"
+sg_print "$1 $2" >> "$FAKE_ROOT/calls"
 if [ "$1" = ctl.restart ] && [ -f "$FAKE_ROOT/fail-restart" ]; then exit 1; fi
-if [ "$1" != ctl.restart ]; then printf '%s' "$2" > "$FAKE_ROOT/props/$1"; fi
+if [ "$1" != ctl.restart ]; then sg_write "$2" > "$FAKE_ROOT/props/$1"; fi
 EOF
 cat > "$tmp/bin/ifconfig" <<'EOF'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 [ -f "$FAKE_ROOT/interfaces/$1" ] || exit 1
 cat "$FAKE_ROOT/interfaces/$1"
 EOF
 cat > "$tmp/bin/netcfg" <<'EOF'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 cat "$FAKE_ROOT/netcfg" 2>/dev/null || true
 EOF
 chmod +x "$tmp/bin/"*
@@ -104,14 +111,15 @@ mkdir -p "$tmp/restricted-bin"
 for name in getprop setprop ifconfig netcfg; do
     ln -s "$tmp/bin/$name" "$tmp/restricted-bin/$name"
 done
-for name in cat cp rm; do
+for name in dd cat cp rm; do
     ln -s "$(command -v "$name")" "$tmp/restricted-bin/$name"
 done
 ln -s "$repo/tools/testlib/fakebin/md5" "$tmp/restricted-bin/md5"
 ln -s "$(command -v python3)" "$tmp/restricted-bin/python3"
 cat > "$tmp/bin/forbidden" <<'EOF'
 #!/bin/sh
-printf '%s\n' "${0##*/}" >> "$FAKE_ROOT/forbidden-calls"
+. "$HMG_SEOGAEMO_TEST_COMMON"
+sg_print "${0##*/}" >> "$FAKE_ROOT/forbidden-calls"
 exit 99
 EOF
 chmod +x "$tmp/bin/forbidden"
@@ -124,18 +132,18 @@ script="$module_dir/root/wireless-adb.sh"
 
 run() { PATH="$tmp/restricted-bin" "$car_shell" "$script" "$1" > "$tmp/output"; }
 has() { grep -q -F "$1" "$tmp/output" || { cat "$tmp/output"; exit 1; }; }
-restarts() { count=$(grep -c '^ctl.restart adbd$' "$tmp/calls" 2>/dev/null) || count=0; printf '%s' "$count"; }
+restarts() { count=$(grep -c '^ctl.restart adbd$' "$tmp/calls" 2>/dev/null) || count=0; sg_write "$count"; }
 assert_count() { [ "$(restarts)" = "$1" ] || { cat "$tmp/calls"; exit 1; }; }
 reset() {
     rm -f "$tmp/props/"* "$tmp/baseline/"* "$tmp/applied/"* "$tmp/state/"* "$tmp/interfaces/"* \
         "$tmp/owner-"* "$tmp/fail-restart" "$tmp/calls" "$tmp/netcfg"
     : > "$tmp/calls"
-    printf 19 > "$tmp/props/ro.build.version.sdk"
-    printf NEEV.KOR.0000.V039.001.260902 > "$tmp/props/ro.build.product"
+    sg_write "19" > "$tmp/props/ro.build.version.sdk"
+    sg_write "NEEV.KOR.0000.V039.001.260902" > "$tmp/props/ro.build.product"
 }
 
 reset
-printf 'wlan0 Link encap:Ethernet inet addr:192.168.0.1 Bcast:192.168.0.255\n' > "$tmp/interfaces/wlan0"
+sg_print "wlan0 Link encap:Ethernet inet addr:192.168.0.1 Bcast:192.168.0.255" > "$tmp/interfaces/wlan0"
 run status
 has 'state=off'
 has 'info.hotspot_ip=192.168.0.1'
@@ -158,15 +166,15 @@ assert_count 2
 
 reset
 run apply
-printf NEEV.KOR.0000.V039.001.270101 > "$tmp/props/ro.build.product"
+sg_write "NEEV.KOR.0000.V039.001.270101" > "$tmp/props/ro.build.product"
 if run revert; then exit 1; fi
 has 'state=conflict'
 [ "$(cat "$tmp/props/persist.adb.tcp.port")" = 5555 ]
 [ -f "$tmp/baseline/build-product" ]
 
 reset
-printf '' > "$tmp/props/persist.service.adb.tcp.enable"
-printf 5555 > "$tmp/props/persist.adb.tcp.port"
+sg_write "" > "$tmp/props/persist.service.adb.tcp.enable"
+sg_write "5555" > "$tmp/props/persist.adb.tcp.port"
 run apply
 assert_count 0
 run revert
@@ -183,27 +191,27 @@ has 'state=conflict'
 
 reset
 run apply
-printf 6000 > "$tmp/props/persist.adb.tcp.port"
+sg_write "6000" > "$tmp/props/persist.adb.tcp.port"
 if run revert; then exit 1; fi
 has 'state=conflict'
 [ -f "$tmp/baseline/persist.adb.tcp.port.saved" ]
 [ "$(cat "$tmp/props/persist.adb.tcp.port")" = 6000 ]
 
 reset
-printf 20 > "$tmp/props/ro.build.version.sdk"
+sg_write "20" > "$tmp/props/ro.build.version.sdk"
 if run apply; then exit 1; fi
 has 'state=incompatible'
 [ ! -e "$tmp/props/persist.adb.tcp.port" ]
 
 reset
-printf 'eth0 inet addr:192.168.0.123 Mask:255.255.255.0\n' > "$tmp/interfaces/eth0"
+sg_print "eth0 inet addr:192.168.0.123 Mask:255.255.255.0" > "$tmp/interfaces/eth0"
 run apply
 has 'state=pending-restart'
 has 'restart=head_unit'
 run revert
 
 reset
-printf 7777 > "$tmp/props/service.adb.tcp.port"
+sg_write "7777" > "$tmp/props/service.adb.tcp.port"
 if run apply; then exit 1; fi
 has 'state=conflict'
 
@@ -216,10 +224,10 @@ rm -f "$tmp/fail-restart"
 run revert
 
 reset
-printf 'wlan0 UP 10.0.0.23/24 0x00001043 00:00:00:00:00:00\n' > "$tmp/netcfg"
+sg_print "wlan0 UP 10.0.0.23/24 0x00001043 00:00:00:00:00:00" > "$tmp/netcfg"
 run status
 has 'info.client_ip=10.0.0.23'
 has 'info.client_adb_endpoint=10.0.0.23:5555'
 [ ! -e "$tmp/forbidden-calls" ] || { cat "$tmp/forbidden-calls"; exit 1; }
 
-printf 'wireless-adb tests passed\n'
+sg_print "wireless-adb tests passed"

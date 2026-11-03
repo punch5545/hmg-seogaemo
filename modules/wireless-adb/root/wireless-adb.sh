@@ -27,7 +27,7 @@ wa_owners_clear() {
 wa_effective_port() {
     value=$(getprop service.adb.tcp.port)
     if [ -z "$value" ]; then value=$(getprop "$PORT_PROP"); fi
-    printf '%s' "$value"
+    sg_write "$value"
 }
 
 wa_ipv4() {
@@ -56,7 +56,7 @@ wa_ifconfig_ip() {
                 if [ "$next" -eq 1 ]; then
                     candidate=${token#addr:}
                     candidate=${candidate%%/*}
-                    if wa_ipv4 "$candidate"; then printf '%s' "$candidate"; return 0; fi
+                    if wa_ipv4 "$candidate"; then sg_write "$candidate"; return 0; fi
                     next=0
                 fi
                 case "$token" in
@@ -64,7 +64,7 @@ wa_ifconfig_ip() {
                     addr:*)
                         candidate=${token#addr:}
                         candidate=${candidate%%/*}
-                        if wa_ipv4 "$candidate"; then printf '%s' "$candidate"; return 0; fi
+                        if wa_ipv4 "$candidate"; then sg_write "$candidate"; return 0; fi
                         ;;
                 esac
             done
@@ -77,7 +77,7 @@ wa_netcfg_ip() {
     netcfg 2>/dev/null | while read -r name _state address rest; do
         [ "$name" = "$1" ] || continue
         candidate=${address%%/*}
-        if wa_ipv4 "$candidate"; then printf '%s' "$candidate"; return 0; fi
+        if wa_ipv4 "$candidate"; then sg_write "$candidate"; return 0; fi
     done
 }
 
@@ -95,16 +95,16 @@ wa_facts() {
     wlan_ip=$(wa_iface_ip wlan0) || wlan_ip=
     if [ -n "$wlan_ip" ]; then
         if [ "$wlan_ip" = 192.168.0.1 ] || [ "$(getprop init.svc.hostapd)" = running ]; then
-            printf 'info.hotspot_ip=%s\ninfo.adb_endpoint=%s:5555\n' "$wlan_ip" "$wlan_ip"
+            sg_print "info.hotspot_ip=$wlan_ip" "info.adb_endpoint=$wlan_ip:5555"
         else
-            printf 'info.client_ip=%s\ninfo.client_adb_endpoint=%s:5555\n' "$wlan_ip" "$wlan_ip"
+            sg_print "info.client_ip=$wlan_ip" "info.client_adb_endpoint=$wlan_ip:5555"
         fi
     fi
 }
 
 wa_report() {
     if block=$(sg_status "$1" "$2" "$3"); then code=0; else code=$?; fi
-    printf '%s\n' "$block"
+    sg_print "$block"
     wa_facts
     return "$code"
 }

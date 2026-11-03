@@ -2,16 +2,19 @@
 # Module-local fake-root test. No host firmware paths are touched.
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-car_shell=$(command -v mksh || command -v sh)
+car_shell=${HMG_SEOGAEMO_TEST_SHELL:-$(command -v mksh || command -v sh)}
+export HMG_SEOGAEMO_TEST_COMMON="$HERE/../../nemesis/package/lib/common.sh"
+. "$HMG_SEOGAEMO_TEST_COMMON"
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 export SG_WIRELESS_TEST_ROOT=$T/root HMG_SEOGAEMO_BASE=$T/base HMG_SEOGAEMO_STATE=$T/state HMG_SEOGAEMO_MODULE_DIR=$HERE/payload
 export TEST_PROPS=$T/props TEST_STATE=$T/state
 mkdir -p "$T/base/lib" "$T/bin" "$T/props" "$T/state" "$T/root/system/bin" "$T/root/system/app" "$T/root/system/framework" "$T/root/system/onebin/neev_kr" "$T/root/system/etc/permissions" "$T/root/proc/sys/kernel/random"
 cat > "$T/base/lib/common.sh" <<'SH'
-sg_log() { printf '%s\n' "$*" >&2; }
-sg_path() { case "$1" in "$HMG_SEOGAEMO_STATE"/*) printf '%s\n' "$1";; *) printf '%s%s\n' "$SG_WIRELESS_TEST_ROOT" "$1";; esac; }
-sg_key() { printf '%s/%s\n' "$HMG_SEOGAEMO_STATE" "$2$1"; }
+. "$HMG_SEOGAEMO_TEST_COMMON"
+sg_log() { sg_print "$*" >&2; }
+sg_path() { case "$1" in "$HMG_SEOGAEMO_STATE"/*) sg_print "$1";; *) sg_print "$SG_WIRELESS_TEST_ROOT$1";; esac; }
+sg_key() { sg_print "$HMG_SEOGAEMO_STATE/$2$1"; }
 sg_file_baseline() {
     key=$(sg_key "$1" baseline)
     [ ! -e "$key.present" ] || return 0
@@ -41,7 +44,7 @@ sg_file_put() {
     dest=$(sg_path "$target"); mkdir -p "${dest%/*}"
     cp "$HMG_SEOGAEMO_MODULE_DIR/$source" "$dest"
     sg_file_mark_applied "$target"
-    printf 'file %s\n' "$target" >> "$HMG_SEOGAEMO_STATE/ops.list"
+    sg_print "file $target" >> "$HMG_SEOGAEMO_STATE/ops.list"
 }
 sg_file_replace_line() {
     target=$1 old=$2 new=$3
@@ -51,7 +54,7 @@ sg_file_replace_line() {
     awk -v o="$old" -v n="$new" '{if ($0 == o) print n; else print}' "$dest" > "$dest.next"
     mv "$dest.next" "$dest"
     sg_file_mark_applied "$target"
-    printf 'file %s\n' "$target" >> "$HMG_SEOGAEMO_STATE/ops.list"
+    sg_print "file $target" >> "$HMG_SEOGAEMO_STATE/ops.list"
 }
 sg_prop_set() {
     key=$1; val=$2
@@ -61,10 +64,10 @@ sg_prop_set() {
         touch "$HMG_SEOGAEMO_STATE/prop-baseline/$key.present"
     fi
     setprop "$key" "$val"
-    printf '%s' "$val" > "$HMG_SEOGAEMO_STATE/prop-applied-$key"
-    printf 'prop %s\n' "$key" >> "$HMG_SEOGAEMO_STATE/ops.list"
+    sg_write "$val" > "$HMG_SEOGAEMO_STATE/prop-applied-$key"
+    sg_print "prop $key" >> "$HMG_SEOGAEMO_STATE/ops.list"
 }
-sg_dex_cache_track() { printf '%s %s\n' "$1" "$2" > "$HMG_SEOGAEMO_STATE/dex-track"; }
+sg_dex_cache_track() { sg_print "$1 $2" > "$HMG_SEOGAEMO_STATE/dex-track"; }
 sg_zygote_install() {
     [ "${SG_FAIL_ZYGOTE:-0}" != 1 ] || return 1
     stock=/system/bin/app_process.hmg-seogaemo-stock
@@ -72,7 +75,7 @@ sg_zygote_install() {
     dest=$(sg_path "$stock")
     cp "$(sg_path /system/bin/app_process)" "$dest"
     sg_file_mark_applied "$stock"
-    printf 'file %s\n' "$stock" >> "$HMG_SEOGAEMO_STATE/ops.list"
+    sg_print "file $stock" >> "$HMG_SEOGAEMO_STATE/ops.list"
     sg_file_put /system/bin/app_process "$1" 755 0:0
     sg_file_put /system/lib/libhmg_seogaemo_wireless_hook.so "$2" 644 0:0
     sg_file_put /system/framework/hmg-seogaemo-wireless-hook.jar "$3" 644 0:0
@@ -92,52 +95,55 @@ sg_revert_all() {
     rm -rf "$HMG_SEOGAEMO_STATE/baseline" "$HMG_SEOGAEMO_STATE/applied" "$HMG_SEOGAEMO_STATE/prop-baseline" "$HMG_SEOGAEMO_STATE"/prop-applied-* "$HMG_SEOGAEMO_STATE/ops.list" "$HMG_SEOGAEMO_STATE/dex-track"
 }
 sg_owner_present() { [ -f "$HMG_SEOGAEMO_STATE/owner-$1" ]; }
-sg_status() { printf 'state=%s\nrestart=%s\ndetail=%s\n' "$1" "$2" "${3:-}"; case "$1" in conflict) return 3;; incompatible) return 4;; failed) return 1;; esac; }
+sg_status() { sg_print "state=$1" "restart=$2" "detail=${3:-}"; case "$1" in conflict) return 3;; incompatible) return 4;; failed) return 1;; esac; }
 SH
 cat > "$T/bin/getprop" <<'SH'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 [ -f "$TEST_PROPS/$1" ] && cat "$TEST_PROPS/$1" || :
 SH
 cat > "$T/bin/setprop" <<'SH'
 #!/bin/sh
-printf '%s' "$2" > "$TEST_PROPS/$1"
+. "$HMG_SEOGAEMO_TEST_COMMON"
+sg_write "$2" > "$TEST_PROPS/$1"
 SH
 mkdir -p "$T/base/bin"
 cat > "$T/base/bin/hmg-seogaemo-root" <<'SH'
 #!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
 [ "$1" = map ] && [ "$2" = status ] || exit 2
 [ "$(cat "$TEST_PROPS/ro.build.product")" = NEEV.KOR.0000.V039.001.260902 ] &&
-    [ ! -f "$TEST_STATE/map-off" ] || { printf 'state=incompatible\n'; exit 4; }
-printf 'state=on\n'
+    [ ! -f "$TEST_STATE/map-off" ] || { sg_print "state=incompatible"; exit 4; }
+sg_print "state=on"
 SH
 chmod +x "$T/base/bin/hmg-seogaemo-root"
 chmod +x "$T/bin"/*
 export PATH=$T/bin:$PATH
-printf 'NEEV.KOR.0000.V039.001.260902' > "$T/props/ro.build.product"
-printf 'neev_kr' > "$T/props/ro.mobis.onebindir"
-printf '4.4.2' > "$T/props/ro.build.version.release"
-printf 'stock' > "$T/props/persist.ium.support"
-printf 'old' > "$T/props/persist.sys.iap2.wifi"
-printf 'old' > "$T/props/persist.iap2.iden.wireless"
-printf '0' > "$T/props/persist.service.adb.tcp.enable"
+sg_write "NEEV.KOR.0000.V039.001.260902" > "$T/props/ro.build.product"
+sg_write "neev_kr" > "$T/props/ro.mobis.onebindir"
+sg_write "4.4.2" > "$T/props/ro.build.version.release"
+sg_write "stock" > "$T/props/persist.ium.support"
+sg_write "old" > "$T/props/persist.sys.iap2.wifi"
+sg_write "old" > "$T/props/persist.iap2.iden.wireless"
+sg_write "0" > "$T/props/persist.service.adb.tcp.enable"
 for name in framework.odex HKMC_DiPO.odex Iap2ServerApp.odex HKMC_GPM.odex; do
     case "$name" in framework.odex) dir=framework;; *) dir=app;; esac
-    printf 'stock-%s\n' "$name" > "$T/root/system/$dir/$name"
+    sg_print "stock-$name" > "$T/root/system/$dir/$name"
 done
-printf 'stock-app-process\n' > "$T/root/system/bin/app_process"
-printf 'boot-one\n' > "$T/root/proc/sys/kernel/random/boot_id"
-printf '%s\n' '-/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml' '-/system/etc/permissions/com.hkmc.software.connectivity.androidauto_wireless.xml' '-/system/etc/permissions/com.hkmc.software.wifihotspot.xml' > "$T/root/system/onebin/neev_kr/featurexml.cfg"
+sg_print "stock-app-process" > "$T/root/system/bin/app_process"
+sg_print "boot-one" > "$T/root/proc/sys/kernel/random/boot_id"
+sg_print '-/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml' '-/system/etc/permissions/com.hkmc.software.connectivity.androidauto_wireless.xml' '-/system/etc/permissions/com.hkmc.software.wifihotspot.xml' > "$T/root/system/onebin/neev_kr/featurexml.cfg"
 SCRIPT=$HERE/root/wireless-carplay-and-aa.sh
 run() { "$car_shell" "$SCRIPT" "$1" > "$T/output"; }
 fail() { echo "FAIL: $1" >&2; cat "$T/output" >&2; exit 1; }
-printf 'OTHER.KOR.0000.V039.001.260902' > "$T/props/ro.build.product"
+sg_write "OTHER.KOR.0000.V039.001.260902" > "$T/props/ro.build.product"
 run precheck && fail wrong-firmware-accepted
 grep -q '^state=incompatible$' "$T/output" || fail firmware-state
-printf 'NEEV.KOR.0000.V039.001.260902' > "$T/props/ro.build.product"
-printf 'wrong_onebin' > "$T/props/ro.mobis.onebindir"
+sg_write "NEEV.KOR.0000.V039.001.260902" > "$T/props/ro.build.product"
+sg_write "wrong_onebin" > "$T/props/ro.mobis.onebindir"
 run precheck && fail wrong-onebin-accepted
 grep -q '^state=incompatible$' "$T/output" || fail onebin-state
-printf 'neev_kr' > "$T/props/ro.mobis.onebindir"
+sg_write "neev_kr" > "$T/props/ro.mobis.onebindir"
 touch "$T/state/map-off"
 run precheck && fail unverified-map-accepted
 grep -q '^state=incompatible$' "$T/output" || fail unverified-map-state
@@ -152,11 +158,11 @@ grep -q '^state=off$' "$T/output" || fail precheck-state
 grep -Fv 'androidauto_wireless.xml' "$T/root/system/onebin/neev_kr/featurexml.cfg" > "$T/without-aa-line"
 cp "$T/without-aa-line" "$T/root/system/onebin/neev_kr/featurexml.cfg"
 run precheck || fail absent-feature-line
-printf '<permissions/>\n' > "$T/root/system/etc/permissions/com.hkmc.software.wifihotspot.xml"
+sg_print "<permissions/>" > "$T/root/system/etc/permissions/com.hkmc.software.wifihotspot.xml"
 run precheck && fail malformed-existing-feature-accepted
 grep -q '^state=incompatible$' "$T/output" || fail malformed-feature-state
 rm -f "$T/root/system/etc/permissions/com.hkmc.software.wifihotspot.xml"
-printf '%s\n' '-/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml' >> "$T/root/system/onebin/neev_kr/featurexml.cfg"
+sg_print '-/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml' >> "$T/root/system/onebin/neev_kr/featurexml.cfg"
 run precheck && fail duplicate-feature-line-accepted
 grep -q '^state=incompatible$' "$T/output" || fail duplicate-feature-line-state
 sed -n '1,2p' "$T/root/system/onebin/neev_kr/featurexml.cfg" > "$T/unique-feature-lines"
@@ -174,20 +180,21 @@ grep -q '^state=pending-restart$' "$T/output" || fail apply-state
 [ -f "$T/root/system/bin/app_process.hmg-seogaemo-stock" ] || fail wrapper-backup
 [ -f "$T/state/dex-track" ] || fail dex-tracking
 [ -f "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file
-printf 'boot-two\n' > "$T/root/proc/sys/kernel/random/boot_id"
+sg_print "boot-two" > "$T/root/proc/sys/kernel/random/boot_id"
 run status || fail status
 grep -q '^state=pending-restart$' "$T/output" || fail pending-state
 cat > "$T/bin/ps" <<'SH'
 #!/bin/sh
-printf '%s\n' 'USER PID PPID VSIZE RSS WCHAN PC NAME' 'root 123 1 10000 2000 ffffffff 00000000 zygote'
+. "$HMG_SEOGAEMO_TEST_COMMON"
+sg_print 'USER PID PPID VSIZE RSS WCHAN PC NAME' 'root 123 1 10000 2000 ffffffff 00000000 zygote'
 SH
 chmod +x "$T/bin/ps"
 mkdir -p "$T/root/proc/123"
-printf '%s\n' '/system/lib/libhmg_seogaemo_wireless_hook.so' > "$T/root/proc/123/maps"
+sg_print '/system/lib/libhmg_seogaemo_wireless_hook.so' > "$T/root/proc/123/maps"
 run status || fail loaded-status
 grep -q '^state=on$' "$T/output" || fail loaded-state
 rm -f "$T/bin/ps" "$T/root/proc/123/maps"
-printf 'external-change\n' >> "$T/root/system/onebin/neev_kr/featurexml.cfg"
+sg_print "external-change" >> "$T/root/system/onebin/neev_kr/featurexml.cfg"
 run revert && fail drift-accepted
 [ -f "$T/state/enabled" ] || fail state-lost-after-drift
 # Restore our exact applied file, then revert.
@@ -202,4 +209,4 @@ cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail 
 [ ! -e "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file-present
 [ "$(cat "$T/props/persist.ium.support")" = stock ] || fail exact-prop-restore
 [ ! -f "$T/state/enabled" ] || fail enabled-marker-present
-printf 'ok wireless-carplay-and-aa toolbox parse, guards, rollback, drift refusal, exact revert\n'
+sg_print "ok wireless-carplay-and-aa toolbox parse, guards, rollback, drift refusal, exact revert"

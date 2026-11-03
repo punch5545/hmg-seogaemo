@@ -3,6 +3,7 @@
 umask 077
 base=${0%/*}
 base=${base%/svc}
+. "$base/lib/common.sh"
 current=/data/nemesis/backup/hmg-seogaemo/update/current
 if [ "$base" != "$current" ] && [ -L "$current" ] && [ -f "$current/svc/watcher.sh" ]; then
     exec sh "$current/svc/watcher.sh"
@@ -44,7 +45,7 @@ while :; do
         interval=${HMG_SEOGAEMO_WATCH_POLL:-5}
         for id in $boot_ids; do
             [ "$(cat "$state/watch/boot.$id" 2>/dev/null)" = "$boot_id" ] && continue
-            printf '%s' "$boot_id" > "$state/watch/boot.$id" || continue
+            sg_write "$boot_id" > "$state/watch/boot.$id" || continue
             sh "$root" "$id" watch boot >> "$log" 2>&1 || echo "watch boot failed: $id" >> "$log"
         done
         if [ -n "$screen_ids" ]; then

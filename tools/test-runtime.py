@@ -24,7 +24,7 @@ def test_toolbox_md5(temp):
 
 def script(path, body):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("#!/bin/sh\n" + body)
+    path.write_text('#!/bin/sh\n. "' + str(ROOT / 'nemesis/package/lib/common.sh') + '"\n' + body)
     path.chmod(0o755)
 
 
@@ -52,7 +52,7 @@ def test_common(temp):
         f"owns_files={base / 'owned'},{base / 'drift-file'},{base / 'missing'},{base / 'firmware-file'}\n"
         "services=adbd\n")
     script(fake / "getprop", 'cat "$FAKE_LIVE/$1" 2>/dev/null || true\n')
-    script(fake / "setprop", 'printf %s "$2" > "$FAKE_LIVE/$1"\n')
+    script(fake / "setprop", 'sg_write "$2" > "$FAKE_LIVE/$1"\n')
     (live / "ro.build.product").write_text("NEEV.KOR.260902")
     target = base / "owned"
     target.write_bytes(b"original\x00bytes")
@@ -70,7 +70,7 @@ sg_prop_set absent changed
 sg_prop_restore absent
 [ ! -e "$SG_PROPERTY_ROOT/absent" ]
 [ -z "$(getprop absent)" ]
-printf '' > "$SG_PROPERTY_ROOT/empty"
+sg_write '' > "$SG_PROPERTY_ROOT/empty"
 sg_prop_baseline empty
 sg_prop_set empty changed
 sg_prop_restore empty
@@ -81,24 +81,24 @@ setprop drift theirs
 if sg_prop_restore drift; then exit 1; fi
 [ "$(getprop drift)" = theirs ]
 sg_file_baseline "{target}"
-printf changed > "{target}"
+sg_write changed > "{target}"
 sg_file_mark_applied "{target}"
 sg_file_restore "{target}"
 cmp -s "{target}" "$HMG_SEOGAEMO_STATE/file.$(sg_file_key "{target}")/bytes"
 sg_file_restore "{target}"
 sg_file_baseline "{base / "drift-file"}"
-printf ours > "{base / "drift-file"}"
+sg_write ours > "{base / "drift-file"}"
 sg_file_mark_applied "{base / "drift-file"}"
-printf firmware > "{base / "drift-file"}"
+sg_write firmware > "{base / "drift-file"}"
 if sg_file_restore "{base / "drift-file"}"; then exit 1; fi
 [ "$(cat "{base / "drift-file"}")" = firmware ]
 sg_file_baseline "{base / "missing"}"
-printf changed > "{base / "missing"}"
+sg_write changed > "{base / "missing"}"
 sg_file_mark_applied "{base / "missing"}"
 sg_file_restore "{base / "missing"}"
 [ ! -e "{base / "missing"}" ]
 sg_file_baseline "{base / "firmware-file"}"
-printf ours > "{base / "firmware-file"}"
+sg_write ours > "{base / "firmware-file"}"
 sg_file_mark_applied "{base / "firmware-file"}"
 setprop ro.build.product OTHER.BUILD
 if sg_file_restore "{base / "firmware-file"}"; then exit 1; fi
@@ -113,11 +113,77 @@ sg_baseline_clear
     script(toolbox_runner, f'''
 set -eu
 . "{common}"
-ls() {{ printf '%s\\n' '-rw-r--r-- 1000 1001 3 2024-01-02 03:04 sample'; }}
+ls() {{ sg_print '-rw-r--r-- 1000 1001 3 2024-01-02 03:04 sample'; }}
 [ "$(sg_file_meta sample)" = '0644 1000 1001' ]
 [ "$(sg_file_size sample)" = 3 ]
 ''')
     run(toolbox_runner, env=env)
+
+
+def test_output_bytes(temp):
+    base = temp / "output-bytes"
+    restricted = base / "bin"
+    restricted.mkdir(parents=True)
+    # No external output formatter is available, even on hosts that ship one.
+    for name in ("cat", "cp", "mv", "rm", "mkdir", "chmod", "chown", "ls", "dd", "cmp", "python3"):
+        (restricted / name).symlink_to(shutil.which(name))
+    (restricted / "md5").symlink_to(ROOT / "tools/testlib/fakebin/md5")
+    common = ROOT / "nemesis/package/lib/common.sh"
+    state = base / "state"
+    runner = base / "runner"
+    backing = base / "backing"
+    backing.mkdir()
+    cases = [b"", b"value", b"value\n", b"value\n\n", b"-n", b"-e",
+             b"a\\nb\\c\\\\%s\t$()", "한국어\n".encode()]
+    for index, value in enumerate(cases):
+        env = dict(os.environ, PATH=str(restricted), SG_DATA_ROOT=str(base / "data"),
+                   HMG_SEOGAEMO_STATE=str(state), SG_PROPERTY_ROOT=str(backing),
+                   TEST_VALUE=value.decode(), TEST_DEST=str(base / "output"))
+        script(runner, f'''
+set -eu
+. "{common}"
+sg_write "$TEST_VALUE" > "$TEST_DEST"
+sg_print "$TEST_VALUE" '' '-n' > "$TEST_DEST.lines"
+''')
+        run(runner, env=env)
+        assert (base / "output").read_bytes() == value
+        assert (base / "output.lines").read_bytes() == value + b"\n\n-n\n"
+        # Baseline/restore files and property backing bytes independently of text output.
+        target = base / f"target-{index}"
+        prop = backing / "demo"
+        target.write_bytes(value)
+        prop.write_bytes(value)
+        script(runner, f'''
+set -eu
+. "{common}"
+getprop() {{ echo 'stock'; }}
+setprop() {{ :; }}
+sg_file_baseline "{target}"
+sg_write changed > "{target}"
+sg_file_mark_applied "{target}"
+sg_file_restore "{target}"
+sg_prop_baseline demo
+sg_write changed > "$SG_PROPERTY_ROOT/demo"
+sg_prop_restore demo
+''')
+        run(runner, env=env)
+        assert target.read_bytes() == value
+        assert prop.read_bytes() == value
+        assert (state / "prop.demo/backing").read_bytes() == value
+        shutil.rmtree(state)
+    # Absence must remain distinct from a present zero-byte file.
+    prop.unlink()
+    target.unlink()
+    run(runner, env=env)
+    assert not target.exists() and not prop.exists()
+    # A failed print write must propagate; it must not retry via the fallback.
+    for helper in ("sg_write", "sg_print"):
+        script(runner, f'''
+. "{common}"
+print() {{ echo partial; return 7; }}
+{helper} test
+''')
+        assert run(runner, env=env, ok=False).stdout == "partial\n"
 
 
 def test_root(temp):
@@ -179,16 +245,16 @@ def test_mutation_api_and_export(temp):
     (live / "ro.build.product").write_text("NEEV.KOR.260902")
     (live / "init.svc.adbd").write_text("running")
     script(fake / "getprop", 'cat "$FAKE_LIVE/$1" 2>/dev/null || true\n')
-    script(fake / "setprop", 'printf %s "$2" > "$FAKE_LIVE/$1"\n')
-    script(fake / "stop", 'printf stopped > "$FAKE_LIVE/init.svc.$1"\n')
-    script(fake / "start", 'printf running > "$FAKE_LIVE/init.svc.$1"\n')
+    script(fake / "setprop", 'sg_write "$2" > "$FAKE_LIVE/$1"\n')
+    script(fake / "stop", 'sg_write stopped > "$FAKE_LIVE/init.svc.$1"\n')
+    script(fake / "start", 'sg_write running > "$FAKE_LIVE/init.svc.$1"\n')
     script(fake / "chown", 'exit 0\n')
     script(fake / "nemesis", 'echo "$*" >> "$FAKE_REMOUNTS"\n')
     # Toolbox mount accepts "-o bind source target".
     script(fake / "mount", '''
 cp "$4" "$4.under"
 cp "$3" "$4"
-printf 'bind %s ext4 rw 0 0\n' "$4" > "$SG_MOUNTS_FILE"
+sg_print "bind $4 ext4 rw 0 0" > "$SG_MOUNTS_FILE"
 ''')
     script(fake / "umount", 'cp "$1.under" "$1"; rm -f "$1.under"; : > "$SG_MOUNTS_FILE"\n')
     put = base / "put"
@@ -276,7 +342,7 @@ def test_service_call_api(temp):
         "service_calls=com.hkmc.factory:82\n")
     fake = base / "fake"
     fake.mkdir()
-    script(fake / "service", 'printf "%s %s\\n" "$2" "$3" >> "$FAKE_CALLS"; echo "Parcel(00000000)"\n')
+    script(fake / "service", 'sg_print "$2 $3" >> "$FAKE_CALLS"; echo "Parcel(00000000)"\n')
     boot = base / "boot-id"
     boot.write_text("boot-a")
     runner = base / "runner"
@@ -328,7 +394,7 @@ def test_reconcile_and_uninstall(temp):
     script(base / "bin/hmg-seogaemo-root", '''
 echo "$1 $2" >> "$FAKE_CALLS"
 case "$2" in
-    revert) printf off > "$SG_DATA_ROOT/desired/$1"; echo state=off ;;
+    revert) sg_write off > "$SG_DATA_ROOT/desired/$1"; echo state=off ;;
     apply) echo state=on ;;
     status) echo state=off ;;
 esac
@@ -378,9 +444,13 @@ echo detail=
 
 def test_watch_dispatch(temp):
     base = temp / "watch-dispatch"
-    for folder in ("bin", "svc", "modules"):
+    for folder in ("bin", "svc", "modules", "lib"):
         (base / folder).mkdir(parents=True)
-    shutil.copy(ROOT / "nemesis/package/svc/watcher.sh", base / "svc/watcher.sh")
+    shutil.copy(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
+    # Newer mksh has a sleep builtin, so PATH alone cannot intercept it.
+    script(base / "svc/watcher.sh",
+           f'sleep() {{ "{base / "fake/sleep"}" "$@"; }}\n' +
+           (ROOT / "nemesis/package/svc/watcher.sh").read_text())
     (base / "modules.list").write_text("watcher\nplain\n")
     (base / "modules/watcher.properties").write_text("watch=boot,screen_on\n")
     (base / "modules/plain.properties").write_text("id=plain\n")
@@ -453,6 +523,9 @@ def test_lint(temp):
     package = temp / "nemesis/package/bin/bad.sh"
     script(package, 'head -c 5 /tmp/file\n')
     assert subprocess.run(["python3", str(lint), str(package)], capture_output=True).returncode != 0
+    for path in (safe, package):
+        script(path, 'printf "%s\\n" value\n')
+        assert subprocess.run(["python3", str(lint), str(path)], capture_output=True).returncode != 0
 
 
 def test_module_build_hook(temp):
@@ -460,7 +533,7 @@ def test_module_build_hook(temp):
     (base / "app/src").mkdir(parents=True)
     (base / "app/res").mkdir()
     hook = base / "modules/example/build/build.sh"
-    script(hook, 'printf built > modules/example/payload-built\n')
+    script(hook, 'sg_write built > modules/example/payload-built\n')
     result = subprocess.run(["make", "-f", str(ROOT / "Makefile"), "module-build"],
                             cwd=base, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
@@ -512,10 +585,10 @@ sg_zygote_install wrapper loader jar
 [ "$(cat "{paths[1]}")" = stock-executable ]
 [ -x "{paths[1]}" ]
 [ "$(cat "{paths[0]}")" = wrapper ]
-printf 3 > "{guards[2]}"
-printf generated > "{cache}"
+sg_write 3 > "{guards[2]}"
+sg_write generated > "{cache}"
 mkdir -p "{app_dir}"
-printf generated > "{app_dir / 'classes.dex'}"
+sg_write generated > "{app_dir / 'classes.dex'}"
 sg_revert_all
 [ "$(cat "{paths[0]}")" = stock-executable ]
 [ ! -e "{paths[1]}" ] && [ ! -e "{paths[2]}" ] && [ ! -e "{paths[3]}" ]
@@ -547,7 +620,7 @@ if sg_zygote_install wrapper loader jar; then exit 1; fi
 set -eu
 . "{common}"
 sg_zygote_install wrapper loader jar
-printf external > "{paths[2]}"
+sg_write external > "{paths[2]}"
 if sg_revert_all; then exit 1; fi
 [ "$(cat "{paths[0]}")" = wrapper ]
 [ "$(cat "{paths[1]}")" = stock-executable ]
@@ -559,6 +632,7 @@ with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)
     test_toolbox_md5(root)
     test_common(root)
+    test_output_bytes(root)
     test_root(root)
     test_mutation_api_and_export(root)
     test_service_call_api(root)

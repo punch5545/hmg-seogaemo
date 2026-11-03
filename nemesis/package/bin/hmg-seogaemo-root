@@ -8,6 +8,7 @@ fi
 base=${0%/*}
 base=${base%/bin}
 SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
+. "$base/lib/common.sh"
 if [ "$1" = export ]; then
     case "$2" in usb|adb) ;; *) exit 2;; esac
     [ -f "$SG_DATA_ROOT/ledger/ledger.tsv" ] || {
@@ -52,7 +53,7 @@ if [ "$1" = export ]; then
     . "$base/lib/common.sh"
     hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
     chmod -R 755 "$dest" || exit 1
-    printf 'state=on\nrestart=none\ndetail=%s\n' "$dest"
+    sg_print "state=on" "restart=none" "detail=$dest"
     exit 0
 fi
 if [ "$1" = map ]; then
@@ -105,7 +106,7 @@ while ! mkdir "$lock" 2>/dev/null; do
     [ "$tries" -lt 10 ] || { echo 'module operation busy' >&2; exit 1; }
     sleep 1
 done
-printf '%s' "$$" > "$lock/pid"
+sg_write "$$" > "$lock/pid"
 trap 'rm -rf "$lock"' EXIT HUP INT TERM
 if [ "$2" = watch ]; then
     [ "$(cat "$SG_DATA_ROOT/desired/$1" 2>/dev/null)" = on ] || exit 3
@@ -122,8 +123,8 @@ relation() {
     while IFS='	' read -r graph_id graph_dep graph_exc; do
         [ "$graph_id" = "$relation_id" ] || continue
         case "$relation_field" in
-            depends) printf '%s\n' "${graph_dep#depends=}" ;;
-            excludes) printf '%s\n' "${graph_exc#excludes=}" ;;
+            depends) sg_print "${graph_dep#depends=}" ;;
+            excludes) sg_print "${graph_exc#excludes=}" ;;
         esac
         return
     done < "$base/modules.graph"
@@ -148,7 +149,7 @@ else
         esac
     done
 fi
-printf '%s %s %s\n' "$(date +%s)" "$1" "$2" > "$SG_DATA_ROOT/journal.tmp.$$" &&
+sg_print "$(date +%s) $1 $2" > "$SG_DATA_ROOT/journal.tmp.$$" &&
     mv -f "$SG_DATA_ROOT/journal.tmp.$$" "$SG_DATA_ROOT/journal" || exit 1
 result=$SG_DATA_ROOT/result.$$
 sh "$script" "$2" > "$result" 2>&1
@@ -172,7 +173,7 @@ if [ "$code" -eq 0 ]; then
 fi
 if [ "$code" -eq 0 ]; then
     case "$2" in apply) value=on;; revert) value=off;; esac
-    printf '%s' "$value" > "$SG_DATA_ROOT/desired/$1.tmp.$$" &&
+    sg_write "$value" > "$SG_DATA_ROOT/desired/$1.tmp.$$" &&
         mv -f "$SG_DATA_ROOT/desired/$1.tmp.$$" "$SG_DATA_ROOT/desired/$1" || code=1
 fi
 rm -f "$result"

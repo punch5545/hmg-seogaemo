@@ -13,7 +13,7 @@ BAD = re.compile(
     r"\bpm\s+(?:install|uninstall|enable|disable)\b|\bsettings\s+put\b")
 REDIRECT = re.compile(r"(?<![0-9])(?:>>|>)\s*['\"]?([^\s'\"]+)")
 UNAVAILABLE = re.compile(
-    r"(?<![\w-])(?:awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|"
+    r"(?<![\w-])(?:printf|awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|"
     r"sha256sum|sha1sum|tar|unzip|busybox|toybox)(?![\w-])")
 
 

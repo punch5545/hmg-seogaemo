@@ -50,7 +50,7 @@ def run():
         assert "/data/local/tmp/nemesis/stage/hmg-seogaemo/NEMESIS.data" in preuninstall
         for script_name in ("core/update.sh", "core/hmg-seogaemo-map.sh", "svc/reconcile.sh", "svc/watcher.sh"):
             body = package.read(script_name).decode()
-            assert not re.search(r"\b(?:awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|sha256sum|sha1sum|tar|unzip|busybox|toybox)\b", body), script_name
+            assert not re.search(r"\b(?:printf|awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|sha256sum|sha1sum|tar|unzip|busybox|toybox)\b", body), script_name
         assert set(usb.namelist()) == {"NEMESIS.data", "packages/hmg-seogaemo.zip"}
         assert usb.read("packages/hmg-seogaemo.zip") == package_path.read_bytes()
         assert ota.read("VERSION") == (version + "\n").encode()
@@ -125,7 +125,7 @@ def run():
                     subprocess.run([SHELL, "-n", str(path)], check=True)
             # Run a copied dispatcher against an isolated fake module tree.
             (temp / "modules.list").write_text("good\n")
-            (temp / "modules/good.sh").write_text("#!/bin/sh\nprintf 'action=%s\\nbase=%s\\nstate=%s\\nmodule_dir=%s\\n' \"$1\" \"$HMG_SEOGAEMO_BASE\" \"$HMG_SEOGAEMO_STATE\" \"$HMG_SEOGAEMO_MODULE_DIR\"\n")
+            (temp / "modules/good.sh").write_text('#!/bin/sh\n. "$HMG_SEOGAEMO_BASE/lib/common.sh"\nsg_print "action=$1" "base=$HMG_SEOGAEMO_BASE" "state=$HMG_SEOGAEMO_STATE" "module_dir=$HMG_SEOGAEMO_MODULE_DIR"\n')
             command = [SHELL, str(temp / "bin/hmg-seogaemo-root")]
             result = subprocess.run(command + ["good", "status"], capture_output=True, text=True)
             expected = f"action=status\nbase={temp}\nstate=/data/nemesis/backup/hmg-seogaemo/modules/good\nmodule_dir={temp}/modules/good.d\n"
@@ -143,13 +143,14 @@ def run():
             state = temp / "boot-property"
             for name, script in {
                 "getprop": '#!/bin/sh\ncat "$FAKE_STATE"\n',
-                "setprop": '#!/bin/sh\nprintf %s "$2" > "$FAKE_STATE"\n',
+                "setprop": '#!/bin/sh\n. "$HMG_SEOGAEMO_TEST_COMMON"\nsg_write "$2" > "$FAKE_STATE"\n',
                 "pm": '#!/bin/sh\ncase "$1" in install) echo "$FAKE_PM_RESULT";; path) echo package:/data/app/hmg-seogaemo.apk;; esac\n',
             }.items():
                 path = fake / name
                 path.write_text(script)
                 path.chmod(0o755)
-            env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", FAKE_STATE=str(state))
+            env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", FAKE_STATE=str(state),
+                       HMG_SEOGAEMO_TEST_COMMON=str(temp / "lib/common.sh"))
             for output, succeeds in (("Success", True), ("Failure [INSTALL_FAILED]", False)):
                 state.write_text("1")
                 env["FAKE_PM_RESULT"] = output
@@ -165,6 +166,8 @@ def run():
             fake_root = Path(fake_temp)
             package_root = fake_root / "package"
             (package_root / "core").mkdir(parents=True)
+            (package_root / "lib").mkdir()
+            (package_root / "lib/common.sh").write_bytes(package.read("lib/common.sh"))
             (package_root / "bin").mkdir()
             (package_root / "app").mkdir()
             (package_root / "app/hmg-seogaemo.apk").write_bytes(b"old apk")

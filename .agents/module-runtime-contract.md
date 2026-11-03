@@ -60,6 +60,12 @@ baseline on first touch, perform, verify, mark applied, append ledger; non-zero 
 
 Read/report helpers: `sg_log <msg>`, `sg_owner_present <name>` (`nemesis-adb-tcp`, `hmgapi`,
 `leafia`, `local-hkmc-factory82`), `sg_applied <path|key>` (0 if our applied state is current), `sg_status <state> <restart> [detail]`.
+`sg_print <line>...` writes each argument literally with a newline; `sg_write <text>`
+writes exactly one argument without adding a newline. Both preserve backslashes and
+option-looking text. They use mksh `print -r --` / `print -rn --`; host POSIX sh
+uses a bounded here-document through `dd` for exact bytes, with `echo` for newlines.
+Never route binary files or property backing files through shell variables: copy them.
+
 Internal (not for modules): baseline capture, applied-copy marking, remount, ledger writes.
 
 `watch=boot,screen_on` may declare only these fixed events. The package's single
@@ -197,12 +203,12 @@ Strings: modules add only `<snake_id>_*` resources in their own `res/values{,-ko
 
 Stock userland is **toolbox + mksh only** (`tmp/hmg_nemesis/01-DSP-OTA-troubleShooter.md:121`,
 `05-Run-Scripts.md:101`). Root-side scripts may use: mksh builtins (`case`, `read`, `${var#…}`,
-`${var%…}`, `printf`, `echo`, `test`, arithmetic), toolbox commands (`cat`, `cmp`, `cp`, `dd`,
+`${var%…}`, `print`, `echo`, `test`, arithmetic), toolbox commands (`cat`, `cmp`, `cp`, `dd`,
 `grep`, `ls`, `mkdir`, `mv`, `rm`, `rmdir`, `ln`, `chmod`, `chown`, `touch`, `sleep`, `ps`,
 `kill`, `md5`, `mount`, `umount`, `sync`, `date`, `id`, `ifconfig`, `netcfg`, `route`,
 `getprop`, `setprop`, `start`, `stop`, `log`, `dmesg`), and system binaries `pm`, `am`,
 `settings`, `logcat`, `dumpsys`, `wpa_cli`, `/system/xbin/nemesis`.
-**Not available:** `awk`, `sed`, `tail`, `head`, `cut`, `tr`, `wc`, `sort`, `uniq`, `xargs`,
+**Not available:** `printf` (neither a builtin nor a toolbox binary), `awk`, `sed`, `tail`, `head`, `cut`, `tr`, `wc`, `sort`, `uniq`, `xargs`,
 `find`, `stat`, `readlink -f`, `sha256sum`/`sha1sum`, `tar`, `unzip`, `busybox`, `toybox`.
 Parse with `while read`, `case` and parameter expansion. Hashing on the unit: `md5` only.
 `make test` lints root scripts (package and modules) for the unavailable tools.

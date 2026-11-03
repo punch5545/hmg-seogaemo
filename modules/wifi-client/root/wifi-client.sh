@@ -57,7 +57,7 @@ parse_client_ip() {
         # An AP normally owns 192.168.0.1; never report that as a client IP.
         case "$ip" in
             ''|0.0.0.0|192.168.0.1|*[!0-9.]*|.*|*..*|*.) continue ;;
-            *.*.*.*) printf '%s\n' "$ip"; break ;;
+            *.*.*.*) sg_print "$ip"; break ;;
         esac
     done
 }
@@ -67,9 +67,9 @@ client_ip() {
     wpa_cli -i wlan0 status 2>/dev/null | grep -Fxq 'wpa_state=COMPLETED' || return 0
     ip=$(ifconfig wlan0 2>/dev/null | parse_client_ip ifconfig)
     [ -n "$ip" ] || ip=$(netcfg 2>/dev/null | parse_client_ip netcfg)
-    [ -z "$ip" ] || printf '%s\n' "$ip"
+    [ -z "$ip" ] || sg_print "$ip"
 }
-print_ip() { ip=$(client_ip); [ -z "$ip" ] || printf 'info.client_ip=%s\n' "$ip"; }
+print_ip() { ip=$(client_ip); [ -z "$ip" ] || sg_print "info.client_ip=$ip"; }
 
 ap_active() {
     [ "$(getprop init.svc.hostapd 2>/dev/null)" = running ] && return 0
@@ -84,7 +84,7 @@ projection_desired() {
 }
 
 precheck() {
-    if projection_desired || ap_active; then printf 'warn.carplay_active=1\n'; fi
+    if projection_desired || ap_active; then sg_print "warn.carplay_active=1"; fi
     result off none ''
 }
 
