@@ -150,7 +150,7 @@ def recovery(root):
             f.script('cp', 'case "$2" in *.hmg-seogaemo.*) echo partial > "$2"; exit 1;; esac\n/bin/cp "$@"\n')
         elif phase == 'rename':
             # Return failure after the actual atomic replacement (power loss window).
-            f.script('mv', 'case "$2" in *.hmg-seogaemo.*) /bin/mv "$@"; exit 1;; esac\n/bin/mv "$@"\n')
+            f.script('mv', 'case "$1" in *.hmg-seogaemo.*) /bin/mv "$@"; exit 1;; esac\n/bin/mv "$@"\n')
         else:
             # Failure publishing the ledger after the target write.
             f.script('cp', 'case "$2" in */ledger/before/*) exit 1;; esac\n/bin/cp "$@"\n')

@@ -12,17 +12,12 @@ BAD = re.compile(
     r"\bsed\s+-i\b|\bnemesis\s+remount\b|"
     r"\bpm\s+(?:install|uninstall|enable|disable)\b|\bsettings\s+put\b")
 REDIRECT = re.compile(r"(?<![0-9])(?:>>|>)\s*['\"]?([^\s'\"]+)")
-UNAVAILABLE = re.compile(
-    r"(?<![\w-])(?:printf|awk|sed|tail|head|cut|tr|wc|sort|uniq|xargs|find|stat|"
-    r"sha256sum|sha1sum|tar|unzip|busybox|toybox)(?![\w-])")
 
 
 def lint(path):
     errors = []
     for number, raw in enumerate(path.read_text().splitlines(), 1):
         line = re.sub(r"'[^']*'", "''", raw.split("#", 1)[0])
-        if UNAVAILABLE.search(line):
-            errors.append(f"{path}:{number}: unavailable head-unit tool")
         if "modules/" in str(path) and BAD.search(line):
             errors.append(f"{path}:{number}: direct mutation")
         for target in REDIRECT.findall(line) if "modules/" in str(path) else ():

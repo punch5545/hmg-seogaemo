@@ -150,7 +150,7 @@ else
     done
 fi
 sg_print "$(date +%s) $1 $2" > "$SG_DATA_ROOT/journal.tmp.$$" &&
-    mv -f "$SG_DATA_ROOT/journal.tmp.$$" "$SG_DATA_ROOT/journal" || exit 1
+    mv "$SG_DATA_ROOT/journal.tmp.$$" "$SG_DATA_ROOT/journal" || exit 1
 result=$SG_DATA_ROOT/result.$$
 sh "$script" "$2" > "$result" 2>&1
 code=$?
@@ -174,7 +174,7 @@ fi
 if [ "$code" -eq 0 ]; then
     case "$2" in apply) value=on;; revert) value=off;; esac
     sg_write "$value" > "$SG_DATA_ROOT/desired/$1.tmp.$$" &&
-        mv -f "$SG_DATA_ROOT/desired/$1.tmp.$$" "$SG_DATA_ROOT/desired/$1" || code=1
+        mv "$SG_DATA_ROOT/desired/$1.tmp.$$" "$SG_DATA_ROOT/desired/$1" || code=1
 fi
 rm -f "$result"
 exit "$code"

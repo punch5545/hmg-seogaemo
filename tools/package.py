@@ -16,6 +16,7 @@ from version import read_version
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "out/dist"
 TARGET = {"os": "NEEV.KOR.*.260902", "models": "neev_kr", "androidApi": 19}
+HOST_SHELL = set(json.loads((ROOT / "tools/android44-shell-profile.json").read_text())["host_only_scripts"])
 
 
 def digest(path):
@@ -80,6 +81,8 @@ def build(aapt):
             files[f"modules/{module.name}.d/"] = b""
             for source in payload.rglob("*"):
                 if source.is_file():
+                    if source.relative_to(ROOT).as_posix() in HOST_SHELL:
+                        continue
                     name = f"modules/{module.name}.d/{source.relative_to(payload).as_posix()}"
                     files[name] = source
     add_zip(package_zip, files)

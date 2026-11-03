@@ -26,7 +26,7 @@ sg_print() {
 SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 SG_PROPERTY_ROOT=${SG_PROPERTY_ROOT:-/data/property}
 sg_ready() { mkdir -p "$HMG_SEOGAEMO_STATE" && chmod 700 "$HMG_SEOGAEMO_STATE"; }
-sg_copy() { cp "$1" "$2.tmp.$$" && mv -f "$2.tmp.$$" "$2"; }
+sg_copy() { cp "$1" "$2.tmp.$$" && mv "$2.tmp.$$" "$2"; }
 sg_equal() {
     cmp "$1" "$2" >/dev/null 2>&1
 }
@@ -50,7 +50,7 @@ sg_bind_build() {
         [ "$(cat "$HMG_SEOGAEMO_STATE/build")" = "$sg_build" ]
     else
         sg_write "$sg_build" > "$HMG_SEOGAEMO_STATE/build.tmp.$$" &&
-            mv -f "$HMG_SEOGAEMO_STATE/build.tmp.$$" "$HMG_SEOGAEMO_STATE/build"
+            mv "$HMG_SEOGAEMO_STATE/build.tmp.$$" "$HMG_SEOGAEMO_STATE/build"
     fi
 }
 sg_check_build() {
@@ -64,7 +64,7 @@ sg_log() {
     sg_bytes=$(sg_file_size "$HMG_SEOGAEMO_STATE/module.log") || return 1
     if [ "$sg_bytes" -gt 32768 ]; then
         dd if="$HMG_SEOGAEMO_STATE/module.log" of="$HMG_SEOGAEMO_STATE/module.log.tmp.$$" bs=1 skip="$((sg_bytes - 24576))" 2>/dev/null || return 1
-        mv -f "$HMG_SEOGAEMO_STATE/module.log.tmp.$$" "$HMG_SEOGAEMO_STATE/module.log"
+        mv "$HMG_SEOGAEMO_STATE/module.log.tmp.$$" "$HMG_SEOGAEMO_STATE/module.log"
     fi
 }
 sg_file_size() {
@@ -79,14 +79,14 @@ sg_prop_baseline() {
     [ ! -f "$sg_dir/ready" ] || return 0
     mkdir -p "$sg_dir" || return 1
     sg_live=$(getprop "$1") || return 1
-    sg_write "$sg_live" > "$sg_dir/live.tmp.$$" && mv -f "$sg_dir/live.tmp.$$" "$sg_dir/live" || return 1
+    sg_write "$sg_live" > "$sg_dir/live.tmp.$$" && mv "$sg_dir/live.tmp.$$" "$sg_dir/live" || return 1
     if [ -e "$SG_PROPERTY_ROOT/$1" ]; then
         sg_copy "$SG_PROPERTY_ROOT/$1" "$sg_dir/backing" || return 1
         sg_exists=present
     else sg_exists=absent; fi
     sg_write "$sg_exists" > "$sg_dir/existence.tmp.$$" &&
-        mv -f "$sg_dir/existence.tmp.$$" "$sg_dir/existence" &&
-        sg_write "1" > "$sg_dir/ready.tmp.$$" && mv -f "$sg_dir/ready.tmp.$$" "$sg_dir/ready"
+        mv "$sg_dir/existence.tmp.$$" "$sg_dir/existence" &&
+        sg_write "1" > "$sg_dir/ready.tmp.$$" && mv "$sg_dir/ready.tmp.$$" "$sg_dir/ready"
 }
 sg_prop_write() {
     sg_prop_name "$1" || return 2
@@ -94,7 +94,7 @@ sg_prop_write() {
     sg_dir=$HMG_SEOGAEMO_STATE/prop.$1
     if [ -f "$sg_dir/ready" ]; then
         sg_write "$2" > "$sg_dir/applied.tmp.$$" &&
-            mv -f "$sg_dir/applied.tmp.$$" "$sg_dir/applied" || return 1
+            mv "$sg_dir/applied.tmp.$$" "$sg_dir/applied" || return 1
     fi
 }
 sg_prop_restore() {
@@ -119,7 +119,11 @@ sg_prop_restore() {
     [ "$(getprop "$1")" = "$sg_live" ]
 }
 sg_file_key() {
-    set -- $(sg_write "$1" | md5)
+    sg_key_digest=$(sg_write "$1" | md5 /proc/self/fd/0) || return 1
+    set -- $sg_key_digest
+    [ "$#" -ge 1 ] || return 1
+    [ "${#1}" -eq 32 ] || return 1
+    case "$1" in *[!0-9a-f]*) return 1;; esac
     sg_write "$1"
 }
 sg_file_meta() {
@@ -153,25 +157,25 @@ sg_file_meta() {
 sg_file_baseline() {
     case "$1" in /*) ;; *) return 2;; esac
     sg_bind_build || return 1
-    sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1")
+    sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
     [ ! -f "$sg_dir/ready" ] || { [ "$(cat "$sg_dir/path")" = "$1" ]; return; }
     mkdir -p "$sg_dir" || return 1
-    sg_write "$1" > "$sg_dir/path.tmp.$$" && mv -f "$sg_dir/path.tmp.$$" "$sg_dir/path" || return 1
+    sg_write "$1" > "$sg_dir/path.tmp.$$" && mv "$sg_dir/path.tmp.$$" "$sg_dir/path" || return 1
     if [ -e "$1" ]; then
         [ -f "$1" ] || return 1
         sg_copy "$1" "$sg_dir/bytes" || return 1
         sg_file_meta "$1" > "$sg_dir/meta.tmp.$$" &&
-            mv -f "$sg_dir/meta.tmp.$$" "$sg_dir/meta" || return 1
+            mv "$sg_dir/meta.tmp.$$" "$sg_dir/meta" || return 1
         sg_exists=present
     else sg_exists=absent; fi
     sg_write "$sg_exists" > "$sg_dir/existence.tmp.$$" &&
-        mv -f "$sg_dir/existence.tmp.$$" "$sg_dir/existence" &&
-        sg_write "1" > "$sg_dir/ready.tmp.$$" && mv -f "$sg_dir/ready.tmp.$$" "$sg_dir/ready"
+        mv "$sg_dir/existence.tmp.$$" "$sg_dir/existence" &&
+        sg_write "1" > "$sg_dir/ready.tmp.$$" && mv "$sg_dir/ready.tmp.$$" "$sg_dir/ready"
 }
 sg_file_mark_applied() {
     case "$1" in /*) ;; *) return 2;; esac
     sg_check_build || return 3
-    sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1")
+    sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
     [ -f "$sg_dir/ready" ] && [ "$(cat "$sg_dir/path")" = "$1" ] || return 1
     if [ -e "$1" ]; then
         [ -f "$1" ] || return 1
@@ -179,12 +183,12 @@ sg_file_mark_applied() {
         sg_exists=present
     else rm -f "$sg_dir/applied"; sg_exists=absent; fi
     sg_write "$sg_exists" > "$sg_dir/applied-existence.tmp.$$" &&
-        mv -f "$sg_dir/applied-existence.tmp.$$" "$sg_dir/applied-existence"
+        mv "$sg_dir/applied-existence.tmp.$$" "$sg_dir/applied-existence"
 }
 sg_file_restore() {
     case "$1" in /*) ;; *) return 2;; esac
     sg_check_build || return 3
-    sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1")
+    sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
     [ -f "$sg_dir/ready" ] && [ "$(cat "$sg_dir/path")" = "$1" ] || return 1
     sg_original=$(cat "$sg_dir/existence") || return 1
     if [ "$sg_original" = absent ] && [ ! -e "$1" ]; then return 0; fi
@@ -300,7 +304,7 @@ sg_commit_file() {
     sg_validate owns_files "$sg_target" || return 2
     sg_whole_exclusive "$sg_target" || return 3
     sg_file_baseline "$sg_target" || return 1
-    sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_target")
+    sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_target") || return 1
     if [ -z "$sg_mode" ] || [ -z "$sg_owner" ]; then
         if [ -f "$sg_saved/meta" ]; then
             read sg_old_mode sg_old_uid sg_old_gid < "$sg_saved/meta" || return 1
@@ -318,7 +322,7 @@ sg_commit_file() {
         chmod "$sg_mode" "$sg_tmp" &&
         { chown "${sg_owner%:*}.${sg_owner#*:}" "$sg_tmp" 2>/dev/null ||
             chown "$sg_owner" "$sg_tmp"; } &&
-        mv -f "$sg_tmp" "$sg_target" &&
+        mv "$sg_tmp" "$sg_target" &&
         sg_equal "$sg_input" "$sg_target" || sg_rc=1
     sg_expected_mode=$sg_mode
     [ "${#sg_expected_mode}" -eq 3 ] && sg_expected_mode=0$sg_expected_mode
@@ -381,12 +385,14 @@ sg_line_authorize() (
         done < "$manifest"
     done
     # Do not reinterpret an earlier runtime's whole-file baseline as stock.
-    for saved in "$SG_DATA_ROOT"/modules/*/file."$(sg_file_key "$1")"/ready; do
+    path_key=$(sg_file_key "$1") || exit 1
+    for saved in "$SG_DATA_ROOT"/modules/*/file."$path_key"/ready; do
         [ ! -f "$saved" ] || exit 3
     done
 )
 sg_line_guard() (
-    shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$1")
+    path_key=$(sg_file_key "$1") || exit 1
+    shared=$SG_DATA_ROOT/shared-lines/$path_key
     [ -f "$shared/ready" ] || exit 1
     [ "$(cat "$shared/path")" = "$1" ] &&
         [ "$(cat "$shared/build")" = "$(getprop ro.build.product)" ] &&
@@ -418,7 +424,8 @@ sg_line_audit() (
 )
 sg_line_recover() (
     target=$1
-    shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$target")
+    path_key=$(sg_file_key "$target") || exit 1
+    shared=$SG_DATA_ROOT/shared-lines/$path_key
     sg_line_guard "$target" || exit $?
     [ -f "$shared/pending" ] || exit 0
     version=$(cat "$shared/pending") || exit 1
@@ -432,7 +439,8 @@ sg_line_recover() (
 )
 sg_line_baseline() (
     target=$1
-    shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$target")
+    path_key=$(sg_file_key "$target") || exit 1
+    shared=$SG_DATA_ROOT/shared-lines/$path_key
     [ ! -f "$shared/ready" ] || { sg_line_recover "$target"; exit $?; }
     [ -f "$target" ] && [ ! -L "$target" ] || exit 3
     stage=$shared.init.$$
@@ -485,7 +493,8 @@ sg_line_transaction() (
     target=$1; action=$2; old=${3:-}; new=${4:-}
     module=${HMG_SEOGAEMO_STATE##*/}
     sg_line_baseline "$target" || exit $?
-    shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$target")
+    path_key=$(sg_file_key "$target") || exit 1
+    shared=$SG_DATA_ROOT/shared-lines/$path_key
     sg_line_guard "$target" || exit $?
     version=v$(date +%s).$$; serial=0
     while [ -e "$shared/versions/$version" ]; do serial=$((serial + 1)); version=v$(date +%s).$$.$serial; done
@@ -495,12 +504,12 @@ sg_line_transaction() (
         previous=$(cat "$shared/active") || exit 1
         cp -R "$shared/versions/$previous/patches/." "$next/patches/" || exit 1
     fi
-    mkdir -p "$HMG_SEOGAEMO_STATE/line.$(sg_file_key "$target")" || exit 1
-    marker=$HMG_SEOGAEMO_STATE/line.$(sg_file_key "$target")
+    mkdir -p "$HMG_SEOGAEMO_STATE/line.$path_key" || exit 1
+    marker=$HMG_SEOGAEMO_STATE/line.$path_key
     sg_write "$target" > "$marker/path.tmp.$$" &&
-        mv -f "$marker/path.tmp.$$" "$marker/path" &&
+        mv "$marker/path.tmp.$$" "$marker/path" &&
         sg_write 1 > "$marker/ready.tmp.$$" &&
-        mv -f "$marker/ready.tmp.$$" "$marker/ready" || exit 1
+        mv "$marker/ready.tmp.$$" "$marker/ready" || exit 1
     sg_bind_build || exit 3
     if [ "$action" = apply ]; then
         # Refuse an already applied same-line patch, even if desired=off.
@@ -534,9 +543,9 @@ sg_line_transaction() (
     sg_line_compose "$shared" "$next" || exit $?
     sg_copy "$target" "$next/before" && sg_write "$module" > "$next/module" &&
         sg_write "$target" > "$next/path" || exit 1
-    { md5 "$next/before"; md5 "$next/bytes"; cat "$shared/build"; sg_print ''; cat "$shared/meta"; } > "$next/hashes" || exit 1
+    { md5 "$next/before" && md5 "$next/bytes" && cat "$shared/build" && sg_print '' && cat "$shared/meta"; } > "$next/hashes" || exit 1
     sg_print "$version" > "$shared/pending.tmp.$$" &&
-        mv -f "$shared/pending.tmp.$$" "$shared/pending" || exit 1
+        mv "$shared/pending.tmp.$$" "$shared/pending" || exit 1
     sync || exit 1
     sg_line_guard "$target" || exit $?
     system=0
@@ -546,7 +555,7 @@ sg_line_transaction() (
     rc=0
     cp "$next/bytes" "$temporary" && chown "$uid:$gid" "$temporary" &&
         chmod "$mode" "$temporary" &&
-        mv -f "$temporary" "$target" &&
+        mv "$temporary" "$target" &&
         sg_equal "$next/bytes" "$target" &&
         [ "$(sg_file_meta "$target")" = "$(cat "$shared/meta")" ] || rc=1
     rm -f "$temporary"
@@ -563,7 +572,7 @@ sg_line_transaction() (
                 [ "$(sg_file_meta "$target")" = "$(cat "$shared/meta")" ] || exit 3
             # A cancelled sibling apply can leave a marker without a patch.
             # Stock is verified and no patches remain, so retire those too.
-            for stale in "$SG_DATA_ROOT"/modules/*/line."$(sg_file_key "$target")"; do
+            for stale in "$SG_DATA_ROOT"/modules/*/line."$path_key"; do
                 [ ! -d "$stale" ] || rm -rf "$stale" || exit 1
             done
             rm -rf "$shared"
@@ -581,12 +590,14 @@ sg_line_revert_all() (
     for marker in "$HMG_SEOGAEMO_STATE"/line.*/ready; do
         [ -f "$marker" ] || continue
         target=$(cat "${marker%/ready}/path") || exit 1
-        shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$target")
+        path_key=$(sg_file_key "$target") || exit 1
+        shared=$SG_DATA_ROOT/shared-lines/$path_key
         sg_line_transaction "$target" revert || exit $?
     done
 )
 sg_line_applied() (
-    shared=$SG_DATA_ROOT/shared-lines/$(sg_file_key "$1")
+    path_key=$(sg_file_key "$1") || exit 1
+    shared=$SG_DATA_ROOT/shared-lines/$path_key
     [ -f "$shared/active" ] && [ ! -f "$shared/pending" ] || exit 1
     sg_line_guard "$1" || exit $?
     version=$(cat "$shared/active") || exit 1
@@ -627,7 +638,7 @@ sg_file_delete() {
     sg_validate owns_files "$1" || return 2
     sg_whole_exclusive "$1" || return 3
     sg_file_baseline "$1" || return 1
-    sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1")
+    sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
     case "$1" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
     rm -f "$1"; sg_rc=$?
     [ ! -e "$1" ] || sg_rc=1
@@ -642,7 +653,7 @@ sg_bind_mount() {
     sg_whole_exclusive "$1" || return 3
     [ -f "$1" ] || return 1
     sg_file_baseline "$1" || return 1
-    sg_bind=$HMG_SEOGAEMO_STATE/bind.$(sg_file_key "$1")
+    sg_bind=$HMG_SEOGAEMO_STATE/bind.$(sg_file_key "$1") || return 1
     if sg_mount_present "$1"; then
         sg_applied "$1" || return 3
         return 0
@@ -651,8 +662,8 @@ sg_bind_mount() {
     sg_equal "$sg_source" "$1" || return 1
     sg_file_mark_applied "$1" || return 1
     sg_print "$1	$2" > "$sg_bind.tmp.$$" &&
-        mv -f "$sg_bind.tmp.$$" "$sg_bind" || return 1
-    sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1")
+        mv "$sg_bind.tmp.$$" "$sg_bind" || return 1
+    sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
     sg_ledger bind_mount "$1" "$sg_saved/bytes" "$sg_saved/applied" "$sg_saved/meta" || return 1
     sg_changed file "$1"
 }
@@ -691,10 +702,10 @@ sg_service_call() {
     sg_call_after=$HMG_SEOGAEMO_STATE/service-call.$$.after
     sg_print "no call" > "$sg_call_before" || return 1
     sg_write "$sg_call_boot" > "$HMG_SEOGAEMO_STATE/last-call-boot.tmp.$$" &&
-        mv -f "$HMG_SEOGAEMO_STATE/last-call-boot.tmp.$$" "$HMG_SEOGAEMO_STATE/last-call-boot" &&
+        mv "$HMG_SEOGAEMO_STATE/last-call-boot.tmp.$$" "$HMG_SEOGAEMO_STATE/last-call-boot" &&
         sg_write "pending" > "$HMG_SEOGAEMO_STATE/last-call-result.tmp.$$" &&
-        mv -f "$HMG_SEOGAEMO_STATE/last-call-result.tmp.$$" "$HMG_SEOGAEMO_STATE/last-call-result" || return 1
-    "${HMG_SEOGAEMO_SERVICE_BIN:-/system/bin/service}" call "$1" "$2" > "$sg_call_output" 2>&1 &
+        mv "$HMG_SEOGAEMO_STATE/last-call-result.tmp.$$" "$HMG_SEOGAEMO_STATE/last-call-result" || return 1
+    "${HMG_SEOGAEMO_SERVICE_BIN:-/system/bin/service}" call "$1" "$2" > "$sg_call_output" 2>&1 & # android44-shell: allow -- service binary defaults to /system/bin/service; override is a host-test seam
     sg_call_pid=$!
     sg_call_wait=0
     while kill -0 "$sg_call_pid" 2>/dev/null && [ "$sg_call_wait" -lt 15 ]; do
@@ -703,6 +714,8 @@ sg_service_call() {
     done
     if kill -0 "$sg_call_pid" 2>/dev/null; then
         kill "$sg_call_pid" 2>/dev/null || :
+        # Do not let a child that ignores TERM turn the deadline into a hang.
+        kill -9 "$sg_call_pid" 2>/dev/null || :
         wait "$sg_call_pid" 2>/dev/null || :
         sg_call_result=timeout
         sg_call_rc=1
@@ -718,7 +731,7 @@ sg_service_call() {
     sg_print "$(sg_clean "$SG_SERVICE_CALL_RESPONSE")" > "$sg_call_after" || return 1
     sg_ledger service_call "$1:$2" "$sg_call_before" "$sg_call_after" "" "$sg_call_result" || return 1
     sg_write "$sg_call_result" > "$HMG_SEOGAEMO_STATE/last-call-result.tmp.$$" &&
-        mv -f "$HMG_SEOGAEMO_STATE/last-call-result.tmp.$$" "$HMG_SEOGAEMO_STATE/last-call-result" || return 1
+        mv "$HMG_SEOGAEMO_STATE/last-call-result.tmp.$$" "$HMG_SEOGAEMO_STATE/last-call-result" || return 1
     rm -f "$sg_call_output" "$sg_call_before" "$sg_call_after"
     [ "$sg_call_rc" -eq 0 ]
 }
@@ -734,10 +747,11 @@ sg_service_call_ok_this_boot() {
 sg_applied() {
     sg_check_build || return 3
     case "$1" in
-        /*) if [ -f "$HMG_SEOGAEMO_STATE/line.$(sg_file_key "$1")/ready" ]; then
+        /*) sg_key=$(sg_file_key "$1") || return 1
+            if [ -f "$HMG_SEOGAEMO_STATE/line.$sg_key/ready" ]; then
                 sg_line_applied "$1"; return $?
             fi
-            sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1")
+            sg_dir=$HMG_SEOGAEMO_STATE/file.$sg_key
             case "$(cat "$sg_dir/applied-existence" 2>/dev/null)" in
                 absent) [ ! -e "$1" ] ;;
                 present) [ -f "$1" ] && sg_equal "$sg_dir/applied" "$1" ;;
@@ -751,7 +765,7 @@ sg_applied() {
 # Only decimal counters are accepted as wrapper-owned state.
 sg_zygote_finalize_guard() {
     sg_guard=$HMG_SEOGAEMO_STATE/starts
-    sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_guard")
+    sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_guard") || return 1
     [ -f "$sg_saved/applied" ] || return 0
     [ -f "$sg_guard" ] || return 3
     sg_count=$(cat "$sg_guard") || return 1
@@ -767,15 +781,15 @@ sg_zygote_finalize_guard() {
 sg_file_baseline_absent() {
     [ ! -e "$1" ] || return 3
     sg_bind_build || return 1
-    sg_absent_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1")
+    sg_absent_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
     [ ! -e "$sg_absent_dir/ready" ] || return 0
     mkdir -p "$sg_absent_dir" || return 1
     sg_write "$1" > "$sg_absent_dir/path.tmp.$$" &&
-        mv -f "$sg_absent_dir/path.tmp.$$" "$sg_absent_dir/path" &&
+        mv "$sg_absent_dir/path.tmp.$$" "$sg_absent_dir/path" &&
         sg_write "absent" > "$sg_absent_dir/existence.tmp.$$" &&
-        mv -f "$sg_absent_dir/existence.tmp.$$" "$sg_absent_dir/existence" &&
+        mv "$sg_absent_dir/existence.tmp.$$" "$sg_absent_dir/existence" &&
         sg_write "1" > "$sg_absent_dir/ready.tmp.$$" &&
-        mv -f "$sg_absent_dir/ready.tmp.$$" "$sg_absent_dir/ready"
+        mv "$sg_absent_dir/ready.tmp.$$" "$sg_absent_dir/ready"
 }
 # Only the JAR named in owns_files can nominate a cache namespace. The two
 # derived cache locations are fixed by Android's Dalvik naming convention.
@@ -804,15 +818,15 @@ sg_dex_cache_track() {
         [ -f "$sg_dex" ] && [ ! -L "$sg_dex" ] || return 3
         sg_file_baseline "$sg_dex" || return 1
         sg_changed file "$sg_dex" || return 1
-        sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_dex")
+        sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_dex") || return 1
         sg_ledger dex_track "$sg_dex" "$sg_saved/bytes" "$sg_dex" "$sg_saved/meta" || return 1
     done
     sg_write "$sg_cache" > "$HMG_SEOGAEMO_STATE/dex.cache.tmp.$$" &&
-        mv -f "$HMG_SEOGAEMO_STATE/dex.cache.tmp.$$" "$HMG_SEOGAEMO_STATE/dex.cache" &&
+        mv "$HMG_SEOGAEMO_STATE/dex.cache.tmp.$$" "$HMG_SEOGAEMO_STATE/dex.cache" &&
         sg_write "$sg_app_dir" > "$HMG_SEOGAEMO_STATE/dex.app-dir.tmp.$$" &&
-        mv -f "$HMG_SEOGAEMO_STATE/dex.app-dir.tmp.$$" "$HMG_SEOGAEMO_STATE/dex.app-dir" &&
+        mv "$HMG_SEOGAEMO_STATE/dex.app-dir.tmp.$$" "$HMG_SEOGAEMO_STATE/dex.app-dir" &&
         sg_write "$sg_dir_existed" > "$HMG_SEOGAEMO_STATE/dex.dir-existed.tmp.$$" &&
-        mv -f "$HMG_SEOGAEMO_STATE/dex.dir-existed.tmp.$$" "$HMG_SEOGAEMO_STATE/dex.dir-existed"
+        mv "$HMG_SEOGAEMO_STATE/dex.dir-existed.tmp.$$" "$HMG_SEOGAEMO_STATE/dex.dir-existed"
 }
 sg_dex_finalize() {
     [ -f "$HMG_SEOGAEMO_STATE/dex.cache" ] || return 0
@@ -822,13 +836,13 @@ sg_dex_finalize() {
         [ -e "$sg_dex" ] || continue
         case "${sg_dex##*/}" in *[!a-zA-Z0-9_.@-]*) return 3;; esac
         [ -f "$sg_dex" ] && [ ! -L "$sg_dex" ] || return 3
-        sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_dex")
+        sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_dex") || return 1
         if [ ! -f "$sg_saved/ready" ]; then
             # This path was absent at activation; record that baseline now.
             mkdir -p "$sg_saved" || return 1
-            sg_write "$sg_dex" > "$sg_saved/path.tmp.$$" && mv -f "$sg_saved/path.tmp.$$" "$sg_saved/path" || return 1
-            sg_write "absent" > "$sg_saved/existence.tmp.$$" && mv -f "$sg_saved/existence.tmp.$$" "$sg_saved/existence" || return 1
-            sg_write "1" > "$sg_saved/ready.tmp.$$" && mv -f "$sg_saved/ready.tmp.$$" "$sg_saved/ready" || return 1
+            sg_write "$sg_dex" > "$sg_saved/path.tmp.$$" && mv "$sg_saved/path.tmp.$$" "$sg_saved/path" || return 1
+            sg_write "absent" > "$sg_saved/existence.tmp.$$" && mv "$sg_saved/existence.tmp.$$" "$sg_saved/existence" || return 1
+            sg_write "1" > "$sg_saved/ready.tmp.$$" && mv "$sg_saved/ready.tmp.$$" "$sg_saved/ready" || return 1
             sg_changed file "$sg_dex" || return 1
         fi
         if [ -f "$sg_saved/applied" ]; then
@@ -869,7 +883,7 @@ sg_zygote_install() {
         "$HMG_SEOGAEMO_STATE/starts" "$HMG_SEOGAEMO_STATE/disable"; do
         sg_file_baseline "$sg_target" || return 1
     done
-    sg_stock_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_bin")
+    sg_stock_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_bin") || return 1
     read sg_stock_mode sg_stock_uid sg_stock_gid < "$sg_stock_saved/meta" || return 1
     sg_empty=$HMG_SEOGAEMO_STATE/zygote.empty.$$
     sg_zero=$HMG_SEOGAEMO_STATE/zygote.zero.$$
@@ -907,11 +921,11 @@ sg_revert_all() {
                 sg_prop_restore "$sg_target" || return 3
                 sg_ledger revert "$sg_target" "$sg_revert_before" "$sg_saved/live" "" || return 1 ;;
             file)
-                sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_target")
+                sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$sg_target") || return 1
                 if [ -f "$sg_saved/applied" ]; then
                     sg_copy "$sg_saved/applied" "$sg_revert_before" || return 1
                 else rm -f "$sg_revert_before"; fi
-                sg_bind=$HMG_SEOGAEMO_STATE/bind.$(sg_file_key "$sg_target")
+                sg_bind=$HMG_SEOGAEMO_STATE/bind.$(sg_file_key "$sg_target") || return 1
                 if [ -f "$sg_bind" ]; then
                     if sg_mount_present "$sg_target"; then umount "$sg_target" || return 1; fi
                     rm -f "$sg_bind"
@@ -1000,7 +1014,7 @@ hmg_seogaemo_map_publish() {
     [ -f "$hmg_seogaemo_map_root/active" ] && cp "$hmg_seogaemo_map_root/active" "$hmg_seogaemo_map_root/.before.$$" || true
     sg_print "$hmg_seogaemo_map_rel" > "$hmg_seogaemo_map_root/active.tmp.$$" &&
         chmod 600 "$hmg_seogaemo_map_root/active.tmp.$$" &&
-        mv -f "$hmg_seogaemo_map_root/active.tmp.$$" "$hmg_seogaemo_map_root/active" || return 1
+        mv "$hmg_seogaemo_map_root/active.tmp.$$" "$hmg_seogaemo_map_root/active" || return 1
     HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
     mkdir -p "$HMG_SEOGAEMO_STATE" || return 1
     sg_ledger map_publish "$hmg_seogaemo_map_root/active" "$hmg_seogaemo_map_root/.before.$$" "$hmg_seogaemo_map_root/active" "" || return 1

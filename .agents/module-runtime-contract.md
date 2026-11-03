@@ -89,7 +89,8 @@ notes). Anything outside needs a note in the final report instead of an edit.
   (extra files: jars, `.so`, XML, APK patches). Absent if the module has no payload.
 - `HMG_SEOGAEMO_STATE`: `/data/nemesis/backup/hmg-seogaemo/modules/<id>` (mode 0700, survives updates,
   removed only after a verified uninstall restore).
-- `umask 077`, Android 4.4 mksh/toolbox only (no bash-isms, no `tail`, no `readlink -f`).
+- `umask 077`, Android 4.4 mksh/toolbox only (no Bash-only features or `tail`;
+  `readlink -f` is supported, but shell parameter trimming avoids spawning it).
 
 Dependencies and exclusions are enforced by `hmg-seogaemo-root`/`ModuleManager`, never inside a
 module script. A module script must assume its dependencies are already applied.
@@ -263,17 +264,40 @@ Strings: modules add only `<snake_id>_*` resources in their own `res/values{,-ko
 
 ## Shell tools available on the head unit (hard rule)
 
+The source-derived compatibility authority is `tools/android44-shell-profile.json`.
+`tools/lint-android44-shell.py` checks commands, paths, combined flags, option
+arguments and shell syntax during `make test`. See `android44-shell-audit.md`
+for pinned AOSP evidence and limits. Edge cases require an inline
+`# android44-shell: allow -- <specific reason>`; the lint reports all waivers.
+Toolbox `mv` has no options: plain rename already replaces existing files.
+Toolbox `md5` requires filenames; hash a text pipe with `/proc/self/fd/0`
+explicitly and check its exit status. Never store binary baselines in variables.
+
 Stock userland is **toolbox + mksh only** (`tmp/hmg_nemesis/01-DSP-OTA-troubleShooter.md:121`,
 `05-Run-Scripts.md:101`). Root-side scripts may use: mksh builtins (`case`, `read`, `${var#…}`,
 `${var%…}`, `print`, `echo`, `test`, arithmetic), toolbox commands (`cat`, `cmp`, `cp`, `dd`,
 `grep`, `ls`, `mkdir`, `mv`, `rm`, `rmdir`, `ln`, `chmod`, `chown`, `touch`, `sleep`, `ps`,
 `kill`, `md5`, `mount`, `umount`, `sync`, `date`, `id`, `ifconfig`, `netcfg`, `route`,
 `getprop`, `setprop`, `start`, `stop`, `log`, `dmesg`), and system binaries `pm`, `am`,
-`settings`, `logcat`, `dumpsys`, `wpa_cli`, `/system/xbin/nemesis`.
+`settings`, `service`, `app_process`, `logcat`, `dumpsys`, `wpa_cli`, `/system/xbin/nemesis`.
 **Not available:** `printf` (neither a builtin nor a toolbox binary), `awk`, `sed`, `tail`, `head`, `cut`, `tr`, `wc`, `sort`, `uniq`, `xargs`,
-`find`, `stat`, `readlink -f`, `sha256sum`/`sha1sum`, `tar`, `unzip`, `busybox`, `toybox`.
+`find`, `stat`, `timeout`, `which`, `seq`, `basename`, `dirname`,
+`sha256sum`/`sha1sum`, `tar`, `unzip`, `busybox`, `toybox`.
+KitKat does have `cp`, BSD `grep` (including `-E -F -q -x -c`), and `readlink -f`;
+the latter uses `realpath` and is unused by current scripts. `cat` and `sleep`
+resolve to mksh builtins first (Android enables `HAVE_SELECT`); the profile uses
+the supported builtin forms and limits sleeps to integer seconds in this project.
+R43 has no `set -o pipefail`. Do not infer features from the newer host mksh.
 Parse with `while read`, `case` and parameter expansion. Hashing on the unit: `md5` only.
-`make test` lints root scripts (package and modules) for the unavailable tools.
+The profile is a conservative reviewed subset, not a promise that every unlisted
+AOSP tool is absent. Host-only payload build helpers are excluded from archives;
+every shipped shell member, including generated modules, is checked. Dynamic
+arguments must be data, paths, or values of literal options, never option bundles
+or command text. Fixed project helpers are checked at their definitions; literal
+`sh -c` and trap bodies and command substitutions are checked recursively.
+Waivers apply to one physical line and require manual review of the whole line.
+The lexer does not prove data flow, service responses, kernel behavior, or exact
+vendor binaries. Keep byte-exact restore tests and on-car validation separate.
 
 ## Settings layout and module pages
 

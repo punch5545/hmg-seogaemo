@@ -55,7 +55,7 @@ switch_to() {
     ln -s "$1" "$root/next"
     java_update switch "$root/next" "$root/current"
     sg_print "$1" > "$root/current-path.next"
-    mv -f "$root/current-path.next" "$root/current-path"
+    mv "$root/current-path.next" "$root/current-path"
     sync
 }
 rewrite_descriptor() {
@@ -67,7 +67,7 @@ rewrite_descriptor() {
         esac
     done < "$descriptor" > "$descriptor.ota-new"
     [ "$found" -eq 1 ] || return 1
-    mv -f "$descriptor.ota-new" "$descriptor"
+    mv "$descriptor.ota-new" "$descriptor"
     sync
 }
 check_md5() {
