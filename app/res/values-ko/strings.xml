@@ -81,7 +81,7 @@
     <string name="export_changes_usb">변경 내역을 USB로 내보내기</string>
     <string name="export_changes_hint">변경 기록과 원본 파일을 연결된 USB 드라이브에 복사합니다.</string>
     <string name="update_current">현재 버전</string>
-    <string name="update_current_hint">설치된 새개모 버전</string>
+    <string name="update_current_hint">설치된 HMG-Seogaemo 버전</string>
     <string name="update_idle">업데이트 확인 준비됨</string>
     <string name="update_check">업데이트 확인</string>
     <string name="update_rollback">이전 버전 복원</string>

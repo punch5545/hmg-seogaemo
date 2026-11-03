@@ -753,7 +753,6 @@ public final class MainActivity extends Activity {
         copy.setPadding(dp(16), 0, 0, 0);
         copy.addView(text(getString(module.nameResId()), 21,
                 index == category ? WHITE : 0xFFD0D0D0, medium));
-        copy.addView(text(getString(R.string.module_settings), 16, MUTED, sans));
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
         row.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) { category = index; showSettings(); }
