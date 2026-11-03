@@ -1,18 +1,18 @@
 #!/bin/sh
 # Wi-Fi client feature exposure for the verified NEEV Korean firmware.
+# On NEEV.KOR.260902 featurexml.cfg has no android.hardware.wifi removal line,
+# and stock HKMC_WifiSettings gates its client menu on that PackageManager
+# feature (verified on the car 2026-11-03). No stock file reads
+# persist.wifi.state on this firmware; it is set for parity with other units.
 set -u
 . "$HMG_SEOGAEMO_BASE/lib/common.sh"
 
-cfg=/system/onebin/neev_kr/featurexml.cfg
 xml=/system/etc/permissions/android.hardware.wifi.xml
-stock='-/system/etc/permissions/android.hardware.wifi.xml'
-enabled='#-/system/etc/permissions/android.hardware.wifi.xml'
+prop=persist.wifi.state
+value=3
 
 result() { sg_status "$1" "$2" "$3"; exit $?; }
-count_line() { grep -Fxc -e "$1" "$cfg" 2>/dev/null || :; }
-cfg_stock() { [ "$(count_line "$stock")" = 1 ] && [ "$(count_line "$enabled")" = 0 ]; }
-cfg_enabled() { [ "$(count_line "$stock")" = 0 ] && [ "$(count_line "$enabled")" = 1 ]; }
-xml_enabled() {
+xml_ours() {
     [ -f "$xml" ] &&
         cmp "$HMG_SEOGAEMO_MODULE_DIR/android.hardware.wifi.xml" "$xml" >/dev/null 2>&1
 }
@@ -26,7 +26,7 @@ chip_seen() {
 }
 
 external_owner() {
-    sg_owner_present hmgapi || sg_owner_present leafia ||
+    sg_owner_present leafia ||
         [ -f /data/nemesis/apps/wireless.projection/NEMESIS.data ]
 }
 
@@ -62,14 +62,17 @@ parse_client_ip() {
     done
 }
 
+# The unit has no wpa_cli; a non-AP IPv4 address on wlan0 means DHCP finished.
 client_ip() {
     [ -e /sys/class/net/wlan0 ] || return 0
-    wpa_cli -i wlan0 status 2>/dev/null | grep -Fxq 'wpa_state=COMPLETED' || return 0
     ip=$(ifconfig wlan0 2>/dev/null | parse_client_ip ifconfig)
     [ -n "$ip" ] || ip=$(netcfg 2>/dev/null | parse_client_ip netcfg)
     [ -z "$ip" ] || sg_print "$ip"
 }
-print_ip() { ip=$(client_ip); [ -z "$ip" ] || sg_print "info.client_ip=$ip"; }
+print_ip() {
+    ip=$(client_ip)
+    [ -z "$ip" ] || sg_print "info.client_ip=$ip" "info.client_adb_endpoint=$ip:5555"
+}
 
 ap_active() {
     [ "$(getprop init.svc.hostapd 2>/dev/null)" = running ] && return 0
@@ -83,70 +86,80 @@ projection_desired() {
         grep -Eq '^state=(on|pending-restart)$'
 }
 
-precheck() {
-    if projection_desired || ap_active; then sg_print "warn.carplay_active=1"; fi
-    result off none ''
-}
-
-status() {
-    print_ip
-    if sg_applied "$cfg" && sg_applied "$xml"; then
-        if pm_wifi; then result on none ''; fi
-        result pending-restart head_unit 'Wi-Fi feature awaits head-unit restart'
-    fi
-    if sg_applied "$cfg" || sg_applied "$xml"; then
-        result conflict none 'Wi-Fi files are only partly applied'
-    fi
-    if cfg_enabled && xml_enabled; then
-        result conflict none 'Wi-Fi files changed outside this module'
-    fi
-    if cfg_stock; then
-        if [ -e "$xml" ] && ! xml_enabled; then
-            result conflict none 'Existing Wi-Fi feature XML differs'
-        fi
-        if pm_wifi; then result pending-restart head_unit 'Wi-Fi feature awaits removal at restart'; fi
-        result off none ''
-    fi
-    result conflict none 'Wi-Fi feature removal line is unexpected'
-}
-
 compatible() {
     case "$(getprop ro.build.product 2>/dev/null)" in
         NEEV.KOR.*.260902) ;;
         *) result incompatible none 'Unsupported firmware' ;;
     esac
-    [ -f "$cfg" ] || result incompatible none 'Stock featurexml.cfg missing'
     if ! chip_seen; then
         # wlan0 may be absent until the Wi-Fi service starts; SDIO is enough.
         result incompatible none 'No SDIO or WLAN device detected'
     fi
 }
 
+# Refuse targets this module did not write; shared by precheck and apply.
+unowned_changes() {
+    if external_owner; then result conflict none 'Another package owns Wi-Fi feature files'; fi
+    if sg_applied "$xml" || sg_applied "$prop"; then return 0; fi
+    if [ -e "$xml" ]; then
+        if xml_ours; then result conflict none 'Wi-Fi feature XML changed outside this module'; fi
+        result conflict none 'Existing Wi-Fi feature XML differs'
+    fi
+    if [ -n "$(getprop "$prop" 2>/dev/null)" ]; then
+        result conflict none 'persist.wifi.state is set outside this module'
+    fi
+}
+
+precheck() {
+    compatible
+    unowned_changes
+    if projection_desired || ap_active; then sg_print "warn.carplay_active=1"; fi
+    result off none ''
+}
+
+status() {
+    print_ip
+    if sg_applied "$xml" && sg_applied "$prop"; then
+        if pm_wifi; then result on none ''; fi
+        result pending-restart head_unit 'Wi-Fi feature awaits head-unit restart'
+    fi
+    if sg_applied "$xml" || sg_applied "$prop"; then
+        result conflict none 'Wi-Fi client changes are only partly applied'
+    fi
+    if [ -e "$xml" ]; then
+        if xml_ours; then result conflict none 'Wi-Fi feature XML changed outside this module'; fi
+        result conflict none 'Existing Wi-Fi feature XML differs'
+    fi
+    if [ -n "$(getprop "$prop" 2>/dev/null)" ]; then
+        result conflict none 'persist.wifi.state is set outside this module'
+    fi
+    if pm_wifi; then result pending-restart head_unit 'Wi-Fi feature awaits removal at restart'; fi
+    result off none ''
+}
+
 apply() {
     compatible
-    if external_owner; then result conflict none 'Another package owns Wi-Fi feature files'; fi
-    if sg_applied "$cfg" && sg_applied "$xml"; then status; fi
-    if sg_applied "$cfg" || sg_applied "$xml" || cfg_enabled; then
-        result conflict none 'Wi-Fi feature files are partly applied or externally changed'
+    unowned_changes
+    if sg_applied "$xml" && sg_applied "$prop"; then status; fi
+    if sg_applied "$xml" || sg_applied "$prop"; then
+        result conflict none 'Wi-Fi client changes are partly applied'
     fi
-    cfg_stock || result incompatible none 'Expected stock Wi-Fi removal line missing or duplicated'
-    if [ -e "$xml" ] && ! xml_enabled; then result conflict none 'Existing Wi-Fi feature XML differs'; fi
     sg_file_put "$xml" android.hardware.wifi.xml 0644 root:root ||
         result failed none 'Could not apply Wi-Fi feature XML'
-    if ! sg_file_replace_line "$cfg" "$stock" "$enabled"; then
+    if ! sg_prop_set "$prop" "$value"; then
         sg_revert_all || :
-        result failed none 'Could not apply Wi-Fi feature config'
+        result failed none 'Could not set persist.wifi.state'
     fi
-    if ! sg_applied "$cfg" || ! sg_applied "$xml"; then
-        result failed none 'Could not verify applied Wi-Fi files'
+    if ! sg_applied "$xml" || ! sg_applied "$prop"; then
+        result failed none 'Could not verify applied Wi-Fi client changes'
     fi
-    sg_log 'Wi-Fi client feature files applied; head-unit restart required'
+    sg_log 'Wi-Fi client feature applied; head-unit restart required'
     result pending-restart head_unit 'Wi-Fi feature awaits head-unit restart'
 }
 
 revert() {
     if ! sg_revert_all; then
-        result conflict none 'Wi-Fi files changed; baselines retained'
+        result conflict none 'Wi-Fi client changes drifted; baselines retained'
     fi
     if pm_wifi; then result pending-restart head_unit 'Wi-Fi feature awaits removal at restart'; fi
     result off none ''

@@ -13,8 +13,10 @@ mkdir -p "$work/base/lib" "$work/bin" "$work/system/onebin/neev_kr" \
     "$work/sys/class/net" "$work/state"
 cfg=$work/system/onebin/neev_kr/featurexml.cfg
 xml=$work/system/etc/permissions/android.hardware.wifi.xml
-sg_print "before" "-/system/etc/permissions/android.hardware.wifi.xml" "after" > "$cfg"
+# The car's stock featurexml.cfg has no Wi-Fi removal line; it must stay untouched.
+sg_print "before" "#-/system/etc/permissions/com.hkmc.software.wifihotspot.xml" "after" > "$cfg"
 cp "$cfg" "$work/original.cfg"
+mkdir "$work/props"
 : > "$work/sys/bus/sdio/devices/chip"
 sg_print NEEV.KOR.0000.V039.001.260902 > "$work/product"
 : > "$work/owners"
@@ -36,9 +38,23 @@ sg_mark() {
     sg_print "$name" >> "$TEST_WORK/marks"
 }
 sg_applied() {
-    name=${1##*/}
-    [ -f "$HMG_SEOGAEMO_STATE/$name.applied" ] && [ -f "$1" ] &&
-        cmp -s "$HMG_SEOGAEMO_STATE/$name.applied" "$1"
+    case "$1" in
+        /*) name=${1##*/}
+            [ -f "$HMG_SEOGAEMO_STATE/$name.applied" ] && [ -f "$1" ] &&
+                cmp -s "$HMG_SEOGAEMO_STATE/$name.applied" "$1" ;;
+        *) [ -f "$HMG_SEOGAEMO_STATE/prop.$1.applied" ] &&
+            [ "$(getprop "$1")" = "$(cat "$HMG_SEOGAEMO_STATE/prop.$1.applied")" ] ;;
+    esac
+}
+sg_prop_set() {
+    [ "$1" = persist.wifi.state ] || return 2
+    [ ! -e "$TEST_WORK/fail-prop" ] || return 1
+    if [ ! -f "$HMG_SEOGAEMO_STATE/prop.$1.live" ]; then
+        getprop "$1" > "$HMG_SEOGAEMO_STATE/prop.$1.live"
+    fi
+    setprop "$1" "$2" || return 1
+    sg_print "$2" > "$HMG_SEOGAEMO_STATE/prop.$1.applied"
+    sg_print "prop.$1" >> "$TEST_WORK/marks"
 }
 sg_file_put() {
     [ "$3" = 0644 ] && [ "$4" = root:root ] || return 1
@@ -70,8 +86,14 @@ sg_revert_all() {
         if [ -f "$HMG_SEOGAEMO_STATE/$name.saved" ]; then cp -p "$HMG_SEOGAEMO_STATE/$name.saved" "$path";
         elif [ -f "$HMG_SEOGAEMO_STATE/$name.absent" ]; then rm -f "$path"; fi
     done
+    prop=persist.wifi.state
+    if [ -f "$HMG_SEOGAEMO_STATE/prop.$prop.live" ]; then
+        current=$(getprop "$prop")
+        [ "$current" = "$(cat "$HMG_SEOGAEMO_STATE/prop.$prop.live")" ] || sg_applied "$prop" || return 1
+        setprop "$prop" "$(cat "$HMG_SEOGAEMO_STATE/prop.$prop.live")" || return 1
+    fi
     [ ! -e "$TEST_WORK/fail-clear" ] || return 1
-    rm -f "$HMG_SEOGAEMO_STATE"/*.saved "$HMG_SEOGAEMO_STATE"/*.absent "$HMG_SEOGAEMO_STATE"/*.applied
+    rm -f "$HMG_SEOGAEMO_STATE"/*.saved "$HMG_SEOGAEMO_STATE"/*.absent "$HMG_SEOGAEMO_STATE"/*.applied "$HMG_SEOGAEMO_STATE"/*.live
 }
 sg_owner_present() { grep -Fxq "$1" "$TEST_WORK/owners"; }
 sg_status() {
@@ -83,13 +105,14 @@ EOF
 cat > "$work/bin/getprop" <<'EOF'
 #!/bin/sh
 . "$HMG_SEOGAEMO_TEST_COMMON"
-case "$1" in ro.build.product) cat "$TEST_WORK/product";; init.svc.hostapd) cat "$TEST_WORK/hostapd" 2>/dev/null || :;; esac
+case "$1" in ro.build.product) cat "$TEST_WORK/product";; init.svc.hostapd) cat "$TEST_WORK/hostapd" 2>/dev/null || :;;
+    persist.wifi.state) cat "$TEST_WORK/props/$1" 2>/dev/null || sg_print "";; esac
 EOF
 cat > "$work/bin/setprop" <<'EOF'
 #!/bin/sh
 . "$HMG_SEOGAEMO_TEST_COMMON"
-echo 'wifi-client must not change properties' >&2
-exit 1
+[ "$1" = persist.wifi.state ] || { echo "unexpected setprop $1" >&2; exit 1; }
+sg_print "$2" > "$TEST_WORK/props/$1"
 EOF
 cat > "$work/bin/pm" <<'EOF'
 #!/bin/sh
@@ -107,11 +130,6 @@ cat > "$work/bin/netcfg" <<'EOF'
 . "$HMG_SEOGAEMO_TEST_COMMON"
 cat "$TEST_WORK/netcfg" 2>/dev/null || :
 EOF
-cat > "$work/bin/wpa_cli" <<'EOF'
-#!/bin/sh
-. "$HMG_SEOGAEMO_TEST_COMMON"
-cat "$TEST_WORK/wpa-status" 2>/dev/null || :
-EOF
 cat > "$work/base/bin/hmg-seogaemo-root" <<'EOF'
 #!/bin/sh
 . "$HMG_SEOGAEMO_TEST_COMMON"
@@ -124,7 +142,7 @@ chmod 644 "$work/base/bin/hmg-seogaemo-root"
 
 # Rewrite only fixed filesystem roots in a private copy; featurexml entries
 # remain the actual absolute paths used on the car.
-sed -e "s|/system/bin/sh|$car_shell|g" -e "s|^cfg=/system/|cfg=$work/system/|" \
+sed -e "s|/system/bin/sh|$car_shell|g" \
     -e "s|^xml=/system/|xml=$work/system/|" \
     -e "s|/sys/bus/sdio/devices/\*|$work/sys/bus/sdio/devices/*|" \
     -e "s|/sys/class/net/wlan\*|$work/sys/class/net/wlan*|" \
@@ -141,7 +159,7 @@ for tool in cat cmp cp dd grep rm; do
 done
 ln -s "$repo/tools/testlib/fakebin/md5" "$work/allowed/md5"
 ln -s "$(command -v python3)" "$work/allowed/python3"
-for tool in getprop setprop pm ifconfig netcfg wpa_cli; do
+for tool in getprop setprop pm ifconfig netcfg; do
     ln -s "$work/bin/$tool" "$work/allowed/$tool"
 done
 for tool in awk sed tail head cut tr wc sort uniq xargs find stat readlink sha256sum sha1sum tar unzip busybox toybox; do
@@ -157,35 +175,43 @@ run() { PATH=$work/allowed "$car_shell" "$work/wifi-client.sh" "$1" > "$work/out
 assert_state() { grep -Fxq "state=$1" "$work/output" || { cat "$work/output"; exit 1; }; }
 assert_line() { grep -Fxq "$1" "$work/output" || { cat "$work/output"; exit 1; }; }
 
+prop_value() { cat "$work/props/persist.wifi.state" 2>/dev/null || :; }
+
 run status; assert_state off
+run precheck; assert_state off
 run apply; assert_state pending-restart; assert_line restart=head_unit
 [ "$(wc -l < "$work/marks")" -eq 2 ]
-cmp -s "$work/original.cfg" "$cfg" && exit 1
-grep -Fqx '#-/system/etc/permissions/android.hardware.wifi.xml' "$cfg"
+cmp -s "$work/original.cfg" "$cfg"
 [ -f "$xml" ]
+[ "$(prop_value)" = 3 ]
 run apply; assert_state pending-restart
 [ "$(wc -l < "$work/marks")" -eq 2 ]
 sg_print "yes" > "$work/pm-feature"
 run status; assert_state on
 : > "$work/sys/class/net/wlan0"
-sg_print "wpa_state=COMPLETED" > "$work/wpa-status"
 sg_print "wlan0: inet addr:10.7.0.15 Bcast:10.7.0.255 Mask:255.255.255.0" > "$work/ifconfig"
-run status; assert_line info.client_ip=10.7.0.15
+run status; assert_line info.client_ip=10.7.0.15; assert_line info.client_adb_endpoint=10.7.0.15:5555
 : > "$work/ifconfig"
 sg_print "wlan0 UP 10.7.0.16/24 0x00001043" > "$work/netcfg"
 run status; assert_line info.client_ip=10.7.0.16
-sg_print "wpa_state=DISCONNECTED" > "$work/wpa-status"
+sg_print "wlan0 UP 192.168.0.1/24 0x00001043" > "$work/netcfg"
 run status
 if grep -q '^info.client_ip=' "$work/output"; then exit 1; fi
+sg_print "wlan0 UP 0.0.0.0/0 0x00001002" > "$work/netcfg"
+run status
+if grep -q '^info.client_ip=' "$work/output"; then exit 1; fi
+: > "$work/netcfg"
 run revert; assert_state pending-restart
 cmp -s "$work/original.cfg" "$cfg"
 [ ! -e "$xml" ]
-[ ! -e "$work/state/featurexml.cfg.applied" ]
+[ -z "$(prop_value)" ]
 : > "$work/pm-feature"
 run status; assert_state off
 
 sg_print WRONG.KOR.260902 > "$work/product"
 if run apply; then exit 1; fi
+assert_state incompatible
+if run precheck; then exit 1; fi
 assert_state incompatible
 sg_print NEEV.KOR.0000.V039.001.260902 > "$work/product"
 rm "$work/sys/bus/sdio/devices/chip"
@@ -193,10 +219,35 @@ rm "$work/sys/class/net/wlan0"
 if run apply; then exit 1; fi
 assert_state incompatible
 : > "$work/sys/bus/sdio/devices/chip"
-sg_print "hmgapi" > "$work/owners"
+sg_print "leafia" > "$work/owners"
 if run apply; then exit 1; fi
 assert_state conflict
+if run precheck; then exit 1; fi
+assert_state conflict
 : > "$work/owners"
+# HMG-API's bundled wireless mod does not own the client feature.
+sg_print "hmgapi" > "$work/owners"
+run precheck; assert_state off
+: > "$work/owners"
+
+# Unowned changes are refused by precheck, status and apply alike.
+sg_print "3" > "$work/props/persist.wifi.state"
+if run status; then exit 1; fi
+assert_state conflict
+if run precheck; then exit 1; fi
+assert_state conflict
+if run apply; then exit 1; fi
+assert_state conflict
+: > "$work/props/persist.wifi.state"
+sg_print "<permissions/>" > "$xml"
+if run status; then exit 1; fi
+assert_state conflict
+if run precheck; then exit 1; fi
+assert_state conflict
+if run apply; then exit 1; fi
+assert_state conflict
+rm "$xml"
+[ ! -s "$work/marks.after" ] || exit 1
 
 sg_print "running" > "$work/hostapd"
 run precheck; assert_line warn.carplay_active=1
@@ -207,20 +258,28 @@ if grep -q '^warn\.' "$work/output"; then exit 1; fi
 run precheck; assert_line warn.carplay_active=1
 rm "$work/projection-on"
 
+# A failed property write rolls back the XML.
+: > "$work/fail-prop"
+if run apply; then exit 1; fi
+assert_state failed
+[ ! -e "$xml" ]
+rm "$work/fail-prop"
+
 run apply; assert_state pending-restart
-sg_print "drift" >> "$cfg"
+sg_print "drift" >> "$xml"
 if run revert; then exit 1; fi
 assert_state conflict
-[ -e "$work/state/featurexml.cfg.applied" ]
+[ -e "$work/state/android.hardware.wifi.xml.applied" ]
 
 # A cleanup failure after exact restore must be retryable.
-cp "$work/state/featurexml.cfg.applied" "$cfg"
+cp "$work/state/android.hardware.wifi.xml.applied" "$xml"
 : > "$work/fail-clear"
 if run revert; then exit 1; fi
 assert_state conflict
-cmp -s "$work/original.cfg" "$cfg"
 [ ! -e "$xml" ]
+[ -z "$(prop_value)" ]
 rm "$work/fail-clear"
 run revert; assert_state off
+cmp -s "$work/original.cfg" "$cfg"
 
 echo 'wifi-client module tests passed'

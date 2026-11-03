@@ -110,9 +110,9 @@ The module list/graph is generated at build time from `modules/*/module.properti
 hand-edited list. Current modules: `wifi-client` (excludes `wireless-carplay-and-aa`),
 `wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`,
 and `skip-consent-screen` (factory Binder call on boot and screen wake).
-`wifi-client` and `wireless-carplay-and-aa` share `featurexml.cfg` through distinct stock-line
-claims. Their exclusion remains for STA versus AP on one radio; shared file safety does not
-depend on it.
+`wireless-carplay-and-aa` claims `featurexml.cfg` stock lines; `wifi-client` owns only
+`android.hardware.wifi.xml` and `persist.wifi.state` (the NEEV KOR `featurexml.cfg` has no Wi-Fi
+removal line, verified on the car). Their exclusion is for STA versus AP on one radio.
 Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, baselines, ledger).
 
 ## Car mapping
@@ -183,7 +183,8 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 - `wireless-carplay-and-aa` replaces `/system/bin/app_process` (boot guard disables it after 3
   quick restarts). Dalvik offsets were proven on a US EV6 only. Keep an adb recovery path ready.
 - `wifi-client` STA vs the CarPlay AP on one radio: treated as mutually exclusive; concurrency is
-  unknown. `persist.wifi.state=3` is deliberately not set yet (to be tested later).
+  unknown. `wifi-client` sets `persist.wifi.state=3` with the feature XML; no NEEV KOR system file
+  names that property, and stock `HKMC_WifiSettings` gates its client menu on `android.hardware.wifi`.
 - OTA: TLS 1.2 to GitHub on 4.4 with bundled roots (`update_roots.pem`), the reboot/resume flow
   through `wifi-client`, and rollback are untested on a car.
 - An official firmware OTA while modules are applied makes restores conflict by design.
@@ -207,7 +208,7 @@ whole-file operations. For a shared text file, add one numbered entry per change
 stock line, for example:
 
 ```properties
-owns_lines.1=/system/onebin/neev_kr/featurexml.cfg:-/system/etc/permissions/android.hardware.wifi.xml
+owns_lines.1=/system/onebin/neev_kr/featurexml.cfg:-/system/etc/permissions/com.hkmc.software.wifihotspot.xml
 ```
 
 Numbers are unique positive decimals without leading zero. The first colon
