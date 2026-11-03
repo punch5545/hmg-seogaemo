@@ -22,5 +22,8 @@ Korean Wireless ADB settings with connection details and guidance.
 ![Wi-Fi client](assets/settings-wifi-client.png)
 Korean Wi-Fi client settings with its stock Wi-Fi action.
 
+![Wireless CarPlay and Android Auto](assets/settings-wireless-carplay-and-aa.png)
+Korean wireless CarPlay and Android Auto module settings.
+
 ![Logs settings](assets/settings-logs.png)
 Korean Logs page with the USB change export action.
