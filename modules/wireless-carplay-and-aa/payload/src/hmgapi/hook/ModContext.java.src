@@ -14,6 +14,7 @@ public final class ModContext {
     public final File dir = new File("/system/etc/hmg-seogaemo/wireless-carplay-and-aa");
     public java.lang.reflect.Member hook(ClassLoader cl, String point, MethodHook hook) { return Points.hook(cl, point, hook); }
     public boolean settingBoolean(String key, boolean fallback) { return fallback; }
+    public String settingString(String key, String fallback) { return fallback; }
     public Class<?> appPart(LoadedApp app, String className) throws Exception {
         String pkg = className.substring(0, className.lastIndexOf('.'));
         ClassLoader parent = new AppPartLoader(pkg, ModContext.class.getClassLoader(), app.classLoader);

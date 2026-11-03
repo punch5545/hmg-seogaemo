@@ -209,4 +209,5 @@ cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail 
 [ ! -e "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file-present
 [ "$(cat "$T/props/persist.ium.support")" = stock ] || fail exact-prop-restore
 [ ! -f "$T/state/enabled" ] || fail enabled-marker-present
+sh "$HERE/test/cpturns/run.sh" > "$T/cpturns.out" 2>&1 || { cat "$T/cpturns.out"; fail cpturns; }
 sg_print "ok wireless-carplay-and-aa toolbox parse, guards, rollback, drift refusal, exact revert"

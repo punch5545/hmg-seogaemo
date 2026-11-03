@@ -1,4 +1,5 @@
 package hmgapi.mods.wireless.dipo;
+// Modified by HMG-Seogaemo: Korean CarPlay turn-by-turn fixes (icon bands, lane marking modes, HUD distance rounding, trace log); see .agents/carplay-tbt-learnings.md.
 
 import android.content.Context;
 import android.text.format.DateFormat;
@@ -47,6 +48,8 @@ final class CpTurns {
     /** last HUD list sent (type, next, road), so an unchanged one isn't resent */
     int hudType, hudNext;
     String hudRoad;
+    /** the last lane log line, so an unchanged one isn't logged again */
+    String lastLaneLog;
 
     CpTurns(Context context, Cluster cluster, Runnable restart) {
         this.context = context;
@@ -57,6 +60,7 @@ final class CpTurns {
     /** RouteGuidanceUpdate (DiPO e/u.c) */
     void routeGuidance(Iap2NotiMsg msg) {
         if (msg == null) return;
+        if (Dipo.trace()) trace("rg " + dump(msg));
         sourceCheck(msg);
         int[] ids = componentIds(msg);
         if (ids == null) {
@@ -100,6 +104,7 @@ final class CpTurns {
      */
     void maneuver(Iap2NotiMsg msg) {
         if (msg == null) return;
+        if (Dipo.trace()) trace("mv " + dump(msg));
         int index = -1;
         int[] ids = null;
         Iap2NotiMsg.Iap2ObjGroup g = msg.getItemGroup();
@@ -151,6 +156,7 @@ final class CpTurns {
     void lanes(Iap2NotiMsg msg) {
         Iap2NotiMsg.Iap2ObjGroup g = msg == null ? null : msg.getItemGroup();
         if (g == null) return;
+        if (Dipo.trace()) trace("lanes " + dump(msg));
         int[] status = new int[8], a = new int[8], b = new int[8], c = new int[8];
         int n = 0;
         Iap2NotiMsg.Iap2ObjGroup[] lanes = null;
@@ -158,15 +164,25 @@ final class CpTurns {
             Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(k);
             if (it != null && it.getItemParamType() == 13 && it.getItemId() == 2) lanes = it.getItemGroupArray();
         }
+        String mode = Dipo.laneMode();
+        String asked = mode;
+        // auto: the phone's preferred lane alone when it names one, else every lane along the route
+        if ("auto".equals(mode)) mode = anyPreferred(lanes) ? "rec" : "off";
+        StringBuilder seen = new StringBuilder();
         if (lanes != null) {
             for (int k = 0; k < lanes.length && n < 8; k++) {
-                int[] one = laneOne(lanes[k]);
+                int[] one = laneOne(lanes[k], mode, seen);
                 status[n] = one[0];
                 a[n] = one[1];
                 b[n] = one[2];
                 c[n] = one[3];
                 n++;
             }
+        }
+        String line = "CarPlay: lanes (" + (asked.equals(mode) ? mode : asked + " > " + mode) + ") " + seen;
+        if (!line.equals(lastLaneLog)) {
+            lastLaneLog = line;
+            Dipo.log(line);
         }
         byte[] f = new byte[81];
         f[0] = (byte) 0xF1;
@@ -180,12 +196,47 @@ final class CpTurns {
         cluster.laneInfo(f);
     }
 
-    /** one lane: {status (1, or 2 highlighted), up to 3 arrow icons} */
+    /** does any lane of a LaneGuidance say it is the preferred one (status 2)? */
+    static boolean anyPreferred(Iap2NotiMsg.Iap2ObjGroup[] lanes) {
+        if (lanes == null) return false;
+        for (int k = 0; k < lanes.length; k++) {
+            Iap2NotiMsg.Iap2ObjGroup g = lanes[k];
+            if (g == null) continue;
+            for (int j = 0; j < g.getItemCnt(); j++) {
+                Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(j);
+                if (it == null || it.getItemId() != 1) continue;
+                int t = it.getItemParamType();
+                if (t != 5 && t != 8) continue;
+                int[] v = it.getItemIntArray();
+                if (v != null && v.length > 0 && v[0] == 2) return true;
+            }
+        }
+        return false;
+    }
+
+    /** one lane as lanes() sends it today */
     static int[] laneOne(Iap2NotiMsg.Iap2ObjGroup g) {
+        return laneOne(g, "off", null);
+    }
+
+    /**
+     * one lane: {mark, up to 3 arrow icons}. The phone gives a lane a status (2 = preferred),
+     * its arrow angles and the angles that lead along the route (highlight). The cluster's
+     * mark is 1 (drawn) or 2 (highlighted); 0 and 3 aren't known to draw anything in
+     * particular, so they're only sent in the modes of the setting "lanes":
+     *   auto the preferred lane alone when the phone names one, otherwise as off
+ *   off  preferred or any route angle: 2, the rest 1 (as before)
+     *   rec  preferred: 2, the rest 1
+     *   dim0 preferred: 2, a lane that leads along the route: 1, the rest 0
+     *   dim3 preferred: 2, a lane that leads along the route: 1, the rest 3
+     * What the phone sent for the lane is appended to {@code seen} when it isn't null.
+     */
+    static int[] laneOne(Iap2NotiMsg.Iap2ObjGroup g, String mode, StringBuilder seen) {
         int[] r = new int[4];
         r[0] = 1;
         if (g == null) return r;
         int[] angles = null, highlight = null;
+        int status = -1;
         for (int k = 0; k < g.getItemCnt(); k++) {
             Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(k);
             if (it == null) continue;
@@ -195,20 +246,30 @@ final class CpTurns {
             if (v == null || v.length == 0) continue;
             int id = it.getItemId();
             if (id == 1) {
-                if (v[0] == 2) r[0] = 2;
+                status = v[0];
             } else if (id == 2) {
                 angles = v;
             } else if (id == 3) {
                 highlight = v;
             }
         }
-        if (highlight != null && highlight.length > 0) r[0] = 2;
+        boolean preferred = status == 2;
+        boolean along = highlight != null && highlight.length > 0;
+        if ("rec".equals(mode)) r[0] = preferred ? 2 : 1;
+        else if ("dim0".equals(mode)) r[0] = preferred ? 2 : along ? 1 : 0;
+        else if ("dim3".equals(mode)) r[0] = preferred ? 2 : along ? 1 : 3;
+        else r[0] = preferred || along ? 2 : 1;
         if (angles != null) {
             int n = 0;
             for (int k = 0; k < angles.length && n < 3; k++) {
                 int icon = laneIcon(angles[k]);
                 if (icon != 0) r[1 + n++] = icon;
             }
+        }
+        if (seen != null) {
+            if (seen.length() > 0) seen.append(" | ");
+            seen.append("status ").append(status).append(" angles ").append(java.util.Arrays.toString(angles))
+                    .append(" route ").append(java.util.Arrays.toString(highlight)).append(" -> mark ").append(r[0]);
         }
         return r;
     }
@@ -275,8 +336,12 @@ final class CpTurns {
 
     /** one component's update to the cluster (DiPO e/u.a(Integer, Object), with the build's changes) */
     void turn(Integer id, Update u) {
-        if (id < 0 || u == null) return;
+        if (id < 0 || u == null) {
+            if (Dipo.trace()) trace("turn skip: no update (component " + id + ")");
+            return;
+        }
         if (u.state == 0) {
+            if (Dipo.trace()) trace("turn c" + id + ": state 0, cleared");
             stop();
             return;
         }
@@ -284,17 +349,24 @@ final class CpTurns {
         float dist = 0f;
         if (u.nextStr != null && !u.nextStr.equals("")) {
             try {
-                dist = Float.parseFloat(u.nextStr);
+                dist = Float.parseFloat(u.nextStr.replace(',', '.'));
                 if (Float.isNaN(dist) || Float.isInfinite(dist)) dist = 0f;
             } catch (NumberFormatException e) {
+                if (Dipo.trace()) trace("turn c" + id + ": distance \"" + u.nextStr + "\" isn't a number, shown as 0");
                 dist = 0f;
             }
         }
         if (u.state == 6) cluster.destinationName(0, u.destination);
         LinkedHashMap<Integer, Maneuver> m = maneuvers.get(id);
-        if (m == null || list == null) return;
+        if (m == null || list == null) {
+            if (Dipo.trace()) trace("turn skip c" + id + ": " + (m == null ? "no maneuvers received" : "no maneuver list") + ", state " + u.state);
+            return;
+        }
         Maneuver x = m.get(list[0]);
-        if (x == null) return;
+        if (x == null) {
+            if (Dipo.trace()) trace("turn skip c" + id + ": maneuver " + list[0] + " not received yet, have " + m.keySet() + ", state " + u.state);
+            return;
+        }
         int unit;
         switch (u.nextUnits) {
             case 0: unit = Cluster.UNIT_KM; break;
@@ -305,12 +377,79 @@ final class CpTurns {
         }
         int icon = icon(x.type, x.side, x.junction, x.exit, u.state);
         cluster.crossroadName(x.afterRoad);
-        if (icon == 0) return;
+        if (icon == 0) {
+            if (Dipo.trace()) trace("turn skip c" + id + ": no icon for " + describe(x) + ", state " + u.state + ", the cluster keeps the last turn");
+            return;
+        }
+        if (Dipo.trace()) trace("turn c" + id + ": icon " + icon + " dist " + dist + " unit " + unit + " state " + u.state + " list " + java.util.Arrays.toString(list) + " " + describe(x));
         cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);
         sendHud(icon, id, u);
         sendHudDist(dist, unit);
         sendTrip(u);
         sendAhead(id, u);
+    }
+
+    /** one line in the drive trace (the log, tag HMG-API; the mod's trace service keeps it for USB) */
+    static void trace(String m) {
+        Dipo.log("T " + m);
+    }
+
+    static String describe(Maneuver x) {
+        return "maneuver " + x.index + " type " + x.type + " side " + x.side + " junction " + x.junction + " exit " + x.exit
+                + " dist " + x.distance + "/" + x.distUnits + " angles " + java.util.Arrays.toString(x.angles);
+    }
+
+    /**
+     * A message's items as "id:type=values", groups in braces. Numbers only: strings (road names,
+     * the destination) are only counted, so a trace holds no places.
+     */
+    static String dump(Iap2NotiMsg msg) {
+        try {
+            Iap2NotiMsg.Iap2ObjGroup g = msg == null ? null : msg.getItemGroup();
+            return g == null ? "-" : dump(g, 0);
+        } catch (Throwable t) {
+            return "dump failed " + t;
+        }
+    }
+
+    static String dump(Iap2NotiMsg.Iap2ObjGroup g, int depth) {
+        StringBuilder s = new StringBuilder();
+        for (int k = 0; k < g.getItemCnt(); k++) {
+            Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(k);
+            if (it == null) {
+                s.append("null ");
+                continue;
+            }
+            s.append(it.getItemId()).append(':').append(it.getItemParamType()).append('=');
+            Iap2NotiMsg.Iap2ObjGroup[] groups = null;
+            int[] ints = null;
+            long[] longs = null;
+            String[] strs = null;
+            byte[] bytes = null;
+            try { groups = it.getItemGroupArray(); } catch (Throwable t) { }
+            try { ints = it.getItemIntArray(); } catch (Throwable t) { }
+            try { longs = it.getItemLongArray(); } catch (Throwable t) { }
+            try { strs = it.getItemStringArray(); } catch (Throwable t) { }
+            try { bytes = it.getItemByteArray(); } catch (Throwable t) { }
+            if (groups != null && depth < 4) {
+                s.append('[');
+                for (int j = 0; j < groups.length; j++) s.append(groups[j] == null ? "null" : "{" + dump(groups[j], depth + 1) + "}");
+                s.append(']');
+            } else if (ints != null) {
+                s.append(java.util.Arrays.toString(ints));
+            } else if (longs != null) {
+                s.append(java.util.Arrays.toString(longs));
+            } else if (strs != null) {
+                s.append("str*").append(strs.length);
+                for (int j = 0; j < strs.length; j++) s.append(' ').append(strs[j] == null ? 0 : strs[j].length()).append("ch");
+            } else if (bytes != null) {
+                s.append("bytes*").append(bytes.length);
+            } else {
+                s.append('-');
+            }
+            s.append(' ');
+        }
+        return s.toString();
     }
 
     /**
@@ -319,6 +458,33 @@ final class CpTurns {
      * the turn-by-turn build maps them (0: nothing to show).
      */
     static int icon(int type, int side, int junction, int exit, int state) {
+        int i = exactIcon(type, side, junction, exit, state);
+        return i != 0 ? i : bandedTurn(type, junction, exit);
+    }
+
+    /**
+     * A plain intersection turn at an angle the exact table doesn't list (75 degrees, 30,
+     * left-hand traffic ...): the nearest of the three basic arrows, so the cluster isn't
+     * left without a turn. Slight up to 67 degrees, turn up to 112, sharp past that (the
+     * same bands as the lane arrows); a type that says sharp or slight keeps that. No
+     * angle (0) or a roundabout: nothing, as before.
+     */
+    static int bandedTurn(int type, int junction, int exit) {
+        if (junction != 0 || exit == 0) return 0;
+        boolean left;
+        switch (type) {
+            case 1: case 47: case 49: left = true; break;
+            case 2: case 48: case 50: left = false; break;
+            default: return 0;
+        }
+        int a = Math.abs(exit);
+        if (a > 180) a = 360 - a;
+        int sharpness = type == 47 || type == 48 ? 2 : type == 49 || type == 50 ? 0 : a <= 67 ? 0 : a <= 112 ? 1 : 2;
+        // slight 66/71, turn 67/70, sharp 68/69 (right/left)
+        return left ? 71 - sharpness : 66 + sharpness;
+    }
+
+    private static int exactIcon(int type, int side, int junction, int exit, int state) {
         switch (type) {
             case 1:   // left turn
                 if (junction == 0 && exit == -120) return 69;
@@ -401,6 +567,10 @@ final class CpTurns {
         }
         if (type == 3) return 65;
         if (type == 4) return side == 0 ? 72 : 73;
+        if (type == 47) return 69;   // sharp left
+        if (type == 48) return 68;   // sharp right
+        if (type == 49) return 71;   // slight left
+        if (type == 50) return 66;   // slight right
         return 64;
     }
 
@@ -444,12 +614,15 @@ final class CpTurns {
     void sendHudDist(float f, int unit) {
         if (f < 0f || unit < 0 || unit > 4) return;
         int whole = (int) f;
-        if (whole > 4095) whole = 4095;
         int tenths = 0;
         if (unit == Cluster.UNIT_KM || unit == Cluster.UNIT_MI) {
-            tenths = (int) ((f - whole) * 10f + 0.5f);
-            if (tenths < 0) tenths = 0;
-            if (tenths > 9) tenths = 9;
+            int t = (int) (f * 10f + 0.5f);   // to the nearest tenth: 0.96 is 1.0, not 0.9
+            whole = t / 10;
+            tenths = t % 10;
+        }
+        if (whole > 4095) {
+            whole = 4095;
+            tenths = 0;
         }
         cluster.tbtSubInfo2C(unit, tenths, whole, 0, 0, 0, 0, 0, 0);
     }
@@ -634,14 +807,17 @@ final class CpTurns {
             if (g == null) return;
             for (int k = 0; k < g.getItemCnt(); k++) {
                 Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(k);
+                if (it == null) continue;
                 int item = it.getItemId(), n = it.getItemObjCount();
                 switch (it.getItemParamType()) {
                     case 1:
                     case 5: {
                         int[] v = n > 0 ? it.getItemIntArray() : null;
+                        if (v != null && v.length == 0) v = null;
                         switch (item) {
                             case 13:
                                 if (v != null) {
+                                    n = Math.min(n, v.length);
                                     list = new int[n];
                                     for (int j = 0; j < n; j++) list[j] = v[j];
                                 } else {
@@ -672,7 +848,7 @@ final class CpTurns {
                     }
                     case 8: {
                         int[] v = it.getItemIntArray();
-                        if (v == null) break;
+                        if (v == null || v.length == 0) break;
                         switch (item) {
                             case 1: state = v[0]; break;
                             case 2: maneuverState = v[0]; break;
@@ -740,12 +916,15 @@ final class CpTurns {
             exit = 0;
             for (int k = 0; k < g.getItemCnt(); k++) {
                 Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(k);
+                if (it == null) continue;
                 int item = it.getItemId(), n = it.getItemObjCount();
                 switch (it.getItemParamType()) {
                     case 1: {
                         int[] v = n > 0 ? it.getItemIntArray() : null;
+                        if (v != null && v.length == 0) v = null;
                         if (item == 10) {
                             if (v != null) {
+                                n = Math.min(n, v.length);
                                 angles = new int[n];
                                 for (int j = 0; j < n; j++) angles[j] = v[j];
                             } else {
@@ -758,17 +937,17 @@ final class CpTurns {
                     }
                     case 5: {
                         int[] v = it.getItemIntArray();
-                        if (item == 12 && v != null) linkedLane = v[0];
+                        if (item == 12 && v != null && v.length > 0) linkedLane = v[0];
                         break;
                     }
                     case 6: {
                         int[] v = n > 0 ? it.getItemIntArray() : null;
-                        if (item == 5 && v != null) distance = v[0];
+                        if (item == 5 && v != null && v.length > 0) distance = v[0];
                         break;
                     }
                     case 8: {
                         int[] v = n > 0 ? it.getItemIntArray() : null;
-                        if (v == null) break;
+                        if (v == null || v.length == 0) break;
                         switch (item) {
                             case 3: type = v[0]; break;
                             case 7: distUnits = v[0]; break;
