@@ -61,7 +61,7 @@
     <string name="minimum_api">최소 API 버전</string>
     <string name="value_api">API 19</string>
     <string name="platform">플랫폼</string>
-    <string name="vehicle_brands">현대 / 기아 / 제네시스</string>
+    <string name="vehicle_brands">Hyundai / Kia / Genesis</string>
     <string name="cancel">취소</string>
     <string name="apply">적용</string>
     <string name="export_logs">로그 내보내기</string>

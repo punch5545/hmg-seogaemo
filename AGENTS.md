@@ -53,6 +53,10 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
   decided yet**; distribution must be AGPL-3.0-compatible. Everything else is our own code: do not
   copy upstream code elsewhere without an owner decision.
 - Commit messages: plain, no AI attribution / `Co-Authored-By` trailers.
+- **Never translate or transliterate proper nouns** in UI strings or docs, in any locale: keep
+  `HMG-Seogaemo`, `NEMESIS`, `CarPlay`, `Android Auto`, `Wi-Fi`, `ADB`, `USB`, `GitHub`, `HMG-API`,
+  `Hyundai`/`Kia`/`Genesis`, `Gen5W`, model/firmware ids as written (e.g. KO: "무선 CarPlay",
+  not "무선 카플레이"; "HMG-Seogaemo 버전", not "새개모 버전"). Translate only the surrounding words.
 
 ## Layout
 
