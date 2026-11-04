@@ -147,12 +147,36 @@ with tempfile.TemporaryDirectory(prefix='hmg-seogaemo-switch-') as folder:
         (base / 'modules' / (module + '.properties')).write_text('id=' + module + '\n')
         (base / 'modules' / (module + '.sh')).write_text('''case "$1" in
 status) echo state=off; echo restart=none;;
-revert) echo state=pending-restart; echo restart=head_unit; echo info.desired=off;;
+revert)
+ . "$HMG_SEOGAEMO_BASE/lib/common.sh"
+ sg_revert_all || exit $?
+ echo state=pending-restart; echo restart=head_unit; echo info.desired=off;;
 apply) if [ -f "$SG_DATA_ROOT/fail-wifi" ]; then
  echo state=conflict; echo restart=none; echo detail=fixture-conflict; exit 3
  fi
+ cmp "$HMG_SEOGAEMO_BASE/stock-file" "$HMG_SEOGAEMO_BASE/stock-original" || exit 1
+ [ "$(cat "$SG_DATA_ROOT/desired/wireless-carplay-and-aa")" = off ] || exit 1
  echo state=on; echo restart=none;;
 esac
+''')
+    # Exercise a real disk baseline and exact revert through the plan, rather
+    # than accepting only a synthetic pending-restart receipt. Wi-Fi checks
+    # both restored bytes and persisted OFF intent before it can apply.
+    target = base / 'stock-file'
+    target.write_text('stock bytes\n')
+    (base / 'stock-original').write_bytes(target.read_bytes())
+    (base / 'module-bytes').write_text('module bytes\n')
+    (base / 'modules/wireless-carplay-and-aa.properties').write_text(
+        'id=wireless-carplay-and-aa\nowns_files=' + str(target) + '\n')
+    fake = base / 'fake'
+    fake.mkdir()
+    getprop = fake / 'getprop'
+    getprop.write_text('#!/bin/sh\necho NEEV.KOR.0000.V039.001.260902\n')
+    getprop.chmod(0o755)
+    prepare = base / 'prepare.sh'
+    prepare.write_text('''set -eu
+. "$HMG_SEOGAEMO_BASE/lib/common.sh"
+sg_commit_file "$HMG_SEOGAEMO_BASE/stock-file" "$HMG_SEOGAEMO_BASE/module-bytes" '' ''
 ''')
     (base / 'state/desired/wireless-carplay-and-aa').write_text('on')
     (base / 'state/desired/wifi-client').write_text('off')
@@ -165,4 +189,9 @@ esac
     subprocess.run(['javac', '-source', '7', '-target', '7', '-d', str(classes), *sources], check=True)
     env = car_env(dict(os.environ, SG_DATA_ROOT=str(base / 'state'),
                        TEST_SHELL=SHELL, TEST_DISPATCHER=str(base / 'bin/hmg-seogaemo-root')))
+    env['PATH'] = str(fake) + ':' + env['PATH']
+    subprocess.run([SHELL, str(prepare)], env=dict(env, HMG_SEOGAEMO_BASE=str(base),
+        HMG_SEOGAEMO_STATE=str(base / 'state/modules/wireless-carplay-and-aa')), check=True)
+    assert target.read_bytes() == (base / 'module-bytes').read_bytes()
     subprocess.run(['java', '-cp', str(classes), 'SwitchTest'], env=env, check=True)
+    assert target.read_bytes() == (base / 'stock-original').read_bytes()
