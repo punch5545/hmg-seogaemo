@@ -22,10 +22,26 @@ public final class AppGuardsTest {
 
     private static void resumeExpiry() {
         long hour = 60L * 60L * 1000L;
-        check(!ModuleResume.expired(1000L, 1000L + 23 * hour), "fresh resume kept");
-        check(ModuleResume.expired(1000L, 1000L + 25 * hour), "stale resume expires");
-        check(!ModuleResume.expired(1000L + 25 * hour, 1000L), "clock moved back is not expiry");
-        check(!ModuleResume.expired(0L, 100 * hour), "unset stamp is not expiry");
+        long wall = 1800000000000L; // a valid synced clock
+        check(!ModuleResume.expired(wall, wall + 23 * hour), "fresh resume kept");
+        check(ModuleResume.expired(wall, wall + 25 * hour), "stale resume expires");
+        check(!ModuleResume.expired(wall + 25 * hour, wall), "clock moved back is not expiry");
+        check(!ModuleResume.expired(0L, wall + 100 * hour), "unset stamp is not expiry");
+        check(!ModuleResume.expired(1000L, wall), "stamp from an unsynced clock is not expiry");
+
+        // Same boot: elapsed realtime decides, whatever the wall clock did.
+        check(!ModuleResume.expired("b1", 5 * hour, wall, "b1", 5 * hour + 23 * hour, wall + 900 * hour),
+                "same boot, wall jump forward is not expiry");
+        check(ModuleResume.expired("b1", 5 * hour, wall, "b1", 5 * hour + 25 * hour, wall - 900 * hour),
+                "same boot, wall jump back still expires on elapsed");
+        // Different boot: wall clock only, and never on a jump back.
+        check(!ModuleResume.expired("b1", 5 * hour, wall, "b2", 2 * hour, wall + 23 * hour), "reboot, fresh");
+        check(ModuleResume.expired("b1", 5 * hour, wall, "b2", 2 * hour, wall + 25 * hour), "reboot, wall shows 25 h");
+        check(!ModuleResume.expired("b1", 5 * hour, wall, "b2", 2 * hour, wall - 25 * hour), "reboot, clock moved back");
+        // Unknown boot ids / missing elapsed stamp use the wall fallback.
+        check(!ModuleResume.expired("", 0L, wall, "", 30 * hour, wall + 1 * hour), "no boot id, fresh");
+        check(ModuleResume.expired(null, 0L, wall, "b2", 1L, wall + 30 * hour), "no saved boot, wall 30 h");
+        check(!ModuleResume.expired("b1", 0L, 0L, "b1", 100 * hour, wall), "no stamps at all is not expiry");
     }
 
     private static RootResult result(String state, String restart, int exit, String... infoPairs) {

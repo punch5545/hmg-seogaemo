@@ -9,12 +9,30 @@ public final class ModuleResume {
 
     private ModuleResume() { }
 
+    /** Wall-clock stamps before this are an unsynced clock (the unit has no time before it syncs). */
+    private static final long PLAUSIBLE_WALL_MS = 1735689600000L; // 2025-01-01
+
     /**
-     * True once the resume state is older than the TTL. A clock that moved backwards (the unit
-     * has no time before it syncs) cannot show the age, so that is not treated as expired.
+     * True once the resume state is older than the TTL by wall clock. A clock that moved
+     * backwards or a stamp taken before the clock was valid cannot show the age, so those
+     * are never treated as expired.
      */
     public static boolean expired(long savedAtMs, long nowMs) {
-        return savedAtMs > 0 && nowMs > savedAtMs && nowMs - savedAtMs > RESUME_TTL_MS;
+        return savedAtMs >= PLAUSIBLE_WALL_MS && nowMs > savedAtMs && nowMs - savedAtMs > RESUME_TTL_MS;
+    }
+
+    /**
+     * Expiry that does not trust the wall clock. Within the boot that saved the stamp the
+     * monotonic elapsed-realtime clock (which keeps counting in sleep) is authoritative.
+     * After a restart it is meaningless, so fall back to {@link #expired(long, long)}, which
+     * only expires when it can positively show the TTL has passed.
+     */
+    public static boolean expired(String savedBootId, long savedElapsedMs, long savedWallMs,
+            String currentBootId, long nowElapsedMs, long nowWallMs) {
+        boolean sameBoot = savedBootId != null && savedBootId.length() > 0 && savedBootId.equals(currentBootId);
+        if (sameBoot && savedElapsedMs > 0 && nowElapsedMs >= savedElapsedMs)
+            return nowElapsedMs - savedElapsedMs > RESUME_TTL_MS;
+        return expired(savedWallMs, nowWallMs);
     }
 
     public static boolean ready(RootResult status, boolean usableNetwork) {

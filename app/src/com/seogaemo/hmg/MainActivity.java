@@ -19,6 +19,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.TypedValue;
 import android.util.Log;
 import android.view.Gravity;
@@ -197,16 +198,25 @@ public final class MainActivity extends Activity {
         }}, "hmg-seogaemo-update-resume").start();
     }
 
+    /** Stamp the resume with the monotonic clock and boot id; wall time is only a post-restart fallback. */
+    private static SharedPreferences.Editor stampResume(SharedPreferences.Editor editor) {
+        return editor.putLong("resume_at", System.currentTimeMillis())
+                .putLong("resume_elapsed", SystemClock.elapsedRealtime())
+                .putString("resume_boot", ModuleResume.bootId());
+    }
+
     /** A saved update-resume older than a day is dropped; the module restore is offered instead. */
     private boolean resumeExpired() {
         SharedPreferences prefs = getSharedPreferences("update", MODE_PRIVATE);
-        long now = System.currentTimeMillis();
         if (!prefs.contains("resume_at")) { // Saved by an older build: start the clock now.
-            prefs.edit().putLong("resume_at", now).commit();
+            stampResume(prefs.edit()).commit();
             return false;
         }
-        if (!ModuleResume.expired(prefs.getLong("resume_at", 0L), now)) return false;
-        prefs.edit().putBoolean("resume", false).remove("boot").remove("resume_at").commit();
+        if (!ModuleResume.expired(prefs.getString("resume_boot", ""), prefs.getLong("resume_elapsed", 0L),
+                prefs.getLong("resume_at", 0L), ModuleResume.bootId(), SystemClock.elapsedRealtime(),
+                System.currentTimeMillis())) return false;
+        prefs.edit().putBoolean("resume", false).remove("boot").remove("resume_at")
+                .remove("resume_elapsed").remove("resume_boot").commit();
         updateMessage(getString(R.string.update_resume_expired));
         if (prefs.contains("restore")) offerModuleRestore();
         return true;
@@ -803,14 +813,13 @@ public final class MainActivity extends Activity {
                                 boolean saved = true;
                                 if (forUpdate && !getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
                                     String prior = enabledModules();
-                                    saved = getSharedPreferences("update", MODE_PRIVATE).edit()
+                                    saved = stampResume(getSharedPreferences("update", MODE_PRIVATE).edit()
                                             .putString("restore", prior).putString("boot", ModuleResume.bootId())
-                                            .putLong("resume_at", System.currentTimeMillis())
-                                            .putBoolean("resume", true).commit();
+                                            .putBoolean("resume", true)).commit();
                                 } else if (forUpdate) {
-                                    saved = getSharedPreferences("update", MODE_PRIVATE).edit()
-                                            .putString("boot", ModuleResume.bootId()).putLong("resume_at", System.currentTimeMillis())
-                                            .putBoolean("resume", true).commit();
+                                    saved = stampResume(getSharedPreferences("update", MODE_PRIVATE).edit()
+                                            .putString("boot", ModuleResume.bootId())
+                                            .putBoolean("resume", true)).commit();
                                 }
                                 final RootResult outcome = !saved
                                         ? new RootResult("failed", "none", getString(R.string.module_resume_failed), 1, null)
