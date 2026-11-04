@@ -1,5 +1,5 @@
 {
-  "_origin": "Follows HMG-API core/hookpoints/iap2.json@4fab437",
+  "_origin": "Follows HMG-API core/hookpoints/iap2.json@4fab437; 2026-11-04 additions only: 13a2b17/c4f24e9/02609bc",
   "files": [
     "/system/app/Iap2ServerApp.odex"
   ],
@@ -33,6 +33,24 @@
       "owner": "iap2.init_info",
       "type": "field"
     },
+    "iap2.init_info.use_vehicle_information": {
+      "match": {
+        "class_member": true,
+        "name": "iAP2UsedVehicelInformation",
+        "type": "int"
+      },
+      "owner": "iap2.init_info",
+      "type": "field"
+    },
+    "iap2.init_info.use_vehicle_status": {
+      "match": {
+        "class_member": true,
+        "name": "iAP2UsedVehicleStatus",
+        "type": "int"
+      },
+      "owner": "iap2.init_info",
+      "type": "field"
+    },
     "iap2.service": {
       "about": "the iAP2 server (CarPlay's control link)",
       "match": {
@@ -61,9 +79,49 @@
       "owner": "iap2.service",
       "type": "method"
     },
+    "iap2.service.native_handle": {
+      "match": {
+        "class_member": true,
+        "name": "mHandleIap2",
+        "type": "long"
+      },
+      "owner": "iap2.service",
+      "type": "field"
+    },
+    "iap2.service.native_lock": {
+      "match": {
+        "class_member": true,
+        "name": "mLock",
+        "type": "java.lang.Object"
+      },
+      "owner": "iap2.service",
+      "type": "field"
+    },
+    "iap2.service.on_bind": {
+      "match": {
+        "class_member": false,
+        "name": "onBind",
+        "parameters": [
+          "android.content.Intent"
+        ],
+        "returns": "android.os.IBinder"
+      },
+      "owner": "iap2.service",
+      "type": "method"
+    },
     "iap2.service.on_create": {
       "match": {
         "name": "onCreate",
+        "parameters": [],
+        "returns": "void"
+      },
+      "owner": "iap2.service",
+      "type": "method"
+    },
+    "iap2.service.on_destroy": {
+      "match": {
+        "class_member": false,
+        "name": "onDestroy",
         "parameters": [],
         "returns": "void"
       },

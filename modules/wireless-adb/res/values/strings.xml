@@ -10,4 +10,6 @@
     <string name="wireless_adb_security_note">Stock ADB does not require a key. Anyone who can reach port 5555 can connect.</string>
     <string name="wireless_adb_restore_note">Disabling restores the original ADB switch. If it was on, the car hotspot may stop giving IP addresses.</string>
     <string name="wireless_adb_connect_other_wifi">Connect to another Wi-Fi</string>
+    <string name="wireless_adb_effective_port">Effective ADB port</string>
+    <string name="wireless_adb_daemon_state">adbd state</string>
 </resources>

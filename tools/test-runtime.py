@@ -458,12 +458,52 @@ sg_revert_all
     export_root = base / "hmg-seogaemo-export"
     (base / "lib").mkdir(exist_ok=True)
     copy_shell_script(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
+    copy_shell_script(ROOT / "nemesis/package/lib/diagnostics.sh", base / "lib/diagnostics.sh")
     export_root.mkdir(mode=0o700)
     env["SG_EXPORT_ROOT"] = str(export_root)
+    (base / "modules.list").write_text("test\n")
+    (base / "modules/test.sh").write_text("echo state=on\necho restart=none\n")
+    with (base / "modules/test.properties").open("a") as metadata:
+        metadata.write("owns_props=demo,wifi.ssid,wifi.psk\n")
+    (live / "wifi.ssid").write_text("private-network")
+    (live / "wifi.psk").write_text("private-password")
+    data = base / "data"
+    for relative, content in {
+        "reconcile.log": "r" * 70000 + "\nreconcile finished\nssid=private-network\n",
+        "watcher.log": "watcher finished\n",
+        "modules/test/module.log": "module finished\n",
+        "stock/result": "state=failed\n",
+        "stock/module-output": "detail=restore conflict\n",
+        "uninstall/result": "queued\n",
+        "uninstall/log": "uninstall finished\n",
+        "update/journal": "phase=healthy\n",
+        "runtime/carplay/result": "native patch failed\n",
+        "runtime/carplay/runtime.log": "psk=private-password\nsafe runtime log\n",
+        "runtime/carplay/wpa_supplicant.conf": "private-config\n",
+        "runtime/carplay/softap.conf": "private-config\n",
+    }.items():
+        target = data / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    (data / "runtime/carplay/linked.log").symlink_to(data / "runtime/carplay/wpa_supplicant.conf")
     result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
     assert "state=on" in result.stdout
     exported = next(export_root.glob("*/ledger/ledger.tsv"))
     assert exported.read_bytes() == ledger.read_bytes()
+    diagnostics = exported.parents[1] / "diagnostics"
+    assert "truncated" in (diagnostics / "manifest.txt").read_text()
+    for relative in ("logs/reconcile.log", "logs/watcher.log", "modules/test/module.log",
+                     "stock/result", "stock/module-output", "uninstall/result", "uninstall/log",
+                     "update/journal", "runtime/carplay/result", "runtime/carplay/runtime.log",
+                     "map-status.txt", "module-test-status.txt", "properties.txt", "owned-paths.txt"):
+        assert (diagnostics / relative).is_file(), relative
+    for entry in diagnostics.rglob("*"):
+        if entry.is_file():
+            assert entry.stat().st_size <= 65537, entry
+            assert b"private-" not in entry.read_bytes(), entry
+    assert not (diagnostics / "runtime/carplay/linked.log").exists()
+    assert not list(diagnostics.rglob("*.conf"))
+
     assert export_root.stat().st_mode & 0o777 == 0o755
     # Every exported ancestor is traversable and every file readable by shell.
     for entry in export_root.rglob("*"):

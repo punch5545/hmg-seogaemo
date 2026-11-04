@@ -19,7 +19,9 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) | Current | Implemented AGPL projection port, owned changes, recovery, and on-car checklist. |
 | [user-button-shortcut.md](user-button-shortcut.md) | Current | Independent steering/head-unit shortcuts, owner-approved reassertion on boot/wake/property drift, original restore and KOR evidence. |
 | [skip-consent-screen.md](skip-consent-screen.md) | Current | Factory82 provenance, owner-tested NEEV KOR behavior, implemented watcher and reboot restore, on-car checklist. |
+| [neev-kor-api-inventory.md](neev-kor-api-inventory.md) | Current | Offline NEEV KOR vehicle/vendor API inventory, exact signatures, risk classes, candidate hooks and deferred on-car checks. |
 | [research-car-mapping.md](research-car-mapping.md) | Implemented plus historical research | KOR evidence, core mapper design, and remaining on-car validation. |
+| [catalogue-v101.md](catalogue-v101.md) | Current | KOR evidence for 18 v1.0.1 additions, honest coverage, and verification-cache migration. |
 | [carplay-tbt-learnings.md](carplay-tbt-learnings.md) | Current | CarPlay turn-by-turn fixes ported from HMG-API, open problems, Wi-Fi client/AP findings. |
 | [research-nemesis-packaging.md](research-nemesis-packaging.md) | Partly superseded | NEMESIS source research and current package layout; older proposal marked historical. |
 | [research-ota-update.md](research-ota-update.md) | Partly superseded | Upstream OTA research and historical design choices, with current release notes. |
@@ -28,6 +30,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [research-adb-wireless-module.md](research-adb-wireless-module.md) | Partly superseded | Upstream ADB research; design inferences predate `wireless-adb.md`. |
 | [car-session-followups.md](car-session-followups.md) | Current | Real-car USB reinstall and status/export corrections. |
 | [README.md](README.md) | Current | This index and reading order. |
+| [ci-upstream-tracking.md](ci-upstream-tracking.md) | Current | CI timing, bounded shell-suite parallelism, workflow pins and upstream review evidence. |
 
 The target is Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (package glob `NEEV.KOR.*.260902`), onebin `neev_kr`, Android 4.4.2. Installation is NEMESIS plus HMG-Seogaemo only. Off-car tests do not establish physical-car behavior.
 

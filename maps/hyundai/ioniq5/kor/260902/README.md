@@ -1,3 +1,18 @@
 # Hyundai Ioniq 5 KOR 260902
 
-Names and stock file MD5s from an owner supplied pre-install Car Report. The owner subsequently verified HMG-API wireless CarPlay on this car. HMG-Seogaemo reflection verification and module behavior still require on-car testing.
+The bundle maps 342 of 343 catalogue points. The original 324 names and all
+18 stock MD5s came from the owner-supplied KOR pre-install report; those 324
+points passed on-car reflection on 2026-11-03. The 18 catalogue additions were
+resolved on 2026-11-04 from the KOR stock dump using our DEX scanner, with all
+18 existing MD5s matching. They still require on-car reflection. The six iAP2
+points are in Iap2ServerApp.odex; the twelve framework points are in
+automotive.odex. No stock files or hashes were added or changed.
+
+`themesettings.split_item.type` remains unresolved; no module requires it.
+No new point was added to a module requirement.
+
+[evidence.json](evidence.json) separates mapped names, exact-stock reflection
+and physical feature observations without extending the runtime car schema.
+The owner reports wireless CarPlay works without audio at HMG-Seogaemo 0.1.21;
+the audio fix is pending physical verification. Reflection is not a feature test.
+See the generated [catalogue coverage](../../../../../docs/hookpoints.md).

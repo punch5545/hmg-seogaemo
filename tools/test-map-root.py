@@ -14,8 +14,10 @@ with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-root-") as tmp:
     for folder in (base/"bin",base/"core",base/"lib",fake,state):folder.mkdir(parents=True,exist_ok=True)
     for source,dest in (("nemesis/package/bin/hmg-seogaemo-root","bin/hmg-seogaemo-root"),
                         ("nemesis/package/core/hmg-seogaemo-map.sh","core/hmg-seogaemo-map.sh"),
-                        ("nemesis/package/lib/common.sh","lib/common.sh")):
+                        ("nemesis/package/lib/common.sh","lib/common.sh"),
+                        ("nemesis/package/lib/diagnostics.sh","lib/diagnostics.sh")):
         copy_shell_script(ROOT/source,base/dest)
+    (base/"modules.list").write_text("")
     (fake/"getprop").write_text("#!/bin/sh\ncase \"$1\" in ro.build.product) echo NEEV.KOR.0000.V039.001.260902;; esac\n")
     (fake/"app_process").write_text('''#!/bin/sh
 . "$HMG_SEOGAEMO_BASE/lib/common.sh"

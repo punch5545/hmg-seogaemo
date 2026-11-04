@@ -53,6 +53,7 @@ final class NativePatch {
     /** library path -> recipes applied to it in this process */
     static final Map<String, List<Owned>> owned = new HashMap<String, List<Owned>>();
     static boolean hooked;
+    static int lastErrno;
 
     static final MemRecipe.Memory MEMORY = new MemRecipe.Memory() {
         @Override
@@ -62,35 +63,45 @@ final class NativePatch {
 
         @Override
         public boolean poke(long addr, byte[] data) {
-            return Bridge.pokeNative(addr, data) == 0;
+            int result = Bridge.pokeNative(addr, data);
+            if (result != 0) lastErrno = -result;
+            return result == 0;
         }
 
         @Override
         public long mapCode(long hint, int len) {
-            return Bridge.mapCodeNative(hint, len);
+            long result = Bridge.mapCodeNative(hint, len);
+            if (result < 0) { lastErrno = (int) -result; return 0; }
+            return result;
         }
     };
 
     static synchronized void request(ModContext mod, String lib, List<MemRecipe> recipes) {
+        for (Want existing : wants) if (existing.lib.equals(lib)) return;
+        if (!Points.needAll("native patches", "framework.runtime", "framework.runtime.load_library", "framework.runtime.load")) {
+            RuntimeResult.phase("native." + lib, "failed", "missing runtime load points");
+            return;
+        }
         hookLoads();
         Want w = new Want(mod, lib, recipes);
         wants.add(w);
+        RuntimeResult.put("native." + lib + ".errno", "0");
+        RuntimeResult.phase("native." + lib, "registered", "waiting for library");
         tryAll();
     }
 
     /** after every library load in this process, the patches still waiting are tried */
     private static void hookLoads() {
         if (hooked) return;
-        hooked = true;
         MethodHook after = new MethodHook() {
             @Override
             protected void afterHookedMethod(Param p) {
                 if (p.getThrowable() == null) tryAll();
             }
         };
-        if (!Points.needAll("native patches", "framework.runtime.load_library", "framework.runtime.load")) return;
         Points.hook(null, "framework.runtime.load_library", after);
         Points.hook(null, "framework.runtime.load", after);
+        hooked = true;
     }
 
     static synchronized void tryAll() {
@@ -108,11 +119,13 @@ final class NativePatch {
             }
             if (m == null) continue;
             w.done = true;
-            apply(w, path, m[0], m[1]);
+            try { apply(w, path, m[0], m[1]); }
+            catch (Throwable t) { result(w, "failed", "native apply exception: " + t); }
         }
     }
 
     private static void apply(Want w, String path, long base, long textEnd) {
+        lastErrno = 0;
         String md5 = ModContext.md5(path);
         List<Owned> here = owned.get(path);
         if (here == null) owned.put(path, here = new ArrayList<Owned>());
@@ -127,10 +140,12 @@ final class NativePatch {
             try {
                 res = r.apply(MEMORY, base, textEnd, md5);
             } catch (Throwable t) {
+                result(w, "failed", "recipe " + r.id + ": " + t);
                 w.mod.error("native patch " + r.id + " on " + w.lib, t);
                 return;
             }
             if (res.ok()) {
+                result(w, "applied", r.id + ": " + res.message);
                 here.add(new Owned(w.mod.id, r.id, r.regions()));
                 w.mod.log("native patch " + w.lib + ": " + res.message);
                 return;
@@ -138,7 +153,18 @@ final class NativePatch {
             tried.append("; ").append(res.message);
             if (res.status == MemRecipe.Result.FAILED) break;   // something was written: no other recipe on top
         }
+        result(w, "failed", "not applied" + tried);
         w.mod.error("native patch " + w.lib + " not applied" + tried, null);
+    }
+
+    static String errno(int n) {
+        String name = n == 13 ? "EACCES" : n == 1 ? "EPERM" : n == 12 ? "ENOMEM" : n == 22 ? "EINVAL" : "UNKNOWN";
+        return n == 0 ? "0" : n + ":" + name;
+    }
+
+    private static void result(Want w, String state, String reason) {
+        RuntimeResult.put("native." + w.lib + ".errno", errno(lastErrno));
+        RuntimeResult.phase("native." + w.lib, state, reason + (lastErrno == 0 ? "" : " errno=" + errno(lastErrno)));
     }
 
     static Owned overlap(List<Owned> here, List<long[]> regions) {

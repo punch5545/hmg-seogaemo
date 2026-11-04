@@ -14,8 +14,8 @@ import java.util.Iterator;
 
 final class HmgApi {
     private HmgApi() {}
-    static void i(String msg) { Log.i("HMG-Seogaemo-Wireless", msg); }
-    static void e(String msg, Throwable t) { Log.e("HMG-Seogaemo-Wireless", msg, t); }
+    static void i(String msg) { RuntimeResult.log("I", msg, null); Log.i("HMG-Seogaemo-Wireless", msg); }
+    static void e(String msg, Throwable t) { RuntimeResult.put("event.last_error", msg + " " + t); RuntimeResult.log("E", msg, t); Log.e("HMG-Seogaemo-Wireless", msg, t); }
     static final Wireless ENTRY = new Wireless();
     static final ModContext MOD = new ModContext();
 
@@ -36,23 +36,30 @@ final class HmgApi {
         return (String) provider.getMethod("get", String.class).invoke(null, key);
     }
 
+    private static void gateOff(String reason) {
+        RuntimeResult.phase("gate", "off", reason);
+        i("hooks off: " + reason);
+    }
+
     static void zygoteInit() {
+        RuntimeResult.begin(new File("/data/nemesis/backup/hmg-seogaemo/runtime/wireless-carplay-and-aa"), "zygote", "zygote");
+        RuntimeResult.phase("gate", "initializing", "checking identity, seal and stock hashes");
         try {
             Class<?> prop = Class.forName("android.os.SystemProperties");
             String product = property(prop, "ro.build.product");
             File enabled = new File("/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/enabled");
-            if (!enabled.isFile()) { i("hooks off: module disabled"); return; }
+            if (!enabled.isFile()) { gateOff("module disabled"); return; }
             File root = new File("/data/nemesis/backup/hmg-seogaemo/car-maps");
             String relative = read(new File(root, "active")).trim();
             if (!relative.matches("[A-Za-z0-9._-]+/[0-9a-f]{32}/[0-9a-f]{32}")) {
-                i("hooks off: active map pointer invalid"); return;
+                gateOff("active map pointer invalid"); return;
             }
             File selected = new File(root, relative);
             JSONObject car = new JSONObject(read(new File(selected, "car.json")));
             if (!product.equals(car.getString("product")) ||
                     !property(prop, "ro.mobis.onebindir").equals(car.getString("onebin")) ||
                     !property(prop, "ro.build.version.release").equals(car.getString("android"))) {
-                i("hooks off: car identity changed"); return;
+                gateOff("car identity changed"); return;
             }
             // The seal holds the product and stock hash the map was verified on, then the boot it
             // was verified in. The zygote starts seconds after boot, long before this boot's
@@ -60,7 +67,7 @@ final class HmgApi {
             // is still compared with the MD5s recorded in car.json below.
             String seal = product + "\n" + read(new File(selected, "hash-id")).trim() + "\n";
             if (!read(new File(selected, "verified")).startsWith(seal)) {
-                i("hooks off: map not verified for this stock build"); return;
+                gateOff("map not verified for this stock build"); return;
             }
             JSONObject files = car.getJSONObject("files");
             Iterator<String> paths = files.keys();
@@ -68,12 +75,12 @@ final class HmgApi {
                 String file = paths.next();
                 if (!file.matches("/system/(?:app|framework)/[A-Za-z0-9_.-]+") ||
                         !files.getString(file).equals(ModContext.md5(file))) {
-                    i("hooks off: stock hash mismatch " + file); return;
+                    gateOff("stock hash mismatch " + file); return;
                 }
             }
             JSONObject map = new JSONObject(read(new File(selected, "map.json")));
             Points.use(map);
-            if (!Points.needAll("boot", "framework.activity_thread.handle_bind_application", "framework.app_bind_data.app_info", "framework.app_bind_data.process_name", "framework.activity_thread.initial_application")) return;
+            if (!Points.need("boot", "boot")) { gateOff("missing boot points"); return; }
             Points.hook(null, "framework.activity_thread.handle_bind_application", new MethodHook() {
                 @Override protected void afterHookedMethod(Param p) {
                     try {
@@ -85,7 +92,8 @@ final class HmgApi {
                     } catch (Throwable t) { e("app hook", t); }
                 }
             });
+            RuntimeResult.phase("gate", "ready", "app binding hook installed");
             i("wireless hook ready");
-        } catch (Throwable t) { e("zygote hook setup", t); }
+        } catch (Throwable t) { gateOff("zygote hook setup: " + t); e("zygote hook setup", t); }
     }
 }

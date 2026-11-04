@@ -27,6 +27,50 @@ HMG-Seogaemo's core mapper and hookpoint catalogue are independently implemented
 
 Run `sh tools/upstream-diff.sh [path/to/HMG-API]` after updating a local clone. Review the reported commits and changed paths, then translate relevant behavior into our schema and implementation. Keep point IDs stable. Re-run `make test`, `tools/verify-map`, and on-car mapping before accepting changed shape rules. Upstream changes are never copied automatically.
 
+## Component review baselines
+
+Each section of the host review helper has its own explicit baseline below.
+A review records evidence; it does not advance the baseline or import code.
+Change the corresponding literal in the script and this table together only
+when the translated component has been accepted.
+
+| Review component | Baseline | Tracked HMG-API paths |
+| --- | --- | --- |
+| Mapper and catalogue | `4fab437` | Mapper engine files listed above, `core/hookpoints/**`, mapper/verification tools |
+| Ported wireless payload | `4fab437` | `mods/wireless-carplay-aa/**` (including native converter and recipes), `core/loader/**`, `core/zygote/**`, `core/runtime/java/hmgapi/hook/**`, `MemRecipe.java`, `tools/mkrecipe.py`, `tools/mkmemrecipe.py` |
+| Install, uninstall and restore | `4fab437` | `install/**`, `core/app/install.sh`, installer/NEMESIS package tools |
+| hmgapid and runtime engine | `4fab437` | `core/hmgapid/**`, engine/vehicle Java, runtime tests |
+| CI and workflows | `4fab437` | `.github/workflows/**`, Dependabot, Makefile, aggregate test/script checks |
+
+HMG-API v1.0.1 (`dd10045`) was reviewed on **2026-11-04**. There are no
+wireless payload changes in `4fab437..dd10045`: the wireless mod (including
+recipes/converter), loader, zygote, copied hook classes, and `MemRecipe.java`
+are unchanged. The broader hook-runtime directory contains changes to
+`HmgApi.java`, `Mods.java`, and a new `ModDexCache.java`; these generic
+loader changes need separate assessment because our port replaces the generic loader.
+The 18 catalogue additions are translated below; every other mapper/catalogue
+rule keeps the `4fab437` baseline.
+The review also exposes install/restore, hmgapid/runtime-engine, and workflow
+changes for separate assessment; those upstream components are not installed
+alongside HMG-Seogaemo and are never imported automatically.
+
+Catalogue-only addition baseline (2026-11-04): translated the following 18 IDs
+from HMG-API `dd10045` (v1.0.1), iAP2 definitions introduced by
+`13a2b17`/`c4f24e9`/`02609bc` and framework definitions by `d120037`. All other
+catalogue rules and runtime/module provenance retain the `4fab437` baseline.
+No upstream mapper/tool source was copied. KOR names were resolved independently
+from exact-stock odex; see [coverage](docs/hookpoints.md) and the bundled evidence.
+
+- `iap2.service.on_destroy`, `iap2.service.on_bind`,
+  `iap2.service.native_handle`, `iap2.service.native_lock`,
+  `iap2.init_info.use_vehicle_information`, `iap2.init_info.use_vehicle_status`
+- `framework.bcm_service.batt_cond_indicator`, `framework.hev_flag.batt_cond_failure`,
+  `framework.car_services.cluster`, `framework.cluster_service`,
+  `framework.cluster_service_stub`, `framework.cluster_service_stub.as_interface`,
+  `framework.cluster_listener`, `framework.cluster_listener_stub`,
+  `framework.cluster_listener_stub.as_interface`, `framework.cluster_listener_stub.battery_info`,
+  `framework.cluster_service.add_listener`, `framework.cluster_service.battery_info`
+
 ## Startup consent screen reference
 
 The community [HKMC Factory 82 package](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (`local.hkmc.factory82`, release `4.2.1`, MIT) is the behavioral reference for `skip-consent-screen`. Its `packages/hkmc-factory82/svc/watch.sh` calls `com.hkmc.factory` Binder transaction `82` after startup or display wake. HMG-Seogaemo independently implements a fixed-call API and shared `watcher` service; it has not copied the package scripts. See [.agents/skip-consent-screen.md](.agents/skip-consent-screen.md).

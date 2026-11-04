@@ -29,6 +29,12 @@ with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-test-") as tmp:
       "example.target.missing":{"type":"method","owner":"example.target","match":{"name":"absent"}},
       "example.target.ambiguous":{"type":"method","owner":"example.target","match":{"parameters":[],"returns":"void"}},
       "example.target.reference":{"type":"method","owner":"example.target","match":{"parameters":[],"returns":"void","smali_pattern":"synthetic"}},
+      "example.target.handle":{"type":"field","owner":"example.target","match":{"name":"handle","type":"long","class_member":True}},
+      "example.target.lock":{"type":"field","owner":"example.target","match":{"name":"lock","type":"java.lang.Object","class_member":True}},
+      "example.target.as_interface":{"type":"method","owner":"example.target","match":{"name":"asInterface","parameters":["java.lang.Object"],"returns":"@example.target","class_member":True}},
+      "example.target.add_listener":{"type":"method","owner":"example.target","match":{"name":"addListener","parameters":["@example.target"],"returns":"void","class_member":False}},
+      "example.target.wrong_static":{"type":"field","owner":"example.target","match":{"name":"handle","type":"long","class_member":False}},
+      "example.target.wrong_signature":{"type":"method","owner":"example.target","match":{"name":"asInterface","parameters":["@example.target"],"returns":"@example.target","class_member":True}},
     }
     (catalogue/"example.json").write_text(json.dumps({"schema":1,"group":"example","namespace":"com.example",
       "files":["/system/app/Example.odex"],"points":points}))

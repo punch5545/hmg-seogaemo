@@ -30,6 +30,21 @@ wa_effective_port() {
     sg_write "$value"
 }
 
+# /proc tables identify the local port and TCP LISTEN state, without text tools.
+# Unknown (unreadable tables) is distinct from a verified absent listener.
+wa_listener() {
+    readable=0
+    for table in /proc/net/tcp /proc/net/tcp6; do
+        [ -r "$table" ] || continue
+        readable=1
+        while read -r slot local remote tcp_state rest; do
+            case "$local:$tcp_state" in *:15B3:0A|*:15b3:0A) return 0;; esac
+        done < "$table"
+    done
+    [ "$readable" -eq 1 ] || return 2
+    return 1
+}
+
 wa_ipv4() {
     case "$1" in ''|*[!0-9.]*|.*|*.|*..*) return 1 ;; esac
     old_ifs=$IFS
@@ -91,6 +106,10 @@ wa_old_eth_address() {
 }
 
 wa_facts() {
+    sg_print "info.effective_port=$(wa_effective_port)" "info.adbd_state=$(getprop init.svc.adbd)"
+    if wa_listener; then listener=listening
+    else listener_code=$?; listener=unknown; [ "$listener_code" -ne 1 ] || listener=absent; fi
+    sg_print "info.adb_listener=$listener"
     # KitKat softap.conf is binary; omitting this key renders the UI fallback.
     wlan_ip=$(wa_iface_ip wlan0) || wlan_ip=
     if [ -n "$wlan_ip" ]; then
@@ -126,10 +145,22 @@ wa_status() {
         if ! wa_observed; then
             wa_report conflict none 'ADB properties changed outside HMG-Seogaemo'; return $?
         fi
-        if wa_old_eth_address; then
+        if [ "$(wa_effective_port)" != 5555 ]; then
+            wa_report conflict none 'ADB configured; service.adb.tcp.port overrides port 5555'
+        elif [ "$(getprop init.svc.adbd)" != running ]; then
+            wa_report failed none 'ADB configured; adbd stopped or not running'
+        elif wa_listener; then
+            if wa_old_eth_address; then
+                wa_report pending-restart head_unit 'Restart head unit to clear old eth0 address'
+            else
+                wa_report on adbd 'TCP ADB listening on port 5555; adbd running; stock switch off'
+            fi
+        elif [ "$?" -eq 1 ]; then
+            wa_report failed none 'ADB configured; adbd is not listening on port 5555'
+        elif wa_old_eth_address; then
             wa_report pending-restart head_unit 'Restart head unit to clear old eth0 address'
         else
-            wa_report on adbd 'TCP ADB on port 5555; stock switch off'
+            wa_report on adbd 'TCP ADB configured on port 5555; adbd running; stock switch off'
         fi
     elif [ "$stock_applied" -eq 1 ] || [ "$port_applied" -eq 1 ]; then
         wa_report failed none 'ADB properties only partly applied'
@@ -171,8 +202,19 @@ wa_apply() {
         wa_apply_failed 'Could not apply ADB properties'; return $?
     fi
     after=$(wa_effective_port)
-    if [ "$before" != "$after" ] && ! sg_service_restart adbd; then
-        wa_apply_failed 'Could not restart adbd'; return $?
+    listener_missing=0
+    if wa_listener; then :; else [ "$?" -ne 1 ] || listener_missing=1; fi
+    if [ "$before" != "$after" ] || [ "$(getprop init.svc.adbd)" != running ] || [ "$listener_missing" -eq 1 ]; then
+        if ! sg_service_restart adbd; then
+            wa_apply_failed 'Could not restart adbd'; return $?
+        fi
+        # init starts asynchronously; allow the listener to appear after restart.
+        attempts=0
+        while ! wa_listener; do
+            attempts=$((attempts + 1))
+            [ "$attempts" -lt 5 ] || break
+            sleep 1
+        done
     fi
     sg_log 'Wireless ADB applied'
     wa_status

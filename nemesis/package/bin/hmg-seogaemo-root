@@ -112,6 +112,8 @@ if [ "$1" = export ]; then
     export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE SG_DATA_ROOT
     . "$base/lib/common.sh"
     hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
+    . "$base/lib/diagnostics.sh"
+    hmg_seogaemo_diagnostics "$dest" || refuse 1 failed 'Could not collect diagnostics'
     sg_export_public "$dest" && chmod 0755 "$container" || refuse 1 failed 'Could not prepare export'
     sg_print "state=on" "restart=none" "detail=$dest"
     exit 0

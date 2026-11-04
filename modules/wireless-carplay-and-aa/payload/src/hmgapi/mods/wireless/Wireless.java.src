@@ -1,3 +1,4 @@
+// Modified by HMG-Seogaemo: per-part requirements and runtime diagnostics.
 package hmgapi.mods.wireless;
 
 import android.content.ComponentName;
@@ -13,6 +14,7 @@ import hmgapi.hook.MethodHook;
 import hmgapi.hook.ModContext;
 import hmgapi.hook.ModEntry;
 import hmgapi.hook.Points;
+import hmgapi.hook.RuntimeResult;
 
 /**
  * The Wireless mod's hooks (the rest of the mod is file changes in patches.json).
@@ -56,12 +58,35 @@ public final class Wireless extends ModEntry {
 
     @Override
     public void appLoaded(final ModContext mod, LoadedApp app) {
-        if (NAVIGATION.equals(app.packageName)) navigation(mod, app);
-        if (IAP2.equals(app.packageName)) iap2(mod, app);
-        if (GPM.equals(app.packageName) && mod.settingBoolean("usb_drives", true)) usbDrives(mod, app);
-        if (GPM.equals(app.packageName) && mod.settingBoolean("tbt", true)) gpmTurnByTurn(mod, app);
-        if (BTSETTINGS.equals(app.packageName) && mod.settingBoolean("menu", true)) phoneProjectionMenu(mod, app);
-        if (DIPO.equals(app.packageName) && (mod.settingBoolean("tbt", true) || mod.settingBoolean("bridge", true) || mod.settingBoolean("audio", true))) dipo(mod, app);
+        String pkg = app.packageName;
+        if (!NAVIGATION.equals(pkg) && !IAP2.equals(pkg) && !GPM.equals(pkg) && !BTSETTINGS.equals(pkg) && !DIPO.equals(pkg)) return;
+        mod.beginRuntime(app);
+        if (NAVIGATION.equals(pkg)) loadPart("navigation", "navigation", mod, app);
+        if (IAP2.equals(pkg)) loadPart("iap2", "iap2", mod, app);
+        if (GPM.equals(pkg)) {
+            loadPart("gpm_usb", "gpm_usb", mod, app);
+            loadPart("gpm_tbt", "gpm", mod, app);
+        }
+        if (BTSETTINGS.equals(pkg)) loadPart("btsettings", "btsettings", mod, app);
+        if (DIPO.equals(pkg)) loadPart("dipo", "dipo", mod, app);
+    }
+
+    private void loadPart(String part, String points, ModContext mod, LoadedApp app) {
+        if (!Points.need(part, points)) return;
+        RuntimeResult.phase("part." + part, "initializing", "installing hooks");
+        try {
+            if ("navigation".equals(part)) navigation(mod, app);
+            else if ("iap2".equals(part)) iap2(mod, app);
+            else if ("gpm_usb".equals(part)) usbDrives(mod, app);
+            else if ("gpm_tbt".equals(part)) gpmTurnByTurn(mod, app);
+            else if ("btsettings".equals(part)) phoneProjectionMenu(mod, app);
+            else if ("dipo".equals(part)) dipo(mod, app);
+            RuntimeResult.phase("part." + part, "loaded", "gpm_tbt".equals(part) && Car.stepOfSpec() >= 999
+                    ? "stock turn-by-turn active; native AA recipe inapplicable" : "initialization returned");
+        } catch (Throwable t) {
+            RuntimeResult.phase("part." + part, "failed", String.valueOf(t));
+            mod.error(part + " initialization", t);
+        }
     }
 
     /**
@@ -69,12 +94,8 @@ public final class Wireless extends ModEntry {
      * (hmgapi.mods.wireless.dipo.Dipo), which links against DiPO's iAP2 and Bluetooth
      * libraries.
      */
-    private void dipo(ModContext mod, LoadedApp app) {
-        try {
-            mod.appPart(app, "hmgapi.mods.wireless.dipo.Dipo").getMethod("start", ModContext.class, LoadedApp.class).invoke(null, mod, app);
-        } catch (Throwable t) {
-            mod.error("DiPO part", t instanceof java.lang.reflect.InvocationTargetException ? t.getCause() : t);
-        }
+    private void dipo(ModContext mod, LoadedApp app) throws Exception {
+        mod.appPart(app, "hmgapi.mods.wireless.dipo.Dipo").getMethod("start", ModContext.class, LoadedApp.class).invoke(null, mod, app);
     }
 
     /**
@@ -191,6 +212,7 @@ public final class Wireless extends ModEntry {
     private void gpmTurnByTurn(final ModContext mod, final LoadedApp app) {
         final ClassLoader cl = app.classLoader;
         if (Car.stepOfSpec() >= 999) {
+            RuntimeResult.put("native.libautoreceiver_infobank.so.applicability", "stock");
             mod.log("Android Auto: stepofspec is 999 or more, GPM's own turn-by-turn runs (HMG-API's stays off)");
             return;
         }
@@ -220,7 +242,7 @@ public final class Wireless extends ModEntry {
                                 t = turns.get(receiver);
                                 if (t == null && create) {
                                     hmgapi.hook.Cluster c = hmgapi.hook.Cluster.of(app.context);
-                                    if (c == null) return;
+                                    if (c == null) { mod.error("Android Auto cluster unavailable", null); return; }
                                     turns.put(receiver, t = new AaTurns(app.context, c, handler));
                                     mod.log("Android Auto: turn-by-turn to the cluster for this connection");
                                 }
