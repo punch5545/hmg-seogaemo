@@ -491,11 +491,11 @@ sg_public_readable() (
     target=$1
     sg_path_safe "$target" && [ -f "$target" ] || exit 1
     set -- $(sg_file_meta "$target")
-    [ "$((0$1 & 0004))" -ne 0 ] || exit 1
+    case "$1" in *[4567]) ;; *) exit 1;; esac
     parent=${target%/*}
     while [ -n "$parent" ] && [ "$parent" != "${SG_TARGET_ROOT:-}" ]; do
         set -- $(sg_file_meta "$parent")
-        [ "$((0$1 & 0001))" -ne 0 ] || exit 1
+        case "$1" in *[1357]) ;; *) exit 1;; esac
         parent=${parent%/*}
     done
 )

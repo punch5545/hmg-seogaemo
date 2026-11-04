@@ -51,8 +51,10 @@ metadata and never deletes these legacy directories. No guessed absent baseline.
 CarPlay apply reconciles recipes and ancestors before its already-applied return.
 Repairs record the current boot and remain pending-restart through that boot,
 because DiPO reads recipes when registering native patches. Read-only status
-checks world-read file bits and world-search ancestor bits, reports failed with
-an assets-unreadable detail, and does not claim native patch success merely from
+checks world-read file bits and world-search ancestor bits using permission
+digits directly (leading-zero arithmetic differs between POSIX shells and
+Android mksh). It reports failed with an assets-unreadable detail and does not
+claim native patch success merely from
 zygote loader presence. Boot reconcile already invokes desired apply, so it also
 migrates legacy ancestors after OTA. NativePatch keeps one attempt per process:
 a failed native write may be partial, so retrying it is unsafe; restart is required.

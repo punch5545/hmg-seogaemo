@@ -760,6 +760,26 @@ def test_system_directory_mode(temp):
     assert not list(outside.iterdir())
 
 
+def test_public_readable(temp):
+    base = temp / "public-bits"
+    directory = base / "parent"
+    directory.mkdir(parents=True)
+    target = directory / "recipe"
+    target.write_text("patch")
+    runner = base / "runner"
+    env = dict(os.environ, SG_TARGET_ROOT=str(base))
+    # All low permission digits: owner/group bits must never imply public access.
+    for digit in range(8):
+        target.chmod(0o660 + digit)
+        script(runner, f'sg_public_readable "{target}"\n')
+        run(runner, env=env, ok=digit >= 4)
+    target.chmod(0o664)
+    for digit in range(8):
+        directory.chmod(0o770 + digit)
+        run(runner, env=env, ok=bool(digit & 1))
+    directory.chmod(0o755)
+
+
 def test_file_metadata_guards(temp):
     base = temp / "file-metadata"
     fake = base / "fake"
@@ -926,5 +946,6 @@ with tempfile.TemporaryDirectory() as directory:
     test_zygote_and_dex(root)
     test_remount_ro_busy(root)
     test_system_directory_mode(root)
+    test_public_readable(root)
     test_file_metadata_guards(root)
 print("shared runtime tests passed")
