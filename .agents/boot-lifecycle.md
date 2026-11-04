@@ -52,6 +52,16 @@ the service launch can use the remaining budget. A seen-installed receipt
 prevents a pending update from resurrecting an intentionally removed app;
 absence without a request always follows the existing cleanup path.
 
+`install-apk.sh` forces `sys.boot_completed=0` around `pm install`, which now
+also happens at boot. It runs pm in the background under a 120 second guard that
+stops pm and its `/proc` descendants, and restores the property on every exit
+path (normal, failure, watchdog, TERM/HUP/INT), keeping the original exit status.
+Export diagnostics read logs with 4 KiB `dd` blocks from regular files, write
+probe output to files rather than pipes, and have the 10 second probe guard stop
+the probe's descendants, so a lingering grandchild cannot stall an export.
+Block `skip=`/`count=` use POSIX block units; toolbox `dd` semantics are
+unverified on the car, so check one truncated log in an on-car export.
+
 ## Remaining car checks
 
 Verify USB installation with Android down, delayed PackageManager readiness,
