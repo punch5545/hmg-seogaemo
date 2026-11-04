@@ -19,14 +19,15 @@ sg_service_call_this_boot() {
     [ -f "$FAKE_ROOT/last-call-boot" ] &&
         [ "$(cat "$FAKE_ROOT/last-call-boot")" = "$(cat "$FAKE_ROOT/boot-id")" ]
 }
-sg_service_call_ok_this_boot() { sg_service_call_this_boot; }
+sg_service_call_ok_this_boot() { sg_service_call_this_boot && [ "$(cat "$FAKE_ROOT/last-call-result" 2>/dev/null)" = ok ]; }
 sg_service_call() {
     [ "$1:$2" = com.hkmc.factory:82 ] || return 2
     sg_print "$1:$2" >> "$FAKE_ROOT/calls"
     cat "$FAKE_ROOT/boot-id" > "$FAKE_ROOT/last-call-boot"
     case "$(cat "$FAKE_ROOT/response" 2>/dev/null)" in
-        exception) SG_SERVICE_CALL_RESPONSE='Cannot broadcast before boot completed' ;;
-        *) SG_SERVICE_CALL_RESPONSE='Parcel(00000000)' ;;
+        exception) SG_SERVICE_CALL_RESPONSE='Cannot broadcast before boot completed'; echo failed > "$FAKE_ROOT/last-call-result"; return 1 ;;
+        failed) SG_SERVICE_CALL_RESPONSE='Binder failed'; echo failed > "$FAKE_ROOT/last-call-result"; return 1 ;;
+        *) SG_SERVICE_CALL_RESPONSE='Parcel(00000000)'; echo ok > "$FAKE_ROOT/last-call-result" ;;
     esac
     return 0
 }
@@ -70,7 +71,9 @@ done
 export FAKE_ROOT="$tmp" HMG_SEOGAEMO_BASE="$tmp/base" HMG_SEOGAEMO_STATE="$tmp/state"
 export SG_DATA_ROOT="$tmp/data" SG_SKIP_CONSENT_FRAMEWORK="$tmp/framework.odex"
 export HMG_SEOGAEMO_SERVICE_BIN="$tmp/bin/service"
-script="$module_dir/root/skip-consent-screen.sh"
+script="$tmp/skip-consent-screen.sh"
+# Intercept mksh's sleep builtin in the private fixture too.
+{ echo "sleep() { :; }"; cat "$module_dir/root/skip-consent-screen.sh"; } > "$script"
 sg_write "stock" > "$tmp/framework.odex"
 sg_write "NEEV.KOR.0000.V039.001.260902" > "$tmp/props/ro.build.product"
 sg_write "19" > "$tmp/props/ro.build.version.sdk"
@@ -98,5 +101,23 @@ sg_write "off" > "$tmp/data/desired/skip-consent-screen"
 run status; has 'state=pending-restart'; has 'info.desired=off'
 sg_write "boot-b" > "$tmp/boot-id"
 run status; has 'state=off'
+sg_write "on" > "$tmp/data/desired/skip-consent-screen"
+sg_write "failed" > "$tmp/response"
+if run watch boot; then exit 1; fi
+has 'state=failed'
+[ "$(cat "$tmp/last-call-result")" = failed ]
+sg_write "ok" > "$tmp/response"
+run watch boot; has 'state=on'
+[ "$(grep -c '^com.hkmc.factory:82$' "$tmp/calls")" = 4 ]
+run watch boot
+[ "$(grep -c '^com.hkmc.factory:82$' "$tmp/calls")" = 4 ]
+sg_write "boot-c" > "$tmp/boot-id"
+sg_write "exception" > "$tmp/response"
+if run watch boot; then exit 1; fi
+has 'state=failed'
+[ "$(grep -c '^com.hkmc.factory:82$' "$tmp/calls")" = 6 ]
+sg_write "ok" > "$tmp/response"
+run watch boot; has 'state=on'
+[ "$(grep -c '^com.hkmc.factory:82$' "$tmp/calls")" = 7 ]
 [ ! -f "$tmp/forbidden" ]
 echo 'skip-consent-screen module tests passed'

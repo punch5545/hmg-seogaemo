@@ -228,6 +228,7 @@ def lifecycle(root):
     for name in ('svc/reconcile.sh',):
         copy_shell_script(ROOT / 'nemesis/package' / name, f.root / name)
     f.script('getprop', 'case "$1" in sys.boot_completed) echo 1;; *) cat "$FAKE_BUILD";; esac\n')
+    f.script('pm', '[ "$1:$2" != path:android ] || echo package:framework\n')
     (f.root / 'bin/hmg-seogaemo-root').write_text(
         '. "$HMG_SEOGAEMO_BASE/lib/common.sh"\n'
         'HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$1\n'
