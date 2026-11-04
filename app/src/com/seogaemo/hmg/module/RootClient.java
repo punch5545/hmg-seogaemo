@@ -10,6 +10,8 @@ public final class RootClient {
     /** Writes also wait on operation.lock, which a boot map verify can hold for 30 s. */
     static final long WRITE_TIMEOUT_MS = 150000L;
     static final long READ_TIMEOUT_MS = 30000L;
+    static final long STOCK_STATUS_TIMEOUT_MS = 30000L;
+    static final long STOCK_TIMEOUT_MS = 180000L;
 
     private RootClient() { }
 
@@ -37,11 +39,13 @@ public final class RootClient {
 
     public static RootResult stock(String verb) {
         if (!("restore".equals(verb) || "status".equals(verb))) return failure("invalid stock verb");
-        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root stock " + verb, 180000);
+        // status is a read-only probe run at app start; only restore needs the long window.
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root stock " + verb,
+                "status".equals(verb) ? STOCK_STATUS_TIMEOUT_MS : STOCK_TIMEOUT_MS);
     }
 
     public static RootResult uninstallPackage() {
-        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root package uninstall", 180000);
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root package uninstall", STOCK_TIMEOUT_MS);
     }
 
     public static RootResult map(String verb) {
