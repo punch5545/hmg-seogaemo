@@ -37,6 +37,7 @@ import com.seogaemo.hmg.module.ModuleManager;
 import com.seogaemo.hmg.module.ModulePlan;
 import com.seogaemo.hmg.module.ModuleRegistry;
 import com.seogaemo.hmg.module.ModuleResume;
+import com.seogaemo.hmg.module.RestoreGate;
 import com.seogaemo.hmg.module.RootClient;
 import com.seogaemo.hmg.module.RootResult;
 import com.seogaemo.hmg.module.Warning;
@@ -102,12 +103,53 @@ public final class MainActivity extends Activity {
         registerReceiver(networkChanges, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
         if (!getSharedPreferences("update", MODE_PRIVATE).getBoolean("resume", false) &&
                 getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
-            updateBusy = true;
-            new Thread(new Runnable() { public void run() {
-                if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending));
-                finishUpdateWork(null);
-            } }, "hmg-seogaemo-update-restore").start();
+            offerModuleRestore();
         }
+    }
+
+    /**
+     * A restore saved by an earlier update may be stale (stock restore ran, a restart is
+     * outstanding). Read state on a worker, then run it only after an explicit confirmation.
+     */
+    private void offerModuleRestore() {
+        updateBusy = true;
+        new Thread(new Runnable() { public void run() {
+            RootResult stock = RootClient.stock("status");
+            List<RootResult> observed = new ArrayList<RootResult>();
+            for (Module module : ModuleRegistry.all()) observed.add(RootClient.run(module.id(), "status"));
+            final RestoreGate.Decision decision = RestoreGate.decide(stock, observed);
+            runOnUiThread(new Runnable() { public void run() {
+                if (isFinishing()) { updateBusy = false; return; }
+                if (decision == RestoreGate.Decision.PROCEED) { confirmModuleRestore(); return; }
+                updateBusy = false;
+                if (decision == RestoreGate.Decision.PAUSED) {
+                    getSharedPreferences("update", MODE_PRIVATE).edit().clear().commit();
+                    getSharedPreferences("module_resume", MODE_PRIVATE).edit().clear().commit();
+                    updateMessage(getString(R.string.restore_skipped_paused));
+                    Toast.makeText(MainActivity.this, R.string.restore_skipped_paused, Toast.LENGTH_LONG).show();
+                } else if (decision == RestoreGate.Decision.PENDING_RESTART) {
+                    updateMessage(getString(R.string.restore_deferred_restart));
+                    Toast.makeText(MainActivity.this, R.string.restore_deferred_restart, Toast.LENGTH_LONG).show();
+                } else updateMessage(getString(R.string.update_restore_pending));
+            } });
+        } }, "hmg-seogaemo-restore-gate").start();
+    }
+
+    private void confirmModuleRestore() {
+        ConfirmDialog.show(this, getString(R.string.restore_confirm_title),
+                getString(R.string.restore_confirm_message), getString(R.string.restore_confirm_action),
+                getString(R.string.cancel), false, new ConfirmDialog.Action() {
+            public void run(final ConfirmDialog dialog) {
+                dialog.showProgress();
+                new Thread(new Runnable() { public void run() {
+                    if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending));
+                    finishUpdateWork(dialog);
+                } }, "hmg-seogaemo-update-restore").start();
+            }
+        }, new Runnable() { public void run() {
+            updateBusy = false; // The saved intent stays; it is offered again at the next start.
+            updateMessage(getString(R.string.update_restore_pending));
+        } });
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
