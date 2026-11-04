@@ -1531,14 +1531,53 @@ def test_zygote_foreign(temp):
         assert result.returncode == 3 and "info.restore_conflict=app_process is not the known stock build" in result.stdout
     assert paths[0].read_bytes() == b"something else"
     paths[0].write_bytes(b"stock-executable")
-    # Our files without any record: backup, hook files and guard state each count.
-    for leftover in (paths[1], paths[2], paths[3], guards[0], guards[2]):
+    # Our files without any record: the stock backup and each hook file count.
+    for leftover in (paths[1], paths[2], paths[3]):
         leftover.write_bytes(b"x")
         for body in ("sg_zygote_foreign\n", "sg_revert_all\n"):
             result = check(body, ok=False)
             assert result.returncode == 3 and "without ownership record" in result.stdout, (leftover, result)
         assert leftover.read_bytes() == b"x" and paths[0].read_bytes() == b"stock-executable"
         leftover.unlink()
+    # Every offender is listed on one line, the unknown executable included.
+    for leftover in paths[1:]:
+        leftover.write_bytes(b"x")
+    paths[0].write_bytes(b"something else")
+    result = check("sg_zygote_foreign\n", ok=False)
+    lines = [line for line in result.stdout.splitlines() if line.startswith("info.restore_conflict=")]
+    assert result.returncode == 3 and len(lines) == 1, result.stdout
+    for needle in ("app_process.hmg-seogaemo-stock", "libhmg_seogaemo_wireless_hook.so",
+                   "hmg-seogaemo-wireless-hook.jar", "not the known stock build"):
+        assert needle in lines[0], (needle, lines)
+    paths[0].write_bytes(b"stock-executable")
+    for leftover in paths[1:]:
+        leftover.unlink()
+    # The wrapper's guard state alone is no evidence: the guard passes, and restore
+    # sweeps exactly those names (ledger row each) while leaving other files alone.
+    for guard in guards:
+        guard.write_bytes(b"3")
+    (state / "keep").write_bytes(b"k")
+    check("sg_zygote_foreign\n")
+    assert all(guard.exists() for guard in guards)
+    check("sg_zygote_foreign\nsg_revert_all\n")
+    assert not any(guard.exists() for guard in guards) and (state / "keep").exists()
+    assert paths[0].read_bytes() == b"stock-executable"
+    ledger = (base / "data/nemesis/backup/hmg-seogaemo/ledger/ledger.tsv").read_text()
+    assert ledger.count("zygote_guard_sweep") == 4, ledger
+    (state / "keep").unlink()
+    # No hook files and stock app_process: only the guard state is swept even when it
+    # is the only thing present; an unrecorded real swap evidence still wins over it.
+    guards[0].write_bytes(b"1")
+    paths[1].write_bytes(b"x")
+    assert check("sg_revert_all\n", ok=False).returncode == 3 and guards[0].exists()
+    paths[1].unlink()
+    guards[0].unlink()
+    # A directory in place of a guard file is not ours: conflict, nothing removed.
+    guards[2].mkdir()
+    guards[3].write_bytes(b"x")
+    assert check("sg_revert_all\n", ok=False).returncode == 3 and guards[3].exists()
+    guards[2].rmdir()
+    guards[3].unlink()
     # A symlink in place of our file is also foreign.
     paths[1].symlink_to(base / "nowhere")
     assert check("sg_zygote_foreign\n", ok=False).returncode == 3
@@ -1555,6 +1594,18 @@ def test_zygote_foreign(temp):
     check("sg_zygote_foreign\nsg_revert_all\n")
     assert paths[0].read_bytes() == b"stock-executable" and not paths[1].exists()
     check("sg_zygote_foreign\n")
+    # The live wrapper recreates `starts` after the revert (watcher, O_CREAT), and the
+    # documented manual `touch disable` is also left behind: restore must still pass,
+    # report the pending restart (this boot) and sweep them instead of blocking.
+    check("sg_restart_pending\n")
+    guards[2].write_bytes(b"0")
+    guards[3].write_bytes(b"")
+    check("sg_zygote_foreign\nsg_revert_all\n")
+    assert not guards[2].exists() and not guards[3].exists()
+    check("sg_restart_pending\n")
+    boot_id.write_text("another-boot")
+    assert check("sg_restart_pending\n", ok=False).returncode != 0
+    boot_id.write_text("test-boot")
     # Only an unrecorded swap (state wiped) is refused: restoring cannot proceed.
     check("sg_zygote_install wrapper loader jar\n")
     for entry in state.glob("file.*"):

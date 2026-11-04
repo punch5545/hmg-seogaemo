@@ -1278,10 +1278,14 @@ sg_zygote_install() {
 }
 # Read-only guard for the app_process swap. A module that owns the swap holds a
 # file baseline for it (or an upgrade journal); every guarded revert path then
-# applies. Without that record, nothing we wrote is recoverable, so an existing
-# stock backup, our hook files or guard state, or an app_process that is not the
-# known stock build (module.properties `known_stock.N=<product glob>:<path>:<md5>`)
-# is reported as a conflict and nothing is touched or called "already off".
+# applies. Without that record nothing we wrote is recoverable, so these (and
+# only these) count as evidence of an unrecorded swap and are reported together
+# in one conflict line: the stock backup, our hook .so and .jar, and an
+# app_process that is not the known stock build (module.properties
+# `known_stock.N=<product glob>:<path>:<md5>`). The wrapper's own guard state
+# (`enable`, `enabled`, `starts`, `disable` in the module state directory) is
+# NOT evidence: the live wrapper recreates `starts` after a revert and `disable`
+# is its documented manual off switch. `sg_zygote_guard_sweep` removes them.
 # Returns 0 when clean, owned or not applicable, 3 on a conflict.
 sg_zygote_foreign() (
     sg_bin=${SG_TARGET_ROOT:-}/system/bin/app_process
@@ -1289,14 +1293,12 @@ sg_zygote_foreign() (
     key=$(sg_file_key "$sg_bin") || exit 1
     [ ! -f "$HMG_SEOGAEMO_STATE/file.$key/ready" ] || exit 0
     [ ! -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ] || exit 0
+    found=
     for item in "$sg_bin.hmg-seogaemo-stock" \
         "${SG_TARGET_ROOT:-}/system/lib/libhmg_seogaemo_wireless_hook.so" \
-        "${SG_TARGET_ROOT:-}/system/framework/hmg-seogaemo-wireless-hook.jar" \
-        "$HMG_SEOGAEMO_STATE/enable" "$HMG_SEOGAEMO_STATE/enabled" \
-        "$HMG_SEOGAEMO_STATE/starts" "$HMG_SEOGAEMO_STATE/disable"; do
+        "${SG_TARGET_ROOT:-}/system/framework/hmg-seogaemo-wireless-hook.jar"; do
         if [ -e "$item" ] || [ -L "$item" ]; then
-            sg_restore_conflict "app_process swap without ownership record: ${item#"${SG_TARGET_ROOT:-}"}"
-            exit 3
+            found="${found:+$found, }${item##*/}"
         fi
     done
     product=$(getprop ro.build.product) || exit 1
@@ -1307,13 +1309,48 @@ sg_zygote_foreign() (
         [ "${rest%%:*}" = /system/bin/app_process ] || continue
         case "$product" in $glob) expected=${rest#*:};; esac
     done < "$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties"
-    [ -n "$expected" ] && [ -f "$sg_bin" ] || exit 0
-    actual=$(md5 "$sg_bin") || exit 1
-    set -- $actual
-    [ "${1:-}" = "$expected" ] || {
+    unknown=0
+    if [ -n "$expected" ] && [ -f "$sg_bin" ]; then
+        actual=$(md5 "$sg_bin") || exit 1
+        set -- $actual
+        [ "${1:-}" = "$expected" ] || unknown=1
+    fi
+    if [ -n "$found" ]; then
+        detail="app_process swap without ownership record: $found"
+        [ "$unknown" -eq 0 ] || detail="$detail, app_process (not the known stock build)"
+        sg_restore_conflict "$detail"
+        exit 3
+    fi
+    if [ "$unknown" -eq 1 ]; then
         sg_restore_conflict 'app_process is not the known stock build and no module owns the swap'
         exit 3
-    }
+    fi
+    exit 0
+)
+# Removes stale wrapper guard state (exact names, module state directory only,
+# one ledger row each) once `sg_zygote_foreign` found no evidence of a swap. A
+# no-op while the module owns the swap. A directory in place of a guard file is
+# not ours: conflict, nothing more is touched.
+sg_zygote_guard_sweep() (
+    sg_bin=${SG_TARGET_ROOT:-}/system/bin/app_process
+    sg_validate owns_files "$sg_bin" || exit 0
+    key=$(sg_file_key "$sg_bin") || exit 1
+    [ ! -f "$HMG_SEOGAEMO_STATE/file.$key/ready" ] || exit 0
+    [ ! -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ] || exit 0
+    for name in starts enable enabled disable; do
+        item=$HMG_SEOGAEMO_STATE/$name
+        if [ -d "$item" ] && [ ! -L "$item" ]; then
+            sg_restore_conflict "unexpected directory in wrapper guard state: $name"
+            exit 3
+        fi
+    done
+    for name in starts enable enabled disable; do
+        item=$HMG_SEOGAEMO_STATE/$name
+        [ -e "$item" ] || [ -L "$item" ] || continue
+        sg_ledger zygote_guard_sweep "$item" "$item" "" "" swept || exit 1
+        rm -f "$item" && [ ! -e "$item" ] && [ ! -L "$item" ] || exit 1
+    done
+    exit 0
 )
 sg_restore_material() {
     for sg_material in "$HMG_SEOGAEMO_STATE"/prop.*/ready "$HMG_SEOGAEMO_STATE"/file.*/ready \
@@ -1324,9 +1361,25 @@ sg_restore_material() {
     done
     return 1
 }
+# A restored app_process leaves the live zygote on the wrapper until the head unit
+# restarts: record that (best effort) so status and a repeated restore report
+# pending-restart instead of "off".
 sg_revert_all() {
     # An unrecorded swap is not stock, whatever the snapshots say: refuse first.
     sg_zygote_foreign || return 3
+    sg_rv_swap=0
+    if sg_validate owns_files "${SG_TARGET_ROOT:-}/system/bin/app_process"; then
+        sg_rv_key=$(sg_file_key "${SG_TARGET_ROOT:-}/system/bin/app_process") || return 1
+        if [ -f "$HMG_SEOGAEMO_STATE/file.$sg_rv_key/applied" ] || [ -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then sg_rv_swap=1; fi
+    fi
+    sg_zygote_guard_sweep || return $?
+    sg_revert_all_run; sg_rv_code=$?
+    if [ "$sg_rv_code" -eq 0 ] && [ "$sg_rv_swap" -eq 1 ]; then
+        sg_restart_required || sg_log 'could not record the pending head unit restart' || :
+    fi
+    return "$sg_rv_code"
+}
+sg_revert_all_run() {
     # Consumed snapshots are already stock; a leftover desired bit is not a baseline.
     sg_restore_material || { sg_zygote_sweep; return $?; }
     sg_zygote_finalize_guard || return 3

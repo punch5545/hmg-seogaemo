@@ -118,6 +118,8 @@ apply() {
             sg_prop_set persist.iap2.iden.wireless t || { fail 'property reapply failed'; return 1; }
         status applying; return $?
     fi
+    # Stale wrapper guard state (never baselined as stock) must not be recorded as originals.
+    sg_zygote_guard_sweep || { conflict 'wrapper guard state could not be cleared'; return 3; }
     if ! put_assets ||
        ! sg_prop_set persist.ium.support carplay ||
        ! sg_prop_set persist.sys.iap2.wifi t ||
@@ -137,6 +139,8 @@ revert() {
         # An interrupted apply can have feature/property changes without the wrapper.
         sg_revert_all || { conflict 'partial apply restore blocked; ledger retained'; return 3; }
         cleanup_runtime || return $?
+        # A wrapper zygote from an earlier revert keeps running until the restart.
+        if sg_restart_pending; then sg_status pending-restart head_unit 'restart unit to finish restoration'; return $?; fi
         sg_status off none 'disabled'; return 0
     fi
     sg_revert_all || { conflict 'restore blocked by drift; ledger retained'; return 3; }
@@ -156,6 +160,7 @@ status() {
     fi
     if ! sg_applied /system/bin/app_process; then
         unrecorded_swap || return 3
+        if sg_restart_pending; then sg_status pending-restart head_unit 'restart unit to finish restoration'; return $?; fi
         sg_status off none 'disabled'; return 0
     fi
     if [ "$(value persist.service.adb.tcp.enable)" = 1 ]; then conflict 'stock ADB switch conflicts with hotspot'; return 3; fi

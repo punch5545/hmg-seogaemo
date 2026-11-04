@@ -177,16 +177,36 @@ private runtime state are never chmod targets.
 `sg_zygote_foreign` is a read-only guard for a module that owns
 `/system/bin/app_process`. The swap counts as owned when the module holds a file
 baseline for it (or an upgrade journal). Without that record nothing we wrote is
-recoverable, so the guard returns conflict (3) with `info.restore_conflict` when any
-of these exists: `app_process.hmg-seogaemo-stock`, our hook `.so`/`.jar`, the
-`enable`/`enabled`/`starts`/`disable` guard files, or an `app_process` whose MD5
-differs from the module's `known_stock.N=<ro.build.product glob>:<path>:<md5>`
+recoverable, so the guard returns conflict (3) when any of exactly these exists:
+`app_process.hmg-seogaemo-stock`, our hook `.so` or `.jar`, or an `app_process`
+whose MD5 differs from the module's `known_stock.N=<ro.build.product glob>:<path>:<md5>`
 declaration for the current product (no matching declaration means no judgment).
-`sg_revert_all` calls it first, so module revert, whole-package restore and the
-NEMESIS uninstall hook all refuse; `lib/stock.sh` also runs it in the all-module
-preflight and for modules with no snapshots, before anything is reverted. Module
-`status`, `precheck` and `apply` report the same conflict. Nothing is modified, no
-desired state changes, and the owner resolves it (for example by restoring stock from
+Every offender is listed on the single `info.restore_conflict` line.
+
+The wrapper's own guard state in the module state directory (`enable`, `enabled`,
+`starts`, `disable`) is not evidence. The live wrapper recreates `starts` after a
+revert (its watcher opens it with `O_CREAT`, up to 120 s after the zygote started),
+`touch disable` is its documented manual off switch, and a car may hold stale files
+of an earlier install. `sg_zygote_guard_sweep` removes exactly those four names
+(never anything else, one ledger row `zygote_guard_sweep` each) while the module has
+no swap record and `sg_zygote_foreign` passed; a directory in their place is a
+conflict. `sg_revert_all` (module revert, whole-package restore, the NEMESIS uninstall
+hook), the `lib/stock.sh` "nothing applied" path and the wireless fresh `apply` call it,
+so stale guard files are never recorded as stock originals either. Module `status`,
+`precheck` and the stock preflight only read.
+
+A revert that restored an applied `app_process` leaves the running zygote on the
+wrapper until the head unit restarts. `sg_revert_all` therefore records the
+per-module restart marker (`sg_restart_required`, best effort) after such a restore;
+while `sg_restart_pending` holds (same kernel boot), the wireless module's `status` and
+`revert` and the stock restore report `pending-restart`/`head_unit`, not `off` and not a
+conflict, even if the wrapper meanwhile recreated `starts`.
+
+`sg_revert_all` calls the guard first, so module revert, whole-package restore and the
+NEMESIS uninstall hook refuse on real evidence; `lib/stock.sh` also runs it in the
+all-module preflight and for modules with no snapshots, before anything is reverted.
+Module `status`, `precheck` and `apply` report the same conflict. Nothing is modified,
+no desired state changes, and the owner resolves it (for example by restoring stock from
 the saved copy) before retrying. The wireless module declares
 `known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:33f798115689d1859e8d2159dc88e7dc`
 (the stock build seen on the Ioniq 5 KOR car before and after HMG-API/this module).

@@ -94,10 +94,12 @@ Not part of the firmware transaction but removed at revert through the package A
 directory in each of `com.daudio.app.dipo`, `com.tcc.iap2server`,
 `com.google.android.projection.sink`, `com.mnsoft.navi` and `com.android.btsettings`.
 Running apps rewrite them until the next restart. If the app_process swap has no
-ownership record (stock backup, hook files or guard state present, or an `app_process`
+ownership record (stock backup or hook `.so`/`.jar` present, or an `app_process`
 other than the declared stock MD5 `33f798115689d1859e8d2159dc88e7dc` seen on this car),
-status, revert, whole-package restore and uninstall report a conflict and change nothing
-(`sg_zygote_foreign`). Projection status uses a root Dalvik reader bounded to 15 seconds;
+status, revert, whole-package restore and uninstall report one conflict naming all of
+them and change nothing (`sg_zygote_foreign`). The wrapper's `starts`/`enable`/`enabled`/`disable`
+files alone never conflict: restore sweeps them, and while the head unit has not restarted
+since the revert the module reports pending-restart (`sg_zygote_guard_sweep`). Projection status uses a root Dalvik reader bounded to 15 seconds;
 a timeout, a missing boot class path or malformed output reports `unknown`.
 
 No stock app APK/odex, manufacturer native library file, `build.prop`, Wi-Fi client state, ADB property, firewall rule, or service is changed. Android user data created during phone sessions is outside this firmware transaction.

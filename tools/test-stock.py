@@ -467,8 +467,8 @@ def test_snapshot_free_recovery(folder):
     car.run(module, 'revert')
 
 
-def test_unrecorded_swap(folder):
-    """An app_process swap with no ledger/baseline refuses restore and uninstall."""
+def swap_fixture(folder):
+    """The real wireless module script on an isolated /system with a known stock app_process."""
     import hashlib
     car = Car(folder)
     car.enable()
@@ -493,6 +493,60 @@ def test_unrecorded_swap(folder):
         f'{module}\tdepends=\texcludes=\na\tdepends=\texcludes=\nb\tdepends=a\texcludes=\nc\tdepends=\texcludes=\n')
     (car.state / f'desired/{module}').write_text('on')
     car.env['SG_TARGET_ROOT'] = str(target)
+    return car, module, target, process, extras
+
+
+def test_stale_wrapper_guard(folder):
+    """The wrapper's own guard state never blocks restore or uninstall; it is swept."""
+    car, module, target, process, extras = swap_fixture(folder)
+    key = module.replace('-', '_')
+    state = car.state / f'modules/{module}'
+    state.mkdir(parents=True, exist_ok=True)
+    names = ('starts', 'enable', 'enabled', 'disable')
+
+    def stale():
+        for name in names:
+            (state / name).write_text('2')
+
+    # The live wrapper recreated `starts` (and the owner touched `disable`) after an earlier revert.
+    stale()
+    (state / 'keep').write_text('other state')
+    result = car.run('stock', 'restore')
+    assert f'info.module_{key}=reverted' in result.stdout, result.stdout
+    assert not any((state / name).exists() for name in names) and (state / 'keep').exists()
+    assert process.read_bytes() == b'stock-executable'
+    ledger = (car.state / 'ledger/ledger.tsv').read_text()
+    assert ledger.count('zygote_guard_sweep') == 4, ledger
+    # The same with the module desired off (no restore material at all).
+    (car.state / f'desired/{module}').write_text('off')
+    stale()
+    car.run('stock', 'restore')
+    assert not any((state / name).exists() for name in names)
+    # A restart that is still pending from an earlier revert in this boot stays pending.
+    car.env['SG_BOOT_ID_FILE'] = str(car.boot)
+    shutil.copy(car.boot, state / 'assets-repaired-boot')
+    stale()
+    result = car.run('stock', 'restore')
+    assert 'state=pending-restart' in result.stdout and 'restart=head_unit' in result.stdout, result.stdout
+    assert not any((state / name).exists() for name in names)
+    # Package uninstall and the NEMESIS hook accept the same stale state.
+    car.env.pop('SG_BOOT_ID_FILE')
+    (state / 'assets-repaired-boot').unlink()
+    stale()
+    car.run('package', 'uninstall')
+    assert not any((state / name).exists() for name in names)
+    # Real evidence of an unrecorded swap still refuses, with the stale state untouched.
+    (car.state / 'uninstall').exists() and shutil.rmtree(car.state / 'uninstall')
+    stale()
+    extras[0].write_bytes(b'stock-executable')
+    result = car.run('stock', 'restore', ok=False)
+    assert 'state=conflict' in result.stdout and 'app_process.hmg-seogaemo-stock' in result.stdout
+    assert all((state / name).exists() for name in names)
+
+
+def test_unrecorded_swap(folder):
+    """An app_process swap with no ledger/baseline refuses restore and uninstall."""
+    car, module, target, process, extras = swap_fixture(folder)
     key = module.replace('-', '_')
 
     def refused():
@@ -576,7 +630,8 @@ with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
                  test_late_failure, test_detached_failure, test_missing_handoff,
                  test_shared_lines, test_file_metadata_diagnostic, test_reassert_restore, test_snapshot_free_recovery,
-                 test_damaged_selection_recovery, test_unrecorded_swap, test_residue_on_restore):
+                 test_damaged_selection_recovery, test_unrecorded_swap, test_stale_wrapper_guard,
+                 test_residue_on_restore):
         folder = Path(directory).resolve() / test.__name__
         folder.mkdir()
         test(folder)

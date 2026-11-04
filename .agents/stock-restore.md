@@ -21,11 +21,16 @@ after baseline consumption. These copies are diagnostic material, never a
 license to force old stock bytes over a changed firmware.
 
 A module that owns `/system/bin/app_process` is never reported "already off" on
-the strength of an empty ledger: if the swap is unrecorded (our stock backup,
-hook files or guard state exist, or `app_process` is not the declared stock MD5)
-the preflight returns conflict, reverts nothing, keeps desired states and blocks
+the strength of an empty ledger: if the swap is unrecorded (our stock backup, our hook
+`.so`/`.jar` exist, or `app_process` is not the declared stock MD5) the preflight
+returns conflict, reverts nothing, keeps desired states and blocks
 `package uninstall` and the uninstall hook (`sg_zygote_foreign`, see the runtime
-contract). Resolve it by hand, then retry.
+contract); all offenders are named on one line. The wrapper's guard files
+(`starts`, `enable`, `enabled`, `disable`) are not evidence: the live wrapper
+recreates `starts` after a revert and `touch disable` is its manual off switch, so
+restore sweeps them (ledger row each) and reports pending-restart while the revert
+marker of this boot says the wrapper zygote is still running. Resolve a real
+conflict by hand, then retry.
 
 `stock status` reads the last per-module receipt. An outstanding head-unit
 restart remains pending through repeated restore, including the uninstall hook,
