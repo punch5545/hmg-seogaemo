@@ -21,15 +21,13 @@ unrecorded_swap() {
     conflict 'app_process changed outside the ledger; restore refused, nothing modified'
     return 3
 }
-# Generated diagnostics: our private tree, and the hook's per-app runtime directories
-# (declared as owns_generated_dirs). Apps keep writing them until the next restart.
+# Generated diagnostics: our private tree, and the hook's per-app runtime and Dalvik
+# directories (declared as owns_generated_dirs). Apps keep writing them until the next
+# restart, so the per-app removal is advisory: it never fails the revert and records a
+# cleanup that boot reconcile retries.
 cleanup_runtime() {
     sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
-    sg_generated_dirs_remove && return 0
-    case $? in
-        3) conflict 'app runtime directory holds unexpected entries; kept'; return 3 ;;
-        *) fail 'app runtime directory cleanup failed'; return 1 ;;
-    esac
+    sg_generated_dirs_remove || :
 }
 compatibility() {
     map_state=$(/system/bin/sh "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state= # android44-shell: allow -- fixed dispatcher beneath the runtime-supplied package root

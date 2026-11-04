@@ -233,15 +233,27 @@ never by a module directly and never with a caller-supplied path:
 
 - `owns_generated_dirs=<csv>` in `module.properties` declares exact
   `/data/data/<package>/app_hmg-seogaemo-<name>` directories that a loaded hook creates
-  with `Context.getDir` (the wireless module declares the `-wireless-runtime` directory of
-  its five fixed packages; the Dalvik `-wireless-dex` directory stays with
-  `sg_dex_cache_track`). The generator rejects anything else. `sg_generated_dirs_remove`
-  validates every declared directory first (no symlink anywhere in the path, directory
-  holds only up to 64 regular files with plain `[a-zA-Z0-9_.-]` names) and then removes the
-  files and the directories. Any other entry is a conflict (3) and nothing is removed.
+  with `Context.getDir` (the wireless module declares the `-wireless-runtime` and the
+  `-wireless-dex` directory of its five fixed packages; for `com.daudio.app.dipo` the dex
+  files are additionally tracked by `sg_dex_cache_track`). The generator rejects anything
+  else. `sg_generated_dirs_remove` is advisory and never fails a revert, restore or
+  uninstall: hook processes keep writing until the head unit restarts, and every stock byte
+  is already back by then. For each declared directory without a symlink anywhere in its
+  path it removes the plain regular files (up to 64, names `[a-zA-Z0-9_.@-]`) and then the
+  directory when empty, one `generated_dir_remove` ledger row per directory; symlinks,
+  subdirectories and other entries are left untouched. If anything is left, or the revert
+  just recorded a pending restart (`sg_restart_pending`), it writes the cleanup marker
+  `<data root>/restart-cleanup/<module id>` (content: boot id), else it deletes the marker.
   Modules call it after `sg_revert_all` (the wireless `revert`), and `lib/stock.sh` calls it
-  for modules with no restore material. Running apps keep writing there until the head
-  unit restarts, so a later boot-time call to the same API is the complete cleanup.
+  for modules with no restore material. `svc/reconcile.sh` retries markers at boot, before
+  its pause check (the cleanup removes only our own diagnostic files), under
+  `operation.lock`, through `sg_restart_cleanup_run`: markers of the current boot are
+  skipped (hooks may still write), markers of unknown modules or odd names are dropped, a
+  module that is desired on or holds restore material again is left alone (marker dropped),
+  and any other module runs `sg_generated_dirs_remove` with its own declarations, which
+  deletes the marker when everything is gone and rewrites it with the current boot id
+  otherwise. After a full package uninstall nothing retries it: those few diagnostic files
+  stay in the app data until the owner clears app data; they affect no stock behavior.
 - After every module is restored, `lib/stock.sh` runs `hmg_seogaemo_stock_residue` (best
   effort, ledger row `stock_residue` ok/partial, never a conflict): `sg_legacy_dirs_cleanup`
   (`rmdir` only, in passes, of the directories between each owned path under

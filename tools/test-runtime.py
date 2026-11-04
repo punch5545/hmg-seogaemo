@@ -639,6 +639,27 @@ echo detail=
     run(base / "svc/reconcile.sh", env=env)
     assert log.read_text().splitlines() == ["b revert", "a revert"]
     log.write_text("")
+    # A generated-directory cleanup recorded before a restart is retried at boot, even
+    # while a stock restore keeps automatic module calls paused, and never calls modules.
+    shutil.rmtree(state / "modules")
+    (base / "modules").mkdir()
+    (base / "modules/a.properties").write_text(
+        "owns_generated_dirs=/data/data/com.example.one/app_hmg-seogaemo-wireless-runtime\n")
+    target = base / "target"
+    leftover = target / "data/data/com.example.one/app_hmg-seogaemo-wireless-runtime"
+    leftover.mkdir(parents=True)
+    (leftover / "p-1-2.txt").write_text("generated")
+    (state / "restart-cleanup").mkdir()
+    (state / "restart-cleanup/a").write_text("older-boot")
+    (state / "stock").mkdir()
+    (state / "stock/paused").write_text("paused")
+    getprop = base / "boot-id"
+    getprop.write_text("this-boot")
+    script(fake / "getprop", 'echo 1\n')
+    run(base / "svc/reconcile.sh", env=dict(env, SG_TARGET_ROOT=str(target), SG_BOOT_ID_FILE=str(getprop)))
+    assert not leftover.exists() and not (state / "restart-cleanup").exists()
+    assert log.read_text() == ""
+    assert not (state / "operation.lock").exists()
 
 
 def test_watch_dispatch(temp):
@@ -1077,7 +1098,12 @@ def test_residue_cleanup(temp):
     assert not one.exists() and not two.exists()
     assert (base / "data/data/com.example.one").is_dir()
     assert (base / "ledgerroot/ledger/ledger.tsv").read_text().count("generated_dir_remove") == 2
-    # Any unexpected entry refuses everything, including the clean sibling.
+    # Removal is advisory: it never fails, removes what it can, leaves anything unexpected
+    # in place and records a cleanup marker for the next boot.
+    marker = base / "ledgerroot/restart-cleanup/a"
+    assert not marker.exists()
+    env["SG_BOOT_ID_FILE"] = str(base / "boot-id")
+    (base / "boot-id").write_text("boot-one\n")
     for unexpected in ("subdir", "link", "bad name", "many"):
         populate(one)
         populate(two)
@@ -1090,24 +1116,66 @@ def test_residue_cleanup(temp):
         else:
             for number in range(70):
                 (two / f"f{number}.txt").write_text("x")
-        result = check("sg_generated_dirs_remove\n", ok=False)
-        assert result.returncode == 3 and "info.restore_conflict=generated dir content" in result.stdout
-        assert (one / "p-1-2.txt").exists() and (two / "p-1-2.txt").exists()
-        shutil.rmtree(one)
+        check("sg_generated_dirs_remove\n")
+        assert not one.exists(), unexpected
+        assert two.is_dir() and (two / "p-1-2.txt").exists() == (unexpected == "many"), unexpected
+        assert marker.read_text() == "boot-one"
         shutil.rmtree(two)
+        # A pass that completes clears the marker again.
+        check("sg_generated_dirs_remove\n")
+        assert not marker.exists()
     # A symlinked data directory is never followed.
     (base / "outside").mkdir()
     (base / "outside/keep").write_text("x")
     one.parent.mkdir(parents=True, exist_ok=True)
     one.symlink_to(base / "outside", target_is_directory=True)
-    result = check("sg_generated_dirs_remove\n", ok=False)
-    assert result.returncode == 3 and (base / "outside/keep").exists()
+    check("sg_generated_dirs_remove\n")
+    assert (base / "outside/keep").exists() and marker.exists()
     one.unlink()
+    check("sg_generated_dirs_remove\n")
+    assert not marker.exists()
+    # Running hooks can still recreate the directories: removed now, retried after a restart.
+    populate(one)
+    (base / "ledgerroot/modules/a").mkdir(parents=True, exist_ok=True)
+    (base / "ledgerroot/modules/a/assets-repaired-boot").write_text("boot-one")
+    check("sg_generated_dirs_remove\n")
+    assert not one.exists() and marker.read_text() == "boot-one"
+    # Same boot: left alone (hooks may still write). A new boot retries and clears the marker.
+    populate(one)
+    check("sg_restart_cleanup_run\n")
+    assert one.exists() and marker.exists()
+    (base / "boot-id").write_text("boot-two\n")
+    check("sg_restart_cleanup_run\n")
+    assert not one.exists() and not marker.exists()
+    assert not (base / "ledgerroot/restart-cleanup").exists()
+    # What cannot be removed is retried at every later boot; an applied module is not touched.
+    populate(one)
+    (one / "nested").mkdir()
+    marker.parent.mkdir()
+    marker.write_text("boot-one")
+    check("sg_restart_cleanup_run\n")
+    assert one.exists() and not (one / "p-1-2.txt").exists() and marker.read_text() == "boot-two"
+    shutil.rmtree(one)
+    populate(one)
+    (base / "ledgerroot/desired").mkdir(exist_ok=True)
+    (base / "ledgerroot/desired/a").write_text("on")
+    marker.write_text("boot-one")
+    check("sg_restart_cleanup_run\n")
+    assert (one / "p-1-2.txt").exists() and not marker.exists()
+    (base / "ledgerroot/desired/a").write_text("off")
+    shutil.rmtree(one)
+    # Markers for unknown modules or odd names are discarded; strange declarations are ignored.
+    marker.parent.mkdir(exist_ok=True)
+    (marker.parent / "gone").write_text("boot-one")
+    (marker.parent / "Bad.tmp.1").write_text("boot-one")
+    check("sg_restart_cleanup_run\n")
+    assert not marker.parent.exists()
+    del env["SG_BOOT_ID_FILE"]
     # Only exact project-named app directories may be declared.
     declare("/data/data/com.example.one/not_ours")
     populate(base / "data/data/com.example.one/not_ours")
-    result = check("sg_generated_dirs_remove\n", ok=False)
-    assert result.returncode == 2 and (base / "data/data/com.example.one/not_ours/p-1-2.txt").exists()
+    check("sg_generated_dirs_remove\n")
+    assert (base / "data/data/com.example.one/not_ours/p-1-2.txt").exists()
     declare(f"{logical_one},{logical_two}")
 
     # Legacy project directories: derived from owned paths, rmdir only, journals respected.

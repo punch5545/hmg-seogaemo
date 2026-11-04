@@ -618,12 +618,15 @@ def test_residue_on_restore(folder):
     ledger = (car.state / 'ledger/ledger.tsv').read_text()
     assert 'generated_dir_remove' in ledger and 'legacy_dir_remove' in ledger
     assert 'dex_legacy_remove' in ledger and 'stock_residue' in ledger
-    # An unexpected entry in a generated directory is a conflict, before any revert.
+    # An unexpected entry in a generated directory never fails a restore: the plain
+    # files go, the directory stays, and boot reconcile gets a retry marker.
     generated.mkdir(parents=True)
     (generated / 'nested').mkdir()
-    result = car.run('stock', 'restore', ok=False)
-    assert 'state=conflict' in result.stdout and 'generated dir content' in result.stdout
-    assert (generated / 'nested').is_dir()
+    (generated / 'p-1-2.txt').write_text('generated')
+    result = car.run('stock', 'restore')
+    assert 'state=off' in result.stdout or 'state=pending-restart' in result.stdout
+    assert (generated / 'nested').is_dir() and not (generated / 'p-1-2.txt').exists()
+    assert (car.state / 'restart-cleanup/a').is_file()
 
 
 with tempfile.TemporaryDirectory() as directory:

@@ -1618,9 +1618,11 @@ sg_projection_runtime() (
 # Private runtime directories that a loaded hook creates inside a system app's
 # data directory (Context.getDir, so always /data/data/<package>/app_hmg-seogaemo-<name>).
 # The module declares each exact directory in `owns_generated_dirs=`. They hold
-# only generated diagnostics: regular files with plain names, no baseline. All
-# declared directories are validated first; any symlink, subdirectory or other
-# entry is a conflict and nothing at all is removed.
+# only generated diagnostics and Dalvik output: regular files with plain names, no
+# baseline. Removal is advisory and never fails a restore: running hook processes
+# keep writing until the head unit restarts, so the pass removes what it can (plain
+# regular files, then the directory if it is empty) and leaves anything else
+# (symlinks, subdirectories, odd names) untouched.
 sg_generated_dirs() {
     sg_gd_list=
     sg_manifest=$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties
@@ -1630,44 +1632,84 @@ sg_generated_dirs() {
     done < "$sg_manifest"
     sg_print "$sg_gd_list"
 }
+# When anything is left, or the running hooks can still recreate it (restart
+# pending), the pass records a cleanup marker `<data root>/restart-cleanup/<module id>`
+# holding the boot id. `sg_restart_cleanup_run` (boot reconcile) retries it after the
+# restart and the marker disappears once the declared directories are gone.
 sg_generated_dirs_remove() (
-    list=$(sg_generated_dirs) || exit $?
+    list=$(sg_generated_dirs) || list=
     [ -n "$list" ] || exit 0
+    id=${HMG_SEOGAEMO_STATE##*/}
+    pending=0
     old_ifs=$IFS; IFS=,
     set -f
     set -- $list
     set +f
     IFS=$old_ifs
-    for pass in check remove; do
-        for dir do
-            case "$dir" in /data/data/*/app_hmg-seogaemo-*) ;; *) exit 2;; esac
-            pkg=${dir#/data/data/}; pkg=${pkg%%/*}; leaf=${dir##*/}
-            [ "$dir" = "/data/data/$pkg/$leaf" ] || exit 2
-            case "$pkg" in ''|*[!a-zA-Z0-9._]*) exit 2;; esac
-            case "$leaf" in *[!a-zA-Z0-9_-]*) exit 2;; esac
-            target=${SG_TARGET_ROOT:-}$dir
-            sg_path_safe "$target" || { sg_restore_conflict "generated dir: $dir"; exit 3; }
-            [ -e "$target" ] || continue
-            [ -d "$target" ] || { sg_restore_conflict "generated dir: $dir"; exit 3; }
-            count=0
-            for entry in "$target"/* "$target"/.[!.]* "$target"/..?*; do
-                [ -e "$entry" ] || [ -L "$entry" ] || continue
-                count=$((count + 1))
-                name=${entry##*/}
-                case "$name" in *[!a-zA-Z0-9_.-]*) count=999;; esac
-                if [ "$count" -gt 64 ] || [ -L "$entry" ] || [ ! -f "$entry" ]; then
-                    sg_restore_conflict "generated dir content: $dir"; exit 3
-                fi
-                if [ "$pass" = remove ]; then
-                    rm -f "$entry" || exit 1
-                fi
-            done
-            if [ "$pass" = remove ]; then
-                rmdir "$target" || exit 1
-                sg_ledger generated_dir_remove "$target" "" "" "" || exit 1
-            fi
+    for dir do
+        case "$dir" in /data/data/*/app_hmg-seogaemo-*) ;; *) sg_log "generated dir declaration ignored: $dir" || :; continue;; esac
+        pkg=${dir#/data/data/}; pkg=${pkg%%/*}; leaf=${dir##*/}
+        [ "$dir" = "/data/data/$pkg/$leaf" ] || { sg_log "generated dir declaration ignored: $dir" || :; continue; }
+        case "$pkg" in ''|*[!a-zA-Z0-9._]*) continue;; esac
+        case "$leaf" in *[!a-zA-Z0-9_-]*) continue;; esac
+        target=${SG_TARGET_ROOT:-}$dir
+        if ! sg_path_safe "$target"; then pending=1; continue; fi
+        [ -e "$target" ] || continue
+        if [ ! -d "$target" ]; then pending=1; continue; fi
+        left=0; count=0
+        for entry in "$target"/* "$target"/.[!.]* "$target"/..?*; do
+            [ -e "$entry" ] || [ -L "$entry" ] || continue
+            count=$((count + 1))
+            name=${entry##*/}
+            case "$name" in *[!a-zA-Z0-9_.@-]*) left=1; continue;; esac
+            if [ "$count" -gt 64 ] || [ -L "$entry" ] || [ ! -f "$entry" ]; then left=1; continue; fi
+            rm -f "$entry" 2>/dev/null || left=1
         done
+        if [ "$left" -eq 0 ] && rmdir "$target" 2>/dev/null; then
+            sg_ledger generated_dir_remove "$target" "" "" "" || sg_log "ledger row failed: generated dir $dir" || :
+        else
+            pending=1
+        fi
     done
+    marker_dir=$SG_DATA_ROOT/restart-cleanup
+    if [ "$pending" -eq 1 ] || sg_restart_pending; then
+        boot=$(cat "${SG_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}" 2>/dev/null) || boot=
+        { mkdir -p "$marker_dir" && chmod 700 "$marker_dir" &&
+            sg_write "$boot" > "$marker_dir/$id.tmp.$$" && mv "$marker_dir/$id.tmp.$$" "$marker_dir/$id"; } ||
+            sg_log 'could not record the pending generated directory cleanup' || :
+    else
+        rm -f "$marker_dir/$id"
+        rmdir "$marker_dir" 2>/dev/null || :
+    fi
+    exit 0
+)
+# Boot-time retry of recorded cleanups, under the caller's operation lock. A marker
+# written during the current boot is left alone (hooks may still be writing); one from an
+# earlier boot is retried with the module's own declarations. A module that is desired on
+# or holds restore material again uses those directories legitimately: its marker is dropped.
+sg_restart_cleanup_run() (
+    dir=$SG_DATA_ROOT/restart-cleanup
+    [ -d "$dir" ] && [ ! -L "$dir" ] || exit 0
+    boot=$(cat "${SG_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}" 2>/dev/null) || boot=
+    for marker in "$dir"/*; do
+        [ -f "$marker" ] && [ ! -L "$marker" ] || continue
+        id=${marker##*/}
+        case "$id" in ''|-*|*-|*--*|*[!a-z0-9-]*) rm -f "$marker"; continue;; esac
+        [ -f "$HMG_SEOGAEMO_BASE/modules/$id.properties" ] || { rm -f "$marker"; continue; }
+        saved=
+        { IFS= read -r saved < "$marker"; } 2>/dev/null || :
+        [ -z "$boot" ] || [ "$saved" != "$boot" ] || continue
+        (
+            HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$id
+            export HMG_SEOGAEMO_STATE
+            if [ "$(cat "$SG_DATA_ROOT/desired/$id" 2>/dev/null)" = on ] || sg_restore_material; then
+                rm -f "$marker"; exit 0
+            fi
+            sg_generated_dirs_remove
+        ) || :
+    done
+    rmdir "$dir" 2>/dev/null || :
+    exit 0
 )
 # Directories below /system/etc/hmg-seogaemo that exist without any journal, left by
 # builds before directory journaling. Derived from the module manifests' owned file
