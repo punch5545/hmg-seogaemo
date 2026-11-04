@@ -11,12 +11,14 @@ HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
 export SG_DATA_ROOT HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE
 . "$base/lib/common.sh"
 map_pid=
+map_scratch=
 lock_owned=0
 cleanup() {
     if [ -n "$map_pid" ]; then
         sg_kill_tree "$map_pid"
         wait "$map_pid" 2>/dev/null || :
     fi
+    if [ -n "$map_scratch" ]; then rm -rf "$map_scratch"; rmdir "$SG_DATA_ROOT/core" 2>/dev/null || :; fi
     [ -n "${HMG_SEOGAEMO_MAP_WORK:-}" ] && hmg_seogaemo_map_work_cleanup
     [ "$lock_owned" -eq 0 ] || rm -rf "$lock"
     return 0
@@ -25,9 +27,16 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mapper() {
     # Private Dalvik cache: never leave entries for our jar in /data/dalvik-cache.
-    sg_vm_prepare "$SG_DATA_ROOT/core/vm" || { sg_print state=failed restart=none 'detail=map VM cache unavailable'; return 1; }
+    # `status` is read-only: it reuses an existing cache, else it runs on a scratch
+    # cache that is removed on exit. Only verify and run create core/vm.
+    map_vm=$SG_DATA_ROOT/core/vm
+    if [ "$1" = status ] && [ ! -e "$map_vm" ]; then
+        map_vm=$SG_DATA_ROOT/core/vm.status.$$
+        map_scratch=$map_vm
+    fi
+    sg_vm_prepare "$map_vm" || { sg_print state=failed restart=none 'detail=map VM cache unavailable'; return 1; }
     if map_boot=$(sg_bootclasspath); then BOOTCLASSPATH=$map_boot; export BOOTCLASSPATH; fi
-    ANDROID_DATA="$SG_DATA_ROOT/core/vm" CLASSPATH="$base/core/map/hmg-seogaemo-mapper.jar" app_process /system/bin com.seogaemo.hmg.core.map.HmgSeogaemoMapTool \
+    ANDROID_DATA="$map_vm" CLASSPATH="$base/core/map/hmg-seogaemo-mapper.jar" app_process /system/bin com.seogaemo.hmg.core.map.HmgSeogaemoMapTool \
         "$1" "$base" "$SG_DATA_ROOT" "$2" &
     # This is the app_process PID, not a background shell function.
     map_pid=$!

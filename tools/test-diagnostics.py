@@ -92,4 +92,79 @@ hmg_seogaemo_diagnostics {out}
     finally:
         if alive(grandchild):
             os.kill(grandchild, 9)
+
+    # A killed export must never leave raw (unredacted) bytes in the export
+    # folder: raw content is staged in a private directory under the state tree.
+    import signal
+    (base / "bin/hmg-seogaemo-root").write_text(host_shell_script('''#!/system/bin/sh
+case "$1 $2" in
+    "map status")
+        echo "ssid=secret-in-flight"
+        if [ -f "$SG_DATA_ROOT/hang" ]; then
+            sleep 100 &
+            echo $! > "$SG_DATA_ROOT/grandchild-hang"
+            : > "$SG_DATA_ROOT/inflight"
+            wait
+        fi
+        echo state=on;;
+    *) echo state=off;;
+esac
+'''))
+
+    caller_text = caller.read_text()
+
+    def tree_text(root):
+        return b"".join(p.read_bytes() for p in root.rglob("*") if p.is_file())
+
+    def start_hung_export(target):
+        (data / "hang").touch()
+        (data / "inflight").unlink(missing_ok=True)
+        caller.write_text(caller_text.replace(str(out), str(target)))
+        process = subprocess.Popen([SHELL, str(caller)], env=env, start_new_session=True,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        deadline = time.monotonic() + 60
+        while not (data / "inflight").exists():
+            assert process.poll() is None and time.monotonic() < deadline
+            time.sleep(0.05)
+        return process
+
+    def assert_only_redacted(target, expect_staged):
+        assert b"secret-in-flight" not in tree_text(target), "raw bytes reached the export folder"
+        names = [p.name for p in target.rglob("*")]
+        assert not [n for n in names if n.startswith(".") or n in ("raw", "probe", "stage")], names
+        staged = [d for d in data.glob("diagnostics-tmp.*")]
+        assert bool(staged) == expect_staged, staged
+        for d in staged:
+            assert (d.stat().st_mode & 0o777) == 0o700, oct(d.stat().st_mode)
+            assert b"secret-in-flight" in tree_text(d)
+
+    for sig, cleaned in ((signal.SIGTERM, True), (signal.SIGKILL, False)):
+        target = temp / f"out-{sig.name}"
+        target.mkdir()
+        process = start_hung_export(target)
+        assert_only_redacted(target, True)   # in flight: raw bytes only in the private stage
+        os.killpg(process.pid, sig)
+        process.communicate(timeout=60)
+        for pid_file in data.glob("grandchild-hang"):
+            pid = int(pid_file.read_text())
+            if alive(pid):
+                os.kill(pid, 9)
+            pid_file.unlink()
+        assert_only_redacted(target, not cleaned)  # TERM trap removes it; KILL cannot
+    # The next run sweeps the stale staging directory left by SIGKILL, but
+    # leaves a live exporter's directory and unrelated names alone.
+    assert len(list(data.glob("diagnostics-tmp.*"))) == 1
+    foreign = data / "diagnostics-tmp.notapid"
+    foreign.mkdir()
+    live = data / f"diagnostics-tmp.{os.getpid()}"
+    live.mkdir()
+    (data / "hang").unlink()
+    final = temp / "out-final"
+    final.mkdir()
+    caller.write_text(caller_text.replace(str(out), str(final)))
+    result = subprocess.run([SHELL, str(caller)], env=env, capture_output=True, text=True, timeout=150)
+    assert result.returncode == 0, result
+    assert sorted(p.name for p in data.glob("diagnostics-tmp.*")) == sorted([foreign.name, live.name]), \
+        list(data.glob("diagnostics-tmp.*"))
+    assert b"secret-in-flight" not in tree_text(final)
 print("diagnostics bounded reads and probe guard passed")

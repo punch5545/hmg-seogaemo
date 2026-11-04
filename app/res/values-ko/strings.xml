@@ -117,6 +117,8 @@
     <string name="update_resume_expired">업데이트 이어서 진행 대기가 24시간이 지나 만료되었습니다. 필요하면 업데이트 확인을 다시 시작하세요.</string>
     <string name="restore_confirm_title">이전 모듈 설정 복원</string>
     <string name="restore_confirm_message">업데이트가 중단되어 모듈이 이전 켜짐/꺼짐 상태로 돌아가지 않았습니다. 지금 복원할까요?</string>
+    <string name="restore_confirm_none">변경할 모듈이 없습니다. 저장된 설정만 정리합니다.</string>
+    <string name="restore_confirm_boot_process">무선 CarPlay 및 Android Auto 변경은 시스템 부팅 프로세스(app_process)를 바꿉니다. 완료하려면 헤드 유닛을 재시작해야 합니다.</string>
     <string name="restore_confirm_action">복원</string>
     <string name="restore_skipped_paused">순정 상태 복원이 실행되어 저장된 모듈 복원을 취소했습니다.</string>
     <string name="restore_deferred_restart">먼저 헤드 유닛을 재시작하세요. 재시작 후 모듈 복원을 다시 안내합니다.</string>

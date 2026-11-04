@@ -6,6 +6,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import tempfile
 import time
@@ -165,12 +166,13 @@ def run():
             for name, script in {
                 "getprop": '#!/bin/sh\ncat "$FAKE_STATE"\n',
                 "setprop": '#!/bin/sh\n. "$HMG_SEOGAEMO_TEST_COMMON"\nsg_write "$2" > "$FAKE_STATE"\n',
-                "pm": '#!/bin/sh\ncase "$1" in install) [ "$FAKE_PM_RESULT" != hang ] || sleep 20; echo "$FAKE_PM_RESULT";; path) echo package:/data/app/hmg-seogaemo.apk;; esac\n',
+                "pm": '#!/bin/sh\ncase "$1" in install) echo $$ > "$FAKE_PM_PID"; case "$FAKE_PM_RESULT" in hang) sleep 20;; hang-ignore) trap "" TERM; sleep 20;; esac; echo "$FAKE_PM_RESULT";; path) echo package:/data/app/hmg-seogaemo.apk;; esac\n',
             }.items():
                 path = fake / name
                 path.write_text(script)
                 path.chmod(0o755)
             env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", FAKE_STATE=str(state),
+                       FAKE_PM_PID=str(temp / "pm.pid"),
                        HMG_SEOGAEMO_TEST_COMMON=str(temp / "lib/common.sh"),
                        HMG_SEOGAEMO_APK_STAGE=str(temp), SG_DATA_ROOT=str(temp / "state"))
             for output, succeeds in (("Success", True), ("Failure [INSTALL_FAILED]", False)):
@@ -203,7 +205,79 @@ def run():
             process.communicate(timeout=10)
             assert process.returncode != 0 and state.read_text() == "1"
             assert not list(temp.glob("hmg-seogaemo-install.*"))
-            del env["HMG_SEOGAEMO_PM_TIMEOUT"]
+            assert not list((temp / "state").glob("install-apk.*"))
+
+            def pm_gone():
+                pids = [int(x) for x in (temp / "pm.pid").read_text().split()]
+                for pid in pids:
+                    try:
+                        os.kill(pid, 0)
+                    except ProcessLookupError:
+                        continue
+                    return False
+                return True
+
+            def wait_for(check, what, seconds=20):
+                deadline = time.monotonic() + seconds
+                while not check():
+                    assert time.monotonic() < deadline, what
+                    time.sleep(0.05)
+
+            def start_hung(timeout):
+                env["HMG_SEOGAEMO_PM_TIMEOUT"] = timeout
+                state.write_text("1")
+                child = subprocess.Popen([SHELL, str(temp / "bin/install-apk.sh")], env=env,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+                wait_for(lambda: state.read_text() == "0" and (temp / "pm.pid").exists(), "pm never started")
+                # Only the staged APK may live in the (world-visible) stage directory.
+                assert [p.name for p in temp.glob("hmg-seogaemo-install.*")] and \
+                    all(p.suffix == ".apk" for p in temp.glob("hmg-seogaemo-install.*"))
+                work = list((temp / "state").glob("install-apk.*"))
+                assert len(work) == 1 and (work[0].stat().st_mode & 0o777) == 0o700, work
+                return child
+
+            # A pm that ignores TERM is KILLed after the grace period.
+            env["FAKE_PM_RESULT"] = "hang-ignore"
+            env["HMG_SEOGAEMO_PM_GRACE"] = "1"
+            (temp / "pm.pid").unlink(missing_ok=True)
+            state.write_text("1")
+            started = time.monotonic()
+            env["HMG_SEOGAEMO_PM_TIMEOUT"] = "2"
+            result = subprocess.run([SHELL, str(temp / "bin/install-apk.sh")], env=env, capture_output=True, text=True)
+            assert result.returncode == 1 and "timed out" in result.stderr, result
+            assert time.monotonic() - started < 15 and state.read_text() == "1"
+            wait_for(pm_gone, "TERM-ignoring pm survived the watchdog")
+            assert not list(temp.glob("hmg-seogaemo-install.*")) and not list((temp / "state").glob("install-apk.*"))
+            # SIGKILL of the installer itself cannot run its trap: the watchdog
+            # must notice the dead parent, stop pm and restore the property.
+            env["FAKE_PM_RESULT"] = "hang"
+            (temp / "pm.pid").unlink(missing_ok=True)
+            process = start_hung("100")
+            os.kill(process.pid, signal.SIGKILL)
+            process.wait(timeout=10)  # reap it: a zombie still answers kill -0
+            process.communicate(timeout=10)
+            wait_for(lambda: state.read_text() == "1", "watchdog did not restore sys.boot_completed")
+            wait_for(pm_gone, "pm survived the killed installer")
+            wait_for(lambda: not list(temp.glob("hmg-seogaemo-install.*")) and
+                     not list((temp / "state").glob("install-apk.*")), "installer residue left")
+            # Whole process group killed (watchdog included): the next run
+            # recovers the property from the saved value before reading it.
+            (temp / "pm.pid").unlink(missing_ok=True)
+            process = start_hung("100")
+            os.killpg(process.pid, signal.SIGKILL)
+            process.communicate(timeout=10)
+            assert state.read_text() == "0"
+            pm_pids = [int(x) for x in (temp / "pm.pid").read_text().split()]
+            for pid in pm_pids:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            env["FAKE_PM_RESULT"] = "Success"
+            result = subprocess.run([SHELL, str(temp / "bin/install-apk.sh")], env=env, capture_output=True, text=True)
+            assert result.returncode == 0 and state.read_text() == "1", result
+            assert not list(temp.glob("hmg-seogaemo-install.*")) and not list((temp / "state").glob("install-apk.*"))
+            del env["HMG_SEOGAEMO_PM_TIMEOUT"], env["HMG_SEOGAEMO_PM_GRACE"]
             # Root postinstall must explicitly install native client mode, even
             # when its source and all package bin files start non-executable.
             native = temp / "fake-nemesis"

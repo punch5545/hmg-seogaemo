@@ -30,6 +30,7 @@ public final class ConfirmDialog extends Dialog {
     private final ProgressBar progress;
     private boolean submitted;
     private long shownAt;
+    private boolean tapGuard = true; // Off for read-only results: their one button only closes.
 
     private ConfirmDialog(final Activity activity, String title, CharSequence message,
             String confirmLabel, String cancelLabel, boolean destructive,
@@ -94,7 +95,7 @@ public final class ConfirmDialog extends Dialog {
             public void onClick(View view) {
                 if (submitted) return;
                 // A touch that began before the dialog appeared must not confirm it.
-                if (!armed(shownAt, SystemClock.uptimeMillis())) return;
+                if (tapGuard && !armed(shownAt, SystemClock.uptimeMillis())) return;
                 submitted = true;
                 confirm.setEnabled(false);
                 cancel.setEnabled(false);
@@ -112,9 +113,17 @@ public final class ConfirmDialog extends Dialog {
     public static ConfirmDialog show(Activity activity, String title, CharSequence message,
             String confirmLabel, String cancelLabel, boolean destructive,
             Action onConfirm, Runnable onCancel) {
+        return show(activity, title, message, confirmLabel, cancelLabel, destructive, true,
+                onConfirm, onCancel);
+    }
+
+    private static ConfirmDialog show(Activity activity, String title, CharSequence message,
+            String confirmLabel, String cancelLabel, boolean destructive, boolean tapGuard,
+            Action onConfirm, Runnable onCancel) {
         if (activity.isFinishing()) return null; // Callers ignore the result.
         ConfirmDialog dialog = new ConfirmDialog(activity, title, message, confirmLabel,
                 cancelLabel, destructive, onConfirm, onCancel);
+        dialog.tapGuard = tapGuard;
         dialog.show();
         dialog.shownAt = SystemClock.uptimeMillis();
         Window window = dialog.getWindow();
@@ -127,7 +136,7 @@ public final class ConfirmDialog extends Dialog {
         return dialog;
     }
 
-    /** Confirm taps are ignored for this long after the dialog appears; Cancel is never delayed. */
+    /** Confirm taps are ignored for this long after a confirmation appears; Cancel and result Close are never delayed. */
     static final long CONFIRM_ARM_DELAY_MS = 600L;
 
     static boolean armed(long shownAtMs, long nowMs) {
@@ -141,7 +150,8 @@ public final class ConfirmDialog extends Dialog {
     public static ConfirmDialog showResult(Activity activity, String title, CharSequence message,
             String closeLabel) {
         if (activity.isFinishing()) return null;
-        ConfirmDialog dialog = show(activity, title, message, closeLabel, closeLabel, false,
+        // Close does nothing destructive, so it is never delayed by the confirm tap guard.
+        ConfirmDialog dialog = show(activity, title, message, closeLabel, closeLabel, false, false,
                 new Action() { public void run(ConfirmDialog dialog) { dialog.dismiss(); } }, null);
         dialog.cancel.setVisibility(View.GONE);
         dialog.confirm.requestFocus();

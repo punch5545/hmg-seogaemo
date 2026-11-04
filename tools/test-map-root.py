@@ -21,7 +21,13 @@ with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-root-") as tmp:
     (fake/"getprop").write_text("#!/bin/sh\ncase \"$1\" in ro.build.product) echo NEEV.KOR.0000.V039.001.260902;; esac\n")
     (fake/"app_process").write_text('''#!/bin/sh
 . "$HMG_SEOGAEMO_BASE/lib/common.sh"
-[ "$ANDROID_DATA" = "$SG_DATA_ROOT/core/vm" ] && [ -d "$ANDROID_DATA/dalvik-cache" ] || exit 9
+[ -d "$ANDROID_DATA/dalvik-cache" ] || exit 9
+# status never creates core/vm: it uses it when it exists, else a scratch cache.
+case "$ANDROID_DATA" in
+    "$SG_DATA_ROOT/core/vm.status."*) [ "$3" = status ] && [ ! -e "$SG_DATA_ROOT/core/vm" ] || exit 9 ;;
+    "$SG_DATA_ROOT/core/vm") ;;
+    *) exit 9 ;;
+esac
 [ "$BOOTCLASSPATH" = /system/framework/core.jar ] || exit 8
 if [ "$3" = status ]; then sg_print state=off restart=none "detail=verification needed"; exit 0; fi
 [ "$3" = run ] || [ "$3" = verify ] || exit 2
@@ -50,8 +56,12 @@ sg_print state=on restart=none "detail=map verified"
         assert result.returncode==2,(invalid,result.stdout,result.stderr)
     status=subprocess.run(command+["map","status"],env=env,capture_output=True,text=True)
     assert status.returncode==0 and "verification needed" in status.stdout,status
+    assert not (state/"core").exists(), list(state.rglob("*"))
     result=subprocess.run(command+["map","run"],env=env,capture_output=True,text=True)
     assert result.returncode==0,(result.stdout,result.stderr)
+    assert (state/"core/vm/dalvik-cache").is_dir()
+    status=subprocess.run(command+["map","status"],env=env,capture_output=True,text=True)
+    assert status.returncode==0 and not list((state/"core").glob("vm.status.*")),status
     active=(state/"car-maps/active").read_text().strip()
     assert active=="NEEV.KOR.0000.V039.001.260902/0123456789abcdef0123456789abcdef/abcdef0123456789abcdef0123456789"
     assert (state/"car-maps"/active/"map.json").is_file()

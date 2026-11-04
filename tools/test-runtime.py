@@ -57,9 +57,9 @@ def fake_ownership(fake):
     script(fake / "nemesis", "exit 0\n")
 
 
-def run(path, *args, env, ok=True):
+def run(path, *args, env, ok=True, timeout=None):
     result = subprocess.run([SHELL, str(path), *args], env=car_env(env), text=True,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
     if ok:
         assert result.returncode == 0, (path, args, result.stdout, result.stderr)
     else:
@@ -639,6 +639,27 @@ echo detail=
     run(base / "svc/reconcile.sh", env=env)
     assert log.read_text().splitlines() == ["b revert", "a revert"]
     log.write_text("")
+    # A generated-directory cleanup recorded before a restart is retried at boot, even
+    # while a stock restore keeps automatic module calls paused, and never calls modules.
+    shutil.rmtree(state / "modules")
+    (base / "modules").mkdir()
+    (base / "modules/a.properties").write_text(
+        "owns_generated_dirs=/data/data/com.example.one/app_hmg-seogaemo-wireless-runtime\n")
+    target = base / "target"
+    leftover = target / "data/data/com.example.one/app_hmg-seogaemo-wireless-runtime"
+    leftover.mkdir(parents=True)
+    (leftover / "p-1-2.txt").write_text("generated")
+    (state / "restart-cleanup").mkdir()
+    (state / "restart-cleanup/a").write_text("older-boot")
+    (state / "stock").mkdir()
+    (state / "stock/paused").write_text("paused")
+    getprop = base / "boot-id"
+    getprop.write_text("this-boot")
+    script(fake / "getprop", 'echo 1\n')
+    run(base / "svc/reconcile.sh", env=dict(env, SG_TARGET_ROOT=str(target), SG_BOOT_ID_FILE=str(getprop)))
+    assert not leftover.exists() and not (state / "restart-cleanup").exists()
+    assert log.read_text() == ""
+    assert not (state / "operation.lock").exists()
 
 
 def test_watch_dispatch(temp):
@@ -667,15 +688,24 @@ def test_watch_dispatch(temp):
     boot_id.write_text("boot-a")
     uptime = base / "uptime"
     uptime.write_text("100.0 0.0\n")
-    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+    # Fully synchronous by construction: the fake sleep, the uptime file, the
+    # boot ID and the display are all driven by this test, and no real clock,
+    # real sleep or inherited tuning variable can reach the watcher. Scrub the
+    # caller's environment of every runtime knob so only values set here count,
+    # and bound each invocation so a hang fails instead of stalling the suite.
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("HMG_SEOGAEMO_", "SG_"))}
+    env.update(PATH=str(fake) + ":" + os.environ["PATH"],
                SG_DATA_ROOT=str(state), FAKE_DISPLAY=str(display),
                FAKE_CALLS=str(base / "calls"), FAKE_SLEEPS=str(base / "sleeps"),
                SG_BOOT_ID_FILE=str(boot_id), HMG_SEOGAEMO_WATCH_MAX_POLLS="3",
-               HMG_SEOGAEMO_WATCH_UPTIME_FILE=str(uptime))
+               HMG_SEOGAEMO_WATCH_UPTIME_FILE=str(uptime),
+               HMG_SEOGAEMO_WATCH_POLL="5", HMG_SEOGAEMO_WATCH_IDLE="300")
     calls = base / "calls"
+    watcher = base / "svc/watcher.sh"
     # Nothing enabled: idle with the long interval, never dispatch, never exit early.
     display.write_text("mWakefulness=Asleep")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert not calls.exists()
     assert (base / "sleeps").read_text().splitlines() == ["300", "300"]
     (base / "sleeps").unlink()
@@ -683,16 +713,16 @@ def test_watch_dispatch(temp):
     (state / "desired/watcher").write_text("on")
     (state / "desired/plain").write_text("on")
     display.write_text("mWakefulness=Asleep")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch boot", "watcher watch screen_on"]
     assert (base / "sleeps").read_text().splitlines() == ["5", "5"]
     # Watcher restart in the same boot does not repeat the boot event; a new boot does.
     calls.write_text("")
     display.write_text("mWakefulness=Awake")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text() == ""
     boot_id.write_text("boot-b")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch boot"]
     # The watcher never applies or reverts.
     assert "apply" not in calls.read_text() and "revert" not in calls.read_text()
@@ -701,12 +731,12 @@ def test_watch_dispatch(temp):
     display.write_text("garbage")
     script(fake / "sleep", 'echo "$1" >> "$FAKE_SLEEPS"\n')
     boot_id.write_text("boot-c")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch boot"]
     # Screen off-> on recognises both Android 4.4 policy and wakefulness keys.
     calls.write_text("")
     script(fake / "dumpsys", 'if [ -f "$FAKE_DISPLAY.n" ]; then echo mDisplayPowerRequest.policy=BRIGHT; else : > "$FAKE_DISPLAY.n"; echo mDisplayPowerRequest.policy=OFF; fi\n')
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch screen_on"]
 
 
@@ -725,24 +755,24 @@ def test_watch_dispatch(temp):
     for drift in ("stock.reset", "user.choice"):
         actual.write_text(drift)
         calls.write_text("")
-        run(base / "svc/watcher.sh", env=env)
+        run(watcher, env=env, timeout=120)
         assert calls.read_text().splitlines() == ["watcher watch screen_on"]
         assert actual.read_text().strip() == "our.action"
     calls.write_text("")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text() == ""  # matching value never dispatches
     (state / "desired/watcher").write_text("off")
     actual.write_text("user.choice")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text() == "" and actual.read_text() == "user.choice"
     (state / "desired/watcher").write_text("on")
     (state / "stock").mkdir()
     (state / "stock/paused").touch()
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text() == ""
     (state / "stock/paused").unlink()
     (prop_dir / "applied").unlink()
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text() == ""  # never invent an assignment without a snapshot
 
     # Failed boot delivery is never acknowledged; capped retries survive restart.
@@ -756,25 +786,25 @@ def test_watch_dispatch(temp):
     for clock, count in ((100, 1), (104, 1), (105, 2), (114, 2),
                          (115, 3), (135, 4), (175, 5), (235, 6), (999, 6)):
         uptime.write_text(f"{clock}.0 0.0\n")
-        run(base / "svc/watcher.sh", env=env)
+        run(watcher, env=env, timeout=120)
         assert len(calls.read_text().splitlines()) == count, calls.read_text()
         assert (state / "watch/boot.watcher").read_text().strip() != "boot-retry"
     # A new boot gets its own budget; after success no repeats on restart.
     boot_id.write_text("boot-recovered")
     (state / "fail-watch").unlink()
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert (state / "watch/boot.watcher").read_text().strip() == "boot-recovered"
     count = len(calls.read_text().splitlines())
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert len(calls.read_text().splitlines()) == count
     # Retry a transient failure before budget exhaustion within the same boot.
     boot_id.write_text("boot-transient")
     (state / "fail-watch").touch()
     uptime.write_text("100.0 0.0\n")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     (state / "fail-watch").unlink()
     uptime.write_text("105.0 0.0\n")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert (state / "watch/boot.watcher").read_text().strip() == "boot-transient"
     # A failed wake stays queued even after the display remains on.
     calls.write_text("")
@@ -784,15 +814,15 @@ def test_watch_dispatch(temp):
     script(fake / "sleep",
            'echo "110.0 0.0" > "$HMG_SEOGAEMO_WATCH_UPTIME_FILE"\n')
     env["HMG_SEOGAEMO_WATCH_MAX_POLLS"] = "2"
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch screen_on"]
     (state / "fail-watch").unlink()
     uptime.write_text("115.0 0.0\n")
     env["HMG_SEOGAEMO_WATCH_MAX_POLLS"] = "1"
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch screen_on"] * 2
     assert not (state / "watch/screen.watcher").exists()
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch screen_on"] * 2
 
 
@@ -1077,7 +1107,12 @@ def test_residue_cleanup(temp):
     assert not one.exists() and not two.exists()
     assert (base / "data/data/com.example.one").is_dir()
     assert (base / "ledgerroot/ledger/ledger.tsv").read_text().count("generated_dir_remove") == 2
-    # Any unexpected entry refuses everything, including the clean sibling.
+    # Removal is advisory: it never fails, removes what it can, leaves anything unexpected
+    # in place and records a cleanup marker for the next boot.
+    marker = base / "ledgerroot/restart-cleanup/a"
+    assert not marker.exists()
+    env["SG_BOOT_ID_FILE"] = str(base / "boot-id")
+    (base / "boot-id").write_text("boot-one\n")
     for unexpected in ("subdir", "link", "bad name", "many"):
         populate(one)
         populate(two)
@@ -1090,24 +1125,66 @@ def test_residue_cleanup(temp):
         else:
             for number in range(70):
                 (two / f"f{number}.txt").write_text("x")
-        result = check("sg_generated_dirs_remove\n", ok=False)
-        assert result.returncode == 3 and "info.restore_conflict=generated dir content" in result.stdout
-        assert (one / "p-1-2.txt").exists() and (two / "p-1-2.txt").exists()
-        shutil.rmtree(one)
+        check("sg_generated_dirs_remove\n")
+        assert not one.exists(), unexpected
+        assert two.is_dir() and (two / "p-1-2.txt").exists() == (unexpected == "many"), unexpected
+        assert marker.read_text() == "boot-one"
         shutil.rmtree(two)
+        # A pass that completes clears the marker again.
+        check("sg_generated_dirs_remove\n")
+        assert not marker.exists()
     # A symlinked data directory is never followed.
     (base / "outside").mkdir()
     (base / "outside/keep").write_text("x")
     one.parent.mkdir(parents=True, exist_ok=True)
     one.symlink_to(base / "outside", target_is_directory=True)
-    result = check("sg_generated_dirs_remove\n", ok=False)
-    assert result.returncode == 3 and (base / "outside/keep").exists()
+    check("sg_generated_dirs_remove\n")
+    assert (base / "outside/keep").exists() and marker.exists()
     one.unlink()
+    check("sg_generated_dirs_remove\n")
+    assert not marker.exists()
+    # Running hooks can still recreate the directories: removed now, retried after a restart.
+    populate(one)
+    (base / "ledgerroot/modules/a").mkdir(parents=True, exist_ok=True)
+    (base / "ledgerroot/modules/a/assets-repaired-boot").write_text("boot-one")
+    check("sg_generated_dirs_remove\n")
+    assert not one.exists() and marker.read_text() == "boot-one"
+    # Same boot: left alone (hooks may still write). A new boot retries and clears the marker.
+    populate(one)
+    check("sg_restart_cleanup_run\n")
+    assert one.exists() and marker.exists()
+    (base / "boot-id").write_text("boot-two\n")
+    check("sg_restart_cleanup_run\n")
+    assert not one.exists() and not marker.exists()
+    assert not (base / "ledgerroot/restart-cleanup").exists()
+    # What cannot be removed is retried at every later boot; an applied module is not touched.
+    populate(one)
+    (one / "nested").mkdir()
+    marker.parent.mkdir()
+    marker.write_text("boot-one")
+    check("sg_restart_cleanup_run\n")
+    assert one.exists() and not (one / "p-1-2.txt").exists() and marker.read_text() == "boot-two"
+    shutil.rmtree(one)
+    populate(one)
+    (base / "ledgerroot/desired").mkdir(exist_ok=True)
+    (base / "ledgerroot/desired/a").write_text("on")
+    marker.write_text("boot-one")
+    check("sg_restart_cleanup_run\n")
+    assert (one / "p-1-2.txt").exists() and not marker.exists()
+    (base / "ledgerroot/desired/a").write_text("off")
+    shutil.rmtree(one)
+    # Markers for unknown modules or odd names are discarded; strange declarations are ignored.
+    marker.parent.mkdir(exist_ok=True)
+    (marker.parent / "gone").write_text("boot-one")
+    (marker.parent / "Bad.tmp.1").write_text("boot-one")
+    check("sg_restart_cleanup_run\n")
+    assert not marker.parent.exists()
+    del env["SG_BOOT_ID_FILE"]
     # Only exact project-named app directories may be declared.
     declare("/data/data/com.example.one/not_ours")
     populate(base / "data/data/com.example.one/not_ours")
-    result = check("sg_generated_dirs_remove\n", ok=False)
-    assert result.returncode == 2 and (base / "data/data/com.example.one/not_ours/p-1-2.txt").exists()
+    check("sg_generated_dirs_remove\n")
+    assert (base / "data/data/com.example.one/not_ours/p-1-2.txt").exists()
     declare(f"{logical_one},{logical_two}")
 
     # Legacy project directories: derived from owned paths, rmdir only, journals respected.
@@ -1168,8 +1245,16 @@ def test_residue_cleanup(temp):
     vm = base / "ledgerroot/core/vm"
     (vm / "dalvik-cache").mkdir(parents=True)
     (vm / "dalvik-cache/entry").write_text("cache")
+    for leftover in ("vm.status.4242", "vm.status.7"):
+        (base / "ledgerroot/core" / leftover / "dalvik-cache").mkdir(parents=True)
+    (base / "ledgerroot/core/vm.status.abc").mkdir()
+    (base / "ledgerroot/core/vm.statusX").mkdir()
     check("sg_vm_cleanup\n")
     assert not vm.exists() and (base / "ledgerroot/core").is_dir()
+    assert not list((base / "ledgerroot/core").glob("vm.status.[0-9]*"))
+    assert (base / "ledgerroot/core/vm.status.abc").is_dir() and (base / "ledgerroot/core/vm.statusX").is_dir()
+    (base / "ledgerroot/core/vm.status.abc").rmdir()
+    (base / "ledgerroot/core/vm.statusX").rmdir()
     (base / "ledgerroot/core").rmdir()
     (base / "ledgerroot/core").symlink_to(base / "outside", target_is_directory=True)
     (base / "outside/vm").mkdir()
@@ -1531,14 +1616,53 @@ def test_zygote_foreign(temp):
         assert result.returncode == 3 and "info.restore_conflict=app_process is not the known stock build" in result.stdout
     assert paths[0].read_bytes() == b"something else"
     paths[0].write_bytes(b"stock-executable")
-    # Our files without any record: backup, hook files and guard state each count.
-    for leftover in (paths[1], paths[2], paths[3], guards[0], guards[2]):
+    # Our files without any record: the stock backup and each hook file count.
+    for leftover in (paths[1], paths[2], paths[3]):
         leftover.write_bytes(b"x")
         for body in ("sg_zygote_foreign\n", "sg_revert_all\n"):
             result = check(body, ok=False)
             assert result.returncode == 3 and "without ownership record" in result.stdout, (leftover, result)
         assert leftover.read_bytes() == b"x" and paths[0].read_bytes() == b"stock-executable"
         leftover.unlink()
+    # Every offender is listed on one line, the unknown executable included.
+    for leftover in paths[1:]:
+        leftover.write_bytes(b"x")
+    paths[0].write_bytes(b"something else")
+    result = check("sg_zygote_foreign\n", ok=False)
+    lines = [line for line in result.stdout.splitlines() if line.startswith("info.restore_conflict=")]
+    assert result.returncode == 3 and len(lines) == 1, result.stdout
+    for needle in ("app_process.hmg-seogaemo-stock", "libhmg_seogaemo_wireless_hook.so",
+                   "hmg-seogaemo-wireless-hook.jar", "not the known stock build"):
+        assert needle in lines[0], (needle, lines)
+    paths[0].write_bytes(b"stock-executable")
+    for leftover in paths[1:]:
+        leftover.unlink()
+    # The wrapper's guard state alone is no evidence: the guard passes, and restore
+    # sweeps exactly those names (ledger row each) while leaving other files alone.
+    for guard in guards:
+        guard.write_bytes(b"3")
+    (state / "keep").write_bytes(b"k")
+    check("sg_zygote_foreign\n")
+    assert all(guard.exists() for guard in guards)
+    check("sg_zygote_foreign\nsg_revert_all\n")
+    assert not any(guard.exists() for guard in guards) and (state / "keep").exists()
+    assert paths[0].read_bytes() == b"stock-executable"
+    ledger = (base / "data/nemesis/backup/hmg-seogaemo/ledger/ledger.tsv").read_text()
+    assert ledger.count("zygote_guard_sweep") == 4, ledger
+    (state / "keep").unlink()
+    # No hook files and stock app_process: only the guard state is swept even when it
+    # is the only thing present; an unrecorded real swap evidence still wins over it.
+    guards[0].write_bytes(b"1")
+    paths[1].write_bytes(b"x")
+    assert check("sg_revert_all\n", ok=False).returncode == 3 and guards[0].exists()
+    paths[1].unlink()
+    guards[0].unlink()
+    # A directory in place of a guard file is not ours: conflict, nothing removed.
+    guards[2].mkdir()
+    guards[3].write_bytes(b"x")
+    assert check("sg_revert_all\n", ok=False).returncode == 3 and guards[3].exists()
+    guards[2].rmdir()
+    guards[3].unlink()
     # A symlink in place of our file is also foreign.
     paths[1].symlink_to(base / "nowhere")
     assert check("sg_zygote_foreign\n", ok=False).returncode == 3
@@ -1555,12 +1679,132 @@ def test_zygote_foreign(temp):
     check("sg_zygote_foreign\nsg_revert_all\n")
     assert paths[0].read_bytes() == b"stock-executable" and not paths[1].exists()
     check("sg_zygote_foreign\n")
+    # The live wrapper recreates `starts` after the revert (watcher, O_CREAT), and the
+    # documented manual `touch disable` is also left behind: restore must still pass,
+    # report the pending restart (this boot) and sweep them instead of blocking.
+    check("sg_restart_pending\n")
+    guards[2].write_bytes(b"0")
+    guards[3].write_bytes(b"")
+    check("sg_zygote_foreign\nsg_revert_all\n")
+    assert not guards[2].exists() and not guards[3].exists()
+    check("sg_restart_pending\n")
+    boot_id.write_text("another-boot")
+    assert check("sg_restart_pending\n", ok=False).returncode != 0
+    boot_id.write_text("test-boot")
     # Only an unrecorded swap (state wiped) is refused: restoring cannot proceed.
     check("sg_zygote_install wrapper loader jar\n")
     for entry in state.glob("file.*"):
         shutil.rmtree(entry)
     result = check("sg_revert_all\n", ok=False)
     assert result.returncode == 3 and paths[0].read_bytes() == b"wrapper" and paths[1].read_bytes() == b"stock-executable"
+
+
+def test_kill_tree(temp):
+    """Every process of a live tree, TERM-ignoring ones included, is signalled and dies."""
+    base = temp / 'kill-tree'
+    base.mkdir()
+    # Each node records its own PID, optionally starts a child node and then idles
+    # without ever exiting by itself (bounded to 40 seconds so a failure cleans up).
+    idle = 'i=0\nwhile [ "$i" -lt 40 ]; do sleep 1; i=$((i + 1)); done\n'
+    (base / 'leaf.sh').write_text(host_shell_script(
+        '#!/bin/sh\ntrap "" TERM\necho $$ > "$T/leaf"\n' + idle))
+    (base / 'mid.sh').write_text(host_shell_script(
+        '#!/bin/sh\ntrap "" TERM\necho $$ > "$T/mid"\n' + SHELL + ' "$T/leaf.sh" &\n' + idle))
+    (base / 'side.sh').write_text(host_shell_script(
+        '#!/bin/sh\necho $$ > "$T/side"\n' + idle))
+    (base / 'top.sh').write_text(host_shell_script(
+        '#!/bin/sh\necho $$ > "$T/top"\n' + SHELL + ' "$T/mid.sh" &\n' + SHELL + ' "$T/side.sh" &\n' + idle))
+    runner = base / 'runner'
+    script(runner, f'''
+set -eu
+T={base}; export T
+{SHELL} "$T/top.sh" < /dev/null > /dev/null 2>&1 &
+top=$!
+tries=0
+while [ ! -s "$T/leaf" ] || [ ! -s "$T/mid" ] || [ ! -s "$T/side" ] || [ ! -s "$T/top" ]; do
+    tries=$((tries + 1)); [ "$tries" -lt 100 ] || exit 9
+    sleep 1
+done
+# Tree: top with children mid (ignores TERM) and side; leaf (ignores TERM) below mid.
+sg_kill_tree "$top" 5
+''')
+    result = subprocess.run([SHELL, str(runner)], env=car_env(), text=True, capture_output=True, timeout=60)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    for name in ('top', 'mid', 'leaf', 'side'):
+        pid = int((base / name).read_text())
+        for _ in range(20):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.2)
+        else:
+            raise AssertionError(f'{name} process {pid} survived sg_kill_tree')
+    # Invalid targets are refused without signalling anything.
+    script(runner, 'for bad in "" abc 0 1 "1 2"; do if sg_kill_tree "$bad"; then exit 1; fi; done\n')
+    run(runner, env=os.environ)
+
+
+def test_update_signal(temp):
+    """A signal to the updater ends the verifier VM (even one ignoring TERM) and frees the lock."""
+    import hashlib
+    base = temp / "update-signal"
+    package_root = base / "package"
+    state = base / "state"
+    incoming = base / "download"
+    fake = base / "fake"
+    for folder in (package_root / "core", package_root / "lib", package_root / "app", incoming / "payload", fake):
+        folder.mkdir(parents=True)
+    shutil.copy(ROOT / "nemesis/package/lib/common.sh", package_root / "lib/common.sh")
+    (package_root / "NEMESIS.data").write_text("package-version=0.1.0\n")
+    (package_root / "app/hmg-seogaemo.apk").write_bytes(b"apk")
+    updater = (ROOT / "nemesis/package/core/update.sh").read_text()
+    updater = updater.replace("state=/data/nemesis/backup/hmg-seogaemo", "state=" + str(state))
+    updater = updater.replace("input=/data/data/com.seogaemo.hmg/files/update", "input=" + str(incoming))
+    (package_root / "core/update.sh").write_text(host_shell_script(updater))
+    names = ("VERSION", "modules.list", "modules.graph", "modules.lines")
+    lines = ""
+    for name in names + ("app/hmg-seogaemo.apk",):
+        target = incoming / "payload" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("test\n")
+        lines += hashlib.md5(target.read_bytes()).hexdigest() + "|" + name + "\n"
+    (incoming / "payload/files.md5").write_text(lines)
+    # The verifier ignores TERM and spawns a helper, like a wedged Dalvik VM.
+    script(fake / "app_process", '''
+trap "" TERM
+sg_write "$$" > "$UPDATE_TEST_PIDS"
+sleep 40 &
+sg_write " $!" >> "$UPDATE_TEST_PIDS"
+i=0
+while [ "$i" -lt 40 ]; do sleep 1; i=$((i + 1)); done
+''')
+    pids = base / "pids"
+    env = car_env(dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"], UPDATE_TEST_PIDS=str(pids)))
+    process = subprocess.Popen([SHELL, str(package_root / "core/update.sh"), "stage"], env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    for _ in range(100):
+        if pids.exists() and " " in pids.read_text():
+            break
+        time.sleep(0.1)
+    else:
+        process.kill()
+        raise AssertionError("fake verifier never started")
+    assert (state / ".lock").is_dir()
+    process.terminate()
+    process.communicate(timeout=30)
+    assert process.returncode != 0
+    for pid in pids.read_text().split():
+        for _ in range(30):
+            try:
+                os.kill(int(pid), 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.2)
+        else:
+            raise AssertionError(f"verifier process {pid} survived the signal")
+    assert not (state / ".lock").exists()
+    assert not list((state / "update").glob("java-out.*"))
 
 
 def test_projection_reader_vm(temp):
@@ -1637,6 +1881,51 @@ esac
             continue
         raise AssertionError(f'reader process {pid} survived the timeout')
     assert not list((base / 'state').glob('reader.*'))
+    # Output files of an earlier killed run are swept by exact name; a live PID's files,
+    # look-alike names and other files stay.
+    finished = subprocess.run(["true"])
+    dead = str(subprocess.Popen(["true"]).pid)
+    time.sleep(0.2)
+    data = base / 'state'
+    stale = [data / f'reader.out.{dead}', data / f'reader.err.{dead}']
+    kept = [data / f'reader.out.{os.getpid()}', data / 'reader.out.abc', data / f'reader.out.{dead}.tmp',
+            data / f'reader.outer.{dead}', data / 'unrelated']
+    for path in stale + kept:
+        path.write_text('x')
+    reader('sg_print state=on restart=none detail=ok\n')
+    assert not any(path.exists() for path in stale), stale
+    assert all(path.exists() for path in kept), kept
+    for path in kept:
+        path.unlink()
+    # A termination signal ends the reader VM (even one ignoring TERM) and its helper.
+    pids = data / 'term-pids'
+    script(process, 'trap "" TERM\nsg_write "$$" > "$SG_DATA_ROOT/term-pids"\nsleep 40 &\n'
+                    'sg_write " $!" >> "$SG_DATA_ROOT/term-pids"\ni=0\n'
+                    'while [ "$i" -lt 40 ]; do sleep 1; i=$((i + 1)); done\n')
+    script(runner, preamble + 'sg_projection_runtime status\n')
+    running = subprocess.Popen([SHELL, str(runner)], env=car_env(env), start_new_session=True,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    for _ in range(100):
+        if pids.exists() and ' ' in pids.read_text():
+            break
+        time.sleep(0.1)
+    else:
+        running.kill()
+        raise AssertionError('fake reader never started')
+    import signal
+    os.killpg(running.pid, signal.SIGTERM)
+    running.communicate(timeout=30)
+    for pid in pids.read_text().split():
+        for _ in range(30):
+            try:
+                os.kill(int(pid), 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.2)
+        else:
+            raise AssertionError(f'reader process {pid} survived termination')
+    assert not list(data.glob('reader.*'))
+    pids.unlink()
     # A timeout during clear removes the root-only private tree directly.
     (base / 'state/runtime/wireless-carplay-and-aa/leftover').write_text('x')
     reader('sleep 60\n', mode='clear', SG_READER_TIMEOUT='2')
@@ -1693,5 +1982,7 @@ with tempfile.TemporaryDirectory() as directory:
     test_residue_cleanup(root)
     test_public_readable(root)
     test_file_metadata_guards(root)
+    test_kill_tree(root)
+    test_update_signal(root)
     test_projection_reader_vm(root)
 print("shared runtime tests passed")
