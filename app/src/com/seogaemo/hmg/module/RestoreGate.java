@@ -1,5 +1,6 @@
 package com.seogaemo.hmg.module;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -43,6 +44,43 @@ public final class RestoreGate {
             if ("paused".equals(key) && !"0".equals(entry.getValue()) && !"false".equals(entry.getValue()))
                 return true;
         }
+        return false;
+    }
+
+    /** Module whose change replaces /system/bin/app_process (boot process) and needs a head-unit restart. */
+    public static final String BOOT_PROCESS_MODULE = "wireless-carplay-and-aa";
+
+    /** One step the saved restore would run. */
+    public static final class Step {
+        public final String id;
+        public final boolean enable;
+        Step(String id, boolean enable) { this.id = id; this.enable = enable; }
+    }
+
+    /**
+     * The steps {@code restoreModules()} will take for a saved comma-separated module list and the
+     * observed per-module status (same order as {@code ids}): turn-offs first, then turn-ons.
+     */
+    public static List<Step> steps(String desired, List<String> ids, List<RootResult> observed) {
+        List<Step> steps = new ArrayList<Step>();
+        String wantedList = "," + desired;
+        for (int i = 0; i < ids.size() && i < observed.size(); i++) {
+            RootResult status = observed.get(i);
+            boolean wanted = wantedList.contains("," + ids.get(i) + ",");
+            if (status != null && !wanted && (status.desiredEnabled() || "on".equals(status.state)))
+                steps.add(new Step(ids.get(i), false));
+        }
+        for (int i = 0; i < ids.size() && i < observed.size(); i++) {
+            RootResult status = observed.get(i);
+            boolean wanted = wantedList.contains("," + ids.get(i) + ",");
+            if (status != null && wanted && (!status.desiredEnabled() || "off".equals(status.state)))
+                steps.add(new Step(ids.get(i), true));
+        }
+        return steps;
+    }
+
+    public static boolean touchesBootProcess(List<Step> steps) {
+        for (Step step : steps) if (BOOT_PROCESS_MODULE.equals(step.id)) return true;
         return false;
     }
 }
