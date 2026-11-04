@@ -709,8 +709,9 @@ public final class MainActivity extends Activity {
     private String moduleStateText(RootResult result) {
         if ("on".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.on);
         if ("off".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.off);
-        if ("pending-restart".equals(result.state)) return getString("off".equals(result.info.get("desired"))
-                ? R.string.module_pending_disable : R.string.module_pending_enable);
+        // The banner below the row carries the full restart sentence.
+        if ("pending-restart".equals(result.state))
+            return getString(R.string.module_state) + ": " + getString(R.string.module_pill_pending);
         if ("conflict".equals(result.state)) return getString(R.string.module_status_conflict);
         if ("incompatible".equals(result.state)) return getString(R.string.module_status_incompatible);
         if ("not-implemented".equals(result.state)) return getString(R.string.module_status_unsupported);
