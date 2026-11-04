@@ -17,6 +17,46 @@ and checks exact identity and stock MD5s independently, allowing a previously
 verified projection map to load before boot reconciliation completes. Optional
 new points do not expand any module's required set.
 
+## Deferred package APK installation (2026-11-04)
+
+USB postinstall retains its APK and fixed installer under private
+`app-install/payload/` and atomically publishes `app-install/pending`. Only that
+explicit request permits automatic installation. Reconcile invokes the pending
+worker before OTA delegation and missing-APK cleanup; the worker waits for
+Android and PackageManager readiness. The synchronous USB hook uses the same
+worker and spends one attempt, leaving service launches the remaining budget.
+A single worker waits with capped readiness backoff and attempts installation
+at most four times per kernel boot (5/10/20-second delays), retaining the request
+after failure for a later boot. Attempt reservations survive worker restarts.
+The worker holds the shared operation lock during installation and respects
+stock pause and uninstall pending. Once it observes the app installed, it records
+`seen`; a later absence cancels the request and lets removal cleanup proceed.
+Successful installation retires the request before deleting retained payload.
+Preuninstall cancels the request after guarded stock restore. No request means
+APK absence always follows removal cleanup, including legacy installations.
+An APK update failure while the app is still registered does not suppress
+desired-on reapply, including repair in modules already reporting on.
+
+## Watch event acknowledgments (2026-11-04)
+
+Boot watch receipts are published only after successful dispatch. Each boot/event
+has at most six attempts with delays 5, 10, 20, 40, 60 seconds (uptime clock),
+and reservations survive watcher restart. A new observed screen off/on edge
+starts a fresh screen-event budget; failures remain queued while the screen
+stays on. Disable, stock pause and the dispatcher intent lock still suppress
+calls. Every Binder attempt uses `sg_service_call` and its ledger; the consent
+module treats only `sg_service_call_ok_this_boot` as boot completion.
+
+## Boot lifecycle readiness (2026-11-04)
+
+Reconcile is a NEMESIS `background` shell service: start asynchronously on each
+service-manager startup and package install/update, without restarting after exit.
+Normal startup waits for `sys.boot_completed=1` and `pm path android` before
+interpreting an absent app as removal. Readiness retries back off from 2 seconds
+to a 30-second cap, with no permanent boot timeout. OTA health remains finite
+(six readiness waits); map-dependent applies retain their detached retry worker.
+Desired-on modules are still reapplied on the install/update path.
+
 Implemented interface between the shared module runtime, modules, and updater.
 The ownership table records the original parallel-work split; it no longer assigns active worktrees.
 

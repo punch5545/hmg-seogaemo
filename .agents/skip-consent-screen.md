@@ -25,6 +25,21 @@ Revert changes desired state to off. If a call happened under the current kernel
 
 ## On-car verification
 
+Boot completion now means a successful ledgered factory call, not any attempted
+call. The watcher acknowledges only successful dispatch and reserves a persistent
+six-attempt budget per kernel boot/event, with 5/10/20/40/60-second retry delays.
+Failed wake delivery remains queued across polls and watcher restarts; a new
+observed wake starts another budget. Both failed and successful Binder attempts
+remain in the runtime ledger. The known boot-incomplete exception still gets its
+one immediate retry through the same API. See `boot-lifecycle.md` for the
+QuickBoot evidence boundary: no reliable same-boot always-awake ignition signal
+has been established from the private snapshot.
+
+Check late Binder registration and transient Binder failure on the car, inspect
+each ledger attempt, then verify success stops boot retries. Confirm disable
+and paused stock restore suppress retries and that a new ignition cycle really
+produces a detectable display transition before claiming QuickBoot coverage.
+
 1. Export the current NEMESIS ledger and record the exact product/framework hash. Uninstall `local.hkmc.factory82`, reboot, and check that the stock notice appears.
 2. Install a release-signed HMG-Seogaemo build. Confirm the new module is off. Enable it via `ConfirmDialog`, then reboot. Verify the startup notice is skipped and inspect the `service_call` ledger row.
 3. Turn the screen off and on twice. Verify one call per observed wake and that the notice remains skipped. Check service CPU/log growth over a parked session.

@@ -26,4 +26,5 @@ case "$(pm path com.seogaemo.hmg 2>/dev/null)" in
         case "$result" in *Success*) ;; *) echo "$result" >&2; exit 1 ;; esac
         case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) echo 'APK remains installed' >&2; exit 1 ;; esac ;;
 esac
+rm -rf "$state/app-install" || exit 1
 rm -rf "$state/desired" "$state/modules" "$state/journal" "$state/reconcile.log"

@@ -11,6 +11,18 @@ if [ "${HMG_SEOGAEMO_UPDATE_HEALTH:-}" != 1 ] && [ -f "$journal" ]; then
         /system/bin/sh "$base/core/update.sh" rollback || exit 1 ;;
     esac
 fi
+# The installed entry owns USB APK recovery, including when a failed repair
+# retained an older OTA selection that predates pending-install support.
+state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
+[ ! -f "$state/stock/paused" ] || exit 0
+if [ -f "$state/app-install/pending" ]; then
+    /system/bin/sh "$base/svc/install-pending.sh" >> "$state/reconcile.log" 2>&1 || :
+    if [ -f "$state/app-install/pending" ]; then
+        # An unsuccessful update of an existing APK must still reapply modules.
+        # Only a never-completed first install suppresses missing-APK cleanup.
+        case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) exit 1;; esac
+    fi
+fi
 current=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update/current
 delegate_current() {
     if [ -L "$current" ] && [ -f "$current/svc/reconcile.sh" ] && [ -r "$current/svc/reconcile.sh" ] &&
@@ -38,11 +50,23 @@ mkdir -p "$state" || exit 1
 # A failed stock restore retains desired on for the failed module, but must
 # never automatically reapply it on the next boot.
 [ ! -f "$state/stock/paused" ] || exit 0
-boot=0
-while [ "$(getprop sys.boot_completed)" != 1 ]; do
-    boot=$((boot + 1))
-    [ "$boot" -lt 60 ] || { echo 'boot timeout' >> "$log"; exit 1; }
-    sleep 2
+failed=0
+ready_wait=2
+ready_attempt=0
+while :; do
+    [ ! -f "$state/stock/paused" ] || exit 0
+    check_current "$@"
+    if [ "$(getprop sys.boot_completed)" = 1 ]; then
+        case "$(pm path android 2>/dev/null)" in package:*) break;; esac
+    fi
+    ready_attempt=$((ready_attempt + 1))
+    if [ "${HMG_SEOGAEMO_UPDATE_HEALTH:-}" = 1 ] && [ "$ready_attempt" -gt 6 ]; then
+        echo 'Android not ready for OTA health' >> "$log"
+        exit 1
+    fi
+    sleep "$ready_wait"
+    [ "$ready_wait" -ge 30 ] || ready_wait=$((ready_wait * 2))
+    [ "$ready_wait" -le 30 ] || ready_wait=30
 done
 reverse=
 for id in $(cat "$base/modules.list"); do reverse="$id $reverse"; done
@@ -189,7 +213,7 @@ start_retry() {
 }
 pending=$(cat "$base/modules.list")
 apply_pending
-# NEMESIS waits for its once service; only deferred work may outlive this pass.
+# NEMESIS starts this background service at boot and install/update.
 # OTA health also returns after this bounded pass; a deferred module still needs
 # a continuation if the previous payload had no worker during this boot.
 if [ -n "$deferred" ]; then
