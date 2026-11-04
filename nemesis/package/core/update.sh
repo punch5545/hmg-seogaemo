@@ -147,7 +147,7 @@ auto_rollback() {
     echo 'phase=auto-rollback' > "$root/journal"
     rollback_projection_guard || return 1
     switch_to "$old"
-    /system/bin/sh "$root/current/bin/install-apk.sh" || return 1
+    HMG_SEOGAEMO_PM_DOWNGRADE=1 /system/bin/sh "$root/current/bin/install-apk.sh" || return 1
 }
 
 if [ "$verb" = rollback ]; then
@@ -159,7 +159,7 @@ if [ "$verb" = rollback ]; then
     [ -f "$old/app/hmg-seogaemo.apk" ] || exit 1
     echo 'phase=rollback' > "$root/journal"
     switch_to "$old"
-    /system/bin/sh "$root/current/bin/install-apk.sh" || exit 1
+    HMG_SEOGAEMO_PM_DOWNGRADE=1 /system/bin/sh "$root/current/bin/install-apk.sh" || exit 1
     rewrite_descriptor "$previous_version" || exit 1
     echo 'phase=rolled-back' > "$root/journal"
     exit 0
