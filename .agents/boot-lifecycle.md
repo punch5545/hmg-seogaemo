@@ -38,10 +38,30 @@ Same-kernel QuickBoot that preserves display-on state remains an explicit
 limitation for consent dismissal. Verify ignition off/on traces before choosing
 a new signal; existing declared property-drift handling is unaffected.
 
+## Deferred APK request
+
+USB postinstall retains the APK and its fixed helper under private
+`app-install/payload/` and publishes a pending request. Reconcile completes it
+before missing-APK cleanup. The worker shares the operation lock with module
+and restore operations, honors stock pause/uninstall, and reserves at most four
+attempts per boot with 5/10/20-second delays. Failure retains the request and
+APK for the next boot. The synchronous Android-up hook spends one attempt;
+the service launch can use the remaining budget. A seen-installed receipt
+prevents a pending update from resurrecting an intentionally removed app;
+absence without a request always follows the existing cleanup path.
+
 ## Remaining car checks
+
+Verify USB installation with Android down, delayed PackageManager readiness,
+failed installation followed by a cold boot retry, only one installer during
+overlapping service launches, and no reinstall after APK-only removal. Check
+the boot property is restored after both successful and failed PM calls.
 
 Confirm cold boot launches reconcile without a Manager action, delayed Android
 startup eventually reapplies desired modules, install/update still reapplies,
 map-dependent modules wait for verification, interrupted OTA recovery runs, and
 APK-only removal restores baselines. Capture service logs and ledger before and
 after, and verify no automatic calls after a paused restore.
+Delay `com.hkmc.factory` registration and confirm failed boot calls remain
+retryable, a successful call retires the boot event, every actual Binder attempt
+appears in the ledger, and failed wake calls retry while the display stays on.

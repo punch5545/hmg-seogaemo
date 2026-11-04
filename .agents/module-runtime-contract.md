@@ -2,6 +2,26 @@ Status: partly superseded — the former parallel-work ownership table is histor
 
 # Module runtime contract (parallel-work interface)
 
+## Deferred package APK installation (2026-11-04)
+
+USB postinstall retains its APK and fixed installer under private
+`app-install/payload/` and atomically publishes `app-install/pending`. Only that
+explicit request permits automatic installation. Reconcile invokes the pending
+worker before OTA delegation and missing-APK cleanup; the worker waits for
+Android and PackageManager readiness. The synchronous USB hook uses the same
+worker and spends one attempt, leaving service launches the remaining budget.
+A single worker waits with capped readiness backoff and attempts installation
+at most four times per kernel boot (5/10/20-second delays), retaining the request
+after failure for a later boot. Attempt reservations survive worker restarts.
+The worker holds the shared operation lock during installation and respects
+stock pause and uninstall pending. Once it observes the app installed, it records
+`seen`; a later absence cancels the request and lets removal cleanup proceed.
+Successful installation retires the request before deleting retained payload.
+Preuninstall cancels the request after guarded stock restore. No request means
+APK absence always follows removal cleanup, including legacy installations.
+An APK update failure while the app is still registered does not suppress
+desired-on reapply, including repair in modules already reporting on.
+
 ## Watch event acknowledgments (2026-11-04)
 
 Boot watch receipts are published only after successful dispatch. Each boot/event

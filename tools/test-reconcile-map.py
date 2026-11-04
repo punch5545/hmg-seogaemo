@@ -300,6 +300,170 @@ def test_payload_replacement(folder):
                 pass
 
 
+def test_pending_install(folder):
+    def setup(name):
+        base, state, env = reconcile_fixture(folder / name)
+        fake = Path(env["PATH"].split(":")[0])
+        job = state / "app-install"
+        (job / "payload/app").mkdir(parents=True)
+        (job / "payload/bin").mkdir()
+        (job / "payload/app/hmg-seogaemo.apk").write_bytes(b"retained-apk")
+        copy_shell_script(ROOT / "nemesis/package/bin/install-apk.sh", job / "payload/bin/install-apk.sh")
+        copy_shell_script(ROOT / "nemesis/package/svc/install-pending.sh", base / "svc/install-pending.sh")
+        worker = base / "svc/install-pending.sh"
+        worker.write_text(worker.read_text().replace(
+            "umask 077", f'umask 077\nsleep() {{ "{fake}/sleep" "$@"; }}', 1).replace(
+                '/proc/$holder/cmdline', str(state / 'proc') + '/$holder/cmdline'))
+        (job / "pending").write_text("request-1\n")
+        (state / "boot-id").write_text("boot-one\n")
+        (state / "boot-property").write_text("1\n")
+        script(fake / "getprop", 'cat "$SG_DATA_ROOT/boot-property"\n')
+        script(fake / "setprop", 'echo "$2" > "$SG_DATA_ROOT/boot-property"\n')
+        script(fake / "sleep", '''
+echo "$1" >> "$SG_DATA_ROOT/waits"
+if [ "$PENDING_MODE" = slow ]; then
+    n=$(cat "$SG_DATA_ROOT/ready-count" 2>/dev/null); [ -n "$n" ] || n=0; n=$((n + 1))
+    echo "$n" > "$SG_DATA_ROOT/ready-count"
+    [ "$n" -lt 10 ] || { echo 1 > "$SG_DATA_ROOT/boot-property"; : > "$SG_DATA_ROOT/pm-ready"; }
+fi
+''')
+        script(fake / "pm", '''
+case "$1:$2" in
+    path:android) [ -f "$SG_DATA_ROOT/pm-ready" ] && echo package:android;;
+    path:com.seogaemo.hmg) [ -f "$SG_DATA_ROOT/installed" ] && echo package:app;;
+    install:*)
+        echo install >> "$SG_DATA_ROOT/installs"
+        if [ "$PENDING_MODE" = blocked ]; then
+            : > "$SG_DATA_ROOT/install-entered"
+            while [ ! -f "$SG_DATA_ROOT/install-release" ]; do /bin/sleep 0.01; done
+        fi
+        [ "$PENDING_MODE" != fail ] || { echo 'Failure [TRANSIENT]'; exit 0; }
+        : > "$SG_DATA_ROOT/installed"; echo Success;;
+esac
+''')
+        (state / "pm-ready").touch()
+        env.update(SG_BOOT_ID_FILE=str(state / "boot-id"),
+                   HMG_SEOGAEMO_APK_STAGE=str(state), PENDING_MODE="success")
+        return base, state, job, env
+
+    def worker(base, env):
+        return subprocess.run([SHELL, str(base / "svc/install-pending.sh")], env=env,
+                              capture_output=True, text=True, timeout=8)
+
+    for mode in ("success", "slow", "late-pm", "fail", "removed", "paused", "uninstall", "no-request", "stale", "health"):
+        base, state, job, env = setup(mode)
+        if mode in ("slow", "late-pm", "health"):
+            (state / "pm-ready").unlink()
+            if mode != "late-pm":
+                (state / "boot-property").write_text("0\n")
+            env["PENDING_MODE"] = "slow"
+        if mode == "health":
+            env["HMG_SEOGAEMO_UPDATE_HEALTH"] = "1"
+        if mode == "fail":
+            env["PENDING_MODE"] = "fail"
+        if mode == "removed":
+            (job / "seen").touch()
+        if mode in ("paused", "uninstall"):
+            marker = state / ("stock/paused" if mode == "paused" else "uninstall/pending")
+            marker.parent.mkdir(); marker.touch()
+        if mode == "no-request":
+            (job / "pending").unlink()
+        if mode == "stale":
+            (job / "worker").mkdir()
+            (job / "worker/pid").write_text("2147483647 old-boot\n")
+        result = worker(base, env)
+        assert result.returncode == (1 if mode in ("fail", "health") else 0), (mode, result)
+        assert not (job / "worker").exists()
+        assert not (state / "operation.lock").exists()
+        if mode in ("removed", "paused", "uninstall", "no-request", "health"):
+            assert not (state / "installs").exists(), mode
+            if mode == "removed":
+                assert not (job / "pending").exists() and not (job / "payload").exists()
+            continue
+        assert (state / "boot-property").read_text().strip() == "1"
+        if mode == "fail":
+            assert (state / "installs").read_text().splitlines() == ["install"] * 4
+            assert (state / "waits").read_text().splitlines() == ["5", "10", "20"]
+            assert (job / "pending").exists() and (job / "payload/app/hmg-seogaemo.apk").exists()
+            assert worker(base, env).returncode == 1
+            assert (state / "installs").read_text().splitlines() == ["install"] * 4
+            (state / "boot-id").write_text("boot-two\n")
+            env["PENDING_MODE"] = "success"
+            assert worker(base, env).returncode == 0
+            assert (state / "installs").read_text().splitlines() == ["install"] * 5
+        else:
+            assert (state / "installs").read_text().splitlines() == ["install"]
+        assert (job / "seen").exists() and not (job / "pending").exists()
+        assert not (job / "payload").exists()
+        if mode in ("slow", "late-pm"):
+            assert (state / "waits").read_text().splitlines() == ["2", "4", "8", "16"] + ["30"] * 6
+        (state / "installed").unlink()
+        assert worker(base, env).returncode == 0
+        assert not (state / "installed").exists()
+
+    # A concurrent launcher must preserve the live worker and attempt budget.
+    base, state, job, env = setup("concurrent")
+    env["PENDING_MODE"] = "blocked"
+    process = subprocess.Popen([SHELL, str(base / "svc/install-pending.sh")], env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        wait_for(lambda: (state / "install-entered").exists())
+        claim = (job / "worker/pid").read_text()
+        cmdline = state / "proc" / claim.split()[0] / "cmdline"
+        cmdline.parent.mkdir(parents=True)
+        cmdline.write_text("sh install-pending.sh")
+        assert worker(base, env).returncode == 0
+        assert (job / "worker/pid").read_text() == claim
+        assert (state / "installs").read_text().splitlines() == ["install"]
+        assert (state / "operation.lock").is_dir()
+    finally:
+        (state / "install-release").touch()
+        process.communicate(timeout=8)
+    assert process.returncode == 0 and not (job / "worker").exists()
+
+    for mode in ("success", "fail", "removed", "update-failed", "old-selection"):
+        base, state, job, env = setup("reconcile-" + mode)
+        env["PENDING_MODE"] = "fail" if mode == "update-failed" else mode
+        (state / "verified").touch()
+        material = state / "modules/mapped/changes"
+        material.parent.mkdir(parents=True); material.touch()
+        if mode == "removed":
+            (job / "seen").touch()
+        if mode == "update-failed":
+            (state / "installed").touch()
+        if mode == "old-selection":
+            old = folder / "old-payload"
+            (old / "svc").mkdir(parents=True)
+            script(old / "svc/reconcile.sh", 'echo selected >> "$SG_DATA_ROOT/calls"\n')
+            (state / "update").mkdir()
+            (state / "update/current").symlink_to(old)
+        result = invoke(base, env)
+        assert result.returncode == (1 if mode == "fail" else 0), (mode, result)
+        calls = (state / "calls").read_text().splitlines() if (state / "calls").exists() else []
+        if mode in ("success", "update-failed"):
+            assert "mapped apply" in calls and "mapped revert" not in calls, calls
+        elif mode == "old-selection":
+            assert calls == ["selected"] and not (job / "pending").exists(), calls
+        elif mode == "removed":
+            assert calls == ["mapped revert"], calls
+        else:
+            assert calls == [] and material.exists(), calls
+
+    # Failed guarded restore retains the APK request; successful uninstall
+    # cancels it so a surviving launcher cannot install after package removal.
+    base, state, job, env = setup("preuninstall")
+    (base / "scripts").mkdir()
+    (base / "core").mkdir()
+    copy_shell_script(ROOT / "nemesis/package/scripts/preuninstall.sh", base / "scripts/preuninstall.sh")
+    script(base / "core/stock.sh", 'exit "$RESTORE_RESULT"\n')
+    for restore_result in ("1", "0"):
+        env["RESTORE_RESULT"] = restore_result
+        result = subprocess.run([SHELL, str(base / "scripts/preuninstall.sh")],
+                                env=env, capture_output=True, text=True, timeout=8)
+        assert result.returncode == int(restore_result), result
+        assert job.exists() == (restore_result == "1")
+
+
 def test_mapper_deadlines(folder):
     base, state, fake = folder / "package", folder / "state", folder / "fake"
     for path in (base / "core", base / "lib", fake, state):
@@ -363,6 +527,7 @@ while True: time.sleep(1)
 
 
 with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-reconcile-map-") as tmp:
+    test_pending_install(Path(tmp) / "pending")
     test_android_readiness(Path(tmp) / "readiness")
     test_reconcile(Path(tmp) / "reconcile")
     test_detached_lifecycle(Path(tmp) / "detached")

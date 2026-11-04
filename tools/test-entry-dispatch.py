@@ -137,6 +137,11 @@ with tempfile.TemporaryDirectory() as tmp:
         '#!/bin/sh\ncase "$1" in sys.boot_completed) echo 1;; *) echo NEEV.KOR.0000.V039.001.260902;; esac\n')
     installer = stable / 'bin/install-apk.sh'
     installer.write_text('echo fresh-install; [ "${FAIL_INSTALL:-0}" = 0 ]\n')
+    boot_id = root / 'boot-id'
+    boot_id.write_text('fixture-boot\n')
+    env['SG_BOOT_ID_FILE'] = str(boot_id)
+    (fake / 'pm').write_text('#!/bin/sh\n[ "$2" != android ] || echo package:android\n')
+    (fake / 'pm').chmod(0o755)
     for failure in ('1', '0'):
         if not current.is_symlink():
             current.symlink_to(selected, target_is_directory=True)

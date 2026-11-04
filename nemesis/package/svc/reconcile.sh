@@ -11,6 +11,18 @@ if [ "${HMG_SEOGAEMO_UPDATE_HEALTH:-}" != 1 ] && [ -f "$journal" ]; then
         /system/bin/sh "$base/core/update.sh" rollback || exit 1 ;;
     esac
 fi
+# The installed entry owns USB APK recovery, including when a failed repair
+# retained an older OTA selection that predates pending-install support.
+state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
+[ ! -f "$state/stock/paused" ] || exit 0
+if [ -f "$state/app-install/pending" ]; then
+    /system/bin/sh "$base/svc/install-pending.sh" >> "$state/reconcile.log" 2>&1 || :
+    if [ -f "$state/app-install/pending" ]; then
+        # An unsuccessful update of an existing APK must still reapply modules.
+        # Only a never-completed first install suppresses missing-APK cleanup.
+        case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) exit 1;; esac
+    fi
+fi
 current=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update/current
 delegate_current() {
     if [ -L "$current" ] && [ -f "$current/svc/reconcile.sh" ] && [ -r "$current/svc/reconcile.sh" ] &&

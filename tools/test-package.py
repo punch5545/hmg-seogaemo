@@ -44,7 +44,7 @@ def run():
             assert '"/data/nemesis/apps/hmg-seogaemo/bin/nemesis-client"' in java
         entries = set(package.namelist())
         required = {"NEMESIS.data", "app/hmg-seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
-                    "bin/open.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
+                    "bin/open.sh", "svc/install-pending.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
                     "svc/reconcile.sh", "svc/watcher.sh", "lib/common.sh", "modules.list", "modules.graph",
                     "core/stock.sh", "lib/stock.sh", "core/uninstall-detached.sh",
                     "core/map/hmg-seogaemo-mapper.jar", "core/hmg-seogaemo-map.sh", "hookpoints/framework.json",
@@ -171,7 +171,7 @@ def run():
                 path.chmod(0o755)
             env = dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", FAKE_STATE=str(state),
                        HMG_SEOGAEMO_TEST_COMMON=str(temp / "lib/common.sh"),
-                       HMG_SEOGAEMO_APK_STAGE=str(temp))
+                       HMG_SEOGAEMO_APK_STAGE=str(temp), SG_DATA_ROOT=str(temp / "state"))
             for output, succeeds in (("Success", True), ("Failure [INSTALL_FAILED]", False)):
                 state.write_text("1")
                 env["FAKE_PM_RESULT"] = output
@@ -191,6 +191,10 @@ def run():
                             .replace("/system/xbin/nemesis", str(native)))
             result = subprocess.run([SHELL, str(hook)], env=env, capture_output=True)
             assert result.returncode == 0, result.stderr
+            job = temp / "state/app-install"
+            assert (job / "pending").exists()
+            assert (job / "payload/app/hmg-seogaemo.apk").read_bytes() == b"test"
+            assert (job / "payload/bin/install-apk.sh").exists()
             client = temp / "bin/nemesis-client"
             assert client.read_bytes() == native.read_bytes()
             assert client.stat().st_mode & 0o777 == 0o755
