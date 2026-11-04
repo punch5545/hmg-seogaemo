@@ -6,6 +6,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 
 | Document | Status | Purpose |
 | --- | --- | --- |
+| [backlog.md](backlog.md) | Current | Open on-car checks and planned work; delete items when done. |
 | [boot-lifecycle.md](boot-lifecycle.md) | Current | NEMESIS startup semantics, readiness retries, and QuickBoot evidence limits. |
 | [module-architecture.md](module-architecture.md) | Partly superseded | Built-in modules, package, state, UI, and recovery architecture; Home wiring is current. |
 | [module-runtime-contract.md](module-runtime-contract.md) | Partly superseded | Implemented root/Java contract and test rules; original parallel work ownership table is historical. |
