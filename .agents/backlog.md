@@ -63,8 +63,6 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
   limit and keep app/root commands below it (split or script file).
 - [ ] Restore stock stops at the first module conflict and leaves later modules
   not attempted; decide whether to continue with the others (`stock-restore.md`).
-- [ ] Status details render `;` as `?` in the app (RootClient US-ASCII parsing vs
-  non-ASCII punctuation in root output) — verify whether still present.
 - [ ] Show "/system stays rw until restart" (remount-ro EBUSY) in the UI/status, not
   only in `module.log`.
 - [ ] On-car checks not yet done: wifi-client disable exact restore (+restart);
@@ -81,9 +79,7 @@ Evidence and candidate hooks: `neev-kor-api-inventory.md`.
 - [ ] USB ADB role switch.
 - [ ] Battery diagnostics, read-only first; any control needs owner approval.
 - [ ] EV information to the phone over iAP2 (EV routing).
-
-## 4. Security
-
-- [ ] Consider rotating the release keystore password (printed in a 2026-11-03
-  session transcript); update the GitHub `release` environment secret and the owner's
-  local backup (`~/.config/hmg-seogaemo-release`).
+- [ ] Virtual exhaust / driving sound (Ioniq 5 has no stock e-ASD/"N Active Sound" on this trim):
+  research the audio path and vehicle-speed/accelerator signals available to the head unit.
+- [ ] Manual battery preconditioning (start battery conditioning without a navigation
+  destination to a charger); find the BMS/thermal request the stock EV navigation sends.
