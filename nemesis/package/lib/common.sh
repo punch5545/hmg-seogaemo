@@ -1232,6 +1232,45 @@ sg_zygote_install() {
     if [ "$sg_rc" -ne 0 ]; then sg_revert_all || sg_log 'zygote rollback blocked'; return 1; fi
     [ -f "$sg_stock" ] && [ -x "$sg_stock" ] && sg_equal "$sg_stock_saved/bytes" "$sg_stock"
 }
+# Read-only guard for the app_process swap. A module that owns the swap holds a
+# file baseline for it (or an upgrade journal); every guarded revert path then
+# applies. Without that record, nothing we wrote is recoverable, so an existing
+# stock backup, our hook files or guard state, or an app_process that is not the
+# known stock build (module.properties `known_stock.N=<product glob>:<path>:<md5>`)
+# is reported as a conflict and nothing is touched or called "already off".
+# Returns 0 when clean, owned or not applicable, 3 on a conflict.
+sg_zygote_foreign() (
+    sg_bin=${SG_TARGET_ROOT:-}/system/bin/app_process
+    sg_validate owns_files "$sg_bin" || exit 0
+    key=$(sg_file_key "$sg_bin") || exit 1
+    [ ! -f "$HMG_SEOGAEMO_STATE/file.$key/ready" ] || exit 0
+    [ ! -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ] || exit 0
+    for item in "$sg_bin.hmg-seogaemo-stock" \
+        "${SG_TARGET_ROOT:-}/system/lib/libhmg_seogaemo_wireless_hook.so" \
+        "${SG_TARGET_ROOT:-}/system/framework/hmg-seogaemo-wireless-hook.jar" \
+        "$HMG_SEOGAEMO_STATE/enable" "$HMG_SEOGAEMO_STATE/enabled" \
+        "$HMG_SEOGAEMO_STATE/starts" "$HMG_SEOGAEMO_STATE/disable"; do
+        if [ -e "$item" ] || [ -L "$item" ]; then
+            sg_restore_conflict "app_process swap without ownership record: ${item#"${SG_TARGET_ROOT:-}"}"
+            exit 3
+        fi
+    done
+    product=$(getprop ro.build.product) || exit 1
+    expected=
+    while IFS='=' read -r field value; do
+        case "$field" in known_stock.*) ;; *) continue;; esac
+        glob=${value%%:*}; rest=${value#*:}
+        [ "${rest%%:*}" = /system/bin/app_process ] || continue
+        case "$product" in $glob) expected=${rest#*:};; esac
+    done < "$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties"
+    [ -n "$expected" ] && [ -f "$sg_bin" ] || exit 0
+    actual=$(md5 "$sg_bin") || exit 1
+    set -- $actual
+    [ "${1:-}" = "$expected" ] || {
+        sg_restore_conflict 'app_process is not the known stock build and no module owns the swap'
+        exit 3
+    }
+)
 sg_restore_material() {
     for sg_material in "$HMG_SEOGAEMO_STATE"/prop.*/ready "$HMG_SEOGAEMO_STATE"/file.*/ready \
         "$HMG_SEOGAEMO_STATE"/line.*/ready "$HMG_SEOGAEMO_STATE"/bind.* \
@@ -1242,6 +1281,8 @@ sg_restore_material() {
     return 1
 }
 sg_revert_all() {
+    # An unrecorded swap is not stock, whatever the snapshots say: refuse first.
+    sg_zygote_foreign || return 3
     # Consumed snapshots are already stock; a leftover desired bit is not a baseline.
     sg_restore_material || return 0
     sg_zygote_finalize_guard || return 3

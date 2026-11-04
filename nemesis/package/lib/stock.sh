@@ -19,6 +19,14 @@ hmg_seogaemo_stock_context() {
 hmg_seogaemo_stock_snapshots() {
     sg_restore_material
 }
+hmg_seogaemo_stock_preflight() {
+    hmg_seogaemo_stock_context "$1"
+    if hmg_seogaemo_stock_snapshots; then
+        sg_zygote_finalize_guard && sg_dex_finalize && sg_restore_preflight || return $?
+    fi
+    # An unrecorded app_process swap is never "already stock".
+    sg_zygote_foreign
+}
 hmg_seogaemo_stock_diagnostic() {
     while IFS='=' read -r stock_field stock_value; do
         if [ "$stock_field" = info.restore_conflict ]; then
@@ -72,12 +80,7 @@ hmg_seogaemo_stock_restore() {
     # Preflight ALL modules before any restore; finalize only runtime-owned
     # counters/cache entries, exactly as sg_revert_all does.
     for stock_id in $stock_reverse; do
-        {
-            hmg_seogaemo_stock_context "$stock_id"
-            if hmg_seogaemo_stock_snapshots; then
-                sg_zygote_finalize_guard && sg_dex_finalize && sg_restore_preflight
-            fi
-        } > "$stock/module-output" 2>&1
+        hmg_seogaemo_stock_preflight "$stock_id" > "$stock/module-output" 2>&1
         stock_code=$?
         if [ "$stock_code" -ne 0 ]; then
             stock_state=failed
@@ -117,6 +120,7 @@ hmg_seogaemo_stock_restore() {
                 # Nothing applied: do not fail on an unavailable unused module.
                 # Reboot-only modules still report their transient effect.
                 if ! grep -Fxq 'restore=reboot' "$base/modules/$stock_id.properties"; then
+                    sg_zygote_foreign || exit $?
                     if [ "$stock_id" = wireless-carplay-and-aa ]; then
                         sg_projection_runtime clear || exit $?
                     fi

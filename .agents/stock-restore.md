@@ -17,6 +17,13 @@ under `stock/recovery.<time>.<pid>/` preserves recovery data for a late failure
 after baseline consumption. These copies are diagnostic material, never a
 license to force old stock bytes over a changed firmware.
 
+A module that owns `/system/bin/app_process` is never reported "already off" on
+the strength of an empty ledger: if the swap is unrecorded (our stock backup,
+hook files or guard state exist, or `app_process` is not the declared stock MD5)
+the preflight returns conflict, reverts nothing, keeps desired states and blocks
+`package uninstall` and the uninstall hook (`sg_zygote_foreign`, see the runtime
+contract). Resolve it by hand, then retry.
+
 `stock status` reads the last per-module receipt. An outstanding head-unit
 restart remains pending through repeated restore, including the uninstall hook,
 and clears on a different kernel boot. After failure, export the ledger, resolve

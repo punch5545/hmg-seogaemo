@@ -164,6 +164,26 @@ Export publication makes only its dedicated container and descendants public:
 0755 directories and 0644 regular files. Symlinks are refused; USB mount roots and
 private runtime state are never chmod targets.
 
+## Unrecorded app_process swap (2026-11-04)
+
+`sg_zygote_foreign` is a read-only guard for a module that owns
+`/system/bin/app_process`. The swap counts as owned when the module holds a file
+baseline for it (or an upgrade journal). Without that record nothing we wrote is
+recoverable, so the guard returns conflict (3) with `info.restore_conflict` when any
+of these exists: `app_process.hmg-seogaemo-stock`, our hook `.so`/`.jar`, the
+`enable`/`enabled`/`starts`/`disable` guard files, or an `app_process` whose MD5
+differs from the module's `known_stock.N=<ro.build.product glob>:<path>:<md5>`
+declaration for the current product (no matching declaration means no judgment).
+`sg_revert_all` calls it first, so module revert, whole-package restore and the
+NEMESIS uninstall hook all refuse; `lib/stock.sh` also runs it in the all-module
+preflight and for modules with no snapshots, before anything is reverted. Module
+`status`, `precheck` and `apply` report the same conflict. Nothing is modified, no
+desired state changes, and the owner resolves it (for example by restoring stock from
+the saved copy) before retrying. The wireless module declares
+`known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:33f798115689d1859e8d2159dc88e7dc`
+(the stock build seen on the Ioniq 5 KOR car before and after HMG-API/this module).
+The apply-path orphaned-backup check remains.
+
 ## Wireless ADB and diagnostic export (2026-11-04)
 
 Wireless ADB status exposes info.effective_port (the nonempty transient

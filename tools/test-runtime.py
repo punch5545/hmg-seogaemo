@@ -1241,6 +1241,101 @@ if sg_revert_all; then exit 1; fi
     assert paths[0].read_bytes() == b'wrapper' and paths[2].read_bytes() == b'external'
 
 
+def test_zygote_foreign(temp):
+    """An app_process swap without an ownership record is a conflict, never stock."""
+    import hashlib
+    base = temp / "foreign"
+    state = base / "data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa"
+    target = base / "target"
+    payload = base / "payload"
+    manifest = base / "modules/wireless-carplay-and-aa.properties"
+    for folder in (state, target / "system/bin", target / "system/lib", target / "system/framework",
+                   payload, manifest.parent, base / "fake", base / "live"):
+        folder.mkdir(parents=True, exist_ok=True)
+    stock_md5 = hashlib.md5(b"stock-executable").hexdigest()
+    paths = [target / "system/bin/app_process",
+             target / "system/bin/app_process.hmg-seogaemo-stock",
+             target / "system/lib/libhmg_seogaemo_wireless_hook.so",
+             target / "system/framework/hmg-seogaemo-wireless-hook.jar"]
+    guards = [state / name for name in ("enable", "enabled", "starts", "disable")]
+    paths[0].write_bytes(b"stock-executable")
+    paths[0].chmod(0o755)
+    for name, data in (("wrapper", b"wrapper"), ("loader", b"loader"), ("jar", b"jar")):
+        (payload / name).write_bytes(data)
+        (payload / name).chmod(0o644)
+
+    def write_manifest(known=True, owner=True):
+        text = "owns_props=\nservices=\n"
+        if owner:
+            text += "owns_files=" + ",".join(map(str, paths + guards)) + "\n"
+        if known:
+            text += f"known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:{stock_md5}\n"
+        manifest.write_text(text)
+
+    write_manifest()
+    live = base / "live"
+    (live / "ro.build.product").write_text("NEEV.KOR.0000.V039.001.260902")
+    fake = base / "fake"
+    script(fake / "getprop", 'cat "$FAKE_LIVE/$1" 2>/dev/null || true\n')
+    fake_ownership(fake)
+    boot_id = base / "boot-id"
+    boot_id.write_text("test-boot")
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+               SG_DATA_ROOT=str(base / "data/nemesis/backup/hmg-seogaemo"),
+               SG_TARGET_ROOT=str(target), HMG_SEOGAEMO_STATE=str(state),
+               HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_MODULE_DIR=str(payload),
+               FAKE_OWNERS=str(base / "owners.json"), FAKE_LIVE=str(live),
+               SG_BOOT_ID_FILE=str(boot_id))
+    runner = base / "runner"
+
+    def check(body, ok=True):
+        script(runner, "set -eu\n" + body)
+        return run(runner, env=env, ok=ok)
+
+    # Genuine stock, or no known build for this product: nothing to refuse.
+    check("sg_zygote_foreign\nsg_revert_all\n")
+    paths[0].write_bytes(b"something else")
+    (live / "ro.build.product").write_text("OTHER.KOR.0000.V039.001.260902")
+    check("sg_zygote_foreign\nsg_revert_all\n")
+    (live / "ro.build.product").write_text("NEEV.KOR.0000.V039.001.260902")
+    # An unknown executable with no owner is refused by every revert entry point.
+    for body in ("sg_zygote_foreign\n", "sg_revert_all\n"):
+        result = check(body, ok=False)
+        assert result.returncode == 3 and "info.restore_conflict=app_process is not the known stock build" in result.stdout
+    assert paths[0].read_bytes() == b"something else"
+    paths[0].write_bytes(b"stock-executable")
+    # Our files without any record: backup, hook files and guard state each count.
+    for leftover in (paths[1], paths[2], paths[3], guards[0], guards[2]):
+        leftover.write_bytes(b"x")
+        for body in ("sg_zygote_foreign\n", "sg_revert_all\n"):
+            result = check(body, ok=False)
+            assert result.returncode == 3 and "without ownership record" in result.stdout, (leftover, result)
+        assert leftover.read_bytes() == b"x" and paths[0].read_bytes() == b"stock-executable"
+        leftover.unlink()
+    # A symlink in place of our file is also foreign.
+    paths[1].symlink_to(base / "nowhere")
+    assert check("sg_zygote_foreign\n", ok=False).returncode == 3
+    paths[1].unlink()
+    # A module that does not own app_process never reports the swap.
+    write_manifest(owner=False)
+    paths[1].write_bytes(b"x")
+    check("sg_zygote_foreign\n")
+    paths[1].unlink()
+    write_manifest()
+    # Once the swap is recorded the normal guarded restore owns it, wrapper bytes included.
+    check("sg_zygote_install wrapper loader jar\nsg_zygote_foreign\n")
+    assert paths[0].read_bytes() == b"wrapper"
+    check("sg_zygote_foreign\nsg_revert_all\n")
+    assert paths[0].read_bytes() == b"stock-executable" and not paths[1].exists()
+    check("sg_zygote_foreign\n")
+    # Only an unrecorded swap (state wiped) is refused: restoring cannot proceed.
+    check("sg_zygote_install wrapper loader jar\n")
+    for entry in state.glob("file.*"):
+        shutil.rmtree(entry)
+    result = check("sg_revert_all\n", ok=False)
+    assert result.returncode == 3 and paths[0].read_bytes() == b"wrapper" and paths[1].read_bytes() == b"stock-executable"
+
+
 def test_projection_reader_vm(temp):
     base = temp / 'projection-reader'
     state = base / 'state/modules/wireless-carplay-and-aa'
@@ -1364,6 +1459,7 @@ with tempfile.TemporaryDirectory() as directory:
     test_lint(root)
     test_module_build_hook(root)
     test_zygote_and_dex(root)
+    test_zygote_foreign(root)
     test_remount_ro_busy(root)
     test_system_directory_mode(root)
     test_public_readable(root)
