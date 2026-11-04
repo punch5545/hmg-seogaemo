@@ -170,6 +170,8 @@
     <string name="stock_uninstall_failed">NEMESIS could not finish removal. HMG-Seogaemo remains installed; export the change ledger and retry after resolving the problem.</string>
     <string name="device_reboot">Restart head unit</string>
     <string name="device_reboot_confirm">Restart the head unit now? Current connections will be interrupted.</string>
+    <string name="module_pill_pending">Pending</string>
+    <string name="module_restart_confirm">Restart the head unit now? Pending module changes finish after the boot: enabled modules such as wireless CarPlay start working, disabled ones return to stock. The ADB and Wi-Fi connections drop during the restart.</string>
     <string name="device_reboot_failed">Could not restart the head unit.</string>
     <string name="open_nemesis">Open NEMESIS</string>
     <string name="nemesis_unavailable">NEMESIS is unavailable.</string>

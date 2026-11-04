@@ -51,7 +51,9 @@ stock_result = activity.split('private String stockResultText(', 1)[1].split('pr
 assert 'result.exitCode != 0 && result.detail.length() > 0' in stock_result
 assert '.append(result.detail)' in stock_result
 reboot = method("confirmReboot")
-assert "confirmReboot()" in method("showStock")
+assert "confirmReboot(R.string.device_reboot_confirm)" in method("showStock")
+assert "confirmReboot(R.string.module_restart_confirm)" in method("addModule")
+assert "RootClient.rebootDevice()" not in method("addModule")
 assert "RootClient.rebootDevice()" not in method("showStock")
 assert "getString(R.string.cancel), true, new ConfirmDialog.Action()" in reboot
 assert reboot.index("ConfirmDialog.show") < reboot.index("RootClient.rebootDevice()")
