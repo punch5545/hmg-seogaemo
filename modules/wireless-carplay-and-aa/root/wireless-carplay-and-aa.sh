@@ -6,6 +6,7 @@ umask 077
 
 FEATURE=/system/onebin/neev_kr/featurexml.cfg
 ASSET=/system/etc/hmg-seogaemo/wireless-carplay-and-aa
+RESTART_DETAIL='restart unit to start wireless CarPlay and Android Auto'
 
 path() { sg_print "${SG_WIRELESS_TEST_ROOT:-}$1"; }
 exists() { [ -f "$(path "$1")" ]; }
@@ -123,12 +124,14 @@ apply() {
        ! sg_prop_set persist.sys.iap2.wifi t ||
        ! sg_prop_set persist.iap2.iden.wireless t ||
        ! sg_dex_cache_track /system/framework/hmg-seogaemo-wireless-hook.jar com.daudio.app.dipo ||
-       ! sg_zygote_install data/app_process data/libhmg_seogaemo_wireless_hook.so data/hmg-seogaemo-wireless-hook.jar; then
+       ! sg_zygote_install data/app_process data/libhmg_seogaemo_wireless_hook.so data/hmg-seogaemo-wireless-hook.jar ||
+       ! sg_restart_required; then
         sg_revert_all || sg_log 'rollback failed; ledger and baselines retained'
         if ! sg_restore_material; then sg_projection_runtime clear || return 1; fi
         fail 'apply failed; inspect change ledger'; return 1
     fi
-    sg_status pending-restart head_unit 'restart unit to load projection features and hooks'
+    # The running zygote predates the wrapper: stay pending until the boot changes.
+    sg_status pending-restart head_unit "$RESTART_DETAIL"
 }
 
 revert() {
@@ -168,7 +171,7 @@ status() {
     assets_readable || { fail 'projection assets unreadable; reapply and restart required'; return 1; }
     if sg_restart_pending; then
         runtime_result=$(sg_projection_runtime status) || { sg_print "$runtime_result"; return 1; }
-        sg_status pending-restart head_unit 'restart unit to register repaired native recipes'; return 0
+        sg_status pending-restart head_unit "$RESTART_DETAIL"; return 0
     fi
     sg_projection_runtime "${1:-status}"
 }

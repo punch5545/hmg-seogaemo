@@ -247,6 +247,16 @@ grep -q '^state=pending-restart$' "$T/output" || fail apply-state
 [ -f "$T/root/system/bin/app_process.hmg-seogaemo-stock" ] || fail wrapper-backup
 [ -f "$T/state/dex-track" ] || fail dex-tracking
 [ -f "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file
+# Same boot as the apply: the running zygote is the stock one, so even a ready runtime
+# directory cannot count; the head unit must restart first.
+run status || fail pre-restart-status
+grep -q '^state=pending-restart$' "$T/output" && grep -q '^restart=head_unit$' "$T/output" || fail pre-restart-pending
+grep -q 'restart unit to start wireless CarPlay' "$T/output" || fail pre-restart-detail
+mkdir -p "$T/state/runtime"; touch "$T/state/runtime/ready"
+run status || fail pre-restart-ready-status
+grep -q '^state=pending-restart$' "$T/output" || fail pre-restart-ready-claimed-on
+rm -f "$T/state/runtime/ready"
+# After the restart without any runtime record the evidence is genuinely missing.
 sg_print "boot-two" > "$T/root/proc/sys/kernel/random/boot_id"
 run status || fail status
 grep -q '^state=unknown$' "$T/output" || fail missing-evidence-state
