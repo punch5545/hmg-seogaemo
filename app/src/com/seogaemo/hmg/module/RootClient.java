@@ -7,7 +7,16 @@ import java.util.Map;
 
 /** Fixed NEMESIS daemon command, invoked only from a worker thread. */
 public final class RootClient {
+    /** Writes also wait on operation.lock, which a boot map verify can hold for 30 s. */
+    static final long WRITE_TIMEOUT_MS = 150000L;
+    static final long READ_TIMEOUT_MS = 30000L;
+
     private RootClient() { }
+
+    /** Timeout for a module verb: apply/revert wait on the lock and write; status/precheck only read. */
+    static long moduleTimeoutMs(String verb) {
+        return "apply".equals(verb) || "revert".equals(verb) ? WRITE_TIMEOUT_MS : READ_TIMEOUT_MS;
+    }
 
     public static RootResult run(String moduleId, String verb) {
         try { ModuleRegistry.depends(moduleId); }
@@ -15,15 +24,15 @@ public final class RootClient {
         if (!("apply".equals(verb) || "revert".equals(verb) ||
                 "status".equals(verb) || "precheck".equals(verb))) return failure("invalid verb");
         final String command = "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root " + moduleId + " " + verb;
-        return invoke(command);
+        return invoke(command, moduleTimeoutMs(verb));
     }
 
     public static RootResult rebootDevice() {
-        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root device reboot");
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root device reboot", READ_TIMEOUT_MS);
     }
 
     public static RootResult exportUsb() {
-        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb");
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb", WRITE_TIMEOUT_MS);
     }
 
     public static RootResult stock(String verb) {
@@ -40,10 +49,6 @@ public final class RootClient {
                 "verify".equals(verb) || "export".equals(verb))) return failure("invalid map verb");
         String command = "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root map " + verb;
         return invoke(command, "run".equals(verb) ? 600000 : "verify".equals(verb) ? 180000 : 30000);
-    }
-
-    private static RootResult invoke(String command) {
-        return invoke(command, 15000);
     }
 
     private static RootResult invoke(String command, long timeoutMs) {
