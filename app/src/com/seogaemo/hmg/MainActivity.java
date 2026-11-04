@@ -386,7 +386,9 @@ public final class MainActivity extends Activity {
                 HomeTileCatalog.Entry[] entries = new HomeTileCatalog.Entry[modules.length];
                 for (int i = 0; i < modules.length; i++) {
                     RootResult status = RootClient.run(modules[i].id(), "status");
-                    boolean enabled = status.exitCode == 0 && moduleEnabled(status);
+                    // Tiles belong to a working module: saved intent alone (pending restart,
+                    // unknown or failed state) must not make them look available.
+                    boolean enabled = status.exitCode == 0 && "on".equals(status.state);
                     entries[i] = new HomeTileCatalog.Entry(modules[i].id(), enabled, modules[i].homeTiles());
                 }
                 final List<HomeTile> tiles = HomeTileCatalog.collect(HomeView.settingsTile(), entries);
@@ -670,10 +672,15 @@ public final class MainActivity extends Activity {
         SettingsUi.titleBlock(this, copy, text(getString(module.nameResId()), 23, WHITE, medium),
                 text(getString(module.descriptionResId()), 17, MUTED, sans));
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
-        TextView toggle = text(getString(observed ? (enabled ? R.string.on : R.string.off)
-                : R.string.module_unavailable), 20, enabled ? BLUE : MUTED, medium);
-        SettingsUi.pill(this, toggle, shape(enabled ? 0xFF17283A : SURFACE,
-                enabled ? BLUE : HAIRLINE, 6));
+        // The pill shows the observed state; saved intent only decides what a tap requests.
+        final boolean live = "on".equals(result.state);
+        final boolean pending = "pending-restart".equals(result.state);
+        final boolean stockOff = "off".equals(result.state);
+        final int pillText = live ? R.string.on : pending ? R.string.module_pill_pending
+                : stockOff ? R.string.off : R.string.module_unavailable;
+        TextView toggle = text(getString(pillText), 20, live || pending ? BLUE : MUTED, medium);
+        SettingsUi.pill(this, toggle, shape(live ? 0xFF17283A : pending ? 0xFF263347 : SURFACE,
+                live || pending ? BLUE : HAIRLINE, 6));
         LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(
                 dp(SettingsUi.STATUS_WIDTH), dp(SettingsUi.STATUS_HEIGHT));
         toggleParams.leftMargin = dp(SettingsUi.MD);
@@ -692,7 +699,15 @@ public final class MainActivity extends Activity {
                     ? R.string.module_pending_disable : R.string.module_pending_enable), 20, WHITE, medium);
             banner.setPadding(dp(SettingsUi.MD), 0, dp(SettingsUi.MD), 0);
             banner.setBackgroundDrawable(shape(0xFF263347, BLUE, 6));
+            banner.setGravity(Gravity.CENTER_VERTICAL);
             parent.addView(banner, new LinearLayout.LayoutParams(-1, dp(60)));
+            TextView restart = action(getString(R.string.device_reboot), true);
+            restart.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View view) { confirmReboot(R.string.module_restart_confirm); }
+            });
+            LinearLayout.LayoutParams restartParams = new LinearLayout.LayoutParams(-1, dp(60));
+            restartParams.topMargin = dp(SettingsUi.XS);
+            parent.addView(restart, restartParams);
         }
         View gap = new View(this);
         parent.addView(gap, new LinearLayout.LayoutParams(-1, dp(SettingsUi.SM)));
@@ -701,8 +716,9 @@ public final class MainActivity extends Activity {
     private String moduleStateText(RootResult result) {
         if ("on".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.on);
         if ("off".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.off);
-        if ("pending-restart".equals(result.state)) return getString("off".equals(result.info.get("desired"))
-                ? R.string.module_pending_disable : R.string.module_pending_enable);
+        // The banner below the row carries the full restart sentence.
+        if ("pending-restart".equals(result.state))
+            return getString(R.string.module_state) + ": " + getString(R.string.module_pill_pending);
         if ("conflict".equals(result.state)) return getString(R.string.module_status_conflict);
         if ("incompatible".equals(result.state)) return getString(R.string.module_status_incompatible);
         if ("not-implemented".equals(result.state)) return getString(R.string.module_status_unsupported);
@@ -955,7 +971,7 @@ public final class MainActivity extends Activity {
         TextView restart = action(getString(R.string.device_reboot), false);
         restart.setTextColor(ERROR);
         restart.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) { confirmReboot(); }
+            public void onClick(View view) { confirmReboot(R.string.device_reboot_confirm); }
         });
         content.addView(restart, SettingsUi.contentAction(this));
         TextView restore = action(getString(R.string.stock_restore), false);
@@ -1006,10 +1022,10 @@ public final class MainActivity extends Activity {
         Toast.makeText(this, R.string.nemesis_unavailable, Toast.LENGTH_SHORT).show();
     }
 
-    private void confirmReboot() {
+    private void confirmReboot(int messageRes) {
         if (stockBusy || updateBusy || moduleWorking || modulePlanning || mapBusy) return;
         ConfirmDialog.show(this, getString(R.string.device_reboot),
-                getString(R.string.device_reboot_confirm), getString(R.string.device_reboot),
+                getString(messageRes), getString(R.string.device_reboot),
                 getString(R.string.cancel), true, new ConfirmDialog.Action() {
             public void run(final ConfirmDialog dialog) {
                 stockBusy = true;

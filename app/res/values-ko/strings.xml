@@ -171,6 +171,8 @@
     <string name="stock_uninstall_failed">NEMESIS가 제거를 완료하지 못했습니다. HMG-Seogaemo는 설치된 상태로 유지됩니다. 변경 기록을 내보내고 문제를 해결한 뒤 다시 시도하세요.</string>
     <string name="device_reboot">헤드 유닛 재시작</string>
     <string name="device_reboot_confirm">헤드 유닛을 지금 재시작할까요? 현재 연결이 끊어집니다.</string>
+    <string name="module_pill_pending">재시작 필요</string>
+    <string name="module_restart_confirm">헤드 유닛을 지금 재시작할까요? 대기 중인 모듈 변경은 재시작 후 완료됩니다. 켠 모듈(예: 무선 CarPlay)은 부팅 뒤에 동작하고, 끈 모듈은 순정으로 돌아갑니다. 재시작하는 동안 ADB와 Wi-Fi 연결이 끊어집니다.</string>
     <string name="device_reboot_failed">헤드 유닛을 재시작하지 못했습니다.</string>
     <string name="open_nemesis">NEMESIS 열기</string>
     <string name="nemesis_unavailable">NEMESIS를 사용할 수 없습니다.</string>

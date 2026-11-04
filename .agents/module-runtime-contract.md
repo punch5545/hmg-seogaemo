@@ -419,6 +419,11 @@ record cannot hide another current failure. Zygote plus all five packages and
 their relevant parts/native recipes are required for `on`. Missing evidence is
 `unknown`; an apply receipt uses `pending-restart` for missing evidence so the
 dispatcher can retain enabled intent. Old loaded hashes mean `pending-restart`.
+A fresh apply also records the boot id (`assets-repaired-boot`, the restart marker):
+until the boot changes, the running zygote is the stock one, so module status stays
+`pending-restart`/`head_unit` even with no or stale records. `unknown` is reserved for
+missing evidence after a restart. The app shows the observed state (pill, tiles) and
+offers a confirmed head-unit restart on the pending-restart notice.
 
 Collection replaces only generated app copies, never baselines, with at most
 32 files of 64 KiB across the fixed packages; malformed, stale, aliased or
