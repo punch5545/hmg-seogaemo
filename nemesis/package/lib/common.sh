@@ -262,11 +262,52 @@ sg_remount_ro() {
     sg_log 'warning: /system stays read-write until restart (remount ro failed)' || :
     return 0
 }
+# Leftovers of our own interrupted atomic writes (power loss at ignition off).
+# Exact names only: "<name>.hmg-seogaemo.<digits>" regular files (sg_commit_file
+# temporaries), and zygote-prepare.<digits> / zygote-retired.<digits> directories
+# directly inside the module state directory.
+sg_temp_name() {
+    case "$1" in
+        ?*.hmg-seogaemo.*)
+            sg_tn_suffix=${1##*.hmg-seogaemo.}
+            case "$sg_tn_suffix" in ''|*[!0-9]*) return 1;; esac
+            return 0 ;;
+    esac
+    return 1
+}
+# Remove temporaries of one owned file, or all of them inside a created directory.
+sg_sweep_temps() (
+    sg_path_safe "$1" || exit 3
+    if [ -d "$1" ]; then
+        for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+            [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+            sg_temp_name "${entry##*/}" || continue
+            rm -f "$entry" || exit 1
+            sg_ledger temp_sweep "$entry" "" "" "" || exit 1
+        done
+    else
+        for entry in "$1".hmg-seogaemo.*; do
+            [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+            sg_temp_name "${entry##*/}" || continue
+            rm -f "$entry" || exit 1
+            sg_ledger temp_sweep "$entry" "" "" "" || exit 1
+        done
+    fi
+)
+sg_zygote_sweep() (
+    [ -n "$HMG_SEOGAEMO_STATE" ] || exit 2
+    for entry in "$HMG_SEOGAEMO_STATE"/zygote-prepare.* "$HMG_SEOGAEMO_STATE"/zygote-retired.*; do
+        [ -d "$entry" ] && [ ! -L "$entry" ] || continue
+        case "${entry##*.}" in ''|*[!0-9]*) continue;; esac
+        rm -rf "$entry" || exit 1
+    done
+)
 sg_baseline_clear() {
     [ -n "$HMG_SEOGAEMO_STATE" ] || return 2
     rm -rf "$HMG_SEOGAEMO_STATE"/prop.* "$HMG_SEOGAEMO_STATE"/file.* "$HMG_SEOGAEMO_STATE"/bind.*
     rm -f "$HMG_SEOGAEMO_STATE/build" "$HMG_SEOGAEMO_STATE/changes"
     rm -rf "$HMG_SEOGAEMO_STATE/zygote-upgrade"
+    sg_zygote_sweep
 }
 # Package-only mutation API. Metadata comes from the packaged, generated
 # module.properties; callers cannot nominate an arbitrary target.
@@ -484,7 +525,9 @@ sg_dirs_revert() (
         sg_remount rw || exit 1
         rc=0
         case "$(cat "$record/existence")" in
-            absent) if [ -e "$target" ]; then rmdir "$target" || rc=3; fi ;;
+            absent)
+                # Only our own interrupted-write temporaries may keep a created dir alive.
+                if [ -e "$target" ]; then sg_sweep_temps "$target" && rmdir "$target" || rc=3; fi ;;
             present)
                 read mode uid gid < "$record/meta" || exit 1
                 current=$(sg_file_meta "$target") || exit 1
@@ -1105,6 +1148,7 @@ sg_dex_finalize() {
 # Called only for an already-installed wrapper, under the root operation lock.
 sg_zygote_upgrade() (
     journal=$HMG_SEOGAEMO_STATE/zygote-upgrade
+    sg_zygote_sweep || exit 1
     sg_check_build && sg_applied "$sg_stock" && [ -x "$sg_stock" ] || exit 3
     changed=0
     for part in loader jar wrapper; do
@@ -1284,7 +1328,7 @@ sg_revert_all() {
     # An unrecorded swap is not stock, whatever the snapshots say: refuse first.
     sg_zygote_foreign || return 3
     # Consumed snapshots are already stock; a leftover desired bit is not a baseline.
-    sg_restore_material || return 0
+    sg_restore_material || { sg_zygote_sweep; return $?; }
     sg_zygote_finalize_guard || return 3
     sg_dex_finalize || return 3
     sg_restore_preflight || return 3
@@ -1323,6 +1367,7 @@ sg_revert_all() {
                 fi
                 case "$sg_target" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
                 sg_file_restore "$sg_target"; sg_rc=$?
+                if [ "$sg_rc" -eq 0 ]; then sg_sweep_temps "$sg_target" || sg_rc=1; fi
                 if [ "$sg_system" -eq 1 ]; then sg_remount_ro; fi
                 [ "$sg_rc" -eq 0 ] || return "$sg_rc"
                 sg_ledger revert "$sg_target" "$sg_revert_before" "$sg_saved/bytes" "$sg_saved/meta" || return 1 ;;

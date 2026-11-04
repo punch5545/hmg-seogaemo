@@ -950,6 +950,89 @@ def test_system_directory_mode(temp):
     assert not list(outside.iterdir())
 
 
+def test_stray_temporaries(temp):
+    """Leftovers of interrupted atomic writes never block restore; look-alikes do."""
+    base = temp / "strays"
+    base.mkdir()
+    runner = base / "runner"
+    fake = base / "fake"
+    fake_ownership(fake)
+    script(fake / "getprop", "echo firmware\n")
+    system = base / "system"
+    namespace = system / "etc/hmg-seogaemo"
+    (system / "etc").mkdir(parents=True)
+    plain = base / "plain"
+    plain.mkdir()
+    (base / "modules").mkdir()
+    (base / "modules/a.properties").write_text(
+        f"owns_files={namespace}/a/recipes/audio.recipe,{plain}/file\n")
+    payload = base / "payload"
+    payload.mkdir()
+    (payload / "recipe").write_text("patch")
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+               FAKE_OWNERS=str(base / "owners.json"), SG_TARGET_ROOT=str(base),
+               SG_DATA_ROOT=str(base / "data"), HMG_SEOGAEMO_BASE=str(base),
+               HMG_SEOGAEMO_STATE=str(base / "data/modules/a"), HMG_SEOGAEMO_MODULE_DIR=str(payload))
+
+    def check(body, ok=True):
+        script(runner, "set -eu\numask 077\n" + body)
+        return run(runner, env=env, ok=ok)
+
+    apply = (f'sg_file_put "{namespace}/a/recipes/audio.recipe" recipe 0644 0:0\n'
+             f'sg_file_put "{plain}/file" recipe 0644 0:0\n')
+    check(apply)
+    recipes = namespace / "a/recipes"
+    # Names that only look like ours, or are not regular files, still block rmdir.
+    blockers = ("x.hmg-seogaemo.12a", "x.hmg-seogaemo.", ".hmg-seogaemo.5", "x.hmg-seogaemo",
+                "x.hmg-seogaemo.5.bak", "unrelated")
+    for name in blockers:
+        (recipes / name).write_text("external")
+        result = check("sg_revert_all\n", ok=False)
+        assert result.returncode == 3, (name, result.stdout)
+        assert (recipes / name).read_text() == "external"
+        (recipes / name).unlink()
+    (recipes / "d.hmg-seogaemo.5").mkdir()
+    check("sg_revert_all\n", ok=False)
+    assert (recipes / "d.hmg-seogaemo.5").is_dir()
+    (recipes / "d.hmg-seogaemo.5").rmdir()
+    (recipes / "l.hmg-seogaemo.7").symlink_to(base / "outside")
+    check("sg_revert_all\n", ok=False)
+    assert (recipes / "l.hmg-seogaemo.7").is_symlink()
+    (recipes / "l.hmg-seogaemo.7").unlink()
+    # Our own interrupted temporaries are swept before the empty directory is removed.
+    (recipes / "audio.recipe.hmg-seogaemo.4242").write_text("partial")
+    (recipes / "other.hmg-seogaemo.7").write_text("partial")
+    check("sg_revert_all\n")
+    assert not namespace.exists()
+    assert "temp_sweep" in (base / "data/ledger/ledger.tsv").read_text()
+    # The same for a temporary beside an owned file in a directory that existed before.
+    check(apply)
+    (plain / "file.hmg-seogaemo.99").write_text("partial")
+    (plain / "file.hmg-seogaemo.99x").write_text("kept")
+    (plain / "neighbour.hmg-seogaemo.5").write_text("kept")
+    check("sg_revert_all\n")
+    assert not (plain / "file").exists() and not (plain / "file.hmg-seogaemo.99").exists()
+    assert (plain / "file.hmg-seogaemo.99x").exists() and (plain / "neighbour.hmg-seogaemo.5").exists()
+    # Leftover zygote journals: exact names inside the module state directory only.
+    state = base / "data/modules/a"
+    for name in ("zygote-prepare.4242", "zygote-retired.77"):
+        (state / name).mkdir()
+        (state / name / "f").write_text("x")
+    for name in ("zygote-prepare.12a", "zygote-prepare", "zygote-retired.", "zygote-upgrade.5"):
+        (state / name).mkdir()
+    (state / "zygote-prepare.5").symlink_to(base / "outside")
+    (base / "outside").mkdir()
+    (base / "outside/keep").write_text("x")
+    check("sg_zygote_sweep\n")
+    assert not (state / "zygote-prepare.4242").exists() and not (state / "zygote-retired.77").exists()
+    for name in ("zygote-prepare.12a", "zygote-prepare", "zygote-retired.", "zygote-upgrade.5"):
+        assert (state / name).is_dir(), name
+    assert (state / "zygote-prepare.5").is_symlink() and (base / "outside/keep").exists()
+    (state / "zygote-prepare.88").mkdir()
+    check("sg_revert_all\n")  # Even with nothing to restore.
+    assert not (state / "zygote-prepare.88").exists()
+
+
 def test_public_readable(temp):
     base = temp / "public-bits"
     directory = base / "parent"
@@ -1462,6 +1545,7 @@ with tempfile.TemporaryDirectory() as directory:
     test_zygote_foreign(root)
     test_remount_ro_busy(root)
     test_system_directory_mode(root)
+    test_stray_temporaries(root)
     test_public_readable(root)
     test_file_metadata_guards(root)
     test_projection_reader_vm(root)

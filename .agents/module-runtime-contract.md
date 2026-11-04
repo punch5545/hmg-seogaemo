@@ -184,6 +184,20 @@ the saved copy) before retrying. The wireless module declares
 (the stock build seen on the Ioniq 5 KOR car before and after HMG-API/this module).
 The apply-path orphaned-backup check remains.
 
+## Interrupted-write leftovers (2026-11-04)
+
+Power loss during an atomic write leaves `<name>.hmg-seogaemo.<digits>` next to
+the target (`sg_commit_file`), which used to keep a created directory non-empty
+and fail its `rmdir` (rc 3) forever. Restore now removes, with a ledger row
+(`temp_sweep`): (1) in a directory the journal created (absence baseline) before its
+`rmdir`, every regular, non-symlink entry whose name is exactly `<name>.hmg-seogaemo.`
+plus digits; (2) after an owned file is restored, the same temporaries of that exact
+file. Look-alikes (`.12a`, no digits, another suffix, directories, symlinks) are not ours
+and still block. `zygote-prepare.<digits>` and `zygote-retired.<digits>` directories
+directly inside the module state directory are removed by `sg_zygote_sweep` (at the start
+of a payload upgrade, at the end of baseline clearing, and by `sg_revert_all` when there
+is nothing to restore).
+
 ## Wireless ADB and diagnostic export (2026-11-04)
 
 Wireless ADB status exposes info.effective_port (the nonempty transient
