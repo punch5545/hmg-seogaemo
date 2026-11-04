@@ -73,6 +73,25 @@ public final class Dipo {
         mod.log(m);
     }
 
+    /** developer diagnostics: `setprop persist.hmg_seogaemo.dev 1` (as root) turns the verbose TBT / iAP2 logs on, `0` off, live; re-read every 3 s */
+    static final String DEV_PROP = "persist.hmg_seogaemo.dev";
+    private static volatile long devAt;
+    private static volatile boolean devOn;
+    private static java.lang.reflect.Method sysGet;
+
+    static boolean dev() {
+        long now = System.currentTimeMillis();
+        if (devAt != 0 && now - devAt < 3000L) return devOn;
+        devAt = now;
+        try {
+            if (sysGet == null) sysGet = Class.forName("android.os.SystemProperties").getMethod("get", String.class, String.class);
+            devOn = "1".equals(sysGet.invoke(null, DEV_PROP, "0"));
+        } catch (Throwable t) {
+            devOn = false;
+        }
+        return devOn;
+    }
+
     /** setting "lanes" (auto, off, rec, dim0, dim3): how CarPlay lanes are marked, read at each lane update so a change applies at once */
     static String laneMode() {
         return mod == null ? "auto" : mod.settingString("lanes", "auto");
@@ -140,7 +159,7 @@ public final class Dipo {
         Cluster.trace = new Cluster.Trace() {
             @Override
             public void log(String m) {
-                Dipo.log(m);
+                if (dev() || m.indexOf("FAILED") >= 0) Dipo.log(m);
             }
         };
         mod.hook(app.classLoader, "dipo.iap2_proxy.stop_route_guidance", new MethodHook() {
@@ -238,7 +257,7 @@ public final class Dipo {
                 seen.put(what, n);
             }
             boolean handled = what == RG_UPDATE || what == RG_MANEUVER || what == RG_LANES;
-            if (n <= 10 || n % 25 == 0) log("TBT rg notify what=" + what + " a1=" + a1 + " a2=" + a2 + " msg=" + (msg == null ? "null" : "yes") + (handled ? "" : " (ignored)") + " #" + n);
+            if (n == 1 || (dev() && (n <= 10 || n % 25 == 0))) log("TBT rg notify what=" + what + " a1=" + a1 + " a2=" + a2 + " msg=" + (msg == null ? "null" : "yes") + (handled ? "" : " (ignored)") + " #" + n);
             if (!handled || msg == null) return;
             post(new Runnable() {
                 @Override

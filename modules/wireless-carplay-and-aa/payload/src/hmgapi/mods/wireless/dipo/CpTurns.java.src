@@ -76,7 +76,13 @@ final class CpTurns {
     private int rgCount, firstTurnLogged;
     private long rgAt, firstRgAt;
 
+    /** verbose diagnostics: only while the developer toggle is on (Dipo.dev) */
     private void d(String m) {
+        if (Dipo.dev()) Dipo.log("TBT " + m);
+    }
+
+    /** one-line state worth keeping with the toggle off */
+    private void essential(String m) {
         Dipo.log("TBT " + m);
     }
 
@@ -93,7 +99,7 @@ final class CpTurns {
         rgAt = System.currentTimeMillis();
         if (rgCount == 1) {
             firstRgAt = rgAt;
-            d("first RouteGuidanceUpdate (120) received");
+            essential("first RouteGuidanceUpdate (120) received");
         }
         sourceCheck(msg);
         int[] ids = componentIds(msg);
@@ -437,7 +443,7 @@ final class CpTurns {
         cluster.crossroadName(x.afterRoad);
         if (firstTurnLogged == 0) {
             firstTurnLogged = 1;
-            d("first turn() push: rg#" + rgCount + ", " + (System.currentTimeMillis() - firstRgAt) + " ms after the first RouteGuidanceUpdate");
+            essential("first turn() push: rg#" + rgCount + ", " + (System.currentTimeMillis() - firstRgAt) + " ms after the first RouteGuidanceUpdate");
         }
         if (sample("tn", id + "|" + icon + "|" + u.state + "|" + list[0])) d("turn comp=" + id + " state=" + u.state + " index=" + list[0] + " type=" + x.type + " side=" + x.side + " junction=" + x.junction + " exit=" + x.exit + " -> icon " + icon + " dist=" + dist + " unit=" + unit);
         cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);

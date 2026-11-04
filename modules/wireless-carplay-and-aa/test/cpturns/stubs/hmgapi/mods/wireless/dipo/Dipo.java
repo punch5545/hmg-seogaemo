@@ -11,6 +11,12 @@ final class Dipo {
         logs.add(m);
     }
 
+    static boolean dev = true;
+
+    static boolean dev() {
+        return dev;
+    }
+
     static String laneMode() {
         return laneMode;
     }

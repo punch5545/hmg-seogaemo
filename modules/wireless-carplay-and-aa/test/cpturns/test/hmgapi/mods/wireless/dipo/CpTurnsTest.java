@@ -239,6 +239,14 @@ public final class CpTurnsTest {
         check("still nothing: no angle (0), a roundabout at an unlisted angle, an unknown type",
                 CpTurns.icon(1, 0, 0, 0, 1) == 0 && CpTurns.icon(2, 0, 0, 0, 1) == 0 && CpTurns.icon(1, 0, 1, -75, 1) == 0
                         && CpTurns.icon(99, 0, 0, 75, 1) == 0);
+        Dipo.dev = false;
+        Dipo.logs.clear();
+        CpTurns quiet = new CpTurns(new android.content.Context(), new Cluster(), null);
+        quiet.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 13, U16, i(0)));
+        boolean verbose = false;
+        for (String l : Dipo.logs) if (l.startsWith("TBT rg update") || l.startsWith("TBT turn")) verbose = true;
+        check("developer toggle off: only the essential first-update line is logged (" + Dipo.logs + ")", !verbose && Dipo.logs.size() == 1);
+        Dipo.dev = true;
         check("fallback icon is never 0: left 70, right 67, keep left 71, keep right 66, U-turn 72/73, arrive 112, roundabout left -75 70, unknown 65",
                 CpTurns.fallbackIcon(1, 0, 0, 0) == 70 && CpTurns.fallbackIcon(2, 0, 0, 0) == 67 && CpTurns.fallbackIcon(13, 0, 0, 0) == 71
                         && CpTurns.fallbackIcon(14, 0, 0, 0) == 66 && CpTurns.fallbackIcon(4, 0, 0, 0) == 72 && CpTurns.fallbackIcon(4, 1, 0, 0) == 73

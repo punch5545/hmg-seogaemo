@@ -54,7 +54,7 @@ public final class Wireless extends ModEntry {
     /** NavigationCluster's turn-by-turn calls: the car navigation's own guidance, off while a phone guides */
     static final String[] NAVI_TBT = { "update_tbt_info", "update_tbt_sub_info", "update_tbt_sub_info_b", "update_tbt_sub_info2",
         "update_tbt_sub_info2_b", "update_tbt_sub_info_2c", "update_remain_dis", "update_tp_crossroad_name",
-        "update_tp_destination_name", "update_tp_turn_list", "update_tp_turn_list_new", "update_tp_lane_info" };
+        "update_tp_destination_name", "update_tp_turn_list", "update_tp_turn_list_new", "update_tp_lane_info", "update_lane_info" };
 
     @Override
     public void appLoaded(final ModContext mod, LoadedApp app) {

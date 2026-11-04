@@ -262,15 +262,16 @@ final class Bridge {
     private static void traceIapIn(byte[] d, int len) {
         try {
             int n = ++sInCount;
-            if (n <= 5 || n % 200 == 0) log("iAP2 in #" + n + " len=" + len);
+            boolean dev = Dipo.dev();
+            if (dev && (n <= 5 || n % 200 == 0)) log("iAP2 in #" + n + " len=" + len);
             // link packet: 0xFF5A start, len(2), control, seq, ack, session; payload at 9. Control session payload: 0x4040, len(2), msg id(2)
             if (len >= 15 && (d[0] & 0xff) == 0xFF && (d[1] & 0xff) == 0x5A && (d[9] & 0xff) == 0x40 && (d[10] & 0xff) == 0x40) {
                 int id = ((d[13] & 0xff) << 8) | (d[14] & 0xff);
                 Integer c = sInMsg.get(id);
                 sInMsg.put(id, c == null ? 1 : c + 1);
-                if (c == null) log("iAP2 in first control msg 0x" + Integer.toHexString(id) + " (len " + len + ", at in #" + n + ")");
-                else if ((c + 1) % 100 == 0) log("iAP2 in control msg 0x" + Integer.toHexString(id) + " x" + (c + 1));
-            } else if (n <= 5) {
+                if (c == null && sInMsg.size() <= 32) log("iAP2 in first control msg 0x" + Integer.toHexString(id) + " (len " + len + ", at in #" + n + ")");
+                else if (c != null && dev && (c + 1) % 100 == 0) log("iAP2 in control msg 0x" + Integer.toHexString(id) + " x" + (c + 1));
+            } else if (dev && n <= 5) {
                 log("iAP2 in #" + n + " not a control-session packet, first bytes " + (d[0] & 0xff) + "," + (len > 1 ? d[1] & 0xff : -1) + "," + (len > 9 ? d[9] & 0xff : -1));
             }
         } catch (Throwable t) {
