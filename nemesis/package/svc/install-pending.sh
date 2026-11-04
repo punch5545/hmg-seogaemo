@@ -12,7 +12,7 @@ if ! mkdir "$worker" 2>/dev/null; then
     n=0
     while [ ! -s "$worker/pid" ] && [ "$n" -lt 5 ]; do n=$((n + 1)); sleep 1; done
     holder=; holder_boot=
-    read -r holder holder_boot < "$worker/pid" 2>/dev/null || :
+    { read -r holder holder_boot < "$worker/pid"; } 2>/dev/null || :
     case "$holder" in ''|*[!0-9]*) ;; *)
         if [ "$holder_boot" = "$boot_id" ] && kill -0 "$holder" 2>/dev/null &&
                 grep -q install-pending.sh "/proc/$holder/cmdline" 2>/dev/null; then exit 0; fi;;
@@ -29,10 +29,13 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 request=$(cat "$job/pending") || exit 1
+# A request exists only because the owner explicitly installed from USB, so a
+# paused stock restore (which pauses automatic module calls) does not cancel it.
+# Only a queued uninstall does.
 active() {
     [ "$(cat "$job/pending" 2>/dev/null)" = "$request" ] &&
         [ "$(cat "$worker/pid" 2>/dev/null)" = "$$ $boot_id" ] &&
-        [ ! -f "$state/stock/paused" ] && [ ! -f "$state/uninstall/pending" ]
+        [ ! -f "$state/uninstall/pending" ]
 }
 delay=2
 ready_attempt=0
@@ -48,7 +51,7 @@ while active; do
 done
 active || exit 0
 attempt_boot=; attempts=0
-read -r attempt_boot attempts < "$job/attempts" 2>/dev/null || :
+{ read -r attempt_boot attempts < "$job/attempts"; } 2>/dev/null || :
 [ "$attempt_boot" = "$boot_id" ] || attempts=0
 case "$attempts" in ''|*[!0-9]*) exit 1;; esac
 while [ "$attempts" -lt 4 ] && active; do
@@ -68,7 +71,7 @@ while [ "$attempts" -lt 4 ] && active; do
     active || exit 0
     # Reread reservations under the shared lock even after stale-worker recovery.
     attempt_boot=; attempts=0
-    read -r attempt_boot attempts < "$job/attempts" 2>/dev/null || :
+    { read -r attempt_boot attempts < "$job/attempts"; } 2>/dev/null || :
     [ "$attempt_boot" = "$boot_id" ] || attempts=0
     case "$attempts" in ''|*[!0-9]*) exit 1;; esac
     case "$(pm path com.seogaemo.hmg 2>/dev/null)" in
@@ -88,6 +91,11 @@ while [ "$attempts" -lt 4 ] && active; do
         active || exit 0
         # The fixed helper verifies registration before reporting success.
         echo installed > "$job/seen" || exit 1
+        # The APK now matches this tree: drop any OTA selection so root verbs
+        # do not run a different version than the installed app.
+        update=$state/update
+        rm -f "$update/current" "$update/current-path" "$update/previous-path" \
+            "$update/previous-version" "$update/journal" || exit 1
         rm -f "$job/pending" || exit 1
         rm -rf "$job/payload"
         echo 'Pending APK installed' >> "$state/reconcile.log"

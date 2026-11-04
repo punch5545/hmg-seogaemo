@@ -249,6 +249,25 @@ def test_detached_lifecycle(folder):
                     pass
 
 
+def test_retry_backoff(folder):
+    # A map that never verifies must not keep two JVMs running every 30 seconds
+    # until the next boot: waits grow 30, 60, 120, 300 and stop after 8 tries.
+    base, state, env = reconcile_fixture(folder)
+    fake = Path(env["PATH"].split(":")[0])
+    script(fake / "sleep", '''
+echo "$1" >> "$SG_DATA_ROOT/waits"
+/bin/sleep 0.01
+''')
+    env["VERIFY_MODE"] = "fail"
+    assert invoke(base, env).returncode == 0
+    wait_for(lambda: not (state / "reconcile-retry").exists())
+    waits = [w for w in (state / "waits").read_text().split() if int(w) >= 30]
+    assert waits == ["30", "60", "120"] + ["300"] * 5, waits
+    calls = (state / "calls").read_text().splitlines()
+    assert calls.count("map verify") == 9, calls
+    assert "retries exhausted" in (state / "reconcile.log").read_text()
+
+
 def test_reverse_restore_material(folder):
     # Interrupted applies can leave only a directory reference, bind or cache
     # journal before the main changes file/desired-on commit is published.
@@ -320,6 +339,9 @@ def test_pending_install(folder):
         script(fake / "getprop", 'cat "$SG_DATA_ROOT/boot-property"\n')
         script(fake / "setprop", 'echo "$2" > "$SG_DATA_ROOT/boot-property"\n')
         script(fake / "sleep", '''
+# install-apk.sh's pm watchdog polls once a second through this PATH sleep when
+# the shell has no builtin; those ticks are not worker waits.
+[ "$1" != 1 ] || { /bin/sleep 0.01; exit 0; }
 echo "$1" >> "$SG_DATA_ROOT/waits"
 if [ "$PENDING_MODE" = slow ]; then
     n=$(cat "$SG_DATA_ROOT/ready-count" 2>/dev/null); [ -n "$n" ] || n=0; n=$((n + 1))
@@ -343,7 +365,8 @@ esac
 ''')
         (state / "pm-ready").touch()
         env.update(SG_BOOT_ID_FILE=str(state / "boot-id"),
-                   HMG_SEOGAEMO_APK_STAGE=str(state), PENDING_MODE="success")
+                   HMG_SEOGAEMO_APK_STAGE=str(state), PENDING_MODE="success",
+                   HMG_SEOGAEMO_PM_TIMEOUT="100000")
         return base, state, job, env
 
     def worker(base, env):
@@ -366,6 +389,13 @@ esac
         if mode in ("paused", "uninstall"):
             marker = state / ("stock/paused" if mode == "paused" else "uninstall/pending")
             marker.parent.mkdir(); marker.touch()
+            # A retained OTA selection (version dir kept) that a completed
+            # USB-requested install must drop; stock/paused itself stays.
+            update = state / "update"
+            (update / "versions/0.1.22").mkdir(parents=True)
+            (update / "current").symlink_to(update / "versions/0.1.22")
+            for name in ("current-path", "previous-path", "previous-version", "journal"):
+                (update / name).write_text("x\n")
         if mode == "no-request":
             (job / "pending").unlink()
         if mode == "stale":
@@ -375,10 +405,13 @@ esac
         assert result.returncode == (1 if mode in ("fail", "health") else 0), (mode, result)
         assert not (job / "worker").exists()
         assert not (state / "operation.lock").exists()
-        if mode in ("removed", "paused", "uninstall", "no-request", "health"):
+        if mode in ("removed", "uninstall", "no-request", "health"):
             assert not (state / "installs").exists(), mode
             if mode == "removed":
                 assert not (job / "pending").exists() and not (job / "payload").exists()
+            if mode == "uninstall":
+                # Queued uninstall keeps the request and the OTA selection.
+                assert (job / "pending").exists() and (state / "update/current").is_symlink()
             continue
         assert (state / "boot-property").read_text().strip() == "1"
         if mode == "fail":
@@ -395,6 +428,14 @@ esac
             assert (state / "installs").read_text().splitlines() == ["install"]
         assert (job / "seen").exists() and not (job / "pending").exists()
         assert not (job / "payload").exists()
+        if mode == "paused":
+            # Explicit USB install proceeds despite a paused stock restore,
+            # drops the OTA selection, and never clears the pause itself.
+            update = state / "update"
+            assert (state / "stock/paused").exists()
+            for name in ("current", "current-path", "previous-path", "previous-version", "journal"):
+                assert not (update / name).exists() and not (update / name).is_symlink(), name
+            assert (update / "versions/0.1.22").is_dir()
         if mode in ("slow", "late-pm"):
             assert (state / "waits").read_text().splitlines() == ["2", "4", "8", "16"] + ["30"] * 6
         (state / "installed").unlink()
@@ -421,6 +462,23 @@ esac
         process.communicate(timeout=8)
     assert process.returncode == 0 and not (job / "worker").exists()
 
+    # A paused stock restore must not strand an explicit USB install request:
+    # reconcile completes the APK, drops the OTA selection, but applies nothing.
+    base, state, job, env = setup("reconcile-paused-install")
+    (state / "stock").mkdir(); (state / "stock/paused").touch()
+    old = folder / "paused-old-payload"
+    (old / "svc").mkdir(parents=True)
+    script(old / "svc/reconcile.sh", 'echo selected >> "$SG_DATA_ROOT/calls"\n')
+    (state / "update").mkdir()
+    (state / "update/current").symlink_to(old)
+    (state / "update/journal").write_text("phase=healthy\n")
+    result = invoke(base, env)
+    assert result.returncode == 0, result
+    assert (state / "installs").read_text().splitlines() == ["install"]
+    assert not (job / "pending").exists() and not (state / "calls").exists()
+    assert not (state / "update/current").is_symlink() and not (state / "update/journal").exists()
+    assert (state / "stock/paused").exists()
+
     for mode in ("success", "fail", "removed", "update-failed", "old-selection"):
         base, state, job, env = setup("reconcile-" + mode)
         env["PENDING_MODE"] = "fail" if mode == "update-failed" else mode
@@ -443,7 +501,10 @@ esac
         if mode in ("success", "update-failed"):
             assert "mapped apply" in calls and "mapped revert" not in calls, calls
         elif mode == "old-selection":
-            assert calls == ["selected"] and not (job / "pending").exists(), calls
+            # Completing the USB request drops the stale OTA selection, so this
+            # tree (matching the installed APK) reconciles instead of the old one.
+            assert "selected" not in calls and "mapped apply" in calls, calls
+            assert not (job / "pending").exists() and not (state / "update/current").is_symlink()
         elif mode == "removed":
             assert calls == ["mapped revert"], calls
         else:
@@ -531,6 +592,7 @@ with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-reconcile-map-") as tmp:
     test_android_readiness(Path(tmp) / "readiness")
     test_reconcile(Path(tmp) / "reconcile")
     test_detached_lifecycle(Path(tmp) / "detached")
+    test_retry_backoff(Path(tmp) / "backoff")
     test_reverse_restore_material(Path(tmp) / "reverse")
     test_payload_replacement(Path(tmp) / "replacement")
     test_mapper_deadlines(Path(tmp) / "deadline")
