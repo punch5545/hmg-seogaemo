@@ -113,6 +113,7 @@
     <string name="update_rolling_back">이전 버전 복원 중…</string>
     <string name="update_complete">업데이트 작업 완료</string>
     <string name="update_restore_pending">이전 모듈 설정 복원 또는 헤드 유닛 재시작이 필요합니다</string>
+    <string name="update_resume_expired">업데이트 이어서 진행 대기가 24시간이 지나 만료되었습니다. 필요하면 업데이트 확인을 다시 시작하세요.</string>
     <string name="restore_confirm_title">이전 모듈 설정 복원</string>
     <string name="restore_confirm_message">업데이트가 중단되어 모듈이 이전 켜짐/꺼짐 상태로 돌아가지 않았습니다. 지금 복원할까요?</string>
     <string name="restore_confirm_action">복원</string>

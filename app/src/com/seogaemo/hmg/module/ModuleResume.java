@@ -4,7 +4,18 @@ import java.io.FileReader;
 
 /** Read-only gate for an already confirmed update continuation. */
 public final class ModuleResume {
+    /** A saved automatic update resume is only honoured for this long. */
+    public static final long RESUME_TTL_MS = 24L * 60L * 60L * 1000L;
+
     private ModuleResume() { }
+
+    /**
+     * True once the resume state is older than the TTL. A clock that moved backwards (the unit
+     * has no time before it syncs) cannot show the age, so that is not treated as expired.
+     */
+    public static boolean expired(long savedAtMs, long nowMs) {
+        return savedAtMs > 0 && nowMs > savedAtMs && nowMs - savedAtMs > RESUME_TTL_MS;
+    }
 
     public static boolean ready(RootResult status, boolean usableNetwork) {
         return usableNetwork && status.exitCode == 0 && status.desiredEnabled() &&

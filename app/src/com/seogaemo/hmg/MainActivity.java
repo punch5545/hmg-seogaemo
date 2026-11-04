@@ -173,6 +173,7 @@ public final class MainActivity extends Activity {
     private void resumeUpdateWhenReady() {
         if (resumeChecking || updateBusy || moduleWorking || modulePlanning || stockBusy || mapBusy || mapRefreshing ||
                 !getSharedPreferences("update", MODE_PRIVATE).getBoolean("resume", false)) return;
+        if (resumeExpired()) return;
         resumeChecking = true;
         new Thread(new Runnable() { public void run() {
             boolean ready = false;
@@ -194,6 +195,21 @@ public final class MainActivity extends Activity {
                 checkUpdate(); // The earlier confirmation saved this resume intent.
             }});
         }}, "hmg-seogaemo-update-resume").start();
+    }
+
+    /** A saved update-resume older than a day is dropped; the module restore is offered instead. */
+    private boolean resumeExpired() {
+        SharedPreferences prefs = getSharedPreferences("update", MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        if (!prefs.contains("resume_at")) { // Saved by an older build: start the clock now.
+            prefs.edit().putLong("resume_at", now).commit();
+            return false;
+        }
+        if (!ModuleResume.expired(prefs.getLong("resume_at", 0L), now)) return false;
+        prefs.edit().putBoolean("resume", false).remove("boot").remove("resume_at").commit();
+        updateMessage(getString(R.string.update_resume_expired));
+        if (prefs.contains("restore")) offerModuleRestore();
+        return true;
     }
 
     private SharedPreferences preferences() {
@@ -789,10 +805,12 @@ public final class MainActivity extends Activity {
                                     String prior = enabledModules();
                                     saved = getSharedPreferences("update", MODE_PRIVATE).edit()
                                             .putString("restore", prior).putString("boot", ModuleResume.bootId())
+                                            .putLong("resume_at", System.currentTimeMillis())
                                             .putBoolean("resume", true).commit();
                                 } else if (forUpdate) {
                                     saved = getSharedPreferences("update", MODE_PRIVATE).edit()
-                                            .putString("boot", ModuleResume.bootId()).putBoolean("resume", true).commit();
+                                            .putString("boot", ModuleResume.bootId()).putLong("resume_at", System.currentTimeMillis())
+                                            .putBoolean("resume", true).commit();
                                 }
                                 final RootResult outcome = !saved
                                         ? new RootResult("failed", "none", getString(R.string.module_resume_failed), 1, null)

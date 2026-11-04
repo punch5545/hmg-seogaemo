@@ -113,6 +113,7 @@
     <string name="update_rolling_back">Rolling back…</string>
     <string name="update_complete">Update operation complete</string>
     <string name="update_restore_pending">Previous module settings need restoration or a head-unit restart</string>
+    <string name="update_resume_expired">Update resume expired after 24 hours. Start the update check again if you still want it.</string>
     <string name="restore_confirm_title">Restore previous module settings</string>
     <string name="restore_confirm_message">An update was interrupted before the modules were returned to their earlier on/off state. Restore them now?</string>
     <string name="restore_confirm_action">Restore</string>

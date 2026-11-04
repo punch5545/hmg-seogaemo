@@ -1,4 +1,5 @@
 import com.seogaemo.hmg.core.update.BoundedProcess;
+import com.seogaemo.hmg.module.ModuleResume;
 import com.seogaemo.hmg.module.RestoreGate;
 import com.seogaemo.hmg.module.RootResult;
 import java.util.Arrays;
@@ -15,7 +16,16 @@ public final class AppGuardsTest {
     public static void main(String[] args) throws Exception {
         boundedProcess();
         restoreGate();
+        resumeExpiry();
         System.out.println("AppGuardsTest ok");
+    }
+
+    private static void resumeExpiry() {
+        long hour = 60L * 60L * 1000L;
+        check(!ModuleResume.expired(1000L, 1000L + 23 * hour), "fresh resume kept");
+        check(ModuleResume.expired(1000L, 1000L + 25 * hour), "stale resume expires");
+        check(!ModuleResume.expired(1000L + 25 * hour, 1000L), "clock moved back is not expiry");
+        check(!ModuleResume.expired(0L, 100 * hour), "unset stamp is not expiry");
     }
 
     private static RootResult result(String state, String restart, int exit, String... infoPairs) {
