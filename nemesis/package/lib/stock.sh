@@ -138,10 +138,15 @@ hmg_seogaemo_stock_restore() {
                 # Reboot-only modules still report their transient effect.
                 if ! grep -Fxq 'restore=reboot' "$base/modules/$stock_id.properties"; then
                     sg_zygote_foreign || exit $?
+                    sg_zygote_guard_sweep || exit $?
                     if [ "$stock_id" = wireless-carplay-and-aa ]; then
                         sg_projection_runtime clear || exit $?
                     fi
                     sg_generated_dirs_remove || exit $?
+                    # A wrapper zygote restored earlier in this boot is still running.
+                    if sg_restart_pending; then
+                        sg_status pending-restart head_unit 'restart unit to finish restoration'; exit $?
+                    fi
                     sg_status off none 'Already off'; exit $?
                 fi
             fi

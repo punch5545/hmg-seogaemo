@@ -27,4 +27,8 @@ case "$(pm path com.seogaemo.hmg 2>/dev/null)" in
         case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) echo 'APK remains installed' >&2; exit 1 ;; esac ;;
 esac
 rm -rf "$state/app-install" || exit 1
-rm -rf "$state/desired" "$state/modules" "$state/journal" "$state/reconcile.log"
+# The stock restore receipt and its pause marker belong to this installation: a
+# later install must not inherit a paused watcher. uninstall/ (result, exit code, log)
+# and the ledger are kept.
+rm -rf "$state/desired" "$state/modules" "$state/journal" "$state/reconcile.log" \
+    "$state/stock" "$state/restart-cleanup"

@@ -224,7 +224,9 @@ def test_failure_and_hook(folder):
     assert not car.apk.exists()
     assert not (car.state / 'modules').exists()
     assert (car.state / 'ledger/ledger.tsv').exists()
-    assert 'info.module_a=reverted' in (car.state / 'stock/result').read_text()
+    # The pause marker and receipt belong to the removed installation; ledger rows stay.
+    assert not (car.state / 'stock').exists()
+    assert 'stock_finish' in (car.state / 'ledger/ledger.tsv').read_text()
 
 
 def test_detached(folder):
@@ -257,6 +259,9 @@ rm -rf "$FAKE_PACKAGE"
     assert (job / 'result').read_text() == 'removed', (job / 'log').read_text()
     assert (job / 'exit-code').read_text() == '0'
     assert not car.base.exists() and not car.apk.exists()
+    # Nothing of the restore bookkeeping survives; the uninstall record does.
+    assert not (car.state / 'stock').exists() and not (car.state / 'restart-cleanup').exists()
+    assert (job / 'log').exists() and (job / 'exit-code').exists()
     assert 'nemesis uninstall hmg-seogaemo' in car.calls.read_text()
     assert 'package_uninstall' in (car.state / 'ledger/ledger.tsv').read_text()
 
@@ -467,8 +472,8 @@ def test_snapshot_free_recovery(folder):
     car.run(module, 'revert')
 
 
-def test_unrecorded_swap(folder):
-    """An app_process swap with no ledger/baseline refuses restore and uninstall."""
+def swap_fixture(folder):
+    """The real wireless module script on an isolated /system with a known stock app_process."""
     import hashlib
     car = Car(folder)
     car.enable()
@@ -493,6 +498,60 @@ def test_unrecorded_swap(folder):
         f'{module}\tdepends=\texcludes=\na\tdepends=\texcludes=\nb\tdepends=a\texcludes=\nc\tdepends=\texcludes=\n')
     (car.state / f'desired/{module}').write_text('on')
     car.env['SG_TARGET_ROOT'] = str(target)
+    return car, module, target, process, extras
+
+
+def test_stale_wrapper_guard(folder):
+    """The wrapper's own guard state never blocks restore or uninstall; it is swept."""
+    car, module, target, process, extras = swap_fixture(folder)
+    key = module.replace('-', '_')
+    state = car.state / f'modules/{module}'
+    state.mkdir(parents=True, exist_ok=True)
+    names = ('starts', 'enable', 'enabled', 'disable')
+
+    def stale():
+        for name in names:
+            (state / name).write_text('2')
+
+    # The live wrapper recreated `starts` (and the owner touched `disable`) after an earlier revert.
+    stale()
+    (state / 'keep').write_text('other state')
+    result = car.run('stock', 'restore')
+    assert f'info.module_{key}=reverted' in result.stdout, result.stdout
+    assert not any((state / name).exists() for name in names) and (state / 'keep').exists()
+    assert process.read_bytes() == b'stock-executable'
+    ledger = (car.state / 'ledger/ledger.tsv').read_text()
+    assert ledger.count('zygote_guard_sweep') == 4, ledger
+    # The same with the module desired off (no restore material at all).
+    (car.state / f'desired/{module}').write_text('off')
+    stale()
+    car.run('stock', 'restore')
+    assert not any((state / name).exists() for name in names)
+    # A restart that is still pending from an earlier revert in this boot stays pending.
+    car.env['SG_BOOT_ID_FILE'] = str(car.boot)
+    shutil.copy(car.boot, state / 'assets-repaired-boot')
+    stale()
+    result = car.run('stock', 'restore')
+    assert 'state=pending-restart' in result.stdout and 'restart=head_unit' in result.stdout, result.stdout
+    assert not any((state / name).exists() for name in names)
+    # Package uninstall and the NEMESIS hook accept the same stale state.
+    car.env.pop('SG_BOOT_ID_FILE')
+    (state / 'assets-repaired-boot').unlink()
+    stale()
+    car.run('package', 'uninstall')
+    assert not any((state / name).exists() for name in names)
+    # Real evidence of an unrecorded swap still refuses, with the stale state untouched.
+    (car.state / 'uninstall').exists() and shutil.rmtree(car.state / 'uninstall')
+    stale()
+    extras[0].write_bytes(b'stock-executable')
+    result = car.run('stock', 'restore', ok=False)
+    assert 'state=conflict' in result.stdout and 'app_process.hmg-seogaemo-stock' in result.stdout
+    assert all((state / name).exists() for name in names)
+
+
+def test_unrecorded_swap(folder):
+    """An app_process swap with no ledger/baseline refuses restore and uninstall."""
+    car, module, target, process, extras = swap_fixture(folder)
     key = module.replace('-', '_')
 
     def refused():
@@ -552,6 +611,8 @@ def test_residue_on_restore(folder):
     vm = car.state / 'core/vm/dalvik-cache'
     vm.mkdir(parents=True)
     (vm / 'entry').write_text('cache')
+    scratch = car.state / 'core/vm.status.4242/dalvik-cache'
+    scratch.mkdir(parents=True)
     (car.base / 'modules/a.properties').write_text(
         'owns_props=demo.a\nwatch=boot,screen_on\n'
         'owns_files=/system/etc/hmg-seogaemo/a/recipes/x.recipe\n'
@@ -561,22 +622,27 @@ def test_residue_on_restore(folder):
     assert 'state=off' in result.stdout or 'state=pending-restart' in result.stdout
     assert not generated.exists() and not namespace.exists()
     assert not ours.exists() and other.exists() and not (car.state / 'core/vm').exists()
+    assert not scratch.exists()
     ledger = (car.state / 'ledger/ledger.tsv').read_text()
     assert 'generated_dir_remove' in ledger and 'legacy_dir_remove' in ledger
     assert 'dex_legacy_remove' in ledger and 'stock_residue' in ledger
-    # An unexpected entry in a generated directory is a conflict, before any revert.
+    # An unexpected entry in a generated directory never fails a restore: the plain
+    # files go, the directory stays, and boot reconcile gets a retry marker.
     generated.mkdir(parents=True)
     (generated / 'nested').mkdir()
-    result = car.run('stock', 'restore', ok=False)
-    assert 'state=conflict' in result.stdout and 'generated dir content' in result.stdout
-    assert (generated / 'nested').is_dir()
+    (generated / 'p-1-2.txt').write_text('generated')
+    result = car.run('stock', 'restore')
+    assert 'state=off' in result.stdout or 'state=pending-restart' in result.stdout
+    assert (generated / 'nested').is_dir() and not (generated / 'p-1-2.txt').exists()
+    assert (car.state / 'restart-cleanup/a').is_file()
 
 
 with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
                  test_late_failure, test_detached_failure, test_missing_handoff,
                  test_shared_lines, test_file_metadata_diagnostic, test_reassert_restore, test_snapshot_free_recovery,
-                 test_damaged_selection_recovery, test_unrecorded_swap, test_residue_on_restore):
+                 test_damaged_selection_recovery, test_unrecorded_swap, test_stale_wrapper_guard,
+                 test_residue_on_restore):
         folder = Path(directory).resolve() / test.__name__
         folder.mkdir()
         test(folder)

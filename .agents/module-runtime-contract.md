@@ -177,16 +177,36 @@ private runtime state are never chmod targets.
 `sg_zygote_foreign` is a read-only guard for a module that owns
 `/system/bin/app_process`. The swap counts as owned when the module holds a file
 baseline for it (or an upgrade journal). Without that record nothing we wrote is
-recoverable, so the guard returns conflict (3) with `info.restore_conflict` when any
-of these exists: `app_process.hmg-seogaemo-stock`, our hook `.so`/`.jar`, the
-`enable`/`enabled`/`starts`/`disable` guard files, or an `app_process` whose MD5
-differs from the module's `known_stock.N=<ro.build.product glob>:<path>:<md5>`
+recoverable, so the guard returns conflict (3) when any of exactly these exists:
+`app_process.hmg-seogaemo-stock`, our hook `.so` or `.jar`, or an `app_process`
+whose MD5 differs from the module's `known_stock.N=<ro.build.product glob>:<path>:<md5>`
 declaration for the current product (no matching declaration means no judgment).
-`sg_revert_all` calls it first, so module revert, whole-package restore and the
-NEMESIS uninstall hook all refuse; `lib/stock.sh` also runs it in the all-module
-preflight and for modules with no snapshots, before anything is reverted. Module
-`status`, `precheck` and `apply` report the same conflict. Nothing is modified, no
-desired state changes, and the owner resolves it (for example by restoring stock from
+Every offender is listed on the single `info.restore_conflict` line.
+
+The wrapper's own guard state in the module state directory (`enable`, `enabled`,
+`starts`, `disable`) is not evidence. The live wrapper recreates `starts` after a
+revert (its watcher opens it with `O_CREAT`, up to 120 s after the zygote started),
+`touch disable` is its documented manual off switch, and a car may hold stale files
+of an earlier install. `sg_zygote_guard_sweep` removes exactly those four names
+(never anything else, one ledger row `zygote_guard_sweep` each) while the module has
+no swap record and `sg_zygote_foreign` passed; a directory in their place is a
+conflict. `sg_revert_all` (module revert, whole-package restore, the NEMESIS uninstall
+hook), the `lib/stock.sh` "nothing applied" path and the wireless fresh `apply` call it,
+so stale guard files are never recorded as stock originals either. Module `status`,
+`precheck` and the stock preflight only read.
+
+A revert that restored an applied `app_process` leaves the running zygote on the
+wrapper until the head unit restarts. `sg_revert_all` therefore records the
+per-module restart marker (`sg_restart_required`, best effort) after such a restore;
+while `sg_restart_pending` holds (same kernel boot), the wireless module's `status` and
+`revert` and the stock restore report `pending-restart`/`head_unit`, not `off` and not a
+conflict, even if the wrapper meanwhile recreated `starts`.
+
+`sg_revert_all` calls the guard first, so module revert, whole-package restore and the
+NEMESIS uninstall hook refuse on real evidence; `lib/stock.sh` also runs it in the
+all-module preflight and for modules with no snapshots, before anything is reverted.
+Module `status`, `precheck` and `apply` report the same conflict. Nothing is modified,
+no desired state changes, and the owner resolves it (for example by restoring stock from
 the saved copy) before retrying. The wireless module declares
 `known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:33f798115689d1859e8d2159dc88e7dc`
 (the stock build seen on the Ioniq 5 KOR car before and after HMG-API/this module).
@@ -213,15 +233,27 @@ never by a module directly and never with a caller-supplied path:
 
 - `owns_generated_dirs=<csv>` in `module.properties` declares exact
   `/data/data/<package>/app_hmg-seogaemo-<name>` directories that a loaded hook creates
-  with `Context.getDir` (the wireless module declares the `-wireless-runtime` directory of
-  its five fixed packages; the Dalvik `-wireless-dex` directory stays with
-  `sg_dex_cache_track`). The generator rejects anything else. `sg_generated_dirs_remove`
-  validates every declared directory first (no symlink anywhere in the path, directory
-  holds only up to 64 regular files with plain `[a-zA-Z0-9_.-]` names) and then removes the
-  files and the directories. Any other entry is a conflict (3) and nothing is removed.
+  with `Context.getDir` (the wireless module declares the `-wireless-runtime` and the
+  `-wireless-dex` directory of its five fixed packages; for `com.daudio.app.dipo` the dex
+  files are additionally tracked by `sg_dex_cache_track`). The generator rejects anything
+  else. `sg_generated_dirs_remove` is advisory and never fails a revert, restore or
+  uninstall: hook processes keep writing until the head unit restarts, and every stock byte
+  is already back by then. For each declared directory without a symlink anywhere in its
+  path it removes the plain regular files (up to 64, names `[a-zA-Z0-9_.@-]`) and then the
+  directory when empty, one `generated_dir_remove` ledger row per directory; symlinks,
+  subdirectories and other entries are left untouched. If anything is left, or the revert
+  just recorded a pending restart (`sg_restart_pending`), it writes the cleanup marker
+  `<data root>/restart-cleanup/<module id>` (content: boot id), else it deletes the marker.
   Modules call it after `sg_revert_all` (the wireless `revert`), and `lib/stock.sh` calls it
-  for modules with no restore material. Running apps keep writing there until the head
-  unit restarts, so a later boot-time call to the same API is the complete cleanup.
+  for modules with no restore material. `svc/reconcile.sh` retries markers at boot, before
+  its pause check (the cleanup removes only our own diagnostic files), under
+  `operation.lock`, through `sg_restart_cleanup_run`: markers of the current boot are
+  skipped (hooks may still write), markers of unknown modules or odd names are dropped, a
+  module that is desired on or holds restore material again is left alone (marker dropped),
+  and any other module runs `sg_generated_dirs_remove` with its own declarations, which
+  deletes the marker when everything is gone and rewrites it with the current boot id
+  otherwise. After a full package uninstall nothing retries it: those few diagnostic files
+  stay in the app data until the owner clears app data; they affect no stock behavior.
 - After every module is restored, `lib/stock.sh` runs `hmg_seogaemo_stock_residue` (best
   effort, ledger row `stock_residue` ok/partial, never a conflict): `sg_legacy_dirs_cleanup`
   (`rmdir` only, in passes, of the directories between each owned path under
@@ -232,7 +264,7 @@ never by a module directly and never with a caller-supplied path:
   `data@nemesis@apps@hmg-seogaemo` or `data@nemesis@backup@hmg-seogaemo@update` plus an
   optional `@...` middle plus `@core@map@hmg-seogaemo-mapper.jar`,
   `@app@hmg-seogaemo.apk` or the projection reader jar path, ending `@classes.dex`) and
-  `sg_vm_cleanup` (the private `core/vm` cache). Each removal is a ledger row.
+  `sg_vm_cleanup` (the private `core/vm` cache and `core/vm.status.<digits>` scratch caches). Each removal is a ledger row.
 
 ## Wireless ADB and diagnostic export (2026-11-04)
 
@@ -362,11 +394,22 @@ inline. It requires a non-empty `BOOTCLASSPATH` (the inherited value, else the
 with stdout and stderr in private files directly under the data root, waits with
 `sg_bounded_wait <pid> <seconds>` (1-second polls, 15 seconds by default,
 `SG_READER_TIMEOUT` for tests, capped at 120), and on expiry kills the reader and
-its children (`sg_kill_tree`, toolbox `ps` PID/PPID fields) and returns 124.
+its whole process tree and returns 124. `sg_kill_tree <pid> [depth]` is a subshell
+function: it snapshots toolbox `ps` (PID/PPID fields), collects target and all
+descendants (default depth 3) before signalling anything, sends TERM to every
+member, waits one second and sends KILL to every member, so no member is
+skipped when an intermediate process ignores TERM or children are reparented.
+The following `wait` on the target returns once KILL is delivered.
 Output must be exactly one `state=`, `restart=` and `detail=` line with a known
 state/restart pair and a clean exit (1 only with `state=failed`); anything else,
 or a timeout, is `state=unknown` (`pending-restart`/`head_unit` for `applying`).
-`status` therefore never keeps `operation.lock` longer than the limit. `clear`
+`status` therefore never keeps `operation.lock` longer than the limit. Hang-up, interrupt
+and termination of the caller run the `EXIT` trap, which kills the reader's whole tree with
+`sg_kill_tree` (also `core/update.sh` and `core/hmg-seogaemo-map.sh` for their VMs, whose
+verifier runs as a direct child of the updater shell so the trap can reach it) and removes
+`reader.out.<pid>` and `reader.err.<pid>`. A run killed before its trap leaves them behind;
+the next run deletes exactly `reader.{out,err}.<digits>` files in the private data root whose
+PID is not alive. `clear`
 that cannot run the reader (timeout, no boot class path, exit 126 or above)
 removes the root-only generated tree directly; a reader refusal (exit 1) still
 fails. `sg_bounded_wait` and `sg_kill_tree` are generic and are also used for the
@@ -951,7 +994,10 @@ update verifier, projection reader) uses `sg_bounded_wait` and a private
 the mapper and update verifier, the module's `vm/` tree for the projection reader.
 The update verifier is bounded to 240 seconds. They export a validated
 `BOOTCLASSPATH` (`sg_bootclasspath`) when the environment lacks one. Nothing of
-ours then writes to `/data/dalvik-cache`.
+ours then writes to `/data/dalvik-cache`. `map status` is read-only: it uses `core/vm`
+only when it already exists and otherwise runs on a scratch cache `core/vm.status.<pid>` that
+the dispatcher removes on exit; only `map verify`, `map run` and the update verifier create
+`core/vm`. Restore residue and the uninstall hook (which runs the same restore) remove it.
 
 ## Automatic intent recheck under lock (2026-11-04)
 

@@ -21,11 +21,16 @@ after baseline consumption. These copies are diagnostic material, never a
 license to force old stock bytes over a changed firmware.
 
 A module that owns `/system/bin/app_process` is never reported "already off" on
-the strength of an empty ledger: if the swap is unrecorded (our stock backup,
-hook files or guard state exist, or `app_process` is not the declared stock MD5)
-the preflight returns conflict, reverts nothing, keeps desired states and blocks
+the strength of an empty ledger: if the swap is unrecorded (our stock backup, our hook
+`.so`/`.jar` exist, or `app_process` is not the declared stock MD5) the preflight
+returns conflict, reverts nothing, keeps desired states and blocks
 `package uninstall` and the uninstall hook (`sg_zygote_foreign`, see the runtime
-contract). Resolve it by hand, then retry.
+contract); all offenders are named on one line. The wrapper's guard files
+(`starts`, `enable`, `enabled`, `disable`) are not evidence: the live wrapper
+recreates `starts` after a revert and `touch disable` is its manual off switch, so
+restore sweeps them (ledger row each) and reports pending-restart while the revert
+marker of this boot says the wrapper zygote is still running. Resolve a real
+conflict by hand, then retry.
 
 `stock status` reads the last per-module receipt. An outstanding head-unit
 restart remains pending through repeated restore, including the uninstall hook,
@@ -41,6 +46,24 @@ failure it never calls NEMESIS. Success queues the fixed command
 again through `scripts/preuninstall.sh`; the staged-update exception still
 preserves state. The hook removes and verifies the APK before allowing package
 removal. A framework restart may still be required after removal.
+
+## State after a completed uninstall
+
+The NEMESIS pre-uninstall hook (reached from the app's `package uninstall`, from the
+NEMESIS UI and from the staged-update exception alike, the last of which exits early
+and changes nothing) ends a successful removal by deleting `desired/`, `modules/`,
+`journal`, `reconcile.log`, `app-install/`, `stock/` and `restart-cleanup/`. `stock/`
+holds `paused`, `result`, `product`, `boot`, `outcome.*` and any `recovery.*` copies; none
+of it describes a later installation, and a surviving `stock/paused` would silently
+keep a fresh install from reapplying modules, so it must not survive. Kept on purpose:
+`uninstall/` (result, exit code, log, the copied runner), the `ledger/`, `car-maps/`
+and the OTA version directories. The restore that precedes it also removes `core/vm`
+(the mapper's private Dalvik cache) and any `core/vm.status.*` scratch cache; `map status`
+does not recreate it (it only uses an existing cache or a scratch one removed on exit).
+A failed hook or a failed removal deletes nothing: the pause, receipt and backups remain
+for the retry. Generated app directories that the still-running hooks rewrote after the
+restore are not retried after an uninstall (nothing is left to run the retry); they hold
+only diagnostic files and no stock state.
 
 ## Detached lifecycle
 

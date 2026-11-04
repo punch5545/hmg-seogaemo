@@ -147,6 +147,8 @@ sg_zygote_foreign() {
     sg_print info.restore_conflict=foreign
     return 3
 }
+# Stale wrapper guard state handling is exercised by tools/test-runtime.py.
+sg_zygote_guard_sweep() { [ ! -f "$HMG_SEOGAEMO_STATE/guard-sweep-fails" ]; }
 sg_status() { sg_print "state=$1" "restart=$2" "detail=${3:-}"; case "$1" in conflict) return 3;; incompatible) return 4;; failed) return 1;; esac; }
 SH
 cat > "$T/bin/getprop" <<'SH'
@@ -318,6 +320,23 @@ cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail 
 [ ! -e "$T/state/runtime" ] || fail runtime-diagnostics-residue
 run status || fail reverted-status
 grep -q '^info.restore_material=absent$' "$T/output" || fail rollback-after-restore
+# The wrapper zygote of the reverted swap runs until the restart: pending, then off.
+cp "$T/root/proc/sys/kernel/random/boot_id" "$T/state/assets-repaired-boot"
+run status || fail restored-pending-status
+grep -q '^state=pending-restart$' "$T/output" && grep -q '^restart=head_unit$' "$T/output" || fail restored-pending-restart
+run revert || fail repeated-revert
+grep -q '^state=pending-restart$' "$T/output" || fail repeated-revert-pending
+sg_print "boot-four" > "$T/root/proc/sys/kernel/random/boot_id"
+run status || fail new-boot-status
+grep -q '^state=off$' "$T/output" || fail new-boot-off
+run revert || fail new-boot-revert
+grep -q '^state=off$' "$T/output" || fail new-boot-revert-off
+# A guard sweep that cannot finish blocks a fresh apply before anything is written.
+touch "$T/state/guard-sweep-fails"
+run apply && fail sweep-failure-accepted
+grep -q '^state=conflict$' "$T/output" || fail sweep-failure-state
+[ ! -e "$T/state/ops.list" ] || fail sweep-failure-mutated
+rm -f "$T/state/guard-sweep-fails"
 sh "$HERE/test/runtime/run.sh" > "$T/runtime.out" 2>&1 || { cat "$T/runtime.out"; fail runtime; }
 sh "$HERE/test/consumer/run.sh" > "$T/consumer.out" 2>&1 || { cat "$T/consumer.out"; fail consumer; }
 sh "$HERE/test/cpturns/run.sh" > "$T/cpturns.out" 2>&1 || { cat "$T/cpturns.out"; fail cpturns; }

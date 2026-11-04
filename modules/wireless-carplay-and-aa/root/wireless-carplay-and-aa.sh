@@ -21,15 +21,13 @@ unrecorded_swap() {
     conflict 'app_process changed outside the ledger; restore refused, nothing modified'
     return 3
 }
-# Generated diagnostics: our private tree, and the hook's per-app runtime directories
-# (declared as owns_generated_dirs). Apps keep writing them until the next restart.
+# Generated diagnostics: our private tree, and the hook's per-app runtime and Dalvik
+# directories (declared as owns_generated_dirs). Apps keep writing them until the next
+# restart, so the per-app removal is advisory: it never fails the revert and records a
+# cleanup that boot reconcile retries.
 cleanup_runtime() {
     sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
-    sg_generated_dirs_remove && return 0
-    case $? in
-        3) conflict 'app runtime directory holds unexpected entries; kept'; return 3 ;;
-        *) fail 'app runtime directory cleanup failed'; return 1 ;;
-    esac
+    sg_generated_dirs_remove || :
 }
 compatibility() {
     map_state=$(/system/bin/sh "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state= # android44-shell: allow -- fixed dispatcher beneath the runtime-supplied package root
@@ -118,6 +116,8 @@ apply() {
             sg_prop_set persist.iap2.iden.wireless t || { fail 'property reapply failed'; return 1; }
         status applying; return $?
     fi
+    # Stale wrapper guard state (never baselined as stock) must not be recorded as originals.
+    sg_zygote_guard_sweep || { conflict 'wrapper guard state could not be cleared'; return 3; }
     if ! put_assets ||
        ! sg_prop_set persist.ium.support carplay ||
        ! sg_prop_set persist.sys.iap2.wifi t ||
@@ -137,6 +137,8 @@ revert() {
         # An interrupted apply can have feature/property changes without the wrapper.
         sg_revert_all || { conflict 'partial apply restore blocked; ledger retained'; return 3; }
         cleanup_runtime || return $?
+        # A wrapper zygote from an earlier revert keeps running until the restart.
+        if sg_restart_pending; then sg_status pending-restart head_unit 'restart unit to finish restoration'; return $?; fi
         sg_status off none 'disabled'; return 0
     fi
     sg_revert_all || { conflict 'restore blocked by drift; ledger retained'; return 3; }
@@ -156,6 +158,7 @@ status() {
     fi
     if ! sg_applied /system/bin/app_process; then
         unrecorded_swap || return 3
+        if sg_restart_pending; then sg_status pending-restart head_unit 'restart unit to finish restoration'; return $?; fi
         sg_status off none 'disabled'; return 0
     fi
     if [ "$(value persist.service.adb.tcp.enable)" = 1 ]; then conflict 'stock ADB switch conflicts with hotspot'; return 3; fi

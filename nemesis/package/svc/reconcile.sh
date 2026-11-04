@@ -25,6 +25,33 @@ if [ -f "$state/app-install/pending" ]; then
         case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) exit 1;; esac
     fi
 fi
+# Generated app directories that a restore could not remove while the hooks were
+# still running are retried here after the restart. This only deletes our own
+# diagnostic files, so it also runs while automatic module calls are paused.
+restart_cleanup() {
+    [ -d "$state/restart-cleanup" ] || return 0
+    cleanup_lock=$state/operation.lock
+    cleanup_tries=0
+    while ! mkdir "$cleanup_lock" 2>/dev/null; do
+        cleanup_holder=$(cat "$cleanup_lock/pid" 2>/dev/null)
+        case "$cleanup_holder" in ''|*[!0-9]*) ;; *)
+            if ! kill -0 "$cleanup_holder" 2>/dev/null; then rm -rf "$cleanup_lock"; continue; fi ;;
+        esac
+        cleanup_tries=$((cleanup_tries + 1))
+        [ "$cleanup_tries" -lt 10 ] || return 0
+        sleep 1
+    done
+    echo "$$" > "$cleanup_lock/pid"
+    (
+        SG_DATA_ROOT=$state
+        HMG_SEOGAEMO_BASE=$base
+        export SG_DATA_ROOT HMG_SEOGAEMO_BASE
+        . "$base/lib/common.sh"
+        sg_restart_cleanup_run
+    ) >> "$state/reconcile.log" 2>&1 || :
+    rm -rf "$cleanup_lock"
+}
+restart_cleanup
 [ ! -f "$state/stock/paused" ] || exit 0
 current=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update/current
 delegate_current() {
