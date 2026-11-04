@@ -2,6 +2,16 @@ Status: partly superseded — the former parallel-work ownership table is histor
 
 # Module runtime contract (parallel-work interface)
 
+## Watch event acknowledgments (2026-11-04)
+
+Boot watch receipts are published only after successful dispatch. Each boot/event
+has at most six attempts with delays 5, 10, 20, 40, 60 seconds (uptime clock),
+and reservations survive watcher restart. A new observed screen off/on edge
+starts a fresh screen-event budget; failures remain queued while the screen
+stays on. Disable, stock pause and the dispatcher intent lock still suppress
+calls. Every Binder attempt uses `sg_service_call` and its ledger; the consent
+module treats only `sg_service_call_ok_this_boot` as boot completion.
+
 ## Boot lifecycle readiness (2026-11-04)
 
 Reconcile is a NEMESIS `background` shell service: start asynchronously on each

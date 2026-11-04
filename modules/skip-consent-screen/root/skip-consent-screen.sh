@@ -69,7 +69,7 @@ watch() {
     desired_on || exit 3
     owner_clear || result conflict none 'Uninstall local.hkmc.factory82 first'
     compatible || result incompatible none 'NEEV KOR 260902 framework or verified map mismatch'
-    if [ "$1" = boot ] && sg_service_call_this_boot; then result on none 'Already called this boot'; fi
+    if [ "$1" = boot ] && sg_service_call_ok_this_boot; then result on none 'Already called this boot'; fi
     boot_ready || result failed none 'Android boot did not complete'
     factory_ready || result failed none 'Factory Binder service unavailable'
     sg_service_call com.hkmc.factory 82

@@ -621,10 +621,13 @@ def test_watch_dispatch(temp):
     display = base / "display"
     boot_id = base / "boot-id"
     boot_id.write_text("boot-a")
+    uptime = base / "uptime"
+    uptime.write_text("100.0 0.0\n")
     env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
                SG_DATA_ROOT=str(state), FAKE_DISPLAY=str(display),
                FAKE_CALLS=str(base / "calls"), FAKE_SLEEPS=str(base / "sleeps"),
-               SG_BOOT_ID_FILE=str(boot_id), HMG_SEOGAEMO_WATCH_MAX_POLLS="3")
+               SG_BOOT_ID_FILE=str(boot_id), HMG_SEOGAEMO_WATCH_MAX_POLLS="3",
+               HMG_SEOGAEMO_WATCH_UPTIME_FILE=str(uptime))
     calls = base / "calls"
     # Nothing enabled: idle with the long interval, never dispatch, never exit early.
     display.write_text("mWakefulness=Asleep")
@@ -697,6 +700,56 @@ def test_watch_dispatch(temp):
     (prop_dir / "applied").unlink()
     run(base / "svc/watcher.sh", env=env)
     assert calls.read_text() == ""  # never invent an assignment without a snapshot
+
+    # Failed boot delivery is never acknowledged; capped retries survive restart.
+    (base / "modules/watcher.properties").write_text("watch=boot,screen_on\n")
+    script(base / "bin/hmg-seogaemo-root",
+           'echo "$1 $2 $3" >> "$FAKE_CALLS"; [ ! -f "$SG_DATA_ROOT/fail-watch" ]\n')
+    boot_id.write_text("boot-retry")
+    calls.write_text("")
+    env["HMG_SEOGAEMO_WATCH_MAX_POLLS"] = "1"
+    (state / "fail-watch").touch()
+    for clock, count in ((100, 1), (104, 1), (105, 2), (114, 2),
+                         (115, 3), (135, 4), (175, 5), (235, 6), (999, 6)):
+        uptime.write_text(f"{clock}.0 0.0\n")
+        run(base / "svc/watcher.sh", env=env)
+        assert len(calls.read_text().splitlines()) == count, calls.read_text()
+        assert (state / "watch/boot.watcher").read_text().strip() != "boot-retry"
+    # A new boot gets its own budget; after success no repeats on restart.
+    boot_id.write_text("boot-recovered")
+    (state / "fail-watch").unlink()
+    run(base / "svc/watcher.sh", env=env)
+    assert (state / "watch/boot.watcher").read_text().strip() == "boot-recovered"
+    count = len(calls.read_text().splitlines())
+    run(base / "svc/watcher.sh", env=env)
+    assert len(calls.read_text().splitlines()) == count
+    # Retry a transient failure before budget exhaustion within the same boot.
+    boot_id.write_text("boot-transient")
+    (state / "fail-watch").touch()
+    uptime.write_text("100.0 0.0\n")
+    run(base / "svc/watcher.sh", env=env)
+    (state / "fail-watch").unlink()
+    uptime.write_text("105.0 0.0\n")
+    run(base / "svc/watcher.sh", env=env)
+    assert (state / "watch/boot.watcher").read_text().strip() == "boot-transient"
+    # A failed wake stays queued even after the display remains on.
+    calls.write_text("")
+    (state / "fail-watch").touch()
+    script(fake / "dumpsys",
+           'if [ -f "$FAKE_DISPLAY.edge" ]; then echo mScreenOn=true; else : > "$FAKE_DISPLAY.edge"; echo mScreenOn=false; fi\n')
+    script(fake / "sleep",
+           'echo "110.0 0.0" > "$HMG_SEOGAEMO_WATCH_UPTIME_FILE"\n')
+    env["HMG_SEOGAEMO_WATCH_MAX_POLLS"] = "2"
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch screen_on"]
+    (state / "fail-watch").unlink()
+    uptime.write_text("115.0 0.0\n")
+    env["HMG_SEOGAEMO_WATCH_MAX_POLLS"] = "1"
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch screen_on"] * 2
+    assert not (state / "watch/screen.watcher").exists()
+    run(base / "svc/watcher.sh", env=env)
+    assert calls.read_text().splitlines() == ["watcher watch screen_on"] * 2
 
 
 def test_reconcile_does_not_watch(temp):
