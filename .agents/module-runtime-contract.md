@@ -541,3 +541,32 @@ switch resume stores its originating kernel boot ID; a collected head-unit
 restart requires a different boot before update continuation, plus target
 readiness and usable network. Map refresh completion retries the continuation
 so an already-connected launch does not lose its only connectivity event.
+
+## Boot map verification and deferred application (2026-11-04)
+
+Reconcile checks a packaged nonempty `hookpoints.required/<id>` before applying
+desired-on modules. It requires successful map status `state=on`, otherwise
+attempts fixed `map verify` once per pass. Unverified modules and their
+transitive dependents remain desired on and are deferred; independent modules
+continue normally. Pause, APK presence, desired state and selected payload are
+checked again after verification before application. Reverse restore discovery
+includes every restore-material class, including directory-only partial applies.
+
+The NEMESIS once service and OTA health return after the initial bounded pass.
+Map deferral is not a package health failure; actual module failures still fail.
+Deferred work continues in one private, deduplicated detached worker, retrying
+only deferred IDs every 30 seconds. It ignores HUP, disconnects caller stdio with
+internal exec redirection, changes to `/`, and clears the OTA health flag. Its
+root-owned `reconcile-retry` marker holds the actual child PID, launcher token and
+canonical payload identity. Stale or interrupted claims are reclaimed after at
+most five one-second publication polls. A changed payload can replace an old
+claim; the old worker checks exact ownership before applying and cannot remove
+the replacement marker. Workers terminate on stock pause, missing APK, payload
+selection change, or no remaining desired work. No public root verb is added;
+watcher continues to invoke only declared watch events, never apply/revert.
+
+Mapper `status` is bounded to 15 seconds and `verify` to 30 seconds, in addition
+to the existing operation-lock wait of at most nine seconds. Timeout or signal
+cancellation terminates and reaps the actual app_process child and cleans up
+owned lock and scratch state. Confirmed full mapping scans retain their existing
+behavior. Later successful app verification is observed by the deferred worker.
