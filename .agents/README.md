@@ -31,6 +31,8 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [research-wifi-enable.md](research-wifi-enable.md) | Historical research | Superseded core Wi-Fi proposal; use `wifi-client.md` for current behavior. |
 | [research-adb-wireless-module.md](research-adb-wireless-module.md) | Partly superseded | Upstream ADB research; design inferences predate `wireless-adb.md`. |
 | [car-session-followups.md](car-session-followups.md) | Current | Real-car USB reinstall and status/export corrections. |
+| [module-plugin-design.md](module-plugin-design.md) | Proposal | Runtime-installable module packages, tiers, trust, install/remove, and AI-friendly tooling. |
+| [module-resources.md](module-resources.md) | Proposal | Resource names and modes modules use to declare conflicts. |
 | [README.md](README.md) | Current | This index and reading order. |
 | [ci-upstream-tracking.md](ci-upstream-tracking.md) | Current | CI timing, bounded shell-suite parallelism, workflow pins and upstream review evidence. |
 

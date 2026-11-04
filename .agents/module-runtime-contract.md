@@ -50,6 +50,196 @@ successful OTA (`phase=healthy`) and after a failed stage removed its directory:
 removes exactly `update@versions@<digits.dots>@<our jar suffix>@classes.dex` whose
 `versions/<v>` directory no longer exists. No ledger entry; failures never fail an update.
 
+## Installable module packages, API 1 (2026-11-04)
+
+Status: agreed contract. Implemented: root runtime (P1: `lib/hsm.sh`, `core/hsm-module.sh`,
+`core/module.sh`, `core/hsm/`), app data layer (P2, no screens), `tools/hsm` (P5) and the core
+hook host (P3, host-tested only; see "Core hook host" below). Not yet: module screens and install
+UX. `raw_shell` and `app_data_dir` are still refused.
+Rationale and examples live in `module-plugin-design.md` and `module-resources.md`;
+this section is normative. Everything below reuses the package API, ledger, guarded
+restore and boot reconcile defined in the rest of this document.
+
+### Package
+
+`<id>-<version>.hsm` is a zip with these members only (no directories other than
+`strings/` and `files/`, no symlinks, no absolute or `..` paths, at most 256 entries and
+16 MiB uncompressed):
+
+| Member | Required | Content |
+| --- | --- | --- |
+| `module.properties` | yes | key=value, keys below |
+| `apply.sh` | yes | restricted script |
+| `check.sh` | no | restricted script, pre-enable checks |
+| `status.sh` | no | restricted script, extra status |
+| `ui.txt` | no | screen blocks |
+| `strings/en.txt` | yes | `key=value` display strings; `name` and `summary` required |
+| `strings/<locale>.txt` | no | same keys; missing keys fall back to `en` |
+| `files/...` | no | payload referenced by `put_file`, `put_files`, `hook_apps` |
+| `README.md` | no | shown in the review screen |
+
+The head unit has no `unzip`. Root extracts with a packaged API 19 Java helper run under
+`app_process`, with `sg_bounded_wait` (60 s) and a private `ANDROID_DATA`, the same rules
+as the mapper. The helper enforces the limits above and writes only into the staging
+extraction directory.
+
+### module.properties keys
+
+| Key | Form | Rule |
+| --- | --- | --- |
+| `id` | `[a-z0-9][a-z0-9-]{1,47}` | unique; built-in IDs reserved |
+| `version` | `N.N.N` | |
+| `api` | `1` | unknown API refuses install |
+| `cars` | csv of `ro.build.product` globs | at least one must match at install and apply |
+| `restart` | `none`, `adbd`, `head_unit` | maximum restart this module can request |
+| `rerun_on` | csv of `boot`, `screen_on` | maps to `watch=` |
+| `depends` | csv of module IDs | enabled first in the same confirmed plan |
+| `uses` | csv of `<resource>[:<mode>]` | see Conflicts |
+| `not_with` | csv of module IDs | maps to `excludes=` |
+| `conflicts` | csv of external owner names | same names as `sg_owner_present` |
+| `stock_file.N` | `<path>:<md5>` | maps to `known_stock.N` with this module's `cars` |
+| `hookpoints` | member name of a text file of stable IDs | maps to `hookpoints.required` |
+| `setting.N` | `key:type:default` | types `toggle`, `choice(a|b|...)`, `number(min..max)` |
+| `raw_shell` | `1` | see Restricted scripts |
+
+Unknown keys refuse install. Ownership keys (`owns_*`, `services`, `service_calls`,
+`reassert_props`, `owns_generated_dirs`, `restore`, `watch`, `excludes`) are never written
+by the author; root generates them (Touched list).
+
+### Restricted scripts
+
+`apply.sh`, `check.sh` and `status.sh` are never run by a shell. A root-side mksh
+interpreter reads them line by line. A line is blank, a comment (`#` first), `if CHECK`,
+`elif CHECK`, `else`, `fi`, `then` (also accepted as `; then` after a check), or one verb.
+A CHECK is one check, optionally prefixed by `not`; combine by nesting (depth 8). At most
+512 lines. Tokens split on spaces; `"..."` quotes a token with only `\"` and `\\`
+escapes. There is no variable expansion; the whole token `{setting:KEY}` is replaced by
+the validated setting value and is allowed only in value positions (never in a path,
+property name, service or package). Any other line refuses install with
+`HSM-E<nnn> <file>:<line>: <reason>`.
+
+Write verbs (`apply.sh` only):
+
+| Verb | Runtime call | Touched key |
+| --- | --- | --- |
+| `set_prop [--reassert] KEY VALUE` | `sg_prop_set` | `owns_props` (+ `reassert_props`) |
+| `put_file DEST SRC [MODE]` | `sg_payload_dirs` + `sg_file_put` | `owns_files` |
+| `put_files DESTDIR/ SRCDIR/ [MODE]` | `put_file` per regular file, one level | `owns_files` |
+| `replace_line FILE STOCK NEW` | `sg_file_replace_line` | `owns_lines.N` |
+| `restart_service NAME` | `sg_service_restart` | `services` |
+| `call_service SERVICE CODE` | `sg_service_call` | `service_calls` |
+| `hook_apps JAR CLASS PROCESS...` | `core/hook/mods/<id>/` + `sg_core_hook_ensure` | `owns_files` (+ `hooks=1`) |
+| `app_data_dir NAME PACKAGE...` | generated-dir cleanup | `owns_generated_dirs` |
+
+Checks (all scripts): `setting_is KEY VALUE`, `prop_is KEY VALUE`, `file_exists PATH`,
+`file_missing PATH`, `car_is GLOB`, `module_on ID`, `hookpoints_ok`,
+`uses_on RESOURCE[:MODE]`, `action_is NAME`. Other verbs: `log TEXT` (module log, all
+scripts); `block @string` and `warn @string` (`check.sh`); `info KEY prop NAME`,
+`info KEY setting KEY`, `fail @string` (`status.sh`).
+
+`raw_shell=1` runs the three scripts with mksh after `common.sh`, like current built-in
+scripts. Built-in modules shipped inside the package may use it without developer mode;
+an installed module needs developer mode and a high-risk confirm, and only its verb calls
+keep the exact-restore guarantee. The touched list of a raw-shell module is declared with
+the current `owns_*` keys.
+
+### Touched list and enforcement
+
+At install root collects every write verb from every branch and generates the ownership
+keys above into the installed `module.properties`. Paths, property names, services and
+packages are literal, so the list is exact. The existing generator and runtime rules then
+apply unchanged: ownership validation on every write, whole-file exclusivity, line-claim
+uniqueness, baseline, ledger and guarded restore. A module whose writes are only
+`call_service` is generated with `restore=reboot`.
+
+### Conflicts
+
+Refuse enable when, against any module that is on: touched lists overlap (property,
+whole file, or stock line); a `uses` resource overlaps by hierarchy and the modes differ,
+or either side is `only` (`read` never conflicts, `use` is shared, a named mode conflicts
+only with a different named mode or `only`); `not_with` names it; or a `conflicts` owner
+is present. Resource names: `module-resources.md`; `x.<author>.<name>` is free;
+unknown other names warn at install. The refusal names the blocking module and offers
+its disable through the normal plan and confirm.
+
+### Core hook host
+
+`hook_apps files/<x>.jar <entry class> <process>...` registers the module with one shared
+`app_process` wrapper. The jar is a dex jar whose entry class extends `hmgapi.hook.ModEntry`,
+compiled against `out/hook-sdk/hmg-seogaemo-hook-api.jar` without bundling it (bundled
+`hmgapi.hook` classes fail to link on Dalvik). Processes match the process name or package.
+- Install generates `hooks=1`, `restart=head_unit`, and adds `wireless-carplay-and-aa` to
+  `excludes` (both replace `app_process`).
+- Apply commits `$SG_DATA_ROOT/core/hook/mods/<id>/{hook.jar,entry,processes}` (module ledger), then
+  `sg_core_hook_ensure` installs the wrapper, `libhmg_seogaemo_hook.so` and
+  `hmg-seogaemo-hook.jar` under the ledger owner `modules/core-hook` (generated manifest
+  `core/hook/core-hook.properties`, `known_stock` taken from the CarPlay manifest). Revert of
+  the last hook module restores stock through `sg_core_hook_release`; stock restore also
+  releases a leftover host. CarPlay refuses to apply while the core host owns `app_process`.
+- Zygote: guard files and boot guard as CarPlay, under `modules/core-hook/`; kernel log tag
+  `hmg-seogaemo-hook`, logcat tag `HMG-Seogaemo-Hook`. The engine checks the verified car map,
+  loads each `mods/<id>` with its own `DexClassLoader` (odex in `core/hook/dex/<id>`), calls
+  `zygoteInit`, then `appLoaded` in matching processes; one failing module is skipped. It writes
+  `core/hook/status` (`gate=`, `mod.<id>=`), shown by module status as `info.hook_host`,
+  `info.hook_gate`, `info.hook_load`.
+
+### Lifecycle
+
+- Apply: run `check.sh` (any `block` refuses; `warn` lines join the confirm dialog), then
+  `apply.sh`. A failing verb stops the script and `sg_revert_all` undoes this run.
+- Revert: `sg_revert_all`; there is no revert script.
+- Re-run (`rerun_on`): `apply.sh` again while desired on. A verb whose target has no
+  baseline fails instead of capturing one; `--reassert` properties are rewritten on drift.
+- Setting change while on: `<id> set KEY VALUE` saves the validated value, then reverts the
+  module and applies it again, so nothing from the previous value or branch survives.
+  While off it only saves the value.
+- Button: run `apply.sh` with `action_is NAME` true, after the confirm.
+- Status: `on` when every touched target is `sg_applied`; existing restart markers give
+  `pending-restart`; `status.sh` adds `info.*` and may report `fail`.
+
+### ui.txt
+
+One block per line: `status`; `toggle setting=K label=@s`; `choice setting=K label=@s`;
+`number setting=K label=@s`; `info @s`; `warning @s`; `value label=@s key=K` (shows
+`info.K`); `button name=N label=@s confirm=@s`; `enable module=ID label=@s`;
+`open screen=wifi_settings`. Unknown blocks refuse install. State-changing blocks go
+through `ui.ConfirmDialog`. No Java from modules in API 1.
+
+### Root verbs and storage
+
+- `hmg-seogaemo-root module install <sha256>`: 64 lowercase hex only. Root reads
+  `<sha256>.hsm` from the app's fixed staging directory
+  (`/data/data/com.seogaemo.hmg/files/hsm/`) or `/data/local/tmp/hsm/` (adb), copies it
+  to `/data/nemesis/backup/hmg-seogaemo/staging/`, verifies the hash, extracts, validates
+  everything above, then publishes `/data/nemesis/backup/hmg-seogaemo/installed/<id>/`
+  atomically. Installed is not enabled. Installing over an enabled module is refused.
+- `hmg-seogaemo-root module remove <id>`: installed modules only; reverts first, fails
+  closed on conflict, then deletes the directory.
+- `hmg-seogaemo-root module list`: one `info.module_<snake_id>=<id>,<version>,<source>,<n>` line
+  per module (`builtin`, `direct`, later `registry`); `<n>` is the 1-based catalog position.
+- `hmg-seogaemo-root module describe <id> <locale>`: installed modules only, because the app
+  cannot read the root-only installed directory. Prints `info.version|source|restart|depends|
+  excludes|uses|restore`, `info.setting_<N>=<declaration>`, `info.ui_<N>=<block line>`, then
+  `info.str_<key>=<value>` for `en` followed by `<locale>` (later lines win). Install caps keep
+  it inside the app's 8 KiB root output: each strings file 2048 bytes and 64 entries (key
+  `[a-z0-9_]{1,40}`, value 200 characters), `ui.txt` 1024 bytes, 32 blocks, 200 characters.
+- App side (P2 data, no screens yet): `RootClient.moduleList|moduleDescribe|moduleInstall|
+  moduleRemove|moduleSet`, `InstalledModule` (parsed description) and
+  `ModuleRegistry.refreshInstalled`, which `ModuleManager.plan` calls so installed modules take
+  part in ordering and (symmetric) exclusions. Root output is decoded as UTF-8.
+- `hmg-seogaemo-root <id> set <key> <value>`: installed modules only; key `[a-z0-9_]+`,
+  value `[a-z0-9_.-]+`, then checked against the declared type. Holds operation.lock.
+- Catalog files: `installed.list` (install order), `installed.graph` (same columns as
+  `modules.graph`), `installed/<id>.properties` (generated manifest),
+  `installed/<id>.hookpoints`, `settings/<id>/<key>`. `sg_module_list|props|script|dir`
+  in `common.sh` resolve built-in or installed; reconcile reads the two list and graph
+  files directly. Enable additionally refuses shared owned properties and `uses` clashes
+  with modules that are on (`sg_module_clash`).
+- Installed modules live outside the package directory so package and OTA updates keep
+  them. Dispatch, reconcile, watcher, stock restore and uninstall treat them like
+  built-in modules in one dependency order.
+
+
 ## Map verification input identity (2026-11-04)
 
 The verified seal retains its product, stock-file hash ID and boot ID as the
