@@ -33,6 +33,12 @@ class Car:
         self.calls.touch()
         self.apk = folder / 'apk'
         self.apk.touch()
+        # mksh has a builtin cat, so a PATH shim cannot replace this Linux file.
+        self.boot = folder / 'boot-id'
+        self.boot.write_text('test-boot')
+        stock_lib = self.base / 'lib/stock.sh'
+        stock_lib.write_text(stock_lib.read_text().replace(
+            '/proc/sys/kernel/random/boot_id', str(self.boot)))
         self.env = car_env(dict(os.environ, SG_DATA_ROOT=str(self.state),
             SG_PROPERTY_ROOT=str(self.backing), FAKE_COMMON=str(self.base / 'lib/common.sh'),
             FAKE_LIVE=str(self.live), FAKE_CALLS=str(self.calls),
@@ -259,6 +265,9 @@ def test_missing_handoff(folder):
     shutil.copy(car.base / 'core/uninstall-detached.sh', job / 'run.sh')
     shutil.copy(car.base / 'lib/common.sh', job / 'common.sh')
     script(car.fake / 'sleep', 'exit 0\n')  # bounded expiry without waiting 30s
+    runner = job / 'run.sh'
+    runner.write_text('sleep() { "' + str(car.fake / 'sleep') + '" "$@"; }\n' +
+                      runner.read_text())
     script(car.fake / 'nemesis', 'sg_print unexpected >> "$FAKE_CALLS"\n')
     (job / 'ready').write_text('wrong-pid')
     result = subprocess.run([SHELL, str(job / 'run.sh')], env=car.env,

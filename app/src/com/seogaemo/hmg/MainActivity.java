@@ -980,6 +980,8 @@ public final class MainActivity extends Activity {
             message.append("\n\n").append(getString(R.string.stock_restart));
         if ("failed".equals(result.info.get("uninstall")))
             message.append("\n\n").append(getString(R.string.stock_uninstall_failed));
+        if (result.exitCode != 0 && result.detail.length() > 0)
+            message.append("\n\n").append(result.detail);
         return message.toString();
     }
 

@@ -117,6 +117,7 @@ public class SwitchTest {
   check(result.outcomes.get(0).result.state.equals("pending-restart"),"pending revert fixture not exercised");
   check(!RootClient.run("wireless-carplay-and-aa","status").desiredEnabled(),"CarPlay desired ON survived switch");
   check(RootClient.run("wifi-client","status").desiredEnabled(),"Wi-Fi desired ON not saved");
+  check(!new java.io.File(data+"/stock/paused").exists(),"explicit Wi-Fi apply did not resume paused dispatch");
   write(data+"/desired/wifi-client","off");write(data+"/desired/wireless-carplay-and-aa","on");
   write(data+"/fail-wifi","1");
   result=manager.execute(manager.plan("wifi-client",true));
@@ -133,8 +134,9 @@ with tempfile.TemporaryDirectory(prefix='hmg-seogaemo-switch-') as folder:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
     base = temp / 'package'
-    for part in ('bin', 'lib', 'modules', 'state/desired'):
+    for part in ('bin', 'lib', 'modules', 'state/desired', 'state/stock'):
         (base / part).mkdir(parents=True)
+    (base / 'state/stock/paused').write_text('failed stock restore')
     copy_shell_script(args.dispatcher, base / 'bin/hmg-seogaemo-root')
     copy_shell_script(ROOT / 'nemesis/package/lib/common.sh', base / 'lib/common.sh')
     (base / 'modules.list').write_text('wifi-client\nwireless-carplay-and-aa\n')

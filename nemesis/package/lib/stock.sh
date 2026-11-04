@@ -205,9 +205,11 @@ hmg_seogaemo_stock_uninstall() {
     # pipe/terminal or working directory refers to the app/package.
     (
         trap '' HUP
+        # exec closes mksh's saved caller descriptors as well as stdio.
+        exec < /dev/null > "$stock_uninstall/log" 2>&1
         cd / || exit 1
         exec /system/bin/sh "$stock_uninstall/run.sh"
-    ) < /dev/null > "$stock_uninstall/log" 2>&1 &
+    ) &
     stock_pid=$!
     stock_detail='Uninstall queued with NEMESIS; app will close when removed'
     if sg_write "$stock_pid" > "$stock_uninstall/pending" &&

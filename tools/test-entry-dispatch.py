@@ -75,4 +75,20 @@ with tempfile.TemporaryDirectory() as tmp:
     assert not current.is_symlink()
     assert selected.is_dir()
     assert not (current.parent / 'previous-path').exists()
+    # Android-up repair installs from the fresh tree before retiring selection.
+    (fake / 'getprop').write_text(
+        '#!/bin/sh\ncase "$1" in sys.boot_completed) echo 1;; *) echo NEEV.KOR.0000.V039.001.260902;; esac\n')
+    installer = stable / 'bin/install-apk.sh'
+    installer.write_text('echo fresh-install; [ "${FAIL_INSTALL:-0}" = 0 ]\n')
+    for failure in ('1', '0'):
+        if not current.is_symlink():
+            current.symlink_to(selected, target_is_directory=True)
+        for pointer in ('current-path', 'previous-path', 'previous-version', 'journal'):
+            (current.parent / pointer).write_text('old')
+        env['FAIL_INSTALL'] = failure
+        result = run(hook)
+        assert 'fresh-install' in result.stdout and 'stale' not in result.stdout, result
+        assert result.returncode == (1 if failure == '1' else 0), result
+        assert current.is_symlink() == (failure == '1')
+        assert (current.parent / 'previous-path').exists() == (failure == '1')
 print('stable and OTA entry dispatch passed')
