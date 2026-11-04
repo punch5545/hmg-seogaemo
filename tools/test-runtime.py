@@ -1728,6 +1728,68 @@ sg_kill_tree "$top" 5
     run(runner, env=os.environ)
 
 
+def test_update_signal(temp):
+    """A signal to the updater ends the verifier VM (even one ignoring TERM) and frees the lock."""
+    import hashlib
+    base = temp / "update-signal"
+    package_root = base / "package"
+    state = base / "state"
+    incoming = base / "download"
+    fake = base / "fake"
+    for folder in (package_root / "core", package_root / "lib", package_root / "app", incoming / "payload", fake):
+        folder.mkdir(parents=True)
+    shutil.copy(ROOT / "nemesis/package/lib/common.sh", package_root / "lib/common.sh")
+    (package_root / "NEMESIS.data").write_text("package-version=0.1.0\n")
+    (package_root / "app/hmg-seogaemo.apk").write_bytes(b"apk")
+    updater = (ROOT / "nemesis/package/core/update.sh").read_text()
+    updater = updater.replace("state=/data/nemesis/backup/hmg-seogaemo", "state=" + str(state))
+    updater = updater.replace("input=/data/data/com.seogaemo.hmg/files/update", "input=" + str(incoming))
+    (package_root / "core/update.sh").write_text(host_shell_script(updater))
+    names = ("VERSION", "modules.list", "modules.graph", "modules.lines")
+    lines = ""
+    for name in names + ("app/hmg-seogaemo.apk",):
+        target = incoming / "payload" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("test\n")
+        lines += hashlib.md5(target.read_bytes()).hexdigest() + "|" + name + "\n"
+    (incoming / "payload/files.md5").write_text(lines)
+    # The verifier ignores TERM and spawns a helper, like a wedged Dalvik VM.
+    script(fake / "app_process", '''
+trap "" TERM
+sg_write "$$" > "$UPDATE_TEST_PIDS"
+sleep 40 &
+sg_write " $!" >> "$UPDATE_TEST_PIDS"
+i=0
+while [ "$i" -lt 40 ]; do sleep 1; i=$((i + 1)); done
+''')
+    pids = base / "pids"
+    env = car_env(dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"], UPDATE_TEST_PIDS=str(pids)))
+    process = subprocess.Popen([SHELL, str(package_root / "core/update.sh"), "stage"], env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    for _ in range(100):
+        if pids.exists() and " " in pids.read_text():
+            break
+        time.sleep(0.1)
+    else:
+        process.kill()
+        raise AssertionError("fake verifier never started")
+    assert (state / ".lock").is_dir()
+    process.terminate()
+    process.communicate(timeout=30)
+    assert process.returncode != 0
+    for pid in pids.read_text().split():
+        for _ in range(30):
+            try:
+                os.kill(int(pid), 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.2)
+        else:
+            raise AssertionError(f"verifier process {pid} survived the signal")
+    assert not (state / ".lock").exists()
+    assert not list((state / "update").glob("java-out.*"))
+
+
 def test_projection_reader_vm(temp):
     base = temp / 'projection-reader'
     state = base / 'state/modules/wireless-carplay-and-aa'
@@ -1802,6 +1864,51 @@ esac
             continue
         raise AssertionError(f'reader process {pid} survived the timeout')
     assert not list((base / 'state').glob('reader.*'))
+    # Output files of an earlier killed run are swept by exact name; a live PID's files,
+    # look-alike names and other files stay.
+    finished = subprocess.run(["true"])
+    dead = str(subprocess.Popen(["true"]).pid)
+    time.sleep(0.2)
+    data = base / 'state'
+    stale = [data / f'reader.out.{dead}', data / f'reader.err.{dead}']
+    kept = [data / f'reader.out.{os.getpid()}', data / 'reader.out.abc', data / f'reader.out.{dead}.tmp',
+            data / f'reader.outer.{dead}', data / 'unrelated']
+    for path in stale + kept:
+        path.write_text('x')
+    reader('sg_print state=on restart=none detail=ok\n')
+    assert not any(path.exists() for path in stale), stale
+    assert all(path.exists() for path in kept), kept
+    for path in kept:
+        path.unlink()
+    # A termination signal ends the reader VM (even one ignoring TERM) and its helper.
+    pids = data / 'term-pids'
+    script(process, 'trap "" TERM\nsg_write "$$" > "$SG_DATA_ROOT/term-pids"\nsleep 40 &\n'
+                    'sg_write " $!" >> "$SG_DATA_ROOT/term-pids"\ni=0\n'
+                    'while [ "$i" -lt 40 ]; do sleep 1; i=$((i + 1)); done\n')
+    script(runner, preamble + 'sg_projection_runtime status\n')
+    running = subprocess.Popen([SHELL, str(runner)], env=car_env(env), start_new_session=True,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    for _ in range(100):
+        if pids.exists() and ' ' in pids.read_text():
+            break
+        time.sleep(0.1)
+    else:
+        running.kill()
+        raise AssertionError('fake reader never started')
+    import signal
+    os.killpg(running.pid, signal.SIGTERM)
+    running.communicate(timeout=30)
+    for pid in pids.read_text().split():
+        for _ in range(30):
+            try:
+                os.kill(int(pid), 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.2)
+        else:
+            raise AssertionError(f'reader process {pid} survived termination')
+    assert not list(data.glob('reader.*'))
+    pids.unlink()
     # A timeout during clear removes the root-only private tree directly.
     (base / 'state/runtime/wireless-carplay-and-aa/leftover').write_text('x')
     reader('sleep 60\n', mode='clear', SG_READER_TIMEOUT='2')
@@ -1859,5 +1966,6 @@ with tempfile.TemporaryDirectory() as directory:
     test_public_readable(root)
     test_file_metadata_guards(root)
     test_kill_tree(root)
+    test_update_signal(root)
     test_projection_reader_vm(root)
 print("shared runtime tests passed")

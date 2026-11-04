@@ -45,8 +45,28 @@ fi
 
 lock=$state/.lock
 mkdir "$lock" 2>/dev/null || { echo 'another root operation is active' >&2; exit 1; }
-trap 'rmdir "$lock"' 0
+update_pid=
+update_out=
+# Leaving for any reason (including a signal, which exits through here) ends the
+# verifier VM and everything it spawned before the lock is released.
+update_cleanup() {
+    update_status=$?
+    if [ -n "$update_pid" ]; then sg_kill_tree "$update_pid" 3 || :; update_pid=; fi
+    [ -z "$update_out" ] || rm -f "$update_out"
+    rmdir "$lock" || update_status=1
+    exit "$update_status"
+}
+trap update_cleanup 0
 trap 'exit 1' 1 2 3 15
+# Runs the verifier and leaves its output in $update_value. The VM must be a child of
+# this shell rather than of a command substitution, or the signal trap could not reach it.
+java_value() {
+    update_out=$root/java-out.$$
+    update_value=
+    java_update "$@" > "$update_out" || { update_code=$?; rm -f "$update_out"; update_out=; return "$update_code"; }
+    update_value=$(cat "$update_out")
+    rm -f "$update_out"; update_out=
+}
 java_update() {
     # Private Dalvik cache and a bounded wait: a hung VM must not hold the
     # update lock, and our APK must not leave entries in /data/dalvik-cache.
@@ -56,6 +76,7 @@ java_update() {
     update_pid=$!
     # First run may dexopt the whole APK; copy/extract handle the downloaded payload.
     sg_bounded_wait "$update_pid" 240 && update_code=0 || update_code=$?
+    update_pid=
     if [ "$update_code" -eq 124 ]; then echo 'update verifier timed out' >&2; fi
     return "$update_code"
 }
@@ -100,7 +121,8 @@ if [ "$verb" = stage ]; then
     check_md5 "$input/payload" || { echo 'download payload changed' >&2; exit 1; }
     rm -rf "$root/incoming"
     java_update copy "$input" "$root/incoming" || exit 1
-    version=$(java_update verify "$root/incoming" "$installed") || exit 1
+    java_value verify "$root/incoming" "$installed" || exit 1
+    version=$update_value
     case "$version" in *[!0-9.]*|'') exit 1 ;; esac
     dest=$root/versions/$version
     [ ! -e "$dest" ] || { echo 'version already staged' >&2; exit 1; }
@@ -146,8 +168,8 @@ fi
 [ -f "$root/staged" ] || { echo 'no staged build' >&2; exit 1; }
 IFS= read -r version < "$root/staged" || :
 case "$version" in *[!0-9.]*|'') exit 1 ;; esac
-verified=$(java_update verify "$root/incoming" "$installed") || exit 1
-[ "$verified" = "$version" ] || exit 1
+java_value verify "$root/incoming" "$installed" || exit 1
+[ "$update_value" = "$version" ] || exit 1
 new=$root/versions/$version
 check_md5 "$new" || exit 1
 [ -f "$new/app/hmg-seogaemo.apk" ] || exit 1

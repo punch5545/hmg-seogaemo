@@ -1572,16 +1572,28 @@ sg_projection_runtime() (
     sg_limit=${SG_READER_TIMEOUT:-15}
     case "$sg_limit" in ''|*[!0-9]*|0) sg_limit=15;; esac
     [ "$sg_limit" -le 120 ] || sg_limit=120
+    # Output files of a run that was killed before its trap could remove them: exact
+    # reader.{out,err}.<digits> names in the private data root, unless that PID lives.
+    for sg_left in "$SG_DATA_ROOT"/reader.out.* "$SG_DATA_ROOT"/reader.err.*; do
+        [ -f "$sg_left" ] || [ -L "$sg_left" ] || continue
+        sg_left_pid=${sg_left##*/}; sg_left_pid=${sg_left_pid#reader.out.}; sg_left_pid=${sg_left_pid#reader.err.}
+        case "$sg_left_pid" in ''|*[!0-9]*) continue;; esac
+        if [ "$sg_left_pid" != "$$" ] && kill -0 "$sg_left_pid" 2>/dev/null; then continue; fi
+        rm -f "$sg_left"
+    done
     sg_out=$SG_DATA_ROOT/reader.out.$$
     sg_err=$SG_DATA_ROOT/reader.err.$$
     rm -f "$sg_out" "$sg_err"
-    trap 'rm -f "$sg_out" "$sg_err"' EXIT
+    sg_reader=
+    # Hang-up, interrupt or termination ends the whole Dalvik tree, not only this shell.
+    trap '[ -z "$sg_reader" ] || sg_kill_tree "$sg_reader" 3; rm -f "$sg_out" "$sg_err"' EXIT
     trap 'exit 1' HUP INT TERM
     (
         ANDROID_DATA="$sg_projection/vm" BOOTCLASSPATH="$sg_boot" CLASSPATH="$sg_helper" exec "$sg_process" /system/bin com.seogaemo.hmg.runtime.HmgSeogaemoProjectionRuntime "$sg_mode" "$SG_DATA_ROOT" # android44-shell: allow -- fixed package reader via stock API19 app_process
     ) < /dev/null > "$sg_out" 2> "$sg_err" &
     sg_reader=$!
     sg_bounded_wait "$sg_reader" "$sg_limit" && sg_code=0 || sg_code=$?
+    sg_reader=
     if [ "$sg_code" -eq 124 ]; then sg_unknown "reader timed out after $sg_limit seconds"; fi
     if [ -s "$sg_err" ]; then sg_log "projection reader: $(dd if="$sg_err" bs=1 count=200 2>/dev/null)" || :; fi
     if [ "$sg_mode" = clear ]; then

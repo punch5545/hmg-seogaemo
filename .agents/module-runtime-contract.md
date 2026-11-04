@@ -403,7 +403,13 @@ The following `wait` on the target returns once KILL is delivered.
 Output must be exactly one `state=`, `restart=` and `detail=` line with a known
 state/restart pair and a clean exit (1 only with `state=failed`); anything else,
 or a timeout, is `state=unknown` (`pending-restart`/`head_unit` for `applying`).
-`status` therefore never keeps `operation.lock` longer than the limit. `clear`
+`status` therefore never keeps `operation.lock` longer than the limit. Hang-up, interrupt
+and termination of the caller run the `EXIT` trap, which kills the reader's whole tree with
+`sg_kill_tree` (also `core/update.sh` and `core/hmg-seogaemo-map.sh` for their VMs, whose
+verifier runs as a direct child of the updater shell so the trap can reach it) and removes
+`reader.out.<pid>` and `reader.err.<pid>`. A run killed before its trap leaves them behind;
+the next run deletes exactly `reader.{out,err}.<digits>` files in the private data root whose
+PID is not alive. `clear`
 that cannot run the reader (timeout, no boot class path, exit 126 or above)
 removes the root-only generated tree directly; a reader refusal (exit 1) still
 fails. `sg_bounded_wait` and `sg_kill_tree` are generic and are also used for the
