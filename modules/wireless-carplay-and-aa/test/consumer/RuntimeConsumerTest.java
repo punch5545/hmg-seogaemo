@@ -70,6 +70,7 @@ public final class RuntimeConsumerTest {
         dipo.delete(); Files.createSymbolicLink(dipo.toPath(), outside.toPath()); expect("unknown", "dipo"); dipo.delete(); put(dipo, ready);
         for (int pid = 300; pid < 320; pid++) { put(record(0, pid), contents(0, pid)); put(new File(dir(0), "p-"+pid+"-900.log"), "log"); put(new File(dir(0), "p-"+pid+"-900.log.1"), "old"); }
         HmgSeogaemoProjectionRuntime r = reader(); r.status(); check(r.copied == 32, "global copy budget " + r.copied);
+        put(new File(runtime, "vm/dalvik-cache/reader.dex"), "generated reader cache");
         reader().deleteTree(runtime, 4); check(!runtime.exists() && outside.isFile(), "generated cleanup");
         System.out.println("runtime consumer ready/stale/failure/generation/bounds/aliases/cleanup passed");
     }

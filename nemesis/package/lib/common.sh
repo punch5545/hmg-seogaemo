@@ -1303,26 +1303,30 @@ sg_projection_runtime() (
     sg_runtime=$SG_DATA_ROOT/runtime
     sg_projection=$sg_runtime/wireless-carplay-and-aa
     sg_path_safe "$sg_projection" || exit 3
-    case "$1" in
-        prepare)
-            for sg_dir in "$sg_runtime" "$sg_projection"; do
-                if [ -e "$sg_dir" ]; then
-                    [ -d "$sg_dir" ] || exit 3
-                    set -- $(sg_file_meta "$sg_dir")
-                    [ "$2:$3" = 0:0 ] || exit 3
-                fi
-                mkdir -p "$sg_dir" && chown 0:0 "$sg_dir" && chmod 700 "$sg_dir" || exit 1
-            done
-            exit 0 ;;
-        status|applying|clear) ;;
+    sg_mode=$1
+    case "$sg_mode" in
+        prepare|status|applying|clear) ;;
         *) exit 2 ;;
     esac
-    if [ "$1" = clear ] && [ ! -e "$sg_projection" ]; then exit 0; fi
-    sg_helper=$HMG_SEOGAEMO_MODULE_DIR/data/hmg-seogaemo-projection-runtime.jar
+    if [ "$sg_mode" = clear ] && [ ! -e "$sg_projection" ]; then exit 0; fi
+    for sg_dir in "$sg_runtime" "$sg_projection" "$sg_projection/vm" "$sg_projection/vm/dalvik-cache"; do
+        sg_path_safe "$sg_dir" || exit 3
+        if [ -e "$sg_dir" ]; then
+            [ -d "$sg_dir" ] || exit 3
+            set -- $(sg_file_meta "$sg_dir")
+            [ "$2:$3" = 0:0 ] || exit 3
+        fi
+        mkdir -p "$sg_dir" && chown 0:0 "$sg_dir" && chmod 700 "$sg_dir" || exit 1
+    done
+    [ "$sg_mode" != prepare ] || exit 0
+    # OTA dispatch enters through update/current; resolve that package pointer
+    # before applying the no-symlink guard to the fixed reader artifact.
+    sg_helper_dir=$(readlink -f "$HMG_SEOGAEMO_MODULE_DIR") || exit 1
+    sg_helper=$sg_helper_dir/data/hmg-seogaemo-projection-runtime.jar
     sg_path_safe "$sg_helper" && [ -f "$sg_helper" ] || exit 1
     sg_process=${SG_TARGET_ROOT:-}/system/bin/app_process
     if [ -f "$sg_process.hmg-seogaemo-stock" ]; then sg_process=$sg_process.hmg-seogaemo-stock; fi
-    CLASSPATH="$sg_helper" "$sg_process" /system/bin com.seogaemo.hmg.runtime.HmgSeogaemoProjectionRuntime "$1" "$SG_DATA_ROOT" # android44-shell: allow -- fixed package reader via stock API19 app_process
+    ANDROID_DATA="$sg_projection/vm" CLASSPATH="$sg_helper" "$sg_process" /system/bin com.seogaemo.hmg.runtime.HmgSeogaemoProjectionRuntime "$sg_mode" "$SG_DATA_ROOT" # android44-shell: allow -- fixed package reader via stock API19 app_process
 )
 sg_owner_present() {
     case "$1" in

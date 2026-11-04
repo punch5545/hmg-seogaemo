@@ -277,6 +277,12 @@ exportable as restart evidence. `clear` removes the generated root module tree
 after successful revert (including an already reverted module), and removes an
 empty runtime parent. App-private originals may remain. Export probes status
 first, then includes the fixed app-copy depth and `.log.1`.
+The reader runs with `ANDROID_DATA` fixed to the module's private `vm/` tree,
+including its 0700 root-owned `dalvik-cache/`, so executing the reader never
+leaves a global Dalvik cache entry. Successful clear removes this generated
+cache along with the diagnostic copies.
+The fixed reader artifact is checked beneath the canonical selected package
+directory, allowing OTA's `update/current` package pointer.
 
 ## Shared text-file line ownership (2026-11-03)
 

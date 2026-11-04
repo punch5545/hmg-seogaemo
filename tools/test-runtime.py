@@ -1241,6 +1241,55 @@ if sg_revert_all; then exit 1; fi
     assert paths[0].read_bytes() == b'wrapper' and paths[2].read_bytes() == b'external'
 
 
+def test_projection_reader_vm(temp):
+    base = temp / 'projection-reader'
+    state = base / 'state/modules/wireless-carplay-and-aa'
+    payload = base / 'payload'
+    target = base / 'target'
+    for directory in (state, payload / 'data', base / 'modules', target / 'system/bin'):
+        directory.mkdir(parents=True)
+    (base / 'modules/wireless-carplay-and-aa.properties').write_text('owns_files=/system/bin/app_process\n')
+    (payload / 'data/hmg-seogaemo-projection-runtime.jar').write_bytes(b'reader')
+    process = target / 'system/bin/app_process.hmg-seogaemo-stock'
+    script(process, '''
+set -eu
+[ "$1" = /system/bin ]
+[ "$2" = com.seogaemo.hmg.runtime.HmgSeogaemoProjectionRuntime ]
+[ "$4" = "$SG_DATA_ROOT" ]
+[ "$ANDROID_DATA" = "$SG_DATA_ROOT/runtime/wireless-carplay-and-aa/vm" ]
+[ -d "$ANDROID_DATA/dalvik-cache" ]
+sg_write "$3" > "$SG_DATA_ROOT/invoked"
+''')
+    env = dict(os.environ, HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_STATE=str(state),
+               HMG_SEOGAEMO_MODULE_DIR=str(payload), SG_DATA_ROOT=str(base / 'state'),
+               SG_TARGET_ROOT=str(target))
+    runner = base / 'runner'
+    # Host UID differs from root; exercise the real path/mode/launch checks
+    # with deterministic KitKat metadata and owner mutation.
+    preamble = 'set -eu\nsg_file_meta() { echo 0700 0 0; }\nchown() { :; }\n'
+    script(runner, preamble + 'sg_projection_runtime prepare\nsg_projection_runtime status\n')
+    run(runner, env=env)
+    vm = base / 'state/runtime/wireless-carplay-and-aa/vm'
+    assert vm.stat().st_mode & 0o777 == 0o700
+    assert (vm / 'dalvik-cache').stat().st_mode & 0o777 == 0o700
+    assert (base / 'state/invoked').read_text().strip() == 'status'
+    selected = base / 'selected-current'
+    selected.symlink_to(payload, target_is_directory=True)
+    run(runner, env=dict(env, HMG_SEOGAEMO_MODULE_DIR=str(selected)))
+    assert (base / 'state/invoked').read_text().strip() == 'status'
+    script(runner, preamble + 'sg_projection_runtime clear\n')
+    run(runner, env=env)
+    assert (base / 'state/invoked').read_text().strip() == 'clear'
+    (vm / 'dalvik-cache').rmdir()
+    outside = base / 'outside'
+    outside.mkdir()
+    (vm / 'dalvik-cache').symlink_to(outside, target_is_directory=True)
+    script(runner, preamble + 'sg_projection_runtime status\n')
+    blocked = run(runner, env=env, ok=False)
+    assert blocked.returncode == 3
+    assert (base / 'state/invoked').read_text().strip() == 'clear'
+
+
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory).resolve()
     test_toolbox_md5(root)
@@ -1261,4 +1310,5 @@ with tempfile.TemporaryDirectory() as directory:
     test_system_directory_mode(root)
     test_public_readable(root)
     test_file_metadata_guards(root)
+    test_projection_reader_vm(root)
 print("shared runtime tests passed")
