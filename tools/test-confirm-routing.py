@@ -65,6 +65,10 @@ assert "confirmModuleRestore()" in method("offerModuleRestore")
 assert "setCanceledOnTouchOutside(false)" in dialog
 assert "confirm.setEnabled(false)" in dialog
 assert "cancel.requestFocus()" in dialog
+# The tap guard delays only confirmations; a result dialog's Close must be immediate.
+result_dialog = dialog.split("public static ConfirmDialog showResult(", 1)[1].split("private static int dp", 1)[0]
+assert "false, false," in result_dialog
+assert "tapGuard && !armed(" in dialog
 print("confirmation routing: OK")
 import subprocess
 import sys
