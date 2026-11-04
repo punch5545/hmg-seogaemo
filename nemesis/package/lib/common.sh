@@ -1531,7 +1531,7 @@ sg_projection_runtime() (
     sg_path_safe "$sg_projection" || exit 3
     sg_mode=$1
     case "$sg_mode" in
-        prepare|status|applying|clear) ;;
+        prepare|status|applying|clear|tbt-reset) ;;
         *) exit 2 ;;
     esac
     if [ "$sg_mode" = clear ] && [ ! -e "$sg_projection" ]; then exit 0; fi
@@ -1557,6 +1557,7 @@ sg_projection_runtime() (
                 rmdir "$sg_runtime" 2>/dev/null || :
                 exit 0 ;;
             applying) sg_print state=pending-restart restart=head_unit "detail=$(sg_clean "$1")" ;;
+            tbt-reset) sg_print state=failed restart=none "detail=$(sg_clean "$1")"; exit 1 ;;
             *) sg_print state=unknown restart=none "detail=$(sg_clean "$1")" ;;
         esac
         exit 0
@@ -1601,7 +1602,7 @@ sg_projection_runtime() (
         if [ "$sg_code" -ge 126 ]; then sg_unknown "reader failed to start (exit $sg_code)"; fi
         exit "$sg_code"
     fi
-    sg_state=; sg_restart=; sg_detail=; sg_lines=0
+    sg_state=; sg_restart=; sg_detail=; sg_lines=0; sg_inexact=; sg_blank=
     if [ -f "$sg_out" ] && [ ! -L "$sg_out" ]; then
         sg_size=$(sg_file_size "$sg_out") || sg_size=99999
     else sg_size=99999; fi
@@ -1612,6 +1613,8 @@ sg_projection_runtime() (
                 state=*) sg_state=${sg_line#state=};;
                 restart=*) sg_restart=${sg_line#restart=};;
                 detail=*) sg_detail=${sg_line#detail=};;
+                info.tbt_inexact=*) sg_inexact=${sg_line#info.tbt_inexact=};;
+                info.tbt_blank=*) sg_blank=${sg_line#info.tbt_blank=};;
                 *) sg_lines=99;;
             esac
         done < "$sg_out"
@@ -1620,10 +1623,18 @@ sg_projection_runtime() (
         on:none|failed:none|unknown:none|pending-restart:head_unit|pending-restart:none) ;;
         *) sg_lines=99 ;;
     esac
+    # The two optional tbt counters ride along on status/applying: digits only, both or neither.
+    case "$sg_mode:$sg_inexact:$sg_blank" in
+        status:*[!0-9]*:*|status:*:*[!0-9]*|applying:*[!0-9]*:*|applying:*:*[!0-9]*) sg_lines=99 ;;
+        status:?*:?*|applying:?*:?*) sg_lines=$((sg_lines - 2)) ;;
+        *::*) ;;
+        *) sg_lines=99 ;;
+    esac
     if [ "$sg_lines" -ne 3 ] || { [ "$sg_code" -ne 0 ] && { [ "$sg_code" -ne 1 ] || [ "$sg_state" != failed ]; }; }; then
         sg_unknown "reader gave no valid output (exit $sg_code)"
     fi
     sg_print "state=$sg_state" "restart=$sg_restart" "detail=$(sg_clean "$sg_detail")"
+    [ -z "$sg_inexact" ] || sg_print "info.tbt_inexact=$sg_inexact" "info.tbt_blank=$sg_blank"
     [ "$sg_state" != failed ] || exit 1
     exit 0
 )

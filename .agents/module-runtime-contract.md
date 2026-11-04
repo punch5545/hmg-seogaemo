@@ -359,6 +359,40 @@ ownership; never source/eval the record as shell. These app-owned reports are
 diagnostic evidence, not a defense against a compromised OEM app. Seal validation
 still checks only `product\nhash-id\n`; additional seal lines remain compatible.
 
+### Turn-by-turn observation records and `tbt-reset` (2026-11-04)
+
+DiPO keeps two bounded, always-on aggregates in its app-private runtime directory,
+`/data/data/com.daudio.app.dipo/app_hmg-seogaemo-wireless-runtime/`: `tbt-icons.txt`
+(which icon each maneuver combination got) and `tbt-lanes.txt` (lane data seen). They
+are generated diagnostics: not a baseline, not ledgered, not an authorization channel.
+Format (UTF-8, 0600, owned by the app UID): `format=1`, `kind=tbt-icons|tbt-lanes`, then one
+line per key, `key|detail|count|first_ms|last_ms` (epoch ms; `|` and control characters never
+occur in a field; each field at most 400 characters). Icon key
+`type=<n> junction=<n> side=<n> exit=<deg>` (plus `state=<n>` for type 12), detail
+`icon=<n> kind=exact|band|angle|semantic|blank`. Lane key `n=<lanes> [s<status> a[angles] h[highlight]]...`,
+detail `mode= sent= marks= frame=<all 81 bytes sent, hex> laneIndex= laneCount= distNext= nextStr=`. At most 256 keys and 32768
+bytes: at the limit the least-used, then oldest key is evicted. Written atomically
+(`.txt.tmp`, rename), on change at most every 30 s, and at route end; read back at the next
+start so counts survive restarts. No road, destination or phone names are recorded.
+The files are not pruned with the per-process `p-*` stems. The collector copies both next to the
+DiPO record (inside the 32-file budget); revert cleanup removes them as plain regular files of
+`owns_generated_dirs`.
+
+Status gains two optional read-only lines, computed by the same bounded reader run that
+produces the status (no extra process): `info.tbt_inexact=<N>` (combinations whose `kind` is not
+`exact`) and `info.tbt_blank=<M>` (of them, `kind=blank`), digits only, both or neither; absent
+when the records cannot be read safely. Old consumers ignore them; the app treats absence as
+unknown.
+
+New fixed verb, only for `wireless-carplay-and-aa`: `hmg-seogaemo-root wireless-carplay-and-aa tbt-reset`
+(exactly this argv; any other module or argument is `Invalid command`, exit 2). It takes the
+operation lock, writes no journal or desired state, and runs `sg_projection_runtime tbt-reset`,
+whose root reader deletes only `tbt-icons.txt`, `tbt-lanes.txt` and their `.tmp` in DiPO's runtime
+directory: every candidate must be a plain regular file owned by the app UID in a directory
+owned by it (lstat; symlinks, other types and foreign owners refuse the whole reset before
+anything is deleted). Output is the usual three lines (`state=on|failed`, `restart=none`,
+`detail=removed N files`); nothing else is touched.
+
 The consumer uses `sg_projection_runtime prepare|status|applying|clear` in the
 package API, restricted to the projection owner. `prepare` creates the runtime
 parent and module directory as root:root 0700 before loader installation. The

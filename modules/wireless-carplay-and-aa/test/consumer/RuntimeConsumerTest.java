@@ -64,6 +64,22 @@ public final class RuntimeConsumerTest {
         put(log, "current log\n"); put(previous, "previous log\n"); expect("on", "ready");
         File copies = new File(runtime, "apps/" + HmgSeogaemoProjectionRuntime.PACKAGES[0]);
         check(new File(copies, log.getName()).isFile() && new File(copies, previous.getName()).isFile(), "ring collection");
+        File icons = new File(dir(0), "tbt-icons.txt"), lanes = new File(dir(0), "tbt-lanes.txt"), other = path("other-secret");
+        int[] none = reader().tbtCounts(); check(none != null && none[0] == 0 && none[1] == 0, "no icon record: zero counts");
+        put(icons, "format=1\nkind=tbt-icons\ntype=2 junction=0 side=0 exit=90|icon=67 kind=exact|3|1|2\ntype=8 junction=0 side=0 exit=-75|icon=70 kind=angle|1|1|2\ntype=1 junction=0 side=0 exit=0|icon=64 kind=blank|1|1|2\n");
+        put(lanes, "format=1\nkind=tbt-lanes\n");
+        int[] counts = reader().tbtCounts(); check(counts[0] == 2 && counts[1] == 1, "not-exact 2, blank 1");
+        reader().status(); check(new File(copies, "tbt-icons.txt").isFile() && new File(copies, "tbt-lanes.txt").isFile(), "observation files collected with the DiPO record");
+        wrong.add(icons.getPath()); check(reader().tbtCounts() == null, "foreign owner: counts unknown"); wrong.clear();
+        put(other, "keep");
+        icons.delete(); Files.createSymbolicLink(icons.toPath(), other.toPath());
+        try { reader().tbtReset(); check(false, "symlink not refused"); } catch (IOException expected) { }
+        check(other.isFile() && Files.isSymbolicLink(icons.toPath()) && lanes.isFile(), "symlink refused, nothing deleted");
+        icons.delete(); put(icons, "x"); wrong.add(lanes.getPath());
+        try { reader().tbtReset(); check(false, "foreign file not refused"); } catch (IOException expected) { }
+        wrong.clear(); put(new File(dir(0), "tbt-icons.txt.tmp"), "partial");
+        check(reader().tbtReset() == 3 && !icons.exists() && !lanes.exists() && dipo.exists() && record(1, 102).exists(), "reset deletes only the two files and their temporaries");
+        check(reader().tbtReset() == 0, "reset with nothing to delete is fine");
         Files.write(log.toPath(), new byte[65537]); expect("on", "ready"); check(!new File(copies, log.getName()).exists(), "oversized log copied");
         log.delete(); File outside = path("outside"); put(outside, "secret"); Files.createSymbolicLink(log.toPath(), outside.toPath());
         expect("on", "ready"); check(!new File(copies, log.getName()).exists(), "symlink log copied");

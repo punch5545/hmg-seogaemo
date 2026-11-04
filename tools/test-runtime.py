@@ -278,6 +278,8 @@ echo detail=
         assert 'detail=' + detail in response.stdout, response.stdout
     refused(("b", "apply"), "Dependency off: a")
     refused(("a", "bogus"), "Invalid command", 2)
+    refused(("a", "tbt-reset"), "Invalid command", 2)   # only the wireless module has it
+    refused(("a", "tbt-reset", "extra"), "Invalid command", 2)
     refused(("a", "status", "extra"), "Invalid command", 2)
     refused(("unknown", "status"), "Invalid command", 2)
     run(root, "a", "apply", env=env)
@@ -1870,6 +1872,20 @@ esac
     assert result.returncode == 1 and 'state=failed' in result.stdout and 'detail=broken' in result.stdout
     result = reader('exit 0\n', mode='applying')
     assert 'state=pending-restart' in result.stdout and 'restart=head_unit' in result.stdout
+    # Optional read-only tbt counters: digits only, both or neither, status and applying only.
+    result = reader('sg_print state=on restart=none detail=ready info.tbt_inexact=3 info.tbt_blank=1\n')
+    assert 'state=on' in result.stdout and 'info.tbt_inexact=3' in result.stdout and 'info.tbt_blank=1' in result.stdout
+    result = reader('sg_print state=on restart=none detail=ready\n')
+    assert 'state=on' in result.stdout and 'info.tbt' not in result.stdout
+    for bad in ('info.tbt_inexact=x info.tbt_blank=1', 'info.tbt_inexact=3', 'info.tbt_inexact=1 info.tbt_blank=2 info.tbt_other=1'):
+        result = reader('sg_print state=on restart=none detail=ready ' + bad + '\n')
+        assert 'state=unknown' in result.stdout and 'state=on' not in result.stdout, bad
+    result = reader('sg_print state=on restart=none detail=removed2files\n', mode='tbt-reset')
+    assert 'state=on' in result.stdout and 'detail=removed2files' in result.stdout
+    result = reader('sg_print state=on restart=none detail=x info.tbt_inexact=1 info.tbt_blank=0\n', mode='tbt-reset', ok=False)
+    assert 'state=failed' in result.stdout and 'state=on' not in result.stdout, 'counters are not valid on reset'
+    result = reader('exit 0\n', mode='tbt-reset', ok=False)
+    assert result.returncode == 1 and 'state=failed' in result.stdout
     # A hung VM is killed (with its child) after the limit; the caller is not held.
     hung = reader('sleep 60 &\nsg_write "$! $$" > "$SG_DATA_ROOT/hung-pids"\nwait\n',
                   SG_READER_TIMEOUT='2')

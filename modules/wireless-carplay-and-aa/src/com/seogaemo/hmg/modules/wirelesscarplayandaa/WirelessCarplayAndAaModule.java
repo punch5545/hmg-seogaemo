@@ -44,9 +44,12 @@ public final class WirelessCarplayAndAaModule extends RootBackedModule {
         "/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/starts",
         "/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/disable"
     }; }
-    public InfoRow[] infoRows() { return new InfoRow[0]; }
+    public InfoRow[] infoRows() { return new InfoRow[] {
+        new InfoRow(R.string.wireless_carplay_and_aa_tbt_inexact, "tbt_inexact"),
+        new InfoRow(R.string.wireless_carplay_and_aa_tbt_blank, "tbt_blank") }; }
     public int[] notes() { return new int[0]; }
-    public ModuleAction[] actions() { return new ModuleAction[0]; }
+    public ModuleAction[] actions() { return new ModuleAction[] {
+        new ModuleAction(R.string.wireless_carplay_and_aa_tbt_reset, ModuleAction.Type.RESET_TBT_RECORDS, id()) }; }
     public HomeTile[] homeTiles() { return new HomeTile[0]; }
     public Warning[] enableWarnings() { return new Warning[0]; }
 }

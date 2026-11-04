@@ -22,7 +22,7 @@ import java.util.Map;
  *   key|detail|count|first_ms|last_ms   (epoch milliseconds; "|" and control characters never occur in a field)
  */
 public final class Observations {
-    static final int MAX_KEYS = 256, MAX_BYTES = 32768, FIELD = 160;
+    static final int MAX_KEYS = 256, MAX_BYTES = 32768, FIELD = 400;
     static final long MIN_WRITE_MS = 30000L;
     /** test clock: a value of 0 or more replaces System.currentTimeMillis */
     static volatile long clock = -1;

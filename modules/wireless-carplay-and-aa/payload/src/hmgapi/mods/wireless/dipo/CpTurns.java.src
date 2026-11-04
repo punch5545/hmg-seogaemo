@@ -289,7 +289,7 @@ final class CpTurns {
         for (int k = 0; k < n; k++) sb.append(k == 0 ? "" : " ").append(status[k]).append(':').append(a[k]).append('/').append(b[k]).append('/').append(c[k]);
         if (sample("ln", n + "|" + sb)) d("lanes mode=" + mode + " phoneLanes=" + (lanes == null ? -1 : lanes.length) + " sent=" + n + " [" + sb + "]");
         lastLane = f.clone();
-        observeLanes(lanes, mode, n, sb.toString());
+        observeLanes(lanes, mode, n, sb.toString(), f);
         cluster.laneInfo(f);
     }
 
@@ -529,7 +529,7 @@ final class CpTurns {
         Dipo.observe(false, key, detail);
     }
 
-    private void observeLanes(Iap2NotiMsg.Iap2ObjGroup[] lanes, String mode, int n, String marks) {
+    private void observeLanes(Iap2NotiMsg.Iap2ObjGroup[] lanes, String mode, int n, String marks, byte[] frame) {
         StringBuilder key = new StringBuilder("n=" + (lanes == null ? 0 : lanes.length));
         for (int k = 0; lanes != null && k < lanes.length && k < 8; k++) {
             Iap2NotiMsg.Iap2ObjGroup g = lanes[k];
@@ -547,7 +547,9 @@ final class CpTurns {
             key.append(" [s").append(status).append(" a").append(arr(angles)).append(" h").append(arr(highlight)).append(']');
         }
         Update u = activeId == null ? null : updates.get(activeId);
-        String detail = "mode=" + mode + " sent=" + n + " marks=" + marks + (u == null ? "" : " laneIndex=" + u.laneIndex + " laneCount=" + u.laneCount + " distNext=" + u.distNext + " nextStr=" + u.nextStr);
+        StringBuilder hex = new StringBuilder();
+        for (int k = 0; k < frame.length; k++) hex.append(Character.forDigit((frame[k] >> 4) & 15, 16)).append(Character.forDigit(frame[k] & 15, 16));
+        String detail = "mode=" + mode + " sent=" + n + " marks=" + marks + " frame=" + hex + (u == null ? "" : " laneIndex=" + u.laneIndex + " laneCount=" + u.laneCount + " distNext=" + u.distNext + " nextStr=" + u.nextStr);
         String both = key + "|" + detail;
         if (both.equals(lastLaneObs)) return;
         lastLaneObs = both;

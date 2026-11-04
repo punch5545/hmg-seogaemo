@@ -187,5 +187,6 @@ case "$1" in
     apply) apply ;;
     revert) revert ;;
     status) status ;;
+    tbt-reset) sg_projection_runtime tbt-reset ;;
     *) exit 2 ;;
 esac
