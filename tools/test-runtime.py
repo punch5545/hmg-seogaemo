@@ -57,9 +57,9 @@ def fake_ownership(fake):
     script(fake / "nemesis", "exit 0\n")
 
 
-def run(path, *args, env, ok=True):
+def run(path, *args, env, ok=True, timeout=None):
     result = subprocess.run([SHELL, str(path), *args], env=car_env(env), text=True,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
     if ok:
         assert result.returncode == 0, (path, args, result.stdout, result.stderr)
     else:
@@ -667,15 +667,24 @@ def test_watch_dispatch(temp):
     boot_id.write_text("boot-a")
     uptime = base / "uptime"
     uptime.write_text("100.0 0.0\n")
-    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+    # Fully synchronous by construction: the fake sleep, the uptime file, the
+    # boot ID and the display are all driven by this test, and no real clock,
+    # real sleep or inherited tuning variable can reach the watcher. Scrub the
+    # caller's environment of every runtime knob so only values set here count,
+    # and bound each invocation so a hang fails instead of stalling the suite.
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("HMG_SEOGAEMO_", "SG_"))}
+    env.update(PATH=str(fake) + ":" + os.environ["PATH"],
                SG_DATA_ROOT=str(state), FAKE_DISPLAY=str(display),
                FAKE_CALLS=str(base / "calls"), FAKE_SLEEPS=str(base / "sleeps"),
                SG_BOOT_ID_FILE=str(boot_id), HMG_SEOGAEMO_WATCH_MAX_POLLS="3",
-               HMG_SEOGAEMO_WATCH_UPTIME_FILE=str(uptime))
+               HMG_SEOGAEMO_WATCH_UPTIME_FILE=str(uptime),
+               HMG_SEOGAEMO_WATCH_POLL="5", HMG_SEOGAEMO_WATCH_IDLE="300")
     calls = base / "calls"
+    watcher = base / "svc/watcher.sh"
     # Nothing enabled: idle with the long interval, never dispatch, never exit early.
     display.write_text("mWakefulness=Asleep")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert not calls.exists()
     assert (base / "sleeps").read_text().splitlines() == ["300", "300"]
     (base / "sleeps").unlink()
@@ -683,16 +692,16 @@ def test_watch_dispatch(temp):
     (state / "desired/watcher").write_text("on")
     (state / "desired/plain").write_text("on")
     display.write_text("mWakefulness=Asleep")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch boot", "watcher watch screen_on"]
     assert (base / "sleeps").read_text().splitlines() == ["5", "5"]
     # Watcher restart in the same boot does not repeat the boot event; a new boot does.
     calls.write_text("")
     display.write_text("mWakefulness=Awake")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text() == ""
     boot_id.write_text("boot-b")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch boot"]
     # The watcher never applies or reverts.
     assert "apply" not in calls.read_text() and "revert" not in calls.read_text()
@@ -701,12 +710,12 @@ def test_watch_dispatch(temp):
     display.write_text("garbage")
     script(fake / "sleep", 'echo "$1" >> "$FAKE_SLEEPS"\n')
     boot_id.write_text("boot-c")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch boot"]
     # Screen off-> on recognises both Android 4.4 policy and wakefulness keys.
     calls.write_text("")
     script(fake / "dumpsys", 'if [ -f "$FAKE_DISPLAY.n" ]; then echo mDisplayPowerRequest.policy=BRIGHT; else : > "$FAKE_DISPLAY.n"; echo mDisplayPowerRequest.policy=OFF; fi\n')
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch screen_on"]
 
 
@@ -725,24 +734,24 @@ def test_watch_dispatch(temp):
     for drift in ("stock.reset", "user.choice"):
         actual.write_text(drift)
         calls.write_text("")
-        run(base / "svc/watcher.sh", env=env)
+        run(watcher, env=env, timeout=120)
         assert calls.read_text().splitlines() == ["watcher watch screen_on"]
         assert actual.read_text().strip() == "our.action"
     calls.write_text("")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text() == ""  # matching value never dispatches
     (state / "desired/watcher").write_text("off")
     actual.write_text("user.choice")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text() == "" and actual.read_text() == "user.choice"
     (state / "desired/watcher").write_text("on")
     (state / "stock").mkdir()
     (state / "stock/paused").touch()
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text() == ""
     (state / "stock/paused").unlink()
     (prop_dir / "applied").unlink()
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text() == ""  # never invent an assignment without a snapshot
 
     # Failed boot delivery is never acknowledged; capped retries survive restart.
@@ -756,25 +765,25 @@ def test_watch_dispatch(temp):
     for clock, count in ((100, 1), (104, 1), (105, 2), (114, 2),
                          (115, 3), (135, 4), (175, 5), (235, 6), (999, 6)):
         uptime.write_text(f"{clock}.0 0.0\n")
-        run(base / "svc/watcher.sh", env=env)
+        run(watcher, env=env, timeout=120)
         assert len(calls.read_text().splitlines()) == count, calls.read_text()
         assert (state / "watch/boot.watcher").read_text().strip() != "boot-retry"
     # A new boot gets its own budget; after success no repeats on restart.
     boot_id.write_text("boot-recovered")
     (state / "fail-watch").unlink()
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert (state / "watch/boot.watcher").read_text().strip() == "boot-recovered"
     count = len(calls.read_text().splitlines())
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert len(calls.read_text().splitlines()) == count
     # Retry a transient failure before budget exhaustion within the same boot.
     boot_id.write_text("boot-transient")
     (state / "fail-watch").touch()
     uptime.write_text("100.0 0.0\n")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     (state / "fail-watch").unlink()
     uptime.write_text("105.0 0.0\n")
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert (state / "watch/boot.watcher").read_text().strip() == "boot-transient"
     # A failed wake stays queued even after the display remains on.
     calls.write_text("")
@@ -784,15 +793,15 @@ def test_watch_dispatch(temp):
     script(fake / "sleep",
            'echo "110.0 0.0" > "$HMG_SEOGAEMO_WATCH_UPTIME_FILE"\n')
     env["HMG_SEOGAEMO_WATCH_MAX_POLLS"] = "2"
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch screen_on"]
     (state / "fail-watch").unlink()
     uptime.write_text("115.0 0.0\n")
     env["HMG_SEOGAEMO_WATCH_MAX_POLLS"] = "1"
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch screen_on"] * 2
     assert not (state / "watch/screen.watcher").exists()
-    run(base / "svc/watcher.sh", env=env)
+    run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch screen_on"] * 2
 
 
