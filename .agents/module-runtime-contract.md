@@ -38,7 +38,12 @@ original or intended/applied metadata; unknown metadata conflicts. Revert checks
 all directory metadata before file restoration, then restores directories deepest
 first. Created dirs are removed only if empty and still match; nonempty dirs
 conflict and retain journals/backups. A retried restore accepts already-restored
-original metadata or absent created dirs. Legacy existing dirs (including 0700
+original metadata or absent created dirs. Before restoring existing metadata,
+the runtime durably publishes `restore-pending` (original metadata) and
+`restore-intermediate` (current mode with original UID/GID). Guards accept those
+known states after interruption; unknown metadata still conflicts. Reapply clears
+restore intent only after its applied metadata is verified.
+Legacy existing dirs (including 0700
 ancestors) are conservatively pre-existing with current metadata as baseline;
 file-put provenance does not prove directory absence. Uninstall restores that
 metadata and never deletes these legacy directories. No guessed absent baseline.

@@ -356,7 +356,7 @@ sg_dir_guard() (
     fi
     [ -d "$target" ] || exit 3
     meta=$(sg_file_meta "$target") || exit 1
-    versions="applied pending intermediate"
+    versions="applied pending intermediate restore-pending restore-intermediate"
     if [ ! -f "$record/applied" ] || [ -f "$record/restored" ]; then versions="$versions meta"; fi
     for version in $versions; do
         [ ! -f "$record/$version" ] || [ "$meta" != "$(cat "$record/$version")" ] || exit 0
@@ -403,7 +403,7 @@ sg_dir_ensure() (
         before=$(sg_file_meta "$target") || exit 1
         if [ "$before" = "0755 0 0" ]; then
             sg_copy "$record/pending" "$record/applied" &&
-                rm -f "$record/pending" "$record/intermediate" "$record/restored"
+                rm -f "$record/pending" "$record/intermediate" "$record/restored" "$record/restore-pending" "$record/restore-intermediate"
             exit $?
         fi
         set -- $before
@@ -413,7 +413,7 @@ sg_dir_ensure() (
     (umask 022; mkdir -p "$target") && chown 0:0 "$target" && chmod 0755 "$target" &&
         [ "$(sg_file_meta "$target")" = "0755 0 0" ] || exit 1
     sg_copy "$record/pending" "$record/applied" || exit 1
-    rm -f "$record/pending" "$record/intermediate" "$record/restored" || exit 1
+    rm -f "$record/pending" "$record/intermediate" "$record/restored" "$record/restore-pending" "$record/restore-intermediate" || exit 1
     sg_ledger directory "$target" "$record/meta" "$record/applied" "$record/meta" || exit 1
 )
 sg_payload_dirs() (
@@ -461,6 +461,10 @@ sg_dirs_revert() (
             absent) if [ -e "$target" ]; then rmdir "$target" || rc=3; fi ;;
             present)
                 read mode uid gid < "$record/meta" || exit 1
+                current=$(sg_file_meta "$target") || exit 1
+                set -- $current
+                sg_print "$1 $uid $gid" > "$record/restore-intermediate" &&
+                    sg_copy "$record/meta" "$record/restore-pending" && sync || exit 1
                 chown "$uid:$gid" "$target" && chmod "$mode" "$target" &&
                     [ "$(sg_file_meta "$target")" = "$(cat "$record/meta")" ] || rc=1 ;;
             *) rc=3;;

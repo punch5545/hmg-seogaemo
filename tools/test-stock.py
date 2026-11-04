@@ -22,6 +22,9 @@ class Car:
         self.base = folder / 'package'
         shutil.copytree(ROOT / 'nemesis/package', self.base)
         host_shell_tree(self.base)
+        # mksh has builtin cat, so PATH cannot intercept this Linux-only file.
+        with (self.base / 'lib/common.sh').open('a') as common:
+            common.write('\ncat() { if [ "$1" = /proc/sys/kernel/random/boot_id ]; then echo test-boot; else command cat "$@"; fi; }\n')
         self.state = folder / 'data'
         self.fake = folder / 'fake'
         self.fake.mkdir()
@@ -259,6 +262,8 @@ def test_missing_handoff(folder):
     job.mkdir(parents=True)
     shutil.copy(car.base / 'core/uninstall-detached.sh', job / 'run.sh')
     shutil.copy(car.base / 'lib/common.sh', job / 'common.sh')
+    with (job / 'common.sh').open('a') as common:
+        common.write('\nsleep() { :; }\n')  # mksh also provides builtin sleep
     script(car.fake / 'sleep', 'exit 0\n')  # bounded expiry without waiting 30s
     script(car.fake / 'nemesis', 'sg_print unexpected >> "$FAKE_CALLS"\n')
     (job / 'ready').write_text('wrong-pid')

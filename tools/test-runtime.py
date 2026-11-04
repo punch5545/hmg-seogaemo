@@ -725,6 +725,15 @@ def test_system_directory_mode(temp):
     check("sg_revert_all\n", ok=False)
     assert (namespace / "a/recipes/audio.recipe").read_text() == "patch"
     (namespace / "a/recipes").chmod(0o755)
+    # Simulate loss after metadata restoration, before the restored marker.
+    check("sg_remount_ro() { exit 77; }\nsg_dirs_revert\n", ok=False)
+    assert (namespace / "a/recipes").stat().st_mode & 0o777 == 0o700
+    check("sg_dirs_preflight\n")
+    (namespace / "a/recipes").chmod(0o711)
+    check("sg_dirs_preflight\n", ok=False)
+    (namespace / "a/recipes").chmod(0o700)
+    # A failed restored-marker write also remains resumable.
+    check('sg_write() { case "$1" in 1) return 1;; *) printf "%s" "$1";; esac; }\nsg_dirs_revert\n', ok=False)
     check("sg_revert_all\n")
     for target in (namespace, namespace / "a", namespace / "a/recipes"):
         assert target.stat().st_mode & 0o777 == 0o700
