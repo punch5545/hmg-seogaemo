@@ -15,6 +15,10 @@ public final class ModContext {
     public java.lang.reflect.Member hook(ClassLoader cl, String point, MethodHook hook) { return Points.hook(cl, point, hook); }
     public boolean settingBoolean(String key, boolean fallback) { return fallback; }
     public String settingString(String key, String fallback) { return fallback; }
+    public void beginRuntime(LoadedApp app) {
+        try { RuntimeResult.begin(app.context.getDir("hmg-seogaemo-wireless-runtime", 0), app.packageName, app.processName); }
+        catch (Throwable ignored) {}
+    }
     public Class<?> appPart(LoadedApp app, String className) throws Exception {
         String pkg = className.substring(0, className.lastIndexOf('.'));
         ClassLoader parent = new AppPartLoader(pkg, ModContext.class.getClassLoader(), app.classLoader);
@@ -33,10 +37,10 @@ public final class ModContext {
             else if ("libCarPlayUtils.so".equals(lib)) recipes.add(NativePatch.readOne(new File(dir, "recipes/carplay-utils-converter.recipe")));
             else throw new IllegalArgumentException(lib);
             NativePatch.request(this, lib, recipes);
-        } catch (Throwable t) { error("native patch " + lib, t); }
+        } catch (Throwable t) { RuntimeResult.phase("native." + lib, "failed", "recipe registration: " + t); error("native patch " + lib, t); }
     }
     public void log(String message) { HmgApi.i("[" + id + "] " + message); }
-    public void error(String message, Throwable t) { HmgApi.e("[" + id + "] " + message, t); }
+    public void error(String message, Throwable t) { RuntimeResult.put("event.last_error", message + " " + t); HmgApi.e("[" + id + "] " + message, t); }
     static String md5(String path) {
         try {
             FileInputStream in = new FileInputStream(path); MessageDigest d = MessageDigest.getInstance("MD5");

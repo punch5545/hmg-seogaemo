@@ -31,6 +31,7 @@ public final class Points {
     // The zygote entry validates the core-published map before this adapter reads points.
     static final Map<String, Map<String, Object>> points = new HashMap<String, Map<String, Object>>();
     static void use(JSONObject map) throws Exception {
+        points.clear();
         JSONObject all = map.getJSONObject("points");
         java.util.Iterator<String> ids = all.keys();
         while (ids.hasNext()) {
@@ -51,12 +52,34 @@ public final class Points {
     }
     public static boolean ready() { return !points.isEmpty(); }
     public static boolean has(String id) { return points.containsKey(id); }
-    public static boolean complete(String app) { return ready(); }
-    static boolean needAll(String feature, String... ids) {
-        for (String id : ids) if (!has(id)) { HmgApi.i(feature + ": missing " + id); return false; }
-        return true;
+    public static boolean complete(String app) {
+        String[] ids = RequiredPoints.forPart(app);
+        return ids != null && missing(ids).length() == 0;
     }
-    static boolean need(String feature, String app) { return ready(); }
+    public static String missing(String... ids) {
+        StringBuilder missing = new StringBuilder();
+        for (String id : ids) if (!has(id)) {
+            if (missing.length() != 0) missing.append(',');
+            missing.append(id);
+        }
+        return missing.toString();
+    }
+    static boolean needAll(String feature, String... ids) {
+        String absent = missing(ids);
+        if (absent.length() == 0) return true;
+        RuntimeResult.put("points.missing", absent);
+        HmgApi.i(feature + ": missing " + absent);
+        return false;
+    }
+    public static boolean need(String feature, String app) {
+        String[] ids = RequiredPoints.forPart(app);
+        String absent = ids == null ? "unknown-part:" + app : missing(ids);
+        RuntimeResult.put("part." + feature + ".missing", absent);
+        if (absent.length() == 0) return true;
+        RuntimeResult.phase("part." + feature, "off", "missing required points: " + absent);
+        HmgApi.i(feature + ": missing " + absent);
+        return false;
+    }
     static Map<String, Object> entry(String id) {
         Map<String, Object> e = points.get(id);
         if (e == null) throw new IllegalArgumentException("no hook point " + id);

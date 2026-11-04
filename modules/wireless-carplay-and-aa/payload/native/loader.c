@@ -37,6 +37,8 @@ typedef unsigned short u2;
 int __android_log_print(int prio, const char *tag, const char *fmt, ...);
 unsigned getuid(void);
 int getpid(void);
+/* Bionic API 19: errno is thread-local through __errno(). */
+int *__errno(void);
 int open(const char *path, int flags, ...);
 long read(int fd, void *buf, size_t n);
 int close(int fd);
@@ -268,32 +270,33 @@ static jobject n_peek(JNIEnv *env, jobject cls, long long addr, int len)
     return a;
 }
 
-/* Bridge.pokeNative(long addr, byte[] data): writes code (pages writable for the copy, then read+exec again); 0 or -1 */
+/* Bridge.pokeNative(long addr, byte[] data): writes code (pages writable for the copy, then read+exec again); 0 or negative errno */
 static int n_poke(JNIEnv *env, jobject cls, long long addr, jobject data)
 {
     size_t a = (size_t)addr, n, start, end;
     (void)cls;
-    if (!data) return -1;
+    if (!data) return -22;
     n = (size_t)GetArrayLength(env, data);
     start = a & ~(PAGE - 1);
     end = (a + n + PAGE - 1) & ~(PAGE - 1);
     if (mprotect((void *)start, end - start, PROT_RWX) != 0) {
-        LOGE("native patch: mprotect %lx failed", (unsigned long)start);
-        return -1;
+        int error = *__errno();
+        LOGE("native patch: mprotect %lx failed errno=%d", (unsigned long)start, error);
+        return -error;
     }
     GetByteArrayRegion(env, data, 0, (int)n, (void *)a);
     cacheflush((long)a, (long)(a + n), 0);
-    mprotect((void *)start, end - start, PROT_RX);
+    if (mprotect((void *)start, end - start, PROT_RX) != 0) return -*__errno();
     return 0;
 }
 
-/* Bridge.mapCodeNative(long hint, int len): an anonymous page run for code, at hint if the kernel can (0: none) */
+/* Bridge.mapCodeNative(long hint, int len): an anonymous page run for code, or negative errno */
 static long long n_mapCode(JNIEnv *env, jobject cls, long long hint, int len)
 {
     void *p;
     (void)env; (void)cls;
     p = mmap((void *)(size_t)hint, ((size_t)len + PAGE - 1) & ~(PAGE - 1), PROT_RWX, 0x22 /* MAP_PRIVATE | MAP_ANONYMOUS */, -1, 0);
-    return p == (void *)-1 ? 0 : (long long)(size_t)p;
+    return p == (void *)-1 ? -(long long)*__errno() : (long long)(size_t)p;
 }
 
 static const JNINativeMethod natives[] = {

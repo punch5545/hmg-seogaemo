@@ -105,6 +105,75 @@ use the fixed HMG_SEOGAEMO_DIAGNOSTIC_RUNTIME_DIRS list relative to SG_DATA_ROOT
 (initially runtime); only .log, .txt, result and module-output files qualify.
 Export publication retains 0755 directories and 0644 files.
 
+## Wireless projection runtime results (2026-11-04)
+
+The hook publishes diagnostics independently of loader mapping. Zygote (UID 0)
+uses `/data/nemesis/backup/hmg-seogaemo/runtime/wireless-carplay-and-aa/`.
+Each hooked app uses `Context.getDir("hmg-seogaemo-wireless-runtime", 0)`, normally
+`/data/data/<package>/app_hmg-seogaemo-wireless-runtime/`, owned by that app's UID
+(DiPO commonly UID 1000). No app writes into root's private state and no shared
+world-writable directory is needed. These are generated diagnostics, never stock
+baselines or an authorization channel. Root prepares the private runtime parent
+through the package API before enabling the loader. Root reads only the fixed projection app
+packages: `com.daudio.app.dipo`, `com.tcc.iap2server`,
+`com.google.android.projection.sink`, `com.mnsoft.navi`, `com.android.btsettings`.
+
+Each process writes `p-<pid>-<start_ticks>.txt` atomically via `.txt.tmp`.
+UTF-8 `key=value` lines, first `=` is the separator; keys `[a-zA-Z0-9_.-]+`,
+no escaping, duplicate keys/control characters/unterminated records rejected.
+Values are sanitized to one line. Format 1 metadata: `format=1`, `boot`, `pid`,
+`start_ticks` (field 22 of `/proc/<pid>/stat`), `uid`, `package`, `process`,
+`payload_jar_sha256`, `payload_loader_sha256`. Payload hashes are captured in
+zygote before forks, identifying the loaded generation even after an OTA replaces
+disk files. Zygote writes `gate.state=initializing|ready|off` and `gate.reason`
+for its identity/map/seal/stock-hash/boot-hook decision. App records inherit
+`gate.state`/`gate.reason` from the zygote;
+`part.<name>.state=initializing|loaded|failed|off`, `.reason` and `.missing`
+describe Java installation. Parts are `dipo`, `iap2`, `gpm_usb`, `gpm_tbt`,
+`navigation`, `btsettings`; `.missing` lists absent stable IDs, comma separated.
+`native.<library-basename>.state=registered|applied|failed`, `.reason` and
+`.errno` describe recipe registration and the single native apply attempt.
+Registration is waiting for a library, never proof of application. Errno 0
+means no syscall error captured; failures include numeric errno and common
+symbolic names (e.g. `13:EACCES`). Errors may follow partial hook/native writes;
+restart, never retry native writes in the same process. `event.*` holds bounded
+late failures (e.g. iAP2 bind/cluster/callback errors).
+For stock GPM turn-by-turn (`stepofspec >= 999`),
+`native.libautoreceiver_infobank.so.applicability=stock` and the part reason
+explicitly identify why no AA recipe is registered.
+
+Snapshots are capped at 64 KiB, 256 fields, 8192 characters/value. The reader
+rejects oversized/malformed records. The process also mirrors Java tag messages
+directly into `p-<pid>-<start_ticks>.log`, rotating to `.log.1` at 64 KiB
+(each message capped at 2048 characters), preserving them before logcat wraps.
+This keeper requires no logcat reader thread or service in zygote. Native startup
+messages preceding Java initialization remain logcat-only; native recipe failures
+are also recorded through Java. Retain at most eight process stems per directory,
+including stale boots and interrupted temporary files; oldest artifacts are pruned
+on publication (best effort across simultaneous processes). Files are 0600,
+directories 0700; root can include them in a future export. Diagnostic
+I/O/permission/storage errors are caught and never stop or enable hooks. Missing
+diagnostics therefore mean unknown readiness, never success. Cleanup/export wiring
+belongs to the root consumer; app-private files may survive module revert.
+At status/export time root gathers only validated current app-private files from
+those fixed packages into `$SG_DATA_ROOT/runtime/wireless-carplay-and-aa/apps/<package>/`.
+Use bounded reads/copies (64 KiB/file), reject symlinks/nonregular files/incorrect
+UIDs, and never trust paths from the record. The collector includes `.txt` and
+`.log`; include `.log.1` for the older half of the ring. Across all packages
+select at most 32 current files for export. Stale boots/PIDs must not replace
+current failures.
+
+Status must check expected boot, live PID/start ticks, expected UID/package/process,
+loaded payload hashes versus installed payload, `gate.state=ready`, and all relevant
+parts/native results. Absent processes/results are pending/unknown; a gate/part/recipe
+failure must not be reported as on. `part.*=loaded` means initialization returned,
+not a successful wireless session. In particular Core/Audio/Utils in DiPO and AA
+in GPM must be applied (or explicitly deemed inapplicable by the consumer) before
+claiming those native capabilities. Reject symlinks, nonregular files and unexpected
+ownership; never source/eval the record as shell. These app-owned reports are
+diagnostic evidence, not a defense against a compromised OEM app. Seal validation
+still checks only `product\nhash-id\n`; additional seal lines remain compatible.
+
 ## Shared text-file line ownership (2026-11-03)
 
 `owns_files=` grants exclusive whole-file ownership. No other module may claim

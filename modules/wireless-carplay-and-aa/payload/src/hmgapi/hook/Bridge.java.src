@@ -22,7 +22,7 @@ public final class Bridge {
 
     static native void log(int priority, String message);
 
-    /** native patches (NativePatch): a copy of this process's memory, a code write (0 ok), a code page run (0: none) */
+    /** Native patches: memory copy, code write (0 ok), code page (negative errno on failure). */
     static native byte[] peekNative(long addr, int len);
 
     static native int pokeNative(long addr, byte[] data);
@@ -55,7 +55,7 @@ public final class Bridge {
         try {
             HmgApi.zygoteInit();
         } catch (Throwable t) {
-            log(6, "zygote init failed: " + trace(t));
+            HmgApi.e("zygote init failed", t);
         }
     }
 
@@ -122,7 +122,7 @@ public final class Bridge {
             try {
                 hooks[ran].beforeHookedMethod(param);
             } catch (Throwable t) {
-                log(6, "before hook of " + member + " failed: " + trace(t));
+                HmgApi.e("before hook of " + member + " failed", t);
                 param.reset();
             }
             ran++;
@@ -141,7 +141,7 @@ public final class Bridge {
             try {
                 hooks[i].afterHookedMethod(param);
             } catch (Throwable t) {
-                log(6, "after hook of " + member + " failed: " + trace(t));
+                HmgApi.e("after hook of " + member + " failed", t);
                 if (lastThrowable == null) param.setResult(lastResult);
                 else param.setThrowable(lastThrowable);
             }

@@ -24,6 +24,7 @@ import hmgapi.hook.LoadedApp;
 import hmgapi.hook.MethodHook;
 import hmgapi.hook.ModContext;
 import hmgapi.hook.Points;
+import hmgapi.hook.RuntimeResult;
 
 /**
  * The Wireless mod in DiPO (the CarPlay app): its app part, linked against DiPO's
@@ -113,7 +114,9 @@ public final class Dipo {
                 log("DiPO: iAP2 server gone");
             }
         }, Context.BIND_AUTO_CREATE);
-        log("DiPO: iAP2 server " + (bound ? "binding" : "can't be bound"));
+        RuntimeResult.put("event.dipo_iap2_bind", bound ? "binding" : "failed");
+        if (!bound) throw new IllegalStateException("DiPO iAP2 service bind refused");
+        log("DiPO: iAP2 server binding");
     }
 
     private static void turnByTurn() {
@@ -123,10 +126,7 @@ public final class Dipo {
             return;
         }
         Cluster c = Cluster.of(app.context);
-        if (c == null) {
-            tbt = false;
-            return;
-        }
+        if (c == null) throw new IllegalStateException("DiPO NavigationCluster unavailable");
         HandlerThread t = new HandlerThread("hmgapi-cp-tbt");
         t.start();
         turnsHandler = new Handler(t.getLooper());
