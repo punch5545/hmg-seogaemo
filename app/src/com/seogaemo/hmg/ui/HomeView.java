@@ -1,8 +1,13 @@
 package com.seogaemo.hmg.ui;
 
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.util.TypedValue;
@@ -11,6 +16,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import com.seogaemo.hmg.R;
@@ -77,7 +83,7 @@ public final class HomeView extends LinearLayout {
     }
 
     public static HomeTile settingsTile() {
-        return new HomeTile("settings", R.string.settings, "⚙", null, 0, true);
+        return new HomeTile("settings", R.string.settings, "", null, 0, true);
     }
 
     public void setTiles(List<HomeTile> tiles) {
@@ -182,13 +188,21 @@ public final class HomeView extends LinearLayout {
             setBackgroundDrawable(selector(0xFF202020, 0xFF3B3B3B, false));
             setContentDescription(c.getString(item.labelResId));
 
-            TextView glyph = text(item.glyph, item.glyph.length() > 3 ? 32 : 46, accent, true);
-            glyph.setGravity(Gravity.CENTER);
-            glyph.setSingleLine(true);
-            glyph.setBackgroundDrawable(shape(0xFF171C22, 0xFF354352, 10));
             LayoutParams gp = new LayoutParams(dp(104), dp(104), Gravity.CENTER_HORIZONTAL | Gravity.TOP);
             gp.topMargin = dp(62);
-            addView(glyph, gp);
+            if ("settings".equals(item.id)) {
+                ImageView icon = new ImageView(c);
+                icon.setBackgroundDrawable(shape(0xFF171C22, 0xFF354352, 10));
+                icon.setScaleType(ImageView.ScaleType.CENTER);
+                icon.setImageDrawable(new GearDrawable(accent));
+                addView(icon, gp);
+            } else {
+                TextView glyph = text(item.glyph, item.glyph.length() > 3 ? 32 : 46, accent, true);
+                glyph.setGravity(Gravity.CENTER);
+                glyph.setSingleLine(true);
+                glyph.setBackgroundDrawable(shape(0xFF171C22, 0xFF354352, 10));
+                addView(glyph, gp);
+            }
 
             View rule = new View(c);
             rule.setBackgroundColor(accent);
@@ -206,6 +220,48 @@ public final class HomeView extends LinearLayout {
             lp.bottomMargin = dp(11);
             addView(label, lp);
         }
+    }
+
+    /** Font-independent settings gear, drawn in the tile icon's bounds. */
+    private final class GearDrawable extends Drawable {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+        private final RectF bounds = new RectF();
+        private final int color;
+
+        GearDrawable(int color) { this.color = color; paint.setColor(color); paint.setStyle(Paint.Style.FILL); }
+
+        @Override public void draw(Canvas canvas) {
+            android.graphics.Rect b = getBounds();
+            float size = Math.min(b.width(), b.height()) * 0.48f;
+            float left = b.exactCenterX() - size / 2f;
+            float top = b.exactCenterY() - size / 2f;
+            canvas.save();
+            canvas.translate(left, top);
+            canvas.scale(size / 100f, size / 100f);
+            path.reset();
+            // Eight teeth: two outer points per tooth, two root points per gap.
+            for (int i = 0; i < 32; i++) {
+                double angle = Math.PI * 2d * (i - 0.5d) / 32d - Math.PI / 2d;
+                float radius = (i % 4 == 0 || i % 4 == 1) ? 49f : 38f;
+                float x = 50f + (float) Math.cos(angle) * radius;
+                float y = 50f + (float) Math.sin(angle) * radius;
+                if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
+            }
+            path.close();
+            canvas.drawPath(path, paint);
+            bounds.set(34f, 34f, 66f, 66f);
+            paint.setColor(0xFF171C22);
+            canvas.drawOval(bounds, paint);
+            paint.setColor(color);
+            canvas.restore();
+        }
+
+        @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); invalidateSelf(); }
+        @Override public void setColorFilter(android.graphics.ColorFilter filter) { paint.setColorFilter(filter); invalidateSelf(); }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+        @Override public int getIntrinsicWidth() { return dp(64); }
+        @Override public int getIntrinsicHeight() { return dp(64); }
     }
 
     /** Equal-width pages with swipe settling, based on the NEMESIS interaction pattern. */
