@@ -1542,6 +1542,135 @@ sg_projection_runtime() (
     [ "$sg_state" != failed ] || exit 1
     exit 0
 )
+# Private runtime directories that a loaded hook creates inside a system app's
+# data directory (Context.getDir, so always /data/data/<package>/app_hmg-seogaemo-<name>).
+# The module declares each exact directory in `owns_generated_dirs=`. They hold
+# only generated diagnostics: regular files with plain names, no baseline. All
+# declared directories are validated first; any symlink, subdirectory or other
+# entry is a conflict and nothing at all is removed.
+sg_generated_dirs() {
+    sg_gd_list=
+    sg_manifest=$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties
+    [ -f "$sg_manifest" ] || return 0
+    while IFS='=' read -r sg_field sg_values; do
+        [ "$sg_field" != owns_generated_dirs ] || sg_gd_list=$sg_values
+    done < "$sg_manifest"
+    sg_print "$sg_gd_list"
+}
+sg_generated_dirs_remove() (
+    list=$(sg_generated_dirs) || exit $?
+    [ -n "$list" ] || exit 0
+    old_ifs=$IFS; IFS=,
+    set -f
+    set -- $list
+    set +f
+    IFS=$old_ifs
+    for pass in check remove; do
+        for dir do
+            case "$dir" in /data/data/*/app_hmg-seogaemo-*) ;; *) exit 2;; esac
+            pkg=${dir#/data/data/}; pkg=${pkg%%/*}; leaf=${dir##*/}
+            [ "$dir" = "/data/data/$pkg/$leaf" ] || exit 2
+            case "$pkg" in ''|*[!a-zA-Z0-9._]*) exit 2;; esac
+            case "$leaf" in *[!a-zA-Z0-9_-]*) exit 2;; esac
+            target=${SG_TARGET_ROOT:-}$dir
+            sg_path_safe "$target" || { sg_restore_conflict "generated dir: $dir"; exit 3; }
+            [ -e "$target" ] || continue
+            [ -d "$target" ] || { sg_restore_conflict "generated dir: $dir"; exit 3; }
+            count=0
+            for entry in "$target"/* "$target"/.[!.]* "$target"/..?*; do
+                [ -e "$entry" ] || [ -L "$entry" ] || continue
+                count=$((count + 1))
+                name=${entry##*/}
+                case "$name" in *[!a-zA-Z0-9_.-]*) count=999;; esac
+                if [ "$count" -gt 64 ] || [ -L "$entry" ] || [ ! -f "$entry" ]; then
+                    sg_restore_conflict "generated dir content: $dir"; exit 3
+                fi
+                if [ "$pass" = remove ]; then
+                    rm -f "$entry" || exit 1
+                fi
+            done
+            if [ "$pass" = remove ]; then
+                rmdir "$target" || exit 1
+                sg_ledger generated_dir_remove "$target" "" "" "" || exit 1
+            fi
+        done
+    done
+)
+# Directories below /system/etc/hmg-seogaemo that exist without any journal, left by
+# builds before directory journaling. Derived from the module manifests' owned file
+# paths (ancestors up to the project namespace) so no list is hand-written; rmdir
+# only, so a directory that still holds anything is simply kept.
+sg_legacy_dirs_cleanup() (
+    namespace=/system/etc/hmg-seogaemo
+    dirs=
+    for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
+        [ -f "$manifest" ] || continue
+        while IFS='=' read -r field values; do
+            [ "$field" = owns_files ] || continue
+            old_ifs=$IFS; IFS=,
+            set -f
+            set -- $values
+            set +f
+            IFS=$old_ifs
+            for file do
+                case "$file" in "$namespace"/*) ;; *) continue;; esac
+                dir=${file%/*}
+                while [ "$dir" != "$namespace" ]; do
+                    case " $dirs " in *" $dir "*) ;; *) dirs="$dirs $dir";; esac
+                    dir=${dir%/*}
+                done
+            done
+        done < "$manifest"
+    done
+    dirs="$dirs $namespace"
+    rw=0
+    for pass in 1 2 3; do
+        for dir in $dirs; do
+            target=${SG_TARGET_ROOT:-}$dir
+            [ -d "$target" ] && [ ! -L "$target" ] || continue
+            sg_path_safe "$target" || continue
+            key=$(sg_file_key "$target") || exit 1
+            # A journaled directory belongs to the directory transaction.
+            [ ! -f "$SG_DATA_ROOT/payload-dirs/$key/ready" ] || continue
+            if [ "$rw" -eq 0 ]; then sg_remount rw || exit 1; rw=1; fi
+            if rmdir "$target" 2>/dev/null; then
+                sg_ledger legacy_dir_remove "$target" "" "" "" || { sg_remount_ro; exit 1; }
+            fi
+        done
+    done
+    if [ "$rw" -eq 1 ]; then sg_remount_ro; fi
+    exit 0
+)
+# Dalvik cache entries that earlier builds left in /data/dalvik-cache for our own
+# root jars (mapper, update verifier APK, projection reader). Exact derived names
+# only: <our install path with @>@classes.dex.
+sg_legacy_dex_cleanup() (
+    cache=${SG_TARGET_ROOT:-}/data/dalvik-cache
+    [ -d "$cache" ] || exit 0
+    sg_path_safe "$cache" || exit 3
+    for prefix in data@nemesis@apps@hmg-seogaemo data@nemesis@backup@hmg-seogaemo@update; do
+        for suffix in @core@map@hmg-seogaemo-mapper.jar@classes.dex \
+            @app@hmg-seogaemo.apk@classes.dex \
+            @modules@wireless-carplay-and-aa.d@data@hmg-seogaemo-projection-runtime.jar@classes.dex; do
+            for entry in "$cache/$prefix"*"$suffix"; do
+                [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+                name=${entry##*/}
+                case "$name" in *[!a-zA-Z0-9_.@-]*) continue;; esac
+                middle=${name#"$prefix"}; middle=${middle%"$suffix"}
+                case "$middle" in ''|@*) ;; *) continue;; esac
+                rm -f "$entry" || exit 1
+                sg_ledger dex_legacy_remove "$entry" "" "" "" || exit 1
+            done
+        done
+    done
+)
+# The private Dalvik cache of the mapper and update verifier.
+sg_vm_cleanup() (
+    vm=$SG_DATA_ROOT/core/vm
+    [ -e "$vm" ] || exit 0
+    sg_path_safe "$vm" && [ -d "$vm" ] || exit 3
+    rm -rf "$vm" && [ ! -e "$vm" ]
+)
 sg_owner_present() {
     case "$1" in
         nemesis-adb-tcp) [ -d /data/nemesis/apps/adb.tcp ] || [ -d /data/nemesis/backup/adb.tcp ] ;;

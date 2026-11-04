@@ -21,6 +21,16 @@ unrecorded_swap() {
     conflict 'app_process changed outside the ledger; restore refused, nothing modified'
     return 3
 }
+# Generated diagnostics: our private tree, and the hook's per-app runtime directories
+# (declared as owns_generated_dirs). Apps keep writing them until the next restart.
+cleanup_runtime() {
+    sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
+    sg_generated_dirs_remove && return 0
+    case $? in
+        3) conflict 'app runtime directory holds unexpected entries; kept'; return 3 ;;
+        *) fail 'app runtime directory cleanup failed'; return 1 ;;
+    esac
+}
 compatibility() {
     map_state=$(/system/bin/sh "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state= # android44-shell: allow -- fixed dispatcher beneath the runtime-supplied package root
     sg_print "$map_state" | grep -Fxq 'state=on' ||
@@ -126,11 +136,11 @@ revert() {
         unrecorded_swap || return 3
         # An interrupted apply can have feature/property changes without the wrapper.
         sg_revert_all || { conflict 'partial apply restore blocked; ledger retained'; return 3; }
-        sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
+        cleanup_runtime || return $?
         sg_status off none 'disabled'; return 0
     fi
     sg_revert_all || { conflict 'restore blocked by drift; ledger retained'; return 3; }
-    sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
+    cleanup_runtime || return $?
     sg_print info.desired=off
     sg_status pending-restart head_unit 'restart unit to finish restoration'
 }

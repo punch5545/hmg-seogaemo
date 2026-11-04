@@ -1033,6 +1033,150 @@ def test_stray_temporaries(temp):
     assert not (state / "zygote-prepare.88").exists()
 
 
+def test_residue_cleanup(temp):
+    """Generated app dirs, journal-less project dirs and our Dalvik cache entries."""
+    base = temp / "residue"
+    base.mkdir()
+    runner = base / "runner"
+    fake = base / "fake"
+    fake_ownership(fake)
+    script(fake / "getprop", "echo firmware\n")
+    (base / "modules").mkdir()
+    namespace = base / "system/etc/hmg-seogaemo"
+    one = base / "data/data/com.example.one/app_hmg-seogaemo-wireless-runtime"
+    two = base / "data/data/com.example.two/app_hmg-seogaemo-wireless-runtime"
+    manifest = base / "modules/a.properties"
+
+    def declare(dirs):
+        manifest.write_text(
+            "owns_files=/system/etc/hmg-seogaemo/a/recipes/x.recipe,/system/etc/hmg-seogaemo/a/y,/system/lib/other.so\n"
+            f"owns_generated_dirs={dirs}\n")
+
+    logical_one = "/data/data/com.example.one/app_hmg-seogaemo-wireless-runtime"
+    logical_two = "/data/data/com.example.two/app_hmg-seogaemo-wireless-runtime"
+    declare(f"{logical_one},{logical_two}")
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+               FAKE_OWNERS=str(base / "owners.json"), SG_TARGET_ROOT=str(base),
+               SG_DATA_ROOT=str(base / "ledgerroot"), HMG_SEOGAEMO_BASE=str(base),
+               HMG_SEOGAEMO_STATE=str(base / "ledgerroot/modules/a"))
+
+    def check(body, ok=True):
+        script(runner, "set -eu\numask 077\n" + body)
+        return run(runner, env=env, ok=ok)
+
+    def populate(directory):
+        directory.mkdir(parents=True)
+        for name in ("p-1-2.txt", "p-1-2.log", "p-1-2.log.1", "p-3-4.txt.tmp"):
+            (directory / name).write_text("generated")
+
+    # Absent directories are fine; present ones are emptied and removed.
+    check("sg_generated_dirs_remove\n")
+    populate(one)
+    populate(two)
+    check("sg_generated_dirs_remove\n")
+    assert not one.exists() and not two.exists()
+    assert (base / "data/data/com.example.one").is_dir()
+    assert (base / "ledgerroot/ledger/ledger.tsv").read_text().count("generated_dir_remove") == 2
+    # Any unexpected entry refuses everything, including the clean sibling.
+    for unexpected in ("subdir", "link", "bad name", "many"):
+        populate(one)
+        populate(two)
+        if unexpected == "subdir":
+            (two / "nested").mkdir()
+        elif unexpected == "link":
+            (two / "link.txt").symlink_to(base / "outside")
+        elif unexpected == "bad name":
+            (two / "p 1.txt").write_text("x")
+        else:
+            for number in range(70):
+                (two / f"f{number}.txt").write_text("x")
+        result = check("sg_generated_dirs_remove\n", ok=False)
+        assert result.returncode == 3 and "info.restore_conflict=generated dir content" in result.stdout
+        assert (one / "p-1-2.txt").exists() and (two / "p-1-2.txt").exists()
+        shutil.rmtree(one)
+        shutil.rmtree(two)
+    # A symlinked data directory is never followed.
+    (base / "outside").mkdir()
+    (base / "outside/keep").write_text("x")
+    one.parent.mkdir(parents=True, exist_ok=True)
+    one.symlink_to(base / "outside", target_is_directory=True)
+    result = check("sg_generated_dirs_remove\n", ok=False)
+    assert result.returncode == 3 and (base / "outside/keep").exists()
+    one.unlink()
+    # Only exact project-named app directories may be declared.
+    declare("/data/data/com.example.one/not_ours")
+    populate(base / "data/data/com.example.one/not_ours")
+    result = check("sg_generated_dirs_remove\n", ok=False)
+    assert result.returncode == 2 and (base / "data/data/com.example.one/not_ours/p-1-2.txt").exists()
+    declare(f"{logical_one},{logical_two}")
+
+    # Legacy project directories: derived from owned paths, rmdir only, journals respected.
+    (namespace / "a/recipes").mkdir(parents=True)
+    (namespace / "a/recipes/foreign").write_text("kept")
+    check("sg_legacy_dirs_cleanup\n")
+    assert (namespace / "a/recipes/foreign").exists()
+    (namespace / "a/recipes/foreign").unlink()
+    (namespace.parent / "unrelated").mkdir()
+    journal = base / "ledgerroot/payload-dirs"
+    key = subprocess.run([SHELL, "-c", f'. "{ROOT / "nemesis/package/lib/common.sh"}"; sg_file_key "{namespace}"'],
+                         env=car_env(env), capture_output=True, text=True).stdout.strip()
+    (journal / key).mkdir(parents=True)
+    (journal / key / "ready").write_text("1")
+    check("sg_legacy_dirs_cleanup\n")
+    assert not (namespace / "a").exists() and namespace.is_dir()
+    assert (namespace.parent / "unrelated").is_dir()
+    shutil.rmtree(journal)
+    check("sg_legacy_dirs_cleanup\n")
+    assert not namespace.exists() and (namespace.parent / "unrelated").is_dir()
+    assert "legacy_dir_remove" in (base / "ledgerroot/ledger/ledger.tsv").read_text()
+    # A symlinked namespace is left alone.
+    (base / "elsewhere").mkdir()
+    namespace.symlink_to(base / "elsewhere", target_is_directory=True)
+    check("sg_legacy_dirs_cleanup\n")
+    assert namespace.is_symlink() and (base / "elsewhere").is_dir()
+    namespace.unlink()
+
+    # Dalvik cache entries of our own jars, by exact derived name only.
+    cache = base / "data/dalvik-cache"
+    cache.mkdir(parents=True)
+    ours = [
+        "data@nemesis@apps@hmg-seogaemo@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@apps@hmg-seogaemo@app@hmg-seogaemo.apk@classes.dex",
+        "data@nemesis@apps@hmg-seogaemo@modules@wireless-carplay-and-aa.d@data@hmg-seogaemo-projection-runtime.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@current@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.24@app@hmg-seogaemo.apk@classes.dex",
+    ]
+    others = [
+        "system@framework@hmg-seogaemo-wireless-hook.jar@classes.dex",
+        "data@nemesis@apps@hmg-seogaemo-evil@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@apps@hmg-seogaemo@core@map@other.jar@classes.dex",
+        "data@nemesis@apps@other@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@apps@hmg-seogaemo@core@map@hmg-seogaemo-mapper.jar@classes.dex.bak",
+        "data@app@com.seogaemo.hmg-1.apk@classes.dex",
+    ]
+    for name in ours + others:
+        (cache / name).write_text("cache")
+    (cache / "data@nemesis@apps@hmg-seogaemo@app@link.apk@classes.dex").symlink_to(base / "outside/keep")
+    check("sg_legacy_dex_cleanup\n")
+    assert not any((cache / name).exists() for name in ours)
+    assert all((cache / name).exists() for name in others)
+    assert (cache / "data@nemesis@apps@hmg-seogaemo@app@link.apk@classes.dex").is_symlink()
+    assert (base / "outside/keep").exists()
+    assert (base / "ledgerroot/ledger/ledger.tsv").read_text().count("dex_legacy_remove") == len(ours)
+
+    # Private VM cache of the mapper and update verifier.
+    vm = base / "ledgerroot/core/vm"
+    (vm / "dalvik-cache").mkdir(parents=True)
+    (vm / "dalvik-cache/entry").write_text("cache")
+    check("sg_vm_cleanup\n")
+    assert not vm.exists() and (base / "ledgerroot/core").is_dir()
+    (base / "ledgerroot/core").rmdir()
+    (base / "ledgerroot/core").symlink_to(base / "outside", target_is_directory=True)
+    (base / "outside/vm").mkdir()
+    check("sg_vm_cleanup\n", ok=False)
+    assert (base / "outside/vm").is_dir()
+
+
 def test_public_readable(temp):
     base = temp / "public-bits"
     directory = base / "parent"
@@ -1546,6 +1690,7 @@ with tempfile.TemporaryDirectory() as directory:
     test_remount_ro_busy(root)
     test_system_directory_mode(root)
     test_stray_temporaries(root)
+    test_residue_cleanup(root)
     test_public_readable(root)
     test_file_metadata_guards(root)
     test_projection_reader_vm(root)

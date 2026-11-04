@@ -198,6 +198,34 @@ directly inside the module state directory are removed by `sg_zygote_sweep` (at 
 of a payload upgrade, at the end of baseline clearing, and by `sg_revert_all` when there
 is nothing to restore).
 
+## Uninstall residue (2026-11-04)
+
+Three kinds of generated or legacy leftovers are removed through the package API,
+never by a module directly and never with a caller-supplied path:
+
+- `owns_generated_dirs=<csv>` in `module.properties` declares exact
+  `/data/data/<package>/app_hmg-seogaemo-<name>` directories that a loaded hook creates
+  with `Context.getDir` (the wireless module declares the `-wireless-runtime` directory of
+  its five fixed packages; the Dalvik `-wireless-dex` directory stays with
+  `sg_dex_cache_track`). The generator rejects anything else. `sg_generated_dirs_remove`
+  validates every declared directory first (no symlink anywhere in the path, directory
+  holds only up to 64 regular files with plain `[a-zA-Z0-9_.-]` names) and then removes the
+  files and the directories. Any other entry is a conflict (3) and nothing is removed.
+  Modules call it after `sg_revert_all` (the wireless `revert`), and `lib/stock.sh` calls it
+  for modules with no restore material. Running apps keep writing there until the head
+  unit restarts, so a later boot-time call to the same API is the complete cleanup.
+- After every module is restored, `lib/stock.sh` runs `hmg_seogaemo_stock_residue` (best
+  effort, ledger row `stock_residue` ok/partial, never a conflict): `sg_legacy_dirs_cleanup`
+  (`rmdir` only, in passes, of the directories between each owned path under
+  `/system/etc/hmg-seogaemo` and the namespace, skipping any directory with a directory
+  journal; builds before 0.1.23 created them unjournaled, and this supersedes "never deletes
+  legacy directories" for empty project-namespace directories at whole-package restore),
+  `sg_legacy_dex_cleanup` (regular files in `/data/dalvik-cache` named
+  `data@nemesis@apps@hmg-seogaemo` or `data@nemesis@backup@hmg-seogaemo@update` plus an
+  optional `@...` middle plus `@core@map@hmg-seogaemo-mapper.jar`,
+  `@app@hmg-seogaemo.apk` or the projection reader jar path, ending `@classes.dex`) and
+  `sg_vm_cleanup` (the private `core/vm` cache). Each removal is a ledger row.
+
 ## Wireless ADB and diagnostic export (2026-11-04)
 
 Wireless ADB status exposes info.effective_port (the nonempty transient

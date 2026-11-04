@@ -533,11 +533,50 @@ def test_unrecorded_swap(folder):
         assert (car.state / f'desired/{name}').read_text() == 'off'
 
 
+def test_residue_on_restore(folder):
+    """A successful whole-package restore also clears provable residue, best effort."""
+    car = Car(folder)
+    script(car.fake / 'nemesis', 'exit 0\n')
+    target = folder / 'target'
+    namespace = target / 'system/etc/hmg-seogaemo'
+    (namespace / 'a/recipes').mkdir(parents=True)
+    generated = target / 'data/data/com.example.one/app_hmg-seogaemo-wireless-runtime'
+    generated.mkdir(parents=True)
+    (generated / 'p-1-2.txt').write_text('generated')
+    cache = target / 'data/dalvik-cache'
+    cache.mkdir(parents=True)
+    ours = cache / 'data@nemesis@apps@hmg-seogaemo@core@map@hmg-seogaemo-mapper.jar@classes.dex'
+    other = cache / 'system@framework@core.jar@classes.dex'
+    ours.write_text('cache')
+    other.write_text('cache')
+    vm = car.state / 'core/vm/dalvik-cache'
+    vm.mkdir(parents=True)
+    (vm / 'entry').write_text('cache')
+    (car.base / 'modules/a.properties').write_text(
+        'owns_props=demo.a\nwatch=boot,screen_on\n'
+        'owns_files=/system/etc/hmg-seogaemo/a/recipes/x.recipe\n'
+        'owns_generated_dirs=/data/data/com.example.one/app_hmg-seogaemo-wireless-runtime\n')
+    car.env['SG_TARGET_ROOT'] = str(target)
+    result = car.run('stock', 'restore')
+    assert 'state=off' in result.stdout or 'state=pending-restart' in result.stdout
+    assert not generated.exists() and not namespace.exists()
+    assert not ours.exists() and other.exists() and not (car.state / 'core/vm').exists()
+    ledger = (car.state / 'ledger/ledger.tsv').read_text()
+    assert 'generated_dir_remove' in ledger and 'legacy_dir_remove' in ledger
+    assert 'dex_legacy_remove' in ledger and 'stock_residue' in ledger
+    # An unexpected entry in a generated directory is a conflict, before any revert.
+    generated.mkdir(parents=True)
+    (generated / 'nested').mkdir()
+    result = car.run('stock', 'restore', ok=False)
+    assert 'state=conflict' in result.stdout and 'generated dir content' in result.stdout
+    assert (generated / 'nested').is_dir()
+
+
 with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
                  test_late_failure, test_detached_failure, test_missing_handoff,
                  test_shared_lines, test_file_metadata_diagnostic, test_reassert_restore, test_snapshot_free_recovery,
-                 test_damaged_selection_recovery, test_unrecorded_swap):
+                 test_damaged_selection_recovery, test_unrecorded_swap, test_residue_on_restore):
         folder = Path(directory).resolve() / test.__name__
         folder.mkdir()
         test(folder)
