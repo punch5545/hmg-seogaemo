@@ -1,0 +1,206 @@
+// HMG-Seogaemo runtime diagnostics. SPDX-License-Identifier: AGPL-3.0-or-later
+package hmgapi.hook;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/** Private per-process snapshots and a tag log ring; no file descriptors survive a fork. */
+public final class RuntimeResult {
+    static final int LIMIT = 65536, FIELDS = 256, VALUE = 8192, KEEP = 8;
+    private static final Map<String, String> values = new LinkedHashMap<String, String>();
+    private static File directory;
+    private static String stem;
+    private static int writerPid = -1;
+    private RuntimeResult() {}
+
+    static String clean(String value, int limit) {
+        if (value == null) return "";
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < value.length() && out.length() < limit; i++) {
+            char c = value.charAt(i);
+            out.append(Character.isISOControl(c) ? ' ' : c);
+        }
+        return out.toString();
+    }
+
+    static String text(File file, int limit) throws IOException {
+        FileInputStream in = new FileInputStream(file);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try {
+            byte[] bytes = new byte[4096]; int n;
+            while ((n = in.read(bytes)) != -1) {
+                if (out.size() + n > limit) throw new IOException("diagnostic size bound");
+                out.write(bytes, 0, n);
+            }
+        } finally { in.close(); }
+        return out.toString("UTF-8");
+    }
+
+    static String startTicks(String stat) throws IOException {
+        int end = stat.lastIndexOf(')');
+        String[] fields = stat.substring(end + 1).trim().split("\\s+");
+        if (end < 0 || fields.length < 20 || !fields[19].matches("[0-9]+"))
+            throw new IOException("bad proc stat");
+        return fields[19];
+    }
+
+    static String digest(String path) throws Exception {
+        java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+        FileInputStream in = new FileInputStream(path);
+        try { byte[] b = new byte[65536]; int n; while ((n = in.read(b)) != -1) md.update(b, 0, n); }
+        finally { in.close(); }
+        StringBuilder out = new StringBuilder();
+        for (byte b : md.digest()) out.append(String.format("%02x", b & 255));
+        return out.toString();
+    }
+
+    static synchronized void begin(File dir, String pkg, String process) {
+        try {
+            int pid = android.os.Process.myPid();
+            String ticks = startTicks(text(new File("/proc/self/stat"), 8192));
+            // A fork must never write using the inherited root writer or PID.
+            directory = null; stem = null; writerPid = -1;
+            Map<String, String> inherited = new LinkedHashMap<String, String>(values);
+            values.clear();
+            values.put("format", "1");
+            values.put("boot", text(new File("/proc/sys/kernel/random/boot_id"), 128).trim());
+            values.put("pid", String.valueOf(pid));
+            values.put("start_ticks", ticks);
+            values.put("uid", String.valueOf(android.os.Process.myUid()));
+            values.put("package", clean(pkg, VALUE));
+            values.put("process", clean(process, VALUE));
+            for (String key : new String[] {"payload_jar_sha256", "payload_loader_sha256", "gate.state", "gate.reason"})
+                if (inherited.containsKey(key)) values.put(key, inherited.get(key));
+            if (!values.containsKey("payload_jar_sha256")) {
+                values.put("payload_jar_sha256", digest("/system/framework/hmg-seogaemo-wireless-hook.jar"));
+                values.put("payload_loader_sha256", digest("/system/lib/libhmg_seogaemo_wireless_hook.so"));
+            }
+            configure(dir, pid, ticks);
+            publish();
+        } catch (Throwable ignored) { directory = null; stem = null; writerPid = -1; }
+    }
+
+    static void configure(File dir, int pid, String ticks) throws IOException {
+        if (!dir.exists() && !dir.mkdir()) throw new IOException("runtime directory unavailable");
+        if (!dir.isDirectory() || !dir.getCanonicalFile().equals(dir.getAbsoluteFile()))
+            throw new IOException("runtime directory alias");
+        dir.setReadable(false, false); dir.setWritable(false, false); dir.setExecutable(false, false);
+        dir.setReadable(true, true); dir.setWritable(true, true); dir.setExecutable(true, true);
+        directory = dir; writerPid = pid; stem = "p-" + pid + "-" + ticks;
+    }
+
+    public static synchronized void put(String key, String value) {
+        try {
+            if (!key.matches("[a-zA-Z0-9_.-]+") || (!values.containsKey(key) && values.size() >= FIELDS)) return;
+            values.put(key, clean(value, VALUE));
+            publish();
+        } catch (Throwable ignored) {}
+    }
+
+    public static synchronized void phase(String name, String state, String reason) {
+        try {
+            if (!name.matches("[a-zA-Z0-9_.-]+")) return;
+            values.put(name + ".state", clean(state, VALUE));
+            values.put(name + ".reason", clean(reason, VALUE));
+            publish();
+        } catch (Throwable ignored) {}
+    }
+
+    static boolean writable() {
+        return directory != null && stem != null && writerPid == android.os.Process.myPid();
+    }
+
+    static File file(String suffix) throws IOException {
+        File f = new File(directory, stem + suffix);
+        if (!f.getCanonicalFile().equals(f.getAbsoluteFile())) throw new IOException("runtime symlink");
+        return f;
+    }
+
+    static void write(File file, byte[] bytes, boolean append) throws IOException {
+        if (!file.exists() && !file.createNewFile()) throw new IOException("runtime create failed");
+        file.setReadable(false, false); file.setWritable(false, false);
+        file.setReadable(true, true); file.setWritable(true, true);
+        FileOutputStream out = new FileOutputStream(file, append);
+        try { out.write(bytes); } finally { out.close(); }
+    }
+
+    static void publish() throws IOException {
+        if (!writable()) return;
+        if (values.size() > FIELDS) return;
+        StringBuilder out = new StringBuilder();
+        for (Map.Entry<String, String> e : values.entrySet()) out.append(e.getKey()).append('=').append(e.getValue()).append('\n');
+        byte[] bytes = out.toString().getBytes("UTF-8");
+        if (bytes.length > LIMIT) return;
+        File tmp = file(".txt.tmp");
+        write(tmp, bytes, false);
+        if (!tmp.renameTo(file(".txt"))) throw new IOException("runtime rename failed");
+        prune();
+    }
+
+    static synchronized void log(String level, String message, Throwable error) {
+        try {
+            if (!writable()) return;
+            String detail = message + (error == null ? "" : " " + error);
+            byte[] bytes = (System.currentTimeMillis() + " " + level + " HMG-Seogaemo-Wireless " + clean(detail, 2048) + "\n").getBytes("UTF-8");
+            File current = file(".log"), previous = file(".log.1");
+            if (current.length() + bytes.length > LIMIT) {
+                if (previous.exists() && !previous.delete()) return;
+                if (!current.renameTo(previous)) return;
+            }
+            write(current, bytes, true);
+        } catch (Throwable ignored) {}
+    }
+
+    static void prune() {
+        File[] files = directory.listFiles(new java.io.FilenameFilter() {
+            public boolean accept(File d, String n) { return n.matches("p-[0-9]+-[0-9]+[.](txt([.]tmp)?|log([.]1)?)"); }
+        });
+        if (files == null) return;
+        // Include orphan logs/temporary files left by an interrupted publication.
+        final Map<String, Long> newest = new LinkedHashMap<String, Long>();
+        for (File f : files) {
+            String key = f.getName().substring(0, f.getName().indexOf('.'));
+            Long old = newest.get(key);
+            if (old == null || f.lastModified() > old.longValue()) newest.put(key, f.lastModified());
+        }
+        String[] records = newest.keySet().toArray(new String[newest.size()]);
+        Arrays.sort(records, new Comparator<String>() {
+            public int compare(String a, String b) {
+                long first = newest.get(a).longValue(), second = newest.get(b).longValue();
+                return first < second ? 1 : first == second ? a.compareTo(b) : -1;
+            }
+        });
+        int kept = 1;
+        for (int i = 0; i < records.length; i++) {
+            String old = records[i];
+            if (old.equals(stem)) continue;
+            if (kept++ < KEEP) continue;
+            for (String suffix : new String[] {".txt", ".txt.tmp", ".log", ".log.1"}) new File(directory, old + suffix).delete();
+        }
+    }
+
+    /** Bounded non-evaluating parser for a future root export/status adapter. */
+    public static Map<String, String> read(File file) throws IOException {
+        if (!file.isFile() || !file.getCanonicalFile().equals(file.getAbsoluteFile())) throw new IOException("bad runtime file");
+        String text = text(file, LIMIT);
+        if (!text.endsWith("\n")) throw new IOException("incomplete runtime record");
+        Map<String, String> out = new LinkedHashMap<String, String>();
+        for (String line : text.split("\n")) {
+            int at = line.indexOf('=');
+            if (at < 1) throw new IOException("bad runtime line");
+            String key = line.substring(0, at), value = line.substring(at + 1);
+            if (!key.matches("[a-zA-Z0-9_.-]+") || out.containsKey(key) || out.size() >= FIELDS ||
+                    value.length() > VALUE || !clean(value, VALUE).equals(value)) throw new IOException("bad runtime field");
+            out.put(key, value);
+        }
+        if (!"1".equals(out.get("format"))) throw new IOException("unknown runtime format");
+        return out;
+    }
+}

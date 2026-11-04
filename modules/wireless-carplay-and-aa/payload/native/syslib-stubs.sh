@@ -18,6 +18,6 @@ mk() {   # mk <lib> <symbol>...
       -nostdlib -shared -fuse-ld=lld -Wl,--hash-style=sysv -Wl,--build-id=none -Wl,-soname,$lib.so \
       -o "$D/$lib.so" "$D/$lib.c"
 }
-mk libc cacheflush calloc close getenv getpid getuid memcpy mmap mprotect open read strlen unsetenv
+mk libc __errno cacheflush calloc close getenv getpid getuid memcpy mmap mprotect open read strlen unsetenv
 mk liblog __android_log_print
 mk libdl dlopen dlsym
