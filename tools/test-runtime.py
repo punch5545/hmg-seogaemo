@@ -314,8 +314,9 @@ def test_automatic_intent_lock(temp):
         copy_shell_script(ROOT / 'nemesis/package/bin/hmg-seogaemo-root', dispatcher)
         # A private sleep wrapper makes lock contention observable even with
         # mksh's builtin sleep, without timing the race against the host clock.
+        # Ten retries of 0.3 s leave slow CI runners time to finish the explicit call.
         dispatcher.write_text(dispatcher.read_text().replace('umask 077', '''umask 077
-sleep() { : > "$SG_DATA_ROOT/queued"; /bin/sleep 0.1; }''', 1))
+sleep() { : > "$SG_DATA_ROOT/queued"; /bin/sleep 0.3; }''', 1))
         copy_shell_script(ROOT / 'nemesis/package/lib/common.sh', base / 'lib/common.sh')
         (base / 'modules.list').write_text('example\n')
         (base / 'modules.graph').write_text('example\tdepends=\texcludes=\n')
