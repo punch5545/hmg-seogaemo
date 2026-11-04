@@ -1297,7 +1297,74 @@ sg_revert_all() {
     sg_dirs_revert || return $?
     sg_baseline_clear
 }
+# Bounded child waits. The head unit has no timeout binary: callers start the
+# child in the background, redirect its output to a file, and pass its PID here.
+# Returns the child's status, or 124 after the whole attempt was killed.
+# Children are found through toolbox ps (PID is field 2, PPID field 3).
+sg_kill_tree() {
+    sg_kt_pid=$1; sg_kt_depth=${2:-3}
+    if [ "$sg_kt_depth" -gt 0 ]; then
+        sg_kt_list=$(ps 2>/dev/null) || sg_kt_list=
+        sg_kt_kids=
+        if [ -n "$sg_kt_list" ]; then
+            while read -r sg_kt_user sg_kt_child sg_kt_parent sg_kt_rest; do
+                [ "$sg_kt_parent" = "$sg_kt_pid" ] || continue
+                case "$sg_kt_child" in ''|*[!0-9]*) continue;; esac
+                sg_kt_kids="$sg_kt_kids $sg_kt_child"
+            done <<EOF
+$sg_kt_list
+EOF
+        fi
+        for sg_kt_child in $sg_kt_kids; do sg_kill_tree "$sg_kt_child" "$((sg_kt_depth - 1))"; done
+    fi
+    kill "$sg_kt_pid" 2>/dev/null || :
+    kill -9 "$sg_kt_pid" 2>/dev/null || :
+}
+sg_bounded_wait() {
+    case "$1:$2" in ''|*[!0-9:]*|:*|*:) return 2;; esac
+    sg_bw_pid=$1; sg_bw_limit=$2; sg_bw_elapsed=0
+    while kill -0 "$sg_bw_pid" 2>/dev/null && [ "$sg_bw_elapsed" -lt "$sg_bw_limit" ]; do
+        sleep 1
+        sg_bw_elapsed=$((sg_bw_elapsed + 1))
+    done
+    if kill -0 "$sg_bw_pid" 2>/dev/null; then
+        sg_kill_tree "$sg_bw_pid" 3
+        wait "$sg_bw_pid" 2>/dev/null || :
+        return 124
+    fi
+    wait "$sg_bw_pid"
+}
+# Read-only: the boot class path root-spawned app_process needs. Prefer the
+# inherited environment, else the init environment file. Prints one validated
+# value; fails (printing nothing) when none is usable.
+sg_bootclasspath() (
+    value=${BOOTCLASSPATH:-}
+    if [ -z "$value" ] && [ -f "${SG_INIT_ENVIRON:-/init.environ.rc}" ]; then
+        while IFS= read -r line; do
+            set -- $line
+            if [ "${1:-}" = export ] && [ "${2:-}" = BOOTCLASSPATH ] && [ -n "${3:-}" ]; then value=$3; break; fi
+        done < "${SG_INIT_ENVIRON:-/init.environ.rc}"
+    fi
+    case "$value" in
+        /system/*) ;;
+        *) exit 1;;
+    esac
+    case "$value" in *[!a-zA-Z0-9_./:+@-]*) exit 1;; esac
+    sg_write "$value"
+)
+# Private Dalvik cache so our root jars never write into /data/dalvik-cache.
+sg_vm_prepare() (
+    sg_path_safe "$1" || exit 3
+    for dir in "$1" "$1/dalvik-cache"; do
+        sg_path_safe "$dir" || exit 3
+        [ ! -e "$dir" ] || [ -d "$dir" ] || exit 3
+        mkdir -p "$dir" && chmod 700 "$dir" || exit 1
+    done
+)
 # Generated private diagnostics; no stock baseline or caller-selected paths.
+# The reader is a Dalvik process spawned as root: it runs in the background with
+# output in a private file and is killed after a fixed limit, so a hung VM can
+# neither wedge the caller nor keep operation.lock. Unusable output is unknown.
 sg_projection_runtime() (
     sg_validate owns_files /system/bin/app_process || exit 2
     sg_runtime=$SG_DATA_ROOT/runtime
@@ -1319,14 +1386,75 @@ sg_projection_runtime() (
         mkdir -p "$sg_dir" && chown 0:0 "$sg_dir" && chmod 700 "$sg_dir" || exit 1
     done
     [ "$sg_mode" != prepare ] || exit 0
+    # Reader failures: status is unknown, applying stays a pending restart,
+    # clear cannot be confirmed (nonzero). Nothing here authorizes a write.
+    sg_unknown() {
+        sg_log "projection reader: $1" || :
+        case "$sg_mode" in
+            clear)
+                # The tree is root-only private state; remove it directly when
+                # the reader could not run. A reader refusal never reaches here.
+                rm -rf "$sg_projection" && [ ! -e "$sg_projection" ] || exit 1
+                rmdir "$sg_runtime" 2>/dev/null || :
+                exit 0 ;;
+            applying) sg_print state=pending-restart restart=head_unit "detail=$(sg_clean "$1")" ;;
+            *) sg_print state=unknown restart=none "detail=$(sg_clean "$1")" ;;
+        esac
+        exit 0
+    }
     # OTA dispatch enters through update/current; resolve that package pointer
     # before applying the no-symlink guard to the fixed reader artifact.
     sg_helper_dir=$(readlink -f "$HMG_SEOGAEMO_MODULE_DIR") || exit 1
     sg_helper=$sg_helper_dir/data/hmg-seogaemo-projection-runtime.jar
     sg_path_safe "$sg_helper" && [ -f "$sg_helper" ] || exit 1
+    sg_boot=$(sg_bootclasspath) || sg_unknown 'BOOTCLASSPATH unavailable'
     sg_process=${SG_TARGET_ROOT:-}/system/bin/app_process
     if [ -f "$sg_process.hmg-seogaemo-stock" ]; then sg_process=$sg_process.hmg-seogaemo-stock; fi
-    ANDROID_DATA="$sg_projection/vm" CLASSPATH="$sg_helper" "$sg_process" /system/bin com.seogaemo.hmg.runtime.HmgSeogaemoProjectionRuntime "$sg_mode" "$SG_DATA_ROOT" # android44-shell: allow -- fixed package reader via stock API19 app_process
+    sg_limit=${SG_READER_TIMEOUT:-15}
+    case "$sg_limit" in ''|*[!0-9]*|0) sg_limit=15;; esac
+    [ "$sg_limit" -le 120 ] || sg_limit=120
+    sg_out=$SG_DATA_ROOT/reader.out.$$
+    sg_err=$SG_DATA_ROOT/reader.err.$$
+    rm -f "$sg_out" "$sg_err"
+    trap 'rm -f "$sg_out" "$sg_err"' EXIT
+    trap 'exit 1' HUP INT TERM
+    (
+        ANDROID_DATA="$sg_projection/vm" BOOTCLASSPATH="$sg_boot" CLASSPATH="$sg_helper" exec "$sg_process" /system/bin com.seogaemo.hmg.runtime.HmgSeogaemoProjectionRuntime "$sg_mode" "$SG_DATA_ROOT" # android44-shell: allow -- fixed package reader via stock API19 app_process
+    ) < /dev/null > "$sg_out" 2> "$sg_err" &
+    sg_reader=$!
+    sg_bounded_wait "$sg_reader" "$sg_limit" && sg_code=0 || sg_code=$?
+    if [ "$sg_code" -eq 124 ]; then sg_unknown "reader timed out after $sg_limit seconds"; fi
+    if [ -s "$sg_err" ]; then sg_log "projection reader: $(dd if="$sg_err" bs=1 count=200 2>/dev/null)" || :; fi
+    if [ "$sg_mode" = clear ]; then
+        # 126 and above: the VM never ran the reader (missing binary, crash).
+        if [ "$sg_code" -ge 126 ]; then sg_unknown "reader failed to start (exit $sg_code)"; fi
+        exit "$sg_code"
+    fi
+    sg_state=; sg_restart=; sg_detail=; sg_lines=0
+    if [ -f "$sg_out" ] && [ ! -L "$sg_out" ]; then
+        sg_size=$(sg_file_size "$sg_out") || sg_size=99999
+    else sg_size=99999; fi
+    if [ "$sg_size" -le 2048 ]; then
+        while IFS= read -r sg_line; do
+            sg_lines=$((sg_lines + 1))
+            case "$sg_line" in
+                state=*) sg_state=${sg_line#state=};;
+                restart=*) sg_restart=${sg_line#restart=};;
+                detail=*) sg_detail=${sg_line#detail=};;
+                *) sg_lines=99;;
+            esac
+        done < "$sg_out"
+    else sg_lines=99; fi
+    case "$sg_state:$sg_restart" in
+        on:none|failed:none|unknown:none|pending-restart:head_unit|pending-restart:none) ;;
+        *) sg_lines=99 ;;
+    esac
+    if [ "$sg_lines" -ne 3 ] || { [ "$sg_code" -ne 0 ] && { [ "$sg_code" -ne 1 ] || [ "$sg_state" != failed ]; }; }; then
+        sg_unknown "reader gave no valid output (exit $sg_code)"
+    fi
+    sg_print "state=$sg_state" "restart=$sg_restart" "detail=$(sg_clean "$sg_detail")"
+    [ "$sg_state" != failed ] || exit 1
+    exit 0
 )
 sg_owner_present() {
     case "$1" in

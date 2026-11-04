@@ -284,6 +284,25 @@ cache along with the diagnostic copies.
 The fixed reader artifact is checked beneath the canonical selected package
 directory, allowing OTA's `update/current` package pointer.
 
+The reader is a root Dalvik process that can hang, so the API never runs it
+inline. It requires a non-empty `BOOTCLASSPATH` (the inherited value, else the
+`export BOOTCLASSPATH` line of `/init.environ.rc`; the value must start with
+`/system/` and use only path-list characters) and otherwise reports
+`state=unknown` without starting the VM. It starts the reader in the background
+with stdout and stderr in private files directly under the data root, waits with
+`sg_bounded_wait <pid> <seconds>` (1-second polls, 15 seconds by default,
+`SG_READER_TIMEOUT` for tests, capped at 120), and on expiry kills the reader and
+its children (`sg_kill_tree`, toolbox `ps` PID/PPID fields) and returns 124.
+Output must be exactly one `state=`, `restart=` and `detail=` line with a known
+state/restart pair and a clean exit (1 only with `state=failed`); anything else,
+or a timeout, is `state=unknown` (`pending-restart`/`head_unit` for `applying`).
+`status` therefore never keeps `operation.lock` longer than the limit. `clear`
+that cannot run the reader (timeout, no boot class path, exit 126 or above)
+removes the root-only generated tree directly; a reader refusal (exit 1) still
+fails. `sg_bounded_wait` and `sg_kill_tree` are generic and are also used for the
+mapper and the update verifier. Callers under `set -e` must write
+`sg_bounded_wait ... && code=0 || code=$?`.
+
 ## Shared text-file line ownership (2026-11-03)
 
 `owns_files=` grants exclusive whole-file ownership. No other module may claim

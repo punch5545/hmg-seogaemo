@@ -1,0 +1,4 @@
+#!/bin/sh
+# Toolbox ps lists every process as "USER PID PPID ..."; plain host ps without
+# a terminal lists none, which would hide children from the bounded-run killer.
+exec /bin/ps -A -o user,pid,ppid,command

@@ -1258,17 +1258,23 @@ set -eu
 [ "$4" = "$SG_DATA_ROOT" ]
 [ "$ANDROID_DATA" = "$SG_DATA_ROOT/runtime/wireless-carplay-and-aa/vm" ]
 [ -d "$ANDROID_DATA/dalvik-cache" ]
+[ "$BOOTCLASSPATH" = /system/framework/core.jar ]
 sg_write "$3" > "$SG_DATA_ROOT/invoked"
+case "$3" in
+    clear) ;;
+    *) sg_print state=on restart=none detail=ready ;;
+esac
 ''')
     env = dict(os.environ, HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_STATE=str(state),
                HMG_SEOGAEMO_MODULE_DIR=str(payload), SG_DATA_ROOT=str(base / 'state'),
-               SG_TARGET_ROOT=str(target))
+               SG_TARGET_ROOT=str(target), BOOTCLASSPATH='/system/framework/core.jar')
     runner = base / 'runner'
     # Host UID differs from root; exercise the real path/mode/launch checks
     # with deterministic KitKat metadata and owner mutation.
     preamble = 'set -eu\nsg_file_meta() { echo 0700 0 0; }\nchown() { :; }\n'
     script(runner, preamble + 'sg_projection_runtime prepare\nsg_projection_runtime status\n')
-    run(runner, env=env)
+    result = run(runner, env=env)
+    assert 'state=on' in result.stdout and 'detail=ready' in result.stdout
     vm = base / 'state/runtime/wireless-carplay-and-aa/vm'
     assert vm.stat().st_mode & 0o777 == 0o700
     assert (vm / 'dalvik-cache').stat().st_mode & 0o777 == 0o700
@@ -1280,6 +1286,58 @@ sg_write "$3" > "$SG_DATA_ROOT/invoked"
     script(runner, preamble + 'sg_projection_runtime clear\n')
     run(runner, env=env)
     assert (base / 'state/invoked').read_text().strip() == 'clear'
+    # Unusable reader results never read as success: bounded, validated, unknown.
+    def reader(body, mode='status', ok=True, **extra):
+        script(process, body)
+        script(runner, preamble + f'sg_projection_runtime {mode}\n')
+        return run(runner, env=dict(env, **extra), ok=ok)
+
+    result = reader('exit 0\n')
+    assert 'state=unknown' in result.stdout and 'no valid output' in result.stdout
+    result = reader('sg_print state=on restart=none detail=a extra=1\n')
+    assert 'state=unknown' in result.stdout and 'state=on' not in result.stdout
+    result = reader('sg_print state=bogus restart=none detail=a\n')
+    assert 'state=unknown' in result.stdout
+    result = reader('sg_print state=on restart=none detail=a\nexit 7\n')
+    assert 'state=unknown' in result.stdout and 'state=on' not in result.stdout
+    result = reader('sg_print state=failed restart=none detail=broken\nexit 1\n', ok=False)
+    assert result.returncode == 1 and 'state=failed' in result.stdout and 'detail=broken' in result.stdout
+    result = reader('exit 0\n', mode='applying')
+    assert 'state=pending-restart' in result.stdout and 'restart=head_unit' in result.stdout
+    # A hung VM is killed (with its child) after the limit; the caller is not held.
+    hung = reader('sleep 60 &\nsg_write "$! $$" > "$SG_DATA_ROOT/hung-pids"\nwait\n',
+                  SG_READER_TIMEOUT='2')
+    assert 'state=unknown' in hung.stdout and 'timed out after 2 seconds' in hung.stdout
+    for pid in (base / 'state/hung-pids').read_text().split():
+        try:
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            continue
+        raise AssertionError(f'reader process {pid} survived the timeout')
+    assert not list((base / 'state').glob('reader.*'))
+    # A timeout during clear removes the root-only private tree directly.
+    (base / 'state/runtime/wireless-carplay-and-aa/leftover').write_text('x')
+    reader('sleep 60\n', mode='clear', SG_READER_TIMEOUT='2')
+    assert not (base / 'state/runtime/wireless-carplay-and-aa').exists()
+    script(runner, preamble + 'sg_projection_runtime prepare\n')
+    run(runner, env=env)
+    # No usable BOOTCLASSPATH: unknown, and the VM is never started.
+    invoked = base / 'state/invoked'
+    invoked.write_text('untouched')
+    no_boot = {key: value for key, value in env.items() if key != 'BOOTCLASSPATH'}
+    script(process, 'sg_write started > "$SG_DATA_ROOT/invoked"\n')
+    script(runner, preamble + 'sg_projection_runtime status\n')
+    result = run(runner, env=dict(no_boot, SG_INIT_ENVIRON=str(base / 'missing.rc')))
+    assert 'state=unknown' in result.stdout and 'BOOTCLASSPATH unavailable' in result.stdout
+    assert invoked.read_text() == 'untouched'
+    (base / 'init.rc').write_text('on init\n    export BOOTCLASSPATH /system/framework/core.jar:/bad;rm\n')
+    result = run(runner, env=dict(no_boot, SG_INIT_ENVIRON=str(base / 'init.rc')))
+    assert 'BOOTCLASSPATH unavailable' in result.stdout and invoked.read_text() == 'untouched'
+    (base / 'init.rc').write_text('on init\n    export PATH /sbin\n    export BOOTCLASSPATH /system/framework/core.jar\n')
+    script(process, '[ "$BOOTCLASSPATH" = /system/framework/core.jar ]\nsg_print state=on restart=none detail=derived\n')
+    result = run(runner, env=dict(no_boot, SG_INIT_ENVIRON=str(base / 'init.rc')))
+    assert 'detail=derived' in result.stdout
+    invoked.write_text('clear')
     (vm / 'dalvik-cache').rmdir()
     outside = base / 'outside'
     outside.mkdir()
