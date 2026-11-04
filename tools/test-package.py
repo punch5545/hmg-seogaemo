@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import time
 import zipfile
 
 from package import DIST, ROOT, HOST_SHELL, apk_version, verify
@@ -164,7 +165,7 @@ def run():
             for name, script in {
                 "getprop": '#!/bin/sh\ncat "$FAKE_STATE"\n',
                 "setprop": '#!/bin/sh\n. "$HMG_SEOGAEMO_TEST_COMMON"\nsg_write "$2" > "$FAKE_STATE"\n',
-                "pm": '#!/bin/sh\ncase "$1" in install) echo "$FAKE_PM_RESULT";; path) echo package:/data/app/hmg-seogaemo.apk;; esac\n',
+                "pm": '#!/bin/sh\ncase "$1" in install) [ "$FAKE_PM_RESULT" != hang ] || sleep 20; echo "$FAKE_PM_RESULT";; path) echo package:/data/app/hmg-seogaemo.apk;; esac\n',
             }.items():
                 path = fake / name
                 path.write_text(script)
@@ -179,6 +180,30 @@ def run():
                 assert (result.returncode == 0) == succeeds
                 assert state.read_text() == "1"
                 assert not list(temp.glob("hmg-seogaemo-install.*.apk"))
+            # A hung pm is bounded by the watchdog; the boot property comes
+            # back on the timeout path and when the installer itself is killed.
+            env["FAKE_PM_RESULT"] = "hang"
+            env["HMG_SEOGAEMO_PM_TIMEOUT"] = "2"
+            state.write_text("1")
+            started = time.monotonic()
+            result = subprocess.run([SHELL, str(temp / "bin/install-apk.sh")], env=env, capture_output=True, text=True)
+            assert result.returncode == 1 and "timed out" in result.stderr, result
+            assert time.monotonic() - started < 15
+            assert state.read_text() == "1"
+            assert not list(temp.glob("hmg-seogaemo-install.*"))
+            env["HMG_SEOGAEMO_PM_TIMEOUT"] = "100"
+            state.write_text("1")
+            process = subprocess.Popen([SHELL, str(temp / "bin/install-apk.sh")], env=env,
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            deadline = time.monotonic() + 8
+            while state.read_text() != "0":  # pm install runs with the property forced to 0
+                assert time.monotonic() < deadline
+                time.sleep(0.02)
+            process.terminate()
+            process.communicate(timeout=10)
+            assert process.returncode != 0 and state.read_text() == "1"
+            assert not list(temp.glob("hmg-seogaemo-install.*"))
+            del env["HMG_SEOGAEMO_PM_TIMEOUT"]
             # Root postinstall must explicitly install native client mode, even
             # when its source and all package bin files start non-executable.
             native = temp / "fake-nemesis"
