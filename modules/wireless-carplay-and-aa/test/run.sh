@@ -261,6 +261,8 @@ run revert && fail drift-accepted
 # Restore our exact applied file, then revert.
 cp "$T/state/applied/system/onebin/neev_kr/featurexml.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg"
 run revert || fail revert
+grep -q '^info.desired=off$' "$T/output" || fail revert-intent
+grep -q '^state=pending-restart$' "$T/output" || fail revert-restart
 cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail exact-feature-restore
 [ "$(cat "$T/root/system/bin/app_process")" = stock-app-process ] || fail exact-wrapper-restore
 [ ! -e "$T/root/system/bin/app_process.hmg-seogaemo-stock" ] || fail stock-copy-present

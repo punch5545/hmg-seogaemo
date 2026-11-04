@@ -149,7 +149,7 @@ def run():
             command = [SHELL, str(temp / "bin/hmg-seogaemo-root")]
             result = subprocess.run(command + ["good", "status"], capture_output=True, text=True)
             expected = f"action=status\nbase={temp}\nstate=/data/nemesis/backup/hmg-seogaemo/modules/good\nmodule_dir={temp}/modules/good.d\n"
-            assert result.returncode == 0 and result.stdout == expected
+            assert result.returncode == 0 and result.stdout == expected + 'info.desired=off\n'
             result = subprocess.run(command + ["good", "precheck"], capture_output=True, text=True)
             assert result.returncode == 0 and result.stdout == expected.replace("status", "precheck")
             for bad in ([], ["bad", "status"], ["../good", "status"], ["good", "delete"], ["good", "status", "extra"]):

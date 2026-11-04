@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from testlib import car_env, SHELL, host_shell_script, copy_shell_script
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,6 +153,10 @@ ls() {{ sg_print '-rw-r--r-- 1000 1001 3 2024-01-02 03:04 sample'; }}
 
 
 def test_output_bytes(temp):
+    punctuation = temp / 'status-punctuation'
+    script(punctuation, "sg_status on adbd 'TCP ADB on port 5555; stock switch off'\n")
+    assert run(punctuation, env=os.environ).stdout == (
+        'state=on\nrestart=adbd\ndetail=TCP ADB on port 5555; stock switch off\n')
     base = temp / "output-bytes"
     restricted = base / "bin"
     restricted.mkdir(parents=True)
@@ -265,22 +270,100 @@ echo detail=
     calls.write_text("")
     run(root, "device", "reboot", env=dict(device_env, FAKE_SYNC_FAIL="1"), ok=False)
     assert calls.read_text() == "sync\n"
-    run(root, "b", "apply", env=env, ok=False)
+    def refused(args, detail, code=3):
+        response = run(root, *args, env=env, ok=False)
+        assert response.returncode == code, response
+        assert ('state=conflict' if code == 3 else 'state=failed') in response.stdout
+        assert 'restart=none' in response.stdout
+        assert 'detail=' + detail in response.stdout, response.stdout
+    refused(("b", "apply"), "Dependency off: a")
+    refused(("a", "bogus"), "Invalid command", 2)
+    refused(("a", "status", "extra"), "Invalid command", 2)
+    refused(("unknown", "status"), "Invalid command", 2)
     run(root, "a", "apply", env=env)
+    status = run(root, "a", "status", env=env).stdout
+    assert 'info.desired=on' in status
     run(root, "b", "apply", env=env)
     run(root, "a", "watch", "boot", env=env)
     run(root, "a", "watch", "bogus", env=env, ok=False)
     run(root, "b", "watch", "boot", env=env, ok=False)
-    run(root, "c", "apply", env=env, ok=False)
-    run(root, "a", "revert", env=env, ok=False)
+    refused(("c", "apply"), "Excluded module on: a")
+    refused(("a", "revert"), "Dependent on: b")
     run(root, "b", "revert", env=env)
     run(root, "a", "revert", env=env)
+    assert 'info.desired=off' in run(root, "a", "status", env=env).stdout
     run(root, "a", "watch", "boot", env=env, ok=False)
+    (state / "uninstall").mkdir()
+    (state / "uninstall/pending").touch()
+    refused(("c", "apply"), "Uninstall pending")
+    (state / "uninstall/pending").unlink()
     run(root, "c", "apply", env=env)
     run(root, "c", "revert", env=env)
     assert (state / "desired/c").read_text() == "off"
     assert (state / "desired/a").read_text() == "off"
     assert (state / "desired/b").read_text() == "off"
+
+
+def test_automatic_intent_lock(temp):
+    for automatic, explicit, before, after in (
+            ('apply', 'revert', 'on', 'off'), ('revert', 'apply', 'off', 'on')):
+        base = temp / ('intent-' + automatic)
+        for part in ('bin', 'lib', 'modules', 'state/desired', 'fake'):
+            (base / part).mkdir(parents=True, exist_ok=True)
+        dispatcher = base / 'bin/hmg-seogaemo-root'
+        copy_shell_script(ROOT / 'nemesis/package/bin/hmg-seogaemo-root', dispatcher)
+        # A private sleep wrapper makes lock contention observable even with
+        # mksh's builtin sleep, without timing the race against the host clock.
+        dispatcher.write_text(dispatcher.read_text().replace('umask 077', '''umask 077
+sleep() { : > "$SG_DATA_ROOT/queued"; /bin/sleep 0.1; }''', 1))
+        copy_shell_script(ROOT / 'nemesis/package/lib/common.sh', base / 'lib/common.sh')
+        (base / 'modules.list').write_text('example\n')
+        (base / 'modules.graph').write_text('example\tdepends=\texcludes=\n')
+        (base / 'modules/example.properties').write_text('id=example\n')
+        (base / 'modules/example.sh').write_text('''
+echo "$1" >> "$SG_DATA_ROOT/calls"
+: > "$SG_DATA_ROOT/entered"
+while [ ! -f "$SG_DATA_ROOT/release" ]; do /bin/sleep 0.01; done
+case "$1" in apply) echo state=on;; revert) echo state=off;; esac
+echo restart=none
+''')
+        script(base / 'fake/pm', 'echo package:fixture\n')
+        state = base / 'state'
+        desired = state / 'desired/example'
+        desired.write_text(before)
+        env = car_env(dict(os.environ, SG_DATA_ROOT=str(state)))
+        env['PATH'] = str(base / 'fake') + ':' + env['PATH']
+        def wait_for(path):
+            deadline = time.monotonic() + 5
+            while not path.exists():
+                assert time.monotonic() < deadline, str(path)
+                time.sleep(0.005)
+        user = subprocess.Popen([SHELL, str(dispatcher), 'example', explicit],
+                                env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        queued = None
+        try:
+            wait_for(state / 'entered')
+            queued = subprocess.Popen([SHELL, str(dispatcher), 'example', automatic],
+                env=dict(env, HMG_SEOGAEMO_RECONCILE='1'),
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            wait_for(state / 'queued')
+            (state / 'release').touch()
+            assert user.communicate(timeout=5)[0].startswith('state=')
+            assert user.returncode == 0
+            output, error = queued.communicate(timeout=5)
+            assert queued.returncode == 0, (output, error)
+            assert 'state=not-implemented' in output and 'restart=none' in output, output
+            assert 'info.skipped=true' in output and 'info.desired=' + after in output, output
+            assert 'detail=Automatic module intent changed' in output, output
+            assert desired.read_text() == after
+            assert (state / 'calls').read_text().splitlines() == [explicit]
+            assert (state / 'journal').read_text().split()[-1] == explicit
+        finally:
+            (state / 'release').touch()
+            for child in (user, queued):
+                if child is not None and child.poll() is None:
+                    child.kill()
+                    child.communicate()
 
 
 def test_mutation_api_and_export(temp):
@@ -504,7 +587,8 @@ echo detail=
     log.write_text("")
     for name in ("a", "b"):
         (state / "desired" / name).write_text("off")
-        ready = state / "modules" / name / "prop.test" / "ready"
+        # Interrupted directory-only applies must be found in reverse discovery.
+        ready = state / "modules" / name / ("dir.key" if name == "a" else "dir-order")
         ready.parent.mkdir(parents=True)
         ready.write_text("1")
     run(base / "svc/reconcile.sh", env=env)
@@ -742,7 +826,10 @@ def test_system_directory_mode(temp):
     # A failed file copy still leaves directory-only material for rollback.
     script(fake / "cp", '[ "$1" != "$HMG_SEOGAEMO_MODULE_DIR/recipe" ] || exit 1\n/bin/cp "$@"\n')
     check(apply, ok=False)
+    check("sg_restore_material\n")
     check("sg_revert_all\n")
+    check("sg_restore_material\n", ok=False)
+    check("sg_revert_all\n")  # Empty restore remains idempotent.
     assert not namespace.exists()
     (fake / "cp").unlink()
     check(apply)
@@ -936,6 +1023,7 @@ with tempfile.TemporaryDirectory() as directory:
     test_common(root)
     test_output_bytes(root)
     test_root(root)
+    test_automatic_intent_lock(root)
     test_mutation_api_and_export(root)
     test_service_call_api(root)
     test_reconcile(root)

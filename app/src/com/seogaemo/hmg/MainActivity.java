@@ -4,6 +4,10 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.net.ConnectivityManager;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
@@ -32,6 +36,7 @@ import com.seogaemo.hmg.module.ModuleAction;
 import com.seogaemo.hmg.module.ModuleManager;
 import com.seogaemo.hmg.module.ModulePlan;
 import com.seogaemo.hmg.module.ModuleRegistry;
+import com.seogaemo.hmg.module.ModuleResume;
 import com.seogaemo.hmg.module.RootClient;
 import com.seogaemo.hmg.module.RootResult;
 import com.seogaemo.hmg.module.Warning;
@@ -77,6 +82,10 @@ public final class MainActivity extends Activity {
     private String mapResult;
     private TextView stockStatus;
     private boolean stockBusy;
+    private boolean resumeChecking;
+    private final BroadcastReceiver networkChanges = new BroadcastReceiver() {
+        public void onReceive(Context context, Intent intent) { resumeUpdateWhenReady(); }
+    };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -90,15 +99,9 @@ public final class MainActivity extends Activity {
             showSettings();
         } else showHome();
         refreshMap(true);
-        if (getSharedPreferences("update", MODE_PRIVATE).getBoolean("resume", false)) {
-            try {
-                if (new UpdateClient(this).hasUsableNetwork()) {
-                    category = 0;
-                    showSettings();
-                    checkUpdate(); // The earlier confirmation saved this resume intent.
-                }
-            } catch (Exception ignored) { }
-        } else if (getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
+        registerReceiver(networkChanges, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
+        if (!getSharedPreferences("update", MODE_PRIVATE).getBoolean("resume", false) &&
+                getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
             updateBusy = true;
             new Thread(new Runnable() { public void run() {
                 if (!restoreModules()) updateMessage(getString(R.string.update_restore_pending));
@@ -117,6 +120,38 @@ public final class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         if (!settingsVisible && homeView != null) refreshHomeTiles(homeView);
+        resumeUpdateWhenReady();
+    }
+
+    @Override protected void onDestroy() {
+        unregisterReceiver(networkChanges);
+        super.onDestroy();
+    }
+
+    private void resumeUpdateWhenReady() {
+        if (resumeChecking || updateBusy || moduleWorking || modulePlanning || stockBusy || mapBusy || mapRefreshing ||
+                !getSharedPreferences("update", MODE_PRIVATE).getBoolean("resume", false)) return;
+        resumeChecking = true;
+        new Thread(new Runnable() { public void run() {
+            boolean ready = false;
+            try {
+                SharedPreferences resume = getSharedPreferences("update", MODE_PRIVATE);
+                boolean rebooted = !resume.contains("boot") || ModuleResume.restarted(
+                        resume.getString("boot", ""), ModuleResume.bootId());
+                ready = rebooted && ModuleResume.ready(RootClient.run("wifi-client", "status"),
+                        new UpdateClient(MainActivity.this).hasUsableNetwork());
+            } catch (Exception ignored) { }
+            final boolean canResume = ready;
+            runOnUiThread(new Runnable() { public void run() {
+                resumeChecking = false;
+                if (!canResume || isFinishing() || isDestroyed() || updateBusy || moduleWorking || modulePlanning ||
+                        stockBusy || mapBusy || mapRefreshing || !getSharedPreferences("update", MODE_PRIVATE)
+                        .getBoolean("resume", false)) return;
+                category = 0;
+                showSettings();
+                checkUpdate(); // The earlier confirmation saved this resume intent.
+            }});
+        }}, "hmg-seogaemo-update-resume").start();
     }
 
     private SharedPreferences preferences() {
@@ -459,6 +494,7 @@ public final class MainActivity extends Activity {
                 if (observedFailure != null) mapResult = observedFailure;
                 mapRefreshing = false;
                 if (settingsVisible && category == 1) showSettings();
+                resumeUpdateWhenReady();
             } });
         } }, "car-map-status").start();
     }
@@ -493,6 +529,7 @@ public final class MainActivity extends Activity {
                 if (settingsVisible && category == 1) showSettings();
                 new AlertDialog.Builder(MainActivity.this).setMessage(mapResult)
                         .setPositiveButton("OK", null).show();
+                resumeUpdateWhenReady();
             } });
         } }, "car-map-" + verb).start();
     }
@@ -662,8 +699,8 @@ public final class MainActivity extends Activity {
                     runOnUiThread(new Runnable() {
                         public void run() {
                             modulePlanning = false;
-                            new AlertDialog.Builder(MainActivity.this).setMessage(error.getMessage())
-                                    .setPositiveButton("OK", null).show();
+                            ConfirmDialog.showResult(MainActivity.this, getString(R.string.module_result_failed),
+                                    error.getMessage(), getString(R.string.close));
                         }
                     });
                     return;
@@ -705,33 +742,65 @@ public final class MainActivity extends Activity {
                         dialog.showProgress();
                         new Thread(new Runnable() {
                             public void run() {
-                                if (forUpdate) {
+                                boolean saved = true;
+                                if (forUpdate && !getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
                                     String prior = enabledModules();
-                                    getSharedPreferences("update", MODE_PRIVATE).edit()
-                                            .putString("restore", prior).putBoolean("resume", true).apply();
+                                    saved = getSharedPreferences("update", MODE_PRIVATE).edit()
+                                            .putString("restore", prior).putString("boot", ModuleResume.bootId())
+                                            .putBoolean("resume", true).commit();
+                                } else if (forUpdate) {
+                                    saved = getSharedPreferences("update", MODE_PRIVATE).edit()
+                                            .putString("boot", ModuleResume.bootId()).putBoolean("resume", true).commit();
                                 }
-                                final RootResult outcome = enable
+                                final RootResult outcome = !saved
+                                        ? new RootResult("failed", "none", getString(R.string.module_resume_failed), 1, null)
+                                        : enable
                                         ? new ModuleManager(MainActivity.this).requestEnable(module.id(),
-                                                forUpdate ? "update-check" : "settings")
+                                                forUpdate ? "update-check" : "settings", plan)
                                         : new ModuleManager(MainActivity.this).execute(plan);
                                 if (forUpdate && outcome.exitCode != 0)
-                                    getSharedPreferences("update", MODE_PRIVATE).edit().clear().apply();
+                                    getSharedPreferences("update", MODE_PRIVATE).edit().putBoolean("resume", false).commit();
+                                else if (forUpdate && !"head_unit".equals(outcome.restart))
+                                    getSharedPreferences("update", MODE_PRIVATE).edit().remove("boot").commit();
                                 runOnUiThread(new Runnable() {
                                     public void run() {
                                         moduleWorking = false;
                                         dialog.dismiss();
-                                        if (outcome.exitCode != 0)
-                                            new AlertDialog.Builder(MainActivity.this)
-                                                    .setMessage(outcome.detail).setPositiveButton("OK", null).show();
-                                        if (forUpdate) updateMessage(outcome.exitCode == 0
-                                                ? getString(R.string.update_resume_after_restart) : outcome.detail);
                                         showSettings();
+                                        String resultText = moduleResultText(plan, outcome, forUpdate);
+                                        if (forUpdate) updateMessage(resultText);
+                                        ConfirmDialog.showResult(MainActivity.this,
+                                                getString(outcome.exitCode == 0 ? R.string.module_result_complete
+                                                        : R.string.module_result_failed),
+                                                resultText, getString(R.string.close));
                                     }
                                 });
                             }
                         }, "module-operation").start();
                     }
                 }, null);
+    }
+
+    private String moduleResultText(ModulePlan plan, RootResult result, boolean forUpdate) {
+        StringBuilder message = new StringBuilder();
+        for (int i = 0; i < plan.steps.size(); i++) {
+            ModulePlan.Step step = plan.steps.get(i);
+            RootResult receipt = i < result.outcomes.size() ? result.outcomes.get(i).result : null;
+            message.append("• ").append(getString(step.enable ? R.string.plan_step_enable
+                    : R.string.plan_step_disable, getString(ModuleRegistry.find(step.id).nameResId())))
+                    .append(": ").append(getString(receipt == null ? R.string.stock_not_attempted
+                    : receipt.exitCode != 0 ? R.string.stock_module_failed
+                    : R.string.module_step_complete)).append('\n');
+        }
+        if (plan.steps.isEmpty()) message.append(getString(R.string.module_no_changes)).append('\n');
+        if (result.exitCode != 0) message.append('\n').append(result.detail).append('\n');
+        if ("head_unit".equals(result.restart))
+            message.append('\n').append(getString(R.string.module_restart));
+        else if ("adbd".equals(result.restart))
+            message.append('\n').append(getString(R.string.module_adbd_restart));
+        if (forUpdate && result.exitCode == 0)
+            message.append("\n\n").append(getString(R.string.update_resume_after_restart));
+        return message.toString();
     }
 
     private void addLanguageOption(LinearLayout content, final int labelRes, final String choice) {
@@ -911,6 +980,8 @@ public final class MainActivity extends Activity {
             message.append("\n\n").append(getString(R.string.stock_restart));
         if ("failed".equals(result.info.get("uninstall")))
             message.append("\n\n").append(getString(R.string.stock_uninstall_failed));
+        if (result.exitCode != 0 && result.detail.length() > 0)
+            message.append("\n\n").append(result.detail);
         return message.toString();
     }
 
@@ -1015,8 +1086,7 @@ public final class MainActivity extends Activity {
     }
 
     private static boolean moduleEnabled(RootResult result) {
-        return "on".equals(result.state) ||
-                ("pending-restart".equals(result.state) && !"off".equals(result.info.get("desired")));
+        return result.desiredEnabled();
     }
 
     private String enabledModules() {
@@ -1031,30 +1101,53 @@ public final class MainActivity extends Activity {
     private boolean restoreModules() {
         SharedPreferences pending = getSharedPreferences("update", MODE_PRIVATE);
         if (!pending.contains("restore")) return true;
+        if (!pending.edit().putBoolean("resume", false).commit()) return false;
+        if (pending.contains("restore_boot")) {
+            if (!ModuleResume.restarted(pending.getString("restore_boot", ""), ModuleResume.bootId()))
+                return false;
+            if (!pending.edit().remove("restore_boot").commit()) return false;
+        }
         String desired = pending.getString("restore", "");
         ModuleManager manager = new ModuleManager();
         boolean success = true;
+        try {
         for (Module module : ModuleRegistry.all()) {
             boolean wanted = ("," + desired).contains("," + module.id() + ",");
             RootResult observed = RootClient.run(module.id(), "status");
-            boolean active = moduleEnabled(observed);
-            if (active && !wanted && manager.execute(manager.plan(module.id(), false)).exitCode != 0) success = false;
+            boolean active = moduleEnabled(observed) || "on".equals(observed.state);
+            if (active && !wanted && !restoreModule(manager, module.id(), false, pending)) success = false;
         }
         for (Module module : ModuleRegistry.all()) {
             boolean wanted = ("," + desired).contains("," + module.id() + ",");
             RootResult observed = RootClient.run(module.id(), "status");
             boolean active = moduleEnabled(observed);
-            if (wanted && !active && manager.execute(manager.plan(module.id(), true)).exitCode != 0) success = false;
+            if (wanted && (!active || "off".equals(observed.state)) &&
+                    !restoreModule(manager, module.id(), true, pending)) success = false;
         }
+        } catch (IllegalStateException error) { return false; }
         for (Module module : ModuleRegistry.all()) {
             boolean wanted = ("," + desired).contains("," + module.id() + ",");
             RootResult observed = RootClient.run(module.id(), "status");
-            if (wanted ? !moduleEnabled(observed) : !("off".equals(observed.state) ||
-                    ("pending-restart".equals(observed.state) && !moduleEnabled(observed)) ||
-                    "not-implemented".equals(observed.state))) success = false;
+            if (observed.exitCode != 0 || "pending-restart".equals(observed.state) ||
+                    "head_unit".equals(observed.restart) ||
+                    (wanted ? !moduleEnabled(observed) || !"on".equals(observed.state)
+                            : moduleEnabled(observed) || !("off".equals(observed.state) ||
+                                    "not-implemented".equals(observed.state)))) success = false;
         }
-        if (success) pending.edit().clear().apply();
+        if (success) {
+            success = pending.edit().clear().commit();
+            if (success) getSharedPreferences("module_resume", MODE_PRIVATE).edit().clear().commit();
+        }
         return success;
+    }
+
+    private boolean restoreModule(ModuleManager manager, String id, boolean enable, SharedPreferences pending) {
+        RootResult result = manager.execute(manager.plan(id, enable));
+        if ("head_unit".equals(result.restart)) {
+            pending.edit().putString("restore_boot", ModuleResume.bootId()).commit();
+            return false;
+        }
+        return result.exitCode == 0;
     }
 
     private void addSidebarSection(LinearLayout parent, int titleRes, int topSpacingDp) {

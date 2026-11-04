@@ -47,6 +47,9 @@ assert "getString(R.string.cancel), uninstall, new ConfirmDialog.Action()" in st
 assert stock.index("ConfirmDialog.show") < stock.index(".edit().clear().commit()")
 assert stock.index("ConfirmDialog.show") < stock.index("RootClient.uninstallPackage()")
 assert stock.index("ConfirmDialog.show") < stock.index('RootClient.stock("restore")')
+stock_result = activity.split('private String stockResultText(', 1)[1].split('private void updateMessage', 1)[0]
+assert 'result.exitCode != 0 && result.detail.length() > 0' in stock_result
+assert '.append(result.detail)' in stock_result
 reboot = method("confirmReboot")
 assert "confirmReboot()" in method("showStock")
 assert "RootClient.rebootDevice()" not in method("showStock")
@@ -56,3 +59,6 @@ assert "setCanceledOnTouchOutside(false)" in dialog
 assert "confirm.setEnabled(false)" in dialog
 assert "cancel.requestFocus()" in dialog
 print("confirmation routing: OK")
+import subprocess
+import sys
+subprocess.run([sys.executable, str(root / 'tools/test-module-switch.py')], check=True)

@@ -6,7 +6,12 @@ case "$1" in restore|status|uninstall) ;; *) exit 2;; esac
 base=${0%/*}
 base=${base%/core}
 SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
-[ ! -L "$SG_DATA_ROOT/update/current" ] || base=$SG_DATA_ROOT/update/current
+if [ -L "$SG_DATA_ROOT/update/current" ]; then
+    . "$base/lib/payload.sh"
+    if hmg_seogaemo_payload_valid "$SG_DATA_ROOT/update/current"; then
+        base=$SG_DATA_ROOT/update/current
+    fi
+fi
 HMG_SEOGAEMO_BASE=$base
 export SG_DATA_ROOT HMG_SEOGAEMO_BASE
 . "$base/lib/common.sh"

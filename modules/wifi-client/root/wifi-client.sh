@@ -18,11 +18,13 @@ xml_ours() {
 }
 pm_wifi() { pm list features 2>/dev/null | grep -Fxq 'feature:android.hardware.wifi'; }
 
-chip_seen() {
-    for path in /sys/bus/sdio/devices/* /sys/class/net/wlan*; do
-        [ -e "$path" ] && return 0
-    done
-    return 1
+wifi_capable() {
+    # Stock init sets the vendor at boot; libhardware_legacy loads this driver
+    # and normal firmware on demand. SDIO and wlan0 can both vanish with power
+    # off, so enumeration and wlan.driver.status cannot gate initial enable.
+    [ "$(getprop tcc.wifi.vendor 2>/dev/null)" = broadcom ] &&
+        [ -f /system/wifi/bcmdhd.ko ] && [ -s /system/wifi/bcmdhd.ko ] &&
+        [ -f /system/wifi/fw_bcmdhd.bin ] && [ -s /system/wifi/fw_bcmdhd.bin ]
 }
 
 external_owner() {
@@ -91,9 +93,8 @@ compatible() {
         NEEV.KOR.*.260902) ;;
         *) result incompatible none 'Unsupported firmware' ;;
     esac
-    if ! chip_seen; then
-        # wlan0 may be absent until the Wi-Fi service starts; SDIO is enough.
-        result incompatible none 'No SDIO or WLAN device detected'
+    if ! wifi_capable; then
+        result incompatible none 'Stock Broadcom Wi-Fi capability unavailable'
     fi
 }
 

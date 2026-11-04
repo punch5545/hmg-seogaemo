@@ -37,7 +37,7 @@ sg_clean() {
         sg_char=${sg_chars%"${sg_chars#?}"}
         sg_chars=${sg_chars#?}
         case "$sg_char" in
-            [a-zA-Z0-9]|' '|'('|')'|[.,:_/+=-]) sg_output=$sg_output$sg_char ;;
+            [a-zA-Z0-9]|' '|'('|')'|';'|[.,:_/+=-]) sg_output=$sg_output$sg_char ;;
             *) sg_output=$sg_output? ;;
         esac
     done
@@ -221,10 +221,15 @@ sg_file_restore() {
         *) return 1 ;;
     esac
 }
+sg_restore_conflict() {
+    sg_print "info.restore_conflict=$(sg_clean "$*")"
+    sg_log "conflict: $*" || :
+    return 3
+}
 sg_restore_preflight() {
     sg_dirs_preflight || return 3
     sg_line_preflight || return 3
-    sg_check_build || return 3
+    sg_check_build || { sg_restore_conflict 'build preflight: ro.build.product missing or changed'; return 3; }
     for sg_check in "$HMG_SEOGAEMO_STATE"/prop.*/ready; do
         [ -f "$sg_check" ] || continue
         sg_dir=${sg_check%/ready}
@@ -233,7 +238,9 @@ sg_restore_preflight() {
         sg_current=$(getprop "$sg_key") || return 1
         [ "$sg_current" = "$sg_live" ] || sg_prop_drift_allowed "$sg_key" || {
             [ -f "$sg_dir/applied" ] &&
-                [ "$sg_current" = "$(cat "$sg_dir/applied")" ] || return 3
+                [ "$sg_current" = "$(cat "$sg_dir/applied")" ] || {
+                    sg_restore_conflict "property preflight: $sg_key"; return 3;
+                }
         }
     done
     for sg_check in "$HMG_SEOGAEMO_STATE"/file.*/ready; do
@@ -802,7 +809,7 @@ sg_line_preflight() (
     for marker in "$HMG_SEOGAEMO_STATE"/line.*/ready; do
         [ -f "$marker" ] || continue
         target=$(cat "${marker%/ready}/path") || exit 1
-        sg_line_guard "$target" || exit $?
+        sg_line_guard "$target" || { sg_restore_conflict "line preflight: $target"; exit 3; }
     done
 )
 sg_line_revert_all() (
@@ -1117,7 +1124,18 @@ sg_zygote_install() {
     if [ "$sg_rc" -ne 0 ]; then sg_revert_all || sg_log 'zygote rollback blocked'; return 1; fi
     [ -f "$sg_stock" ] && [ -x "$sg_stock" ] && sg_equal "$sg_stock_saved/bytes" "$sg_stock"
 }
+sg_restore_material() {
+    for sg_material in "$HMG_SEOGAEMO_STATE"/prop.*/ready "$HMG_SEOGAEMO_STATE"/file.*/ready \
+        "$HMG_SEOGAEMO_STATE"/line.*/ready "$HMG_SEOGAEMO_STATE"/bind.* \
+        "$HMG_SEOGAEMO_STATE"/changes "$HMG_SEOGAEMO_STATE"/dex.cache \
+        "$HMG_SEOGAEMO_STATE"/dir.* "$HMG_SEOGAEMO_STATE"/dir-order; do
+        [ ! -f "$sg_material" ] || return 0
+    done
+    return 1
+}
 sg_revert_all() {
+    # Consumed snapshots are already stock; a leftover desired bit is not a baseline.
+    sg_restore_material || return 0
     sg_zygote_finalize_guard || return 3
     sg_dex_finalize || return 3
     sg_restore_preflight || return 3

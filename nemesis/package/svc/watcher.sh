@@ -3,11 +3,13 @@
 umask 077
 base=${0%/*}
 base=${base%/svc}
-. "$base/lib/common.sh"
-current=/data/nemesis/backup/hmg-seogaemo/update/current
-if [ "$base" != "$current" ] && [ -L "$current" ] && [ -f "$current/svc/watcher.sh" ]; then
-    exec /system/bin/sh "$current/svc/watcher.sh"
+current=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update/current
+if [ -L "$current" ] && [ -f "$current/svc/watcher.sh" ] && [ -r "$current/svc/watcher.sh" ] &&
+        [ "$(readlink -f "$base")" != "$(readlink -f "$current")" ]; then
+    exec /system/bin/sh "$current/svc/watcher.sh" "$@"
 fi
+. "$base/lib/common.sh"
+
 state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 root=$base/bin/hmg-seogaemo-root
 log=$state/reconcile.log

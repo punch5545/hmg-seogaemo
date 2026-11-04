@@ -21,6 +21,6 @@ public abstract class RootBackedModule implements Module {
                 ("pending-restart".equals(result.state) && !"off".equals(result.info.get("desired")));
         boolean pending = "pending-restart".equals(result.state);
         String error = result.exitCode == 0 ? null : result.state;
-        return new ModuleStatus(on, on, pending, error, 0L);
+        return new ModuleStatus(result.desiredEnabled(), on, pending, error, 0L);
     }
 }

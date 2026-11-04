@@ -7,7 +7,7 @@ import signal
 import subprocess
 import tempfile
 import time
-from testlib import car_env, SHELL, host_shell_tree
+from testlib import car_env, SHELL, host_shell_tree, host_shell_script
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,9 +22,6 @@ class Car:
         self.base = folder / 'package'
         shutil.copytree(ROOT / 'nemesis/package', self.base)
         host_shell_tree(self.base)
-        # mksh has builtin cat, so PATH cannot intercept this Linux-only file.
-        with (self.base / 'lib/common.sh').open('a') as common:
-            common.write('\ncat() { if [ "$1" = /proc/sys/kernel/random/boot_id ]; then echo test-boot; else command cat "$@"; fi; }\n')
         self.state = folder / 'data'
         self.fake = folder / 'fake'
         self.fake.mkdir()
@@ -36,6 +33,12 @@ class Car:
         self.calls.touch()
         self.apk = folder / 'apk'
         self.apk.touch()
+        # mksh has a builtin cat, so a PATH shim cannot replace this Linux file.
+        self.boot = folder / 'boot-id'
+        self.boot.write_text('test-boot')
+        stock_lib = self.base / 'lib/stock.sh'
+        stock_lib.write_text(stock_lib.read_text().replace(
+            '/proc/sys/kernel/random/boot_id', str(self.boot)))
         self.env = car_env(dict(os.environ, SG_DATA_ROOT=str(self.state),
             SG_PROPERTY_ROOT=str(self.backing), FAKE_COMMON=str(self.base / 'lib/common.sh'),
             FAKE_LIVE=str(self.live), FAKE_CALLS=str(self.calls),
@@ -71,9 +74,7 @@ case "$1" in
     revert)
         sg_print "$id revert" >> "$FAKE_CALLS"
         [ "$FAKE_FAIL" != "$id" ] || { sg_status failed none injected; exit 1; }
-        if [ -f "$HMG_SEOGAEMO_STATE/build" ]; then
-            sg_revert_all || { sg_status conflict none drift; exit 3; }
-        fi
+        sg_revert_all || { sg_status conflict none drift; exit 3; }
         [ "$FAKE_FAIL" != "late-$id" ] || { sg_status failed none service; exit 1; }
         if [ "$id" = c ]; then
             sg_print info.desired=off
@@ -146,12 +147,45 @@ def test_restore(folder):
         car.run(*args, ok=False)
 
 
+def test_damaged_selection_recovery(folder):
+    car = Car(folder)
+    car.enable()
+    selected = folder / 'damaged-ota'
+    (selected / 'bin').mkdir(parents=True)
+    (selected / 'bin/hmg-seogaemo-root').write_text('if then\n')
+    (selected / 'scripts').mkdir()
+    (selected / 'scripts/preuninstall.sh').write_text('exit 90\n')
+    current = car.state / 'update/current'
+    current.parent.mkdir(parents=True)
+    current.symlink_to(selected, target_is_directory=True)
+    result = car.run('stock', 'restore')
+    assert 'info.module_a=reverted' in result.stdout, result
+    for name in 'abc':
+        assert (car.state / f'desired/{name}').read_text() == 'off'
+        assert (car.live / f'demo.{name}').read_text() == ''
+    # Genuine drift still blocks fallback restore and retains the exact baseline.
+    current.unlink()
+    car.run('a', 'apply')
+    current.symlink_to(selected, target_is_directory=True)
+    (car.live / 'demo.a').write_text('external')
+    result = car.run('stock', 'restore', ok=False)
+    assert 'state=conflict' in result.stdout
+    assert (car.state / 'modules/a/prop.demo.a/ready').exists()
+    car.hook(ok=False)
+    assert car.apk.exists()
+    (car.live / 'demo.a').write_text('ours')
+    car.hook()
+    assert not car.apk.exists()
+    assert (car.live / 'demo.a').read_text() == ''
+
+
 def test_conflict(folder):
     car = Car(folder)
     car.enable()
     (car.live / 'demo.a').write_text('external')
     result = car.run('stock', 'restore', ok=False)
     assert 'state=conflict' in result.stdout and 'info.module_a=conflict' in result.stdout
+    assert 'property preflight: demo.a' in result.stdout
     assert 'info.module_b=not_attempted' in result.stdout
     assert car.calls.read_text() == ''  # ALL preflight before any restore
     for name in 'abc':
@@ -262,9 +296,10 @@ def test_missing_handoff(folder):
     job.mkdir(parents=True)
     shutil.copy(car.base / 'core/uninstall-detached.sh', job / 'run.sh')
     shutil.copy(car.base / 'lib/common.sh', job / 'common.sh')
-    with (job / 'common.sh').open('a') as common:
-        common.write('\nsleep() { :; }\n')  # mksh also provides builtin sleep
     script(car.fake / 'sleep', 'exit 0\n')  # bounded expiry without waiting 30s
+    runner = job / 'run.sh'
+    runner.write_text('sleep() { "' + str(car.fake / 'sleep') + '" "$@"; }\n' +
+                      runner.read_text())
     script(car.fake / 'nemesis', 'sg_print unexpected >> "$FAKE_CALLS"\n')
     (job / 'ready').write_text('wrong-pid')
     result = subprocess.run([SHELL, str(job / 'run.sh')], env=car.env,
@@ -358,10 +393,53 @@ def test_reassert_restore(folder):
     assert (car.backing / 'demo.a').read_bytes() == b'original\x00'
 
 
+def test_snapshot_free_recovery(folder):
+    car = Car(folder)
+    car.run('a', 'apply')
+    car.run('a', 'revert')
+    assert not (car.state / 'modules/a/build').exists()
+    car.run('a', 'revert')  # Direct repeated revert is harmless.
+    # Exact incident: completed disk revert, stale desired ON, failed stock pause.
+    (car.state / 'desired/a').write_text('on')
+    (car.state / 'stock').mkdir(exist_ok=True)
+    (car.state / 'stock/paused').write_text('paused')
+    car.run('stock', 'restore')
+    assert (car.state / 'desired/a').read_text() == 'off'
+    assert (car.state / 'stock/paused').exists()
+    # The app's explicit enable is allowed to recover from the paused state.
+    car.run('a', 'apply')
+    assert not (car.state / 'stock/paused').exists()
+    # Missing build is still a conflict when actual restore material exists.
+    (car.state / 'modules/a/build').unlink()
+    result = car.run('stock', 'restore', ok=False)
+    assert 'build preflight: ro.build.product' in result.stdout
+    assert (car.state / 'desired/a').read_text() == 'on'
+    assert (car.state / 'modules/a/prop.demo.a/ready').exists()
+    assert (car.live / 'demo.a').read_text() == 'ours'
+    # Use the shipped CarPlay revert for the owner's empty-ledger recovery.
+    (car.state / 'modules/a/build').write_text('NEEV.KOR.0000.V039.001.260902')
+    car.run('stock', 'restore')
+    module = 'wireless-carplay-and-aa'
+    shutil.copyfile(ROOT / f'modules/{module}/module.properties',
+                    car.base / f'modules/{module}.properties')
+    (car.base / f'modules/{module}.sh').write_text(host_shell_script(
+        (ROOT / f'modules/{module}/root/{module}.sh').read_text()))
+    (car.base / 'modules.list').write_text(module + '\n')
+    (car.base / 'modules.graph').write_text(module + '\tdepends=\texcludes=\n')
+    (car.state / f'desired/{module}').write_text('on')
+    assert not (car.state / f'modules/{module}/build').exists()
+    assert (car.state / 'stock/paused').exists()
+    result = car.run('stock', 'restore')
+    assert 'state=off' in result.stdout or 'state=pending-restart' in result.stdout
+    assert (car.state / f'desired/{module}').read_text() == 'off'
+    car.run(module, 'revert')
+
+
 with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
                  test_late_failure, test_detached_failure, test_missing_handoff,
-                 test_shared_lines, test_reassert_restore):
+                 test_shared_lines, test_reassert_restore, test_snapshot_free_recovery,
+                 test_damaged_selection_recovery):
         folder = Path(directory).resolve() / test.__name__
         folder.mkdir()
         test(folder)

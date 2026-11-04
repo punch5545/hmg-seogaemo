@@ -17,6 +17,10 @@ cp /system/xbin/nemesis "$base/bin/nemesis-client.tmp.$$" || exit 1
 chmod 755 "$base/bin/nemesis-client.tmp.$$" || exit 1
 mv "$base/bin/nemesis-client.tmp.$$" "$base/bin/nemesis-client" || exit 1
 if [ "$(getprop sys.boot_completed)" = 1 ]; then
-    exec /system/bin/sh "$base/bin/install-apk.sh"
+    /system/bin/sh "$base/bin/install-apk.sh" || exit 1
 fi
-echo 'Android is down; Manager Launch can install the APK when it is up'
+# USB repair selects this newly installed tree; retain version dirs and baselines.
+update=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update
+rm -f "$update/current" "$update/current-path" "$update/previous-path" \
+    "$update/previous-version" "$update/journal" || exit 1
+[ "$(getprop sys.boot_completed)" = 1 ] || echo 'Android is down; Manager Launch can install the APK when it is up'
