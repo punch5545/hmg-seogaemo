@@ -1,0 +1,88 @@
+name: Bug or car support / 버그 또는 차량 지원
+description: Report a problem or request support for a Gen5W firmware.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Include the exact firmware identifiers and a sanitized change ledger export.
+        Before posting text or attachments, remove personal data: VIN, phone names,
+        Wi-Fi SSIDs/passwords, and any other identifying information. GitHub issues are public.
+        본문과 첨부 파일에서 VIN, 휴대전화 이름, Wi-Fi SSID/비밀번호 등 개인정보를 삭제하세요.
+  - type: input
+    id: vehicle
+    attributes:
+      label: Vehicle model, region, year / 차량 모델, 지역, 연식
+    validations:
+      required: true
+  - type: input
+    id: product
+    attributes:
+      label: ro.build.product / 펌웨어 식별자
+      description: Copy the full value from Settings → Car mapping or the exported car report.
+      placeholder: NEEV.KOR.0000.V039.001.260902
+    validations:
+      required: true
+  - type: input
+    id: onebin
+    attributes:
+      label: onebin (ro.mobis.onebindir)
+      placeholder: neev_kr
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: HMG-Seogaemo app/package and NEMESIS versions / 버전
+      description: Include both app and package versions if they differ.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install route / 설치 방법
+      options:
+        - USB
+        - OTA
+        - ADB
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: map-status
+    attributes:
+      label: Map status / 매핑 상태
+      description: Copy Settings → Car mapping status, including verification errors or missing points.
+    validations:
+      required: true
+  - type: textarea
+    id: modules
+    attributes:
+      label: Module states / 모듈 상태
+      description: List enabled/disabled modules and any pending restart, conflict, or error status.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps, expected result, actual result / 재현 방법, 예상 결과, 실제 결과
+      description: Include whether this followed an install, update, reboot, or module change.
+    validations:
+      required: true
+  - type: textarea
+    id: ledger
+    attributes:
+      label: Sanitized ledger export / 개인정보를 삭제한 변경 기록
+      description: |
+        Export through Settings → Logs to USB (or use the documented ADB ledger export).
+        Review every file and remove VIN, phone names, Wi-Fi SSIDs/passwords, and other personal
+        data before attaching the export here. For unknown firmware, include the maps folder.
+        If export fails, describe the failure here; do not post an unreviewed archive.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Personal data / 개인정보
+      options:
+        - label: I reviewed the report and attachments and removed personal data, including VIN, phone names, and Wi-Fi SSIDs/passwords.
+          required: true

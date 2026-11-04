@@ -27,6 +27,33 @@ HMG-Seogaemo's core mapper and hookpoint catalogue are independently implemented
 
 Run `sh tools/upstream-diff.sh [path/to/HMG-API]` after updating a local clone. Review the reported commits and changed paths, then translate relevant behavior into our schema and implementation. Keep point IDs stable. Re-run `make test`, `tools/verify-map`, and on-car mapping before accepting changed shape rules. Upstream changes are never copied automatically.
 
+## Component review baselines
+
+Each section of the host review helper has its own explicit baseline below.
+A review records evidence; it does not advance the baseline or import code.
+Change the corresponding literal in the script and this table together only
+when the translated component has been accepted.
+
+| Review component | Baseline | Tracked HMG-API paths |
+| --- | --- | --- |
+| Mapper and catalogue | `4fab437` | Mapper engine files listed above, `core/hookpoints/**`, mapper/verification tools |
+| Ported wireless payload | `4fab437` | `mods/wireless-carplay-aa/**` (including native converter and recipes), `core/loader/**`, `core/zygote/**`, `core/runtime/java/hmgapi/hook/**`, `MemRecipe.java`, `tools/mkrecipe.py`, `tools/mkmemrecipe.py` |
+| Install, uninstall and restore | `4fab437` | `install/**`, `core/app/install.sh`, installer/NEMESIS package tools |
+| hmgapid and runtime engine | `4fab437` | `core/hmgapid/**`, engine/vehicle Java, runtime tests |
+| CI and workflows | `4fab437` | `.github/workflows/**`, Dependabot, Makefile, aggregate test/script checks |
+
+HMG-API v1.0.1 (`dd10045`) was reviewed on **2026-11-04**. There are no
+wireless payload changes in `4fab437..dd10045`: the wireless mod (including
+recipes/converter), loader, zygote, copied hook classes, and `MemRecipe.java`
+are unchanged. The broader hook-runtime directory contains changes to
+`HmgApi.java`, `Mods.java`, and a new `ModDexCache.java`; these generic
+loader changes need separate assessment because our port replaces the generic loader.
+Catalogue additions are being translated separately; the
+mapper/catalogue baseline remains `4fab437` until that work is accepted.
+The review also exposes install/restore, hmgapid/runtime-engine, and workflow
+changes for separate assessment; those upstream components are not installed
+alongside HMG-Seogaemo and are never imported automatically.
+
 ## Startup consent screen reference
 
 The community [HKMC Factory 82 package](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (`local.hkmc.factory82`, release `4.2.1`, MIT) is the behavioral reference for `skip-consent-screen`. Its `packages/hkmc-factory82/svc/watch.sh` calls `com.hkmc.factory` Binder transaction `82` after startup or display wake. HMG-Seogaemo independently implements a fixed-call API and shared `watcher` service; it has not copied the package scripts. See [.agents/skip-consent-screen.md](.agents/skip-consent-screen.md).

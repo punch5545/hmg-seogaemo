@@ -11,8 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: '17'
@@ -51,7 +51,7 @@ jobs:
           chmod 600 "$RELEASE_KEYSTORE" "$OTA_MANIFEST_PRIVATE_KEY"
           unset RELEASE_KEYSTORE_B64 OTA_MANIFEST_PRIVATE_KEY_PEM
           make test
-          make package
+          # test already built and exercised the release-signed package.
           make verify-dist
           actual_cert="$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs --min-sdk-version 19 out/hmg-seogaemo.apk | awk '/certificate SHA-256 digest:/ {print $NF}')"
           test "$actual_cert" = '3a71c382c97598e17fbe688e9f1169a9575003749dd6b19ce87460cc5de1e853'

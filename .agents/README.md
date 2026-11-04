@@ -28,6 +28,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [research-adb-wireless-module.md](research-adb-wireless-module.md) | Partly superseded | Upstream ADB research; design inferences predate `wireless-adb.md`. |
 | [car-session-followups.md](car-session-followups.md) | Current | Real-car USB reinstall and status/export corrections. |
 | [README.md](README.md) | Current | This index and reading order. |
+| [ci-upstream-tracking.md](ci-upstream-tracking.md) | Current | CI timing, bounded shell-suite parallelism, workflow pins and upstream review evidence. |
 
 The target is Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (package glob `NEEV.KOR.*.260902`), onebin `neev_kr`, Android 4.4.2. Installation is NEMESIS plus HMG-Seogaemo only. Off-car tests do not establish physical-car behavior.
 
