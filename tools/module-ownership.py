@@ -16,7 +16,7 @@ def generate(root, order, output):
             if raw.startswith('#') or '=' not in raw:
                 continue
             key, value = raw.split('=', 1)
-            if key in ('owns_files', 'owns_props', 'reassert_props') and key in fields:
+            if key in ('owns_files', 'owns_props', 'reassert_props', 'owns_generated_dirs') and key in fields:
                 raise ValueError(f'duplicate ownership key: {module}:{key}')
             if key.startswith('owns_lines'):
                 if not re.fullmatch(r'owns_lines\.[1-9][0-9]*', key) or key in fields:
@@ -33,6 +33,11 @@ def generate(root, order, output):
             if (fields.get('restore') == 'reboot' or len(keys) != len(set(keys)) or
                     any(not re.fullmatch(r'[a-zA-Z0-9_.-]+', key) or key not in owned for key in keys)):
                 raise ValueError(f'invalid reassert_props: {module}')
+        generated = list(filter(None, fields.get('owns_generated_dirs', '').split(',')))
+        if len(generated) != len(set(generated)) or fields.get('restore') == 'reboot' and generated or any(
+                not re.fullmatch(r'/data/data/[A-Za-z0-9._]+/app_hmg-seogaemo-[A-Za-z0-9_-]+', path)
+                for path in generated):
+            raise ValueError(f'invalid owns_generated_dirs: {module}')
         for path in filter(None, fields.get('owns_files', '').split(',')):
             validate_path(path)
             if path in whole or any(p == path for p, _ in lines):

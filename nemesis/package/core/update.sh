@@ -48,7 +48,16 @@ mkdir "$lock" 2>/dev/null || { echo 'another root operation is active' >&2; exit
 trap 'rmdir "$lock"' 0
 trap 'exit 1' 1 2 3 15
 java_update() {
-    CLASSPATH="$trusted" app_process /system/bin com.seogaemo.hmg.core.update.UpdateVerifier "$@"
+    # Private Dalvik cache and a bounded wait: a hung VM must not hold the
+    # update lock, and our APK must not leave entries in /data/dalvik-cache.
+    sg_vm_prepare "$state/core/vm" || return 1
+    if update_boot=$(sg_bootclasspath); then BOOTCLASSPATH=$update_boot; export BOOTCLASSPATH; fi
+    ANDROID_DATA="$state/core/vm" CLASSPATH="$trusted" app_process /system/bin com.seogaemo.hmg.core.update.UpdateVerifier "$@" &
+    update_pid=$!
+    # First run may dexopt the whole APK; copy/extract handle the downloaded payload.
+    sg_bounded_wait "$update_pid" 240 && update_code=0 || update_code=$?
+    if [ "$update_code" -eq 124 ]; then echo 'update verifier timed out' >&2; fi
+    return "$update_code"
 }
 switch_to() {
     rm -f "$root/next"

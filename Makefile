@@ -76,6 +76,9 @@ test: package
 	mkdir -p out/trust-test
 	javac -source 7 -target 7 -d out/trust-test app/src/com/seogaemo/hmg/core/update/UpdateTrust.java tools/UpdateTrustTest.java
 	java -cp out/trust-test com.seogaemo.hmg.core.update.UpdateTrustTest app/res/raw/update_roots.pem tools/fixtures/tls/api.github.com.pem tools/fixtures/tls/objects.githubusercontent.com.pem
+	mkdir -p out/guards-test
+	javac -source 7 -target 7 -d out/guards-test app/src/com/seogaemo/hmg/core/update/BoundedProcess.java app/src/com/seogaemo/hmg/module/ModuleResume.java app/src/com/seogaemo/hmg/module/RestoreGate.java app/src/com/seogaemo/hmg/module/RootResult.java tools/AppGuardsTest.java
+	java -cp out/guards-test AppGuardsTest
 
 clean:
 	rm -rf out

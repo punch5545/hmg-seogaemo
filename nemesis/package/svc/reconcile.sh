@@ -14,7 +14,9 @@ fi
 # The installed entry owns USB APK recovery, including when a failed repair
 # retained an older OTA selection that predates pending-install support.
 state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
-[ ! -f "$state/stock/paused" ] || exit 0
+# The pending request was explicitly published by a USB install, so it is
+# completed even when a failed stock restore paused automatic module calls
+# (install-pending.sh still refuses while an uninstall is queued).
 if [ -f "$state/app-install/pending" ]; then
     /system/bin/sh "$base/svc/install-pending.sh" >> "$state/reconcile.log" 2>&1 || :
     if [ -f "$state/app-install/pending" ]; then
@@ -23,6 +25,7 @@ if [ -f "$state/app-install/pending" ]; then
         case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) exit 1;; esac
     fi
 fi
+[ ! -f "$state/stock/paused" ] || exit 0
 current=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update/current
 delegate_current() {
     if [ -L "$current" ] && [ -f "$current/svc/reconcile.sh" ] && [ -r "$current/svc/reconcile.sh" ] &&
@@ -159,7 +162,7 @@ retry_deferred() {
     # Wait for that publication before taking responsibility for cleanup.
     ready=0
     while [ "$ready" -lt 5 ]; do
-        read -r retry_pid retry_owner < "$retry_dir/pid" 2>/dev/null || :
+        { read -r retry_pid retry_owner < "$retry_dir/pid"; } 2>/dev/null || :
         if [ "$retry_owner" = "$$" ] && [ "$retry_pid" != "$$" ]; then
             retry_claim="$retry_pid $retry_owner"
             break
@@ -168,8 +171,19 @@ retry_deferred() {
         sleep 1
     done
     [ -n "$retry_claim" ] || exit 0
+    # Each pass costs two JVMs: back off and give up after a bounded number of
+    # tries per boot (the next boot, or any module action, starts fresh).
+    retry_tries=0
     while [ -n "$deferred" ]; do
-        sleep 30
+        case "$retry_tries" in
+            0) retry_wait=30;; 1) retry_wait=60;; 2) retry_wait=120;; *) retry_wait=300;;
+        esac
+        if [ "$retry_tries" -ge "8" ]; then
+            echo "deferred map retries exhausted after $retry_tries attempts:$deferred" >> "$log"
+            exit 0
+        fi
+        retry_tries=$((retry_tries + 1))
+        sleep "$retry_wait"
         [ ! -f "$state/stock/paused" ] || exit 0
         case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) exit 0;; esac
         # New payload services own their retries. Never delegate from an old
@@ -190,7 +204,7 @@ start_retry() {
             sleep 1
         done
         retry_pid=
-        read -r retry_pid retry_owner < "$retry_dir/pid" 2>/dev/null || :
+        { read -r retry_pid retry_owner < "$retry_dir/pid"; } 2>/dev/null || :
         case "$retry_pid" in ''|*[!0-9]*) ;; *)
             if kill -0 "$retry_pid" 2>/dev/null; then
                 [ "$(cat "$retry_dir/base" 2>/dev/null)" != "$base" ] || return 0

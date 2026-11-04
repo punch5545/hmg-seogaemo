@@ -17,7 +17,9 @@ not copied into this repository.
 Normal readiness retries use 2, 4, 8, 16, then 30 seconds, capped at 30 with no
 permanent timeout. OTA health permits six waits and fails if still unavailable.
 Existing map verification retries stay detached and reread desired state, stock
-pause, app presence and payload selection before applying deferred modules.
+pause, app presence and payload selection before applying deferred modules. Each
+retry pass costs two JVMs, so waits back off 30, 60, 120, then 300 seconds and stop
+after eight passes per boot (logged as exhausted); a later boot starts fresh.
 
 ## QuickBoot evidence boundary
 
@@ -43,12 +45,22 @@ a new signal; existing declared property-drift handling is unaffected.
 USB postinstall retains the APK and its fixed helper under private
 `app-install/payload/` and publishes a pending request. Reconcile completes it
 before missing-APK cleanup. The worker shares the operation lock with module
-and restore operations, honors stock pause/uninstall, and reserves at most four
+and restore operations, honors uninstall pending but not stock pause (an explicit USB request), and reserves at most four
 attempts per boot with 5/10/20-second delays. Failure retains the request and
 APK for the next boot. The synchronous Android-up hook spends one attempt;
 the service launch can use the remaining budget. A seen-installed receipt
 prevents a pending update from resurrecting an intentionally removed app;
 absence without a request always follows the existing cleanup path.
+
+`install-apk.sh` forces `sys.boot_completed=0` around `pm install`, which now
+also happens at boot. It runs pm in the background under a 120 second guard that
+stops pm and its `/proc` descendants, and restores the property on every exit
+path (normal, failure, watchdog, TERM/HUP/INT), keeping the original exit status.
+Export diagnostics read logs with 4 KiB `dd` blocks from regular files, write
+probe output to files rather than pipes, and have the 10 second probe guard stop
+the probe's descendants, so a lingering grandchild cannot stall an export.
+Block `skip=`/`count=` use POSIX block units; toolbox `dd` semantics are
+unverified on the car, so check one truncated log in an on-car export.
 
 ## Remaining car checks
 

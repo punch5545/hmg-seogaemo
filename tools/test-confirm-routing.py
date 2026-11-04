@@ -55,6 +55,13 @@ assert "confirmReboot()" in method("showStock")
 assert "RootClient.rebootDevice()" not in method("showStock")
 assert "getString(R.string.cancel), true, new ConfirmDialog.Action()" in reboot
 assert reboot.index("ConfirmDialog.show") < reboot.index("RootClient.rebootDevice()")
+on_create = activity.split("@Override public void onCreate(", 1)[1].split("private void offerModuleRestore", 1)[0]
+assert "restoreModules()" not in on_create  # no unconfirmed restore at app start
+restore = method("confirmModuleRestore")
+assert "ConfirmDialog.show" in restore
+assert restore.index("ConfirmDialog.show") < restore.index("restoreModules()")
+assert "RestoreGate.decide" in method("offerModuleRestore")
+assert "confirmModuleRestore()" in method("offerModuleRestore")
 assert "setCanceledOnTouchOutside(false)" in dialog
 assert "confirm.setEnabled(false)" in dialog
 assert "cancel.requestFocus()" in dialog

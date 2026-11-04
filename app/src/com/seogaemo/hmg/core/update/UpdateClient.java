@@ -135,19 +135,17 @@ public final class UpdateClient {
         throw new IOException("too many redirects");
     }
 
+    private static final long ROOT_STATUS_TIMEOUT_MS = 30000L;
+    private static final long ROOT_UPDATE_TIMEOUT_MS = 300000L;
+
     public static String root(String verb) throws Exception {
         if (!("stage".equals(verb) || "apply".equals(verb) || "rollback".equals(verb) || "status".equals(verb))) throw new IOException("invalid verb");
-        Process process = new ProcessBuilder("/data/nemesis/apps/hmg-seogaemo/bin/nemesis-client", "root", "-c", "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root update " + verb).redirectErrorStream(true).start();
-        InputStream in = process.getInputStream();
-        byte[] data = new byte[4096];
-        int used = 0, n;
-        while (used < data.length && (n = in.read(data, used, data.length - used)) >= 0) {
-            used += n;
-            if (used == data.length) throw new IOException("root output too large");
-        }
-        int code = process.waitFor();
-        String result = new String(data, 0, used, "UTF-8").trim();
-        if (code != 0) throw new IOException(result.length() == 0 ? "root operation failed" : result);
+        BoundedProcess.Result run = BoundedProcess.run(new ProcessBuilder("/data/nemesis/apps/hmg-seogaemo/bin/nemesis-client", "root", "-c", "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root update " + verb),
+                "status".equals(verb) ? ROOT_STATUS_TIMEOUT_MS : ROOT_UPDATE_TIMEOUT_MS, 4096);
+        if (run.timedOut) throw new IOException("root operation timed out");
+        if (run.truncated) throw new IOException("root output too large");
+        String result = new String(run.output, "UTF-8").trim();
+        if (run.exit != 0) throw new IOException(result.length() == 0 ? "root operation failed" : result);
         return result;
     }
 

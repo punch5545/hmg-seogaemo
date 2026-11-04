@@ -214,3 +214,14 @@ expect_failure 'invalid reassert_props'
 reset_fixture
 printf 'owns_props=demo\nwatch=boot\n' >> "$fixture/modules/alpha/module.properties"
 expect_failure 'watch requires reboot restore or reassert_props'
+
+# App-private generated directories: exact project-named getDir paths only.
+reset_fixture
+printf 'owns_generated_dirs=/data/data/com.example.app/app_hmg-seogaemo-demo\n' >> "$fixture/modules/alpha/module.properties"
+PROJECT_ROOT="$fixture" sh "$repo/tools/gen-modules.sh"
+for bad in '/data/data/com.example.app/other' '/data/data/com.example.app/app_hmg-seogaemo-a/b' '/system/app_hmg-seogaemo-a' \
+    '/data/data/com.example.app/app_hmg-seogaemo-a,/data/data/com.example.app/app_hmg-seogaemo-a'; do
+    reset_fixture
+    printf 'owns_generated_dirs=%s\n' "$bad" >> "$fixture/modules/alpha/module.properties"
+    expect_failure 'invalid owns_generated_dirs'
+done

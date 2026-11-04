@@ -14,8 +14,7 @@ map_pid=
 lock_owned=0
 cleanup() {
     if [ -n "$map_pid" ]; then
-        kill "$map_pid" 2>/dev/null || :
-        kill -9 "$map_pid" 2>/dev/null || :
+        sg_kill_tree "$map_pid"
         wait "$map_pid" 2>/dev/null || :
     fi
     [ -n "${HMG_SEOGAEMO_MAP_WORK:-}" ] && hmg_seogaemo_map_work_cleanup
@@ -25,28 +24,21 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mapper() {
-    CLASSPATH="$base/core/map/hmg-seogaemo-mapper.jar" app_process /system/bin com.seogaemo.hmg.core.map.HmgSeogaemoMapTool \
+    # Private Dalvik cache: never leave entries for our jar in /data/dalvik-cache.
+    sg_vm_prepare "$SG_DATA_ROOT/core/vm" || { sg_print state=failed restart=none 'detail=map VM cache unavailable'; return 1; }
+    if map_boot=$(sg_bootclasspath); then BOOTCLASSPATH=$map_boot; export BOOTCLASSPATH; fi
+    ANDROID_DATA="$SG_DATA_ROOT/core/vm" CLASSPATH="$base/core/map/hmg-seogaemo-mapper.jar" app_process /system/bin com.seogaemo.hmg.core.map.HmgSeogaemoMapTool \
         "$1" "$base" "$SG_DATA_ROOT" "$2" &
     # This is the app_process PID, not a background shell function.
     map_pid=$!
-    case "$1" in status) limit=15;; verify) limit=30;; *) limit=0;; esac
-    elapsed=0
-    if [ "$limit" -gt 0 ]; then
-        while kill -0 "$map_pid" 2>/dev/null && [ "$elapsed" -lt "$limit" ]; do
-            sleep 1
-            elapsed=$((elapsed + 1))
-        done
-        if kill -0 "$map_pid" 2>/dev/null; then
-            kill "$map_pid" 2>/dev/null || :
-            kill -9 "$map_pid" 2>/dev/null || :
-            wait "$map_pid" 2>/dev/null || :
-            map_pid=
-            sg_print state=failed restart=none 'detail=map command timeout'
-            return 1
-        fi
-    fi
-    wait "$map_pid"; mapper_code=$?
+    # A full scan stays inside the app's 600-second root-call window.
+    case "$1" in status) limit=15;; verify) limit=30;; *) limit=590;; esac
+    sg_bounded_wait "$map_pid" "$limit" && mapper_code=0 || mapper_code=$?
     map_pid=
+    if [ "$mapper_code" -eq 124 ]; then
+        sg_print state=failed restart=none 'detail=map command timeout'
+        return 1
+    fi
     return "$mapper_code"
 }
 if [ "$1" = status ]; then

@@ -141,6 +141,12 @@ sg_revert_all() {
     rm -rf "$HMG_SEOGAEMO_STATE/baseline" "$HMG_SEOGAEMO_STATE/applied" "$HMG_SEOGAEMO_STATE/prop-baseline" "$HMG_SEOGAEMO_STATE"/prop-applied-* "$HMG_SEOGAEMO_STATE/ops.list" "$HMG_SEOGAEMO_STATE/dex-track"
 }
 sg_owner_present() { [ -f "$HMG_SEOGAEMO_STATE/owner-$1" ]; }
+# The real guard is exercised by tools/test-runtime.py; here only the wiring.
+sg_zygote_foreign() {
+    [ ! -f "$HMG_SEOGAEMO_STATE/foreign" ] && return 0
+    sg_print info.restore_conflict=foreign
+    return 3
+}
 sg_status() { sg_print "state=$1" "restart=$2" "detail=${3:-}"; case "$1" in conflict) return 3;; incompatible) return 4;; failed) return 1;; esac; }
 SH
 cat > "$T/bin/getprop" <<'SH'
@@ -204,6 +210,15 @@ grep -q '^state=conflict$' "$T/output" || fail owner-state
 rm -f "$T/state/owner-hmgapi"
 run precheck || fail precheck
 grep -q '^state=off$' "$T/output" || fail precheck-state
+# An app_process swap with no ownership record is refused everywhere, untouched.
+touch "$T/state/foreign"
+for verb in precheck apply status revert; do
+    run "$verb" && fail "foreign-swap-$verb-accepted"
+    grep -q '^state=conflict$' "$T/output" || fail "foreign-swap-$verb-state"
+    grep -q 'outside the ledger' "$T/output" || fail "foreign-swap-$verb-detail"
+done
+[ ! -e "$T/state/ops.list" ] && [ ! -e "$T/state/runtime" ] || fail foreign-swap-mutated
+rm -f "$T/state/foreign"
 # Upstream treats a removal line that is absent on this firmware as a no-op.
 grep -Fv 'androidauto_wireless.xml' "$T/root/system/onebin/neev_kr/featurexml.cfg" > "$T/without-aa-line"
 cp "$T/without-aa-line" "$T/root/system/onebin/neev_kr/featurexml.cfg"

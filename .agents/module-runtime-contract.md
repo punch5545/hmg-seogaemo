@@ -29,7 +29,15 @@ A single worker waits with capped readiness backoff and attempts installation
 at most four times per kernel boot (5/10/20-second delays), retaining the request
 after failure for a later boot. Attempt reservations survive worker restarts.
 The worker holds the shared operation lock during installation and respects
-stock pause and uninstall pending. Once it observes the app installed, it records
+uninstall pending. It deliberately ignores `stock/paused`: the request exists
+only because the owner explicitly installed from USB, and the pause only stops
+automatic module calls; reconcile therefore runs the worker before its pause
+gate, and a failed stock restore can never strand the new APK on an old version.
+USB postinstall clears the OTA selection (`update/current`, `current-path`,
+`previous-path`, `previous-version`, `journal`; version dirs and baselines are
+retained, `stock/paused` is never cleared) before any APK step, and the worker
+repeats that exact clear after a successful install, so root verbs and the
+installed app never run different versions. Once it observes the app installed, it records
 `seen`; a later absence cancels the request and lets removal cleanup proceed.
 Successful installation retires the request before deleting retained payload.
 Preuninstall cancels the request after guarded stock restore. No request means
@@ -164,6 +172,68 @@ Export publication makes only its dedicated container and descendants public:
 0755 directories and 0644 regular files. Symlinks are refused; USB mount roots and
 private runtime state are never chmod targets.
 
+## Unrecorded app_process swap (2026-11-04)
+
+`sg_zygote_foreign` is a read-only guard for a module that owns
+`/system/bin/app_process`. The swap counts as owned when the module holds a file
+baseline for it (or an upgrade journal). Without that record nothing we wrote is
+recoverable, so the guard returns conflict (3) with `info.restore_conflict` when any
+of these exists: `app_process.hmg-seogaemo-stock`, our hook `.so`/`.jar`, the
+`enable`/`enabled`/`starts`/`disable` guard files, or an `app_process` whose MD5
+differs from the module's `known_stock.N=<ro.build.product glob>:<path>:<md5>`
+declaration for the current product (no matching declaration means no judgment).
+`sg_revert_all` calls it first, so module revert, whole-package restore and the
+NEMESIS uninstall hook all refuse; `lib/stock.sh` also runs it in the all-module
+preflight and for modules with no snapshots, before anything is reverted. Module
+`status`, `precheck` and `apply` report the same conflict. Nothing is modified, no
+desired state changes, and the owner resolves it (for example by restoring stock from
+the saved copy) before retrying. The wireless module declares
+`known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:33f798115689d1859e8d2159dc88e7dc`
+(the stock build seen on the Ioniq 5 KOR car before and after HMG-API/this module).
+The apply-path orphaned-backup check remains.
+
+## Interrupted-write leftovers (2026-11-04)
+
+Power loss during an atomic write leaves `<name>.hmg-seogaemo.<digits>` next to
+the target (`sg_commit_file`), which used to keep a created directory non-empty
+and fail its `rmdir` (rc 3) forever. Restore now removes, with a ledger row
+(`temp_sweep`): (1) in a directory the journal created (absence baseline) before its
+`rmdir`, every regular, non-symlink entry whose name is exactly `<name>.hmg-seogaemo.`
+plus digits; (2) after an owned file is restored, the same temporaries of that exact
+file. Look-alikes (`.12a`, no digits, another suffix, directories, symlinks) are not ours
+and still block. `zygote-prepare.<digits>` and `zygote-retired.<digits>` directories
+directly inside the module state directory are removed by `sg_zygote_sweep` (at the start
+of a payload upgrade, at the end of baseline clearing, and by `sg_revert_all` when there
+is nothing to restore).
+
+## Uninstall residue (2026-11-04)
+
+Three kinds of generated or legacy leftovers are removed through the package API,
+never by a module directly and never with a caller-supplied path:
+
+- `owns_generated_dirs=<csv>` in `module.properties` declares exact
+  `/data/data/<package>/app_hmg-seogaemo-<name>` directories that a loaded hook creates
+  with `Context.getDir` (the wireless module declares the `-wireless-runtime` directory of
+  its five fixed packages; the Dalvik `-wireless-dex` directory stays with
+  `sg_dex_cache_track`). The generator rejects anything else. `sg_generated_dirs_remove`
+  validates every declared directory first (no symlink anywhere in the path, directory
+  holds only up to 64 regular files with plain `[a-zA-Z0-9_.-]` names) and then removes the
+  files and the directories. Any other entry is a conflict (3) and nothing is removed.
+  Modules call it after `sg_revert_all` (the wireless `revert`), and `lib/stock.sh` calls it
+  for modules with no restore material. Running apps keep writing there until the head
+  unit restarts, so a later boot-time call to the same API is the complete cleanup.
+- After every module is restored, `lib/stock.sh` runs `hmg_seogaemo_stock_residue` (best
+  effort, ledger row `stock_residue` ok/partial, never a conflict): `sg_legacy_dirs_cleanup`
+  (`rmdir` only, in passes, of the directories between each owned path under
+  `/system/etc/hmg-seogaemo` and the namespace, skipping any directory with a directory
+  journal; builds before 0.1.23 created them unjournaled, and this supersedes "never deletes
+  legacy directories" for empty project-namespace directories at whole-package restore),
+  `sg_legacy_dex_cleanup` (regular files in `/data/dalvik-cache` named
+  `data@nemesis@apps@hmg-seogaemo` or `data@nemesis@backup@hmg-seogaemo@update` plus an
+  optional `@...` middle plus `@core@map@hmg-seogaemo-mapper.jar`,
+  `@app@hmg-seogaemo.apk` or the projection reader jar path, ending `@classes.dex`) and
+  `sg_vm_cleanup` (the private `core/vm` cache). Each removal is a ledger row.
+
 ## Wireless ADB and diagnostic export (2026-11-04)
 
 Wireless ADB status exposes info.effective_port (the nonempty transient
@@ -283,6 +353,25 @@ leaves a global Dalvik cache entry. Successful clear removes this generated
 cache along with the diagnostic copies.
 The fixed reader artifact is checked beneath the canonical selected package
 directory, allowing OTA's `update/current` package pointer.
+
+The reader is a root Dalvik process that can hang, so the API never runs it
+inline. It requires a non-empty `BOOTCLASSPATH` (the inherited value, else the
+`export BOOTCLASSPATH` line of `/init.environ.rc`; the value must start with
+`/system/` and use only path-list characters) and otherwise reports
+`state=unknown` without starting the VM. It starts the reader in the background
+with stdout and stderr in private files directly under the data root, waits with
+`sg_bounded_wait <pid> <seconds>` (1-second polls, 15 seconds by default,
+`SG_READER_TIMEOUT` for tests, capped at 120), and on expiry kills the reader and
+its children (`sg_kill_tree`, toolbox `ps` PID/PPID fields) and returns 124.
+Output must be exactly one `state=`, `restart=` and `detail=` line with a known
+state/restart pair and a clean exit (1 only with `state=failed`); anything else,
+or a timeout, is `state=unknown` (`pending-restart`/`head_unit` for `applying`).
+`status` therefore never keeps `operation.lock` longer than the limit. `clear`
+that cannot run the reader (timeout, no boot class path, exit 126 or above)
+removes the root-only generated tree directly; a reader refusal (exit 1) still
+fails. `sg_bounded_wait` and `sg_kill_tree` are generic and are also used for the
+mapper and the update verifier. Callers under `set -e` must write
+`sg_bounded_wait ... && code=0 || code=$?`.
 
 ## Shared text-file line ownership (2026-11-03)
 
@@ -852,8 +941,17 @@ watcher continues to invoke only declared watch events, never apply/revert.
 Mapper `status` is bounded to 15 seconds and `verify` to 30 seconds, in addition
 to the existing operation-lock wait of at most nine seconds. Timeout or signal
 cancellation terminates and reaps the actual app_process child and cleans up
-owned lock and scratch state. Confirmed full mapping scans retain their existing
-behavior. Later successful app verification is observed by the deferred worker.
+owned lock and scratch state. A confirmed full scan (`run`) is bounded to 590
+seconds, inside the app's 600-second root-call window. Later successful app
+verification is observed by the deferred worker.
+
+Every root-spawned Dalvik process other than the module's loaded hook (mapper,
+update verifier, projection reader) uses `sg_bounded_wait` and a private
+`ANDROID_DATA`: `<data root>/core/vm/dalvik-cache` (0700, `sg_vm_prepare`) for
+the mapper and update verifier, the module's `vm/` tree for the projection reader.
+The update verifier is bounded to 240 seconds. They export a validated
+`BOOTCLASSPATH` (`sg_bootclasspath`) when the environment lacks one. Nothing of
+ours then writes to `/data/dalvik-cache`.
 
 ## Automatic intent recheck under lock (2026-11-04)
 
