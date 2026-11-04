@@ -126,8 +126,8 @@ if [ "$verb" = stage ]; then
     case "$version" in *[!0-9.]*|'') exit 1 ;; esac
     dest=$root/versions/$version
     [ ! -e "$dest" ] || { echo 'version already staged' >&2; exit 1; }
-    java_update extract "$root/incoming" "$installed" "$dest" || { rm -rf "$dest"; exit 1; }
-    check_md5 "$dest" || { rm -rf "$dest"; exit 1; }
+    java_update extract "$root/incoming" "$installed" "$dest" || { rm -rf "$dest"; sg_update_dex_prune "$root/versions" || :; exit 1; }
+    check_md5 "$dest" || { rm -rf "$dest"; sg_update_dex_prune "$root/versions" || :; exit 1; }
     [ -s "$dest/modules.list" ] && [ -s "$dest/modules.graph" ] && [ -f "$dest/bin/install-apk.sh" ] && [ -f "$dest/bin/hmg-seogaemo-root" ] && [ -f "$dest/svc/reconcile.sh" ] || exit 1
     sync
     sg_print "$version" > "$root/staged"
@@ -191,4 +191,6 @@ if ! rewrite_descriptor "$version"; then
 fi
 rm -f "$root/staged"
 echo 'phase=healthy' > "$root/journal"
+# Entries of versions that no longer exist (best effort; never fails an applied update).
+sg_update_dex_prune "$root/versions" || :
 sg_print "version=$version"

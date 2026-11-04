@@ -115,7 +115,19 @@ if [ "$1" = export ]; then
     . "$base/lib/diagnostics.sh"
     hmg_seogaemo_diagnostics "$dest" || refuse 1 failed 'Could not collect diagnostics'
     sg_export_public "$dest" && chmod 0755 "$container" || refuse 1 failed 'Could not prepare export'
-    sg_print "state=on" "restart=none" "detail=$dest"
+    keys="ledger/ledger.tsv=$SG_DATA_ROOT/ledger/ledger.tsv package-version ro.build.product"
+    for record in "$SG_DATA_ROOT"/desired/*; do
+        [ -f "$record" ] && [ -f "$dest/desired/${record##*/}" ] && keys="$keys desired/${record##*/}=$record"
+    done
+    # Intentional word splitting of the key list; names are validated module ids.
+    # shellcheck disable=SC2086
+    sg_export_seal "$dest" "$export_mode" $keys
+    case $? in
+        0) ;;
+        4) refuse 1 failed 'USB write not flushed' ;;
+        *) refuse 1 failed 'Could not prepare export' ;;
+    esac
+    sg_print "state=on" "restart=none" "info.export_safe=$export_mode" "detail=$dest"
     exit 0
 fi
 if [ "$1" = map ]; then

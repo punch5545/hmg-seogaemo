@@ -1,5 +1,5 @@
 #!/bin/sh
-set -efu
+set -eu
 # The package runtime supplies this file at a fixed path.
 # shellcheck disable=SC1091
 . "$HMG_SEOGAEMO_BASE/lib/common.sh"
@@ -49,9 +49,9 @@ wa_ipv4() {
     case "$1" in ''|*[!0-9.]*|.*|*.|*..*) return 1 ;; esac
     old_ifs=$IFS
     IFS=.
-    # Intentional field split on dots; globbing is disabled.
+    # Intentional field split on dots; globbing is switched off only for the split.
     # shellcheck disable=SC2086
-    set -- $1
+    set -f; set -- $1; set +f
     IFS=$old_ifs
     [ "$#" -eq 4 ] || return 1
     for octet do
@@ -63,9 +63,9 @@ wa_ipv4() {
 wa_ifconfig_ip() {
     ifconfig "$1" 2>/dev/null | {
         while IFS= read -r line; do
-            # Intentional splitting into ifconfig fields; globbing is disabled.
+            # Intentional splitting into ifconfig fields; globbing is switched off only for the split.
             # shellcheck disable=SC2086
-            set -- $line
+            set -f; set -- $line; set +f
             next=0
             for token do
                 if [ "$next" -eq 1 ]; then

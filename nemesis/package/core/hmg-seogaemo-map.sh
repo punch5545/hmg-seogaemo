@@ -72,16 +72,27 @@ lock_owned=1
 sg_write "$$" > "$lock/pid"
 if [ "$1" = export ]; then
     target=
+    export_mode=adb
     for drive in ${SG_USB_DIRS:-/storage/usb0 /storage/usb1 /storage/usb2 /mnt/media_rw/usb0 /mnt/media_rw/usb1 /mnt/media_rw/usb2}; do
         grep -q " $drive " "${SG_MOUNTS_FILE:-/proc/mounts}" 2>/dev/null || continue
         target=$drive/HMG-Seogaemo-export/$(date +%Y%m%d-%H%M%S)
+        export_mode=usb
         break
     done
     [ -n "$target" ] || target=${SG_EXPORT_ROOT:-/data/local/tmp/hmg-seogaemo-export}/$(date +%Y%m%d-%H%M%S)
     sg_path_safe "$target" || exit 1
     hmg_seogaemo_map_export "$target" || { sg_print "state=failed" "restart=none" "detail=no verified map"; exit 1; }
     sg_export_public "$target" && chmod 0755 "${target%/*}" || exit 1
-    sg_print "state=on" "restart=none" "detail=$target"
+    # hmg_seogaemo_map_export left the validated layout and active map directory set.
+    sg_export_seal "$target" "$export_mode" \
+        "$hmg_seogaemo_map_layout/map.json=$hmg_seogaemo_map_from/map.json" \
+        "$hmg_seogaemo_map_layout/car.json=$hmg_seogaemo_map_from/car.json"
+    case $? in
+        0) ;;
+        4) sg_print "state=failed" "restart=none" "detail=USB write not flushed"; exit 1 ;;
+        *) exit 1 ;;
+    esac
+    sg_print "state=on" "restart=none" "info.export_safe=$export_mode" "detail=$target"
     exit 0
 fi
 hmg_seogaemo_map_work || { sg_print "state=failed" "restart=none" "detail=map work unavailable"; exit 1; }

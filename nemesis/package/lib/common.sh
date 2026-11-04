@@ -226,7 +226,16 @@ sg_restore_conflict() {
     sg_log "conflict: $*" || :
     return 3
 }
-sg_restore_preflight() {
+# Module shells may run with noglob (set -f); the runtime globs state directories,
+# so run its glob-dependent bodies with globbing on and restore the caller's flags.
+sg_glob_on() {
+    case $- in
+        *f*) set +f; "$@"; sg_glob_rc=$?; set -f; return "$sg_glob_rc" ;; # android44-shell: allow -- fixed internal _sg_* function names from the wrappers below
+    esac
+    "$@" # android44-shell: allow -- fixed internal _sg_* function names from the wrappers below
+}
+sg_restore_preflight() { sg_glob_on _sg_restore_preflight "$@"; }
+_sg_restore_preflight() {
     sg_dirs_preflight || return 3
     sg_line_preflight || return 3
     sg_check_build || { sg_restore_conflict 'build preflight: ro.build.product missing or changed'; return 3; }
@@ -277,6 +286,7 @@ sg_temp_name() {
 }
 # Remove temporaries of one owned file, or all of them inside a created directory.
 sg_sweep_temps() (
+    set +f
     sg_path_safe "$1" || exit 3
     if [ -d "$1" ]; then
         for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
@@ -295,6 +305,7 @@ sg_sweep_temps() (
     fi
 )
 sg_zygote_sweep() (
+    set +f
     [ -n "$HMG_SEOGAEMO_STATE" ] || exit 2
     for entry in "$HMG_SEOGAEMO_STATE"/zygote-prepare.* "$HMG_SEOGAEMO_STATE"/zygote-retired.*; do
         [ -d "$entry" ] && [ ! -L "$entry" ] || continue
@@ -302,7 +313,8 @@ sg_zygote_sweep() (
         rm -rf "$entry" || exit 1
     done
 )
-sg_baseline_clear() {
+sg_baseline_clear() { sg_glob_on _sg_baseline_clear "$@"; }
+_sg_baseline_clear() {
     [ -n "$HMG_SEOGAEMO_STATE" ] || return 2
     rm -rf "$HMG_SEOGAEMO_STATE"/prop.* "$HMG_SEOGAEMO_STATE"/file.* "$HMG_SEOGAEMO_STATE"/bind.*
     rm -f "$HMG_SEOGAEMO_STATE/build" "$HMG_SEOGAEMO_STATE/changes"
@@ -349,7 +361,11 @@ sg_ledger() {
     if [ -n "$5" ] && [ -f "$5" ]; then sg_copy "$5" "$sg_ledger_dir/$sg_before.meta" || return 1; fi
     sg_print "$(date +%s)	${HMG_SEOGAEMO_STATE##*/}	$1	$2	$sg_before	$sg_after	${6:-ok}" >> "$sg_ledger_dir/ledger.tsv"
 }
-sg_changed() { sg_print "$1	$2" >> "$HMG_SEOGAEMO_STATE/changes"; }
+# One line per changed target: repeated applies must not grow the file.
+sg_changed() {
+    grep -Fxq "$1	$2" "$HMG_SEOGAEMO_STATE/changes" 2>/dev/null && return 0
+    sg_print "$1	$2" >> "$HMG_SEOGAEMO_STATE/changes"
+}
 sg_prop_set() {
     sg_validate owns_props "$1" || return 2
     sg_prop_baseline "$1" || return 1
@@ -497,6 +513,7 @@ sg_payload_dirs() (
     exit "$rc"
 )
 sg_dirs_preflight() (
+    set +f
     for ref in "$HMG_SEOGAEMO_STATE"/dir.*; do
         [ -f "$ref" ] || continue
         record=$(cat "$ref") || exit 1
@@ -507,6 +524,7 @@ sg_dirs_preflight() (
     done
 )
 sg_dirs_revert() (
+    set +f
     [ -f "$HMG_SEOGAEMO_STATE/dir-order" ] || exit 0
     reverse=
     while IFS= read -r record; do reverse="$record $reverse"; done < "$HMG_SEOGAEMO_STATE/dir-order"
@@ -570,6 +588,7 @@ sg_public_readable() (
 )
 # Call only for dedicated export containers, never USB roots or private state.
 sg_export_public() (
+    set +f
     sg_path_safe "$1" && [ -d "$1" ] || exit 3
     chmod 0755 "$1" || exit 1
     for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
@@ -579,6 +598,54 @@ sg_export_public() (
         elif [ -f "$entry" ]; then chmod 0644 "$entry" || exit 1
         else exit 3; fi
     done
+)
+# Size in bytes of a regular file from toolbox ls -l (no stat on the unit).
+sg_file_size() (
+    set -f
+    sg_fs_line=$(ls -ln "$1" 2>/dev/null) || exit 1
+    set -- $sg_fs_line
+    case "$5" in *[!0-9]*|'') sg_fs_size=$4;; *) sg_fs_size=$5;; esac
+    case "$sg_fs_size" in ''|*[!0-9]*) exit 1;; esac
+    sg_write "$sg_fs_size"
+)
+sg_export_sizes() (
+    set +f
+    for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+        [ -e "$entry" ] || continue
+        if [ -d "$entry" ]; then sg_export_sizes "$entry" "$2${entry##*/}/" || exit 1
+        elif [ -f "$entry" ]; then
+            size=$(sg_file_size "$entry") || exit 1
+            sg_print "$size	$2${entry##*/}" || exit 1
+        fi
+    done
+)
+# The head unit mounts the stick write-back: a name can reach the stick while its
+# data has not. Record every file size in MANIFEST, sync, and (usb) re-read: each
+# file must keep its recorded size and each key file must match its source size.
+# Key arguments: "<relative path>=<source file>" or "<relative path>" (non-empty).
+# Returns 1 when the export could not be written, 4 when it was not flushed.
+sg_export_seal() (
+    set +f
+    sg_path_safe "$1" && [ -d "$1" ] || exit 3
+    sg_es_dest=$1; sg_es_mode=$2; shift 2
+    sg_es_sizes=$(sg_export_sizes "$sg_es_dest" '') || exit 1
+    sg_print "$sg_es_sizes" > "$sg_es_dest/MANIFEST" && chmod 0644 "$sg_es_dest/MANIFEST" || exit 1
+    sync || exit 4
+    [ "$sg_es_mode" = usb ] || exit 0
+    while IFS='	' read -r sg_es_size sg_es_rel; do
+        [ -n "$sg_es_rel" ] || continue
+        [ "$(sg_file_size "$sg_es_dest/$sg_es_rel")" = "$sg_es_size" ] || exit 4
+    done < "$sg_es_dest/MANIFEST"
+    for sg_es_key do
+        sg_es_rel=${sg_es_key%%=*}
+        sg_es_have=$(sg_file_size "$sg_es_dest/$sg_es_rel") || exit 4
+        [ "$sg_es_have" -gt 0 ] || exit 4
+        case "$sg_es_key" in *=*)
+            sg_es_want=$(sg_file_size "${sg_es_key#*=}") || exit 4
+            [ "$sg_es_have" = "$sg_es_want" ] || exit 4 ;;
+        esac
+    done
+    exit 0
 )
 sg_commit_file() (
     sg_target=$1; sg_input=$2; sg_mode=$3; sg_owner=$4
@@ -649,6 +716,7 @@ sg_line_claim() (
     exit 2
 )
 sg_whole_exclusive() (
+    set +f
     for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
         [ "$manifest" != "$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties" ] || continue
         while IFS='=' read -r key value; do
@@ -660,6 +728,7 @@ sg_whole_exclusive() (
     done
 )
 sg_line_authorize() (
+    set +f
     sg_line_claim "$1" "$2" || exit 2
     module=${HMG_SEOGAEMO_STATE##*/}
     for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
@@ -702,6 +771,7 @@ sg_line_guard() (
     exit 3
 )
 sg_line_audit() (
+    set +f
     transaction=$1
     module=$(cat "$transaction/module") || exit 1
     HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$module
@@ -747,6 +817,7 @@ sg_line_baseline() (
 # Compose each output line from the original input. Patch output is never fed
 # into another patch, even when its text equals a different stock line.
 sg_line_compose() (
+    set +f
     shared=$1; next=$2
     for patch in "$next"/patches/*/*; do
         [ -d "$patch" ] || continue
@@ -780,6 +851,7 @@ sg_line_compose() (
     done < "$shared/bytes"
 )
 sg_line_transaction() (
+    set +f
     target=$1; action=$2; old=${3:-}; new=${4:-}
     module=${HMG_SEOGAEMO_STATE##*/}
     sg_line_baseline "$target" || exit $?
@@ -870,6 +942,7 @@ sg_line_transaction() (
     fi
 )
 sg_line_preflight() (
+    set +f
     for marker in "$HMG_SEOGAEMO_STATE"/line.*/ready; do
         [ -f "$marker" ] || continue
         target=$(cat "${marker%/ready}/path") || exit 1
@@ -877,6 +950,7 @@ sg_line_preflight() (
     done
 )
 sg_line_revert_all() (
+    set +f
     for marker in "$HMG_SEOGAEMO_STATE"/line.*/ready; do
         [ -f "$marker" ] || continue
         target=$(cat "${marker%/ready}/path") || exit 1
@@ -886,6 +960,7 @@ sg_line_revert_all() (
     done
 )
 sg_line_applied() (
+    set +f
     path_key=$(sg_file_key "$1") || exit 1
     shared=$SG_DATA_ROOT/shared-lines/$path_key
     [ -f "$shared/active" ] && [ ! -f "$shared/pending" ] || exit 1
@@ -962,7 +1037,8 @@ sg_bind_mount() {
     sg_changed file "$1"
 }
 sg_mount_present() { grep -q " $1 " "${SG_MOUNTS_FILE:-/proc/mounts}" 2>/dev/null; }
-sg_reapply_binds() {
+sg_reapply_binds() { sg_glob_on _sg_reapply_binds "$@"; }
+_sg_reapply_binds() {
     for sg_spec in "$HMG_SEOGAEMO_STATE"/bind.*; do
         [ -f "$sg_spec" ] || continue
         IFS='	' read -r sg_target sg_source_rel < "$sg_spec" || return 1
@@ -1082,7 +1158,8 @@ sg_file_baseline_absent() {
 }
 # Only the JAR named in owns_files can nominate a cache namespace. The two
 # derived cache locations are fixed by Android's Dalvik naming convention.
-sg_dex_cache_track() {
+sg_dex_cache_track() { sg_glob_on _sg_dex_cache_track "$@"; }
+_sg_dex_cache_track() {
     sg_validate owns_files "${SG_TARGET_ROOT:-}$1" || return 2
     case "$1" in /system/framework/*.jar) ;; *) return 2;; esac
     case "$2" in ''|*[!a-zA-Z0-9_.]*) return 2;; esac
@@ -1117,7 +1194,8 @@ sg_dex_cache_track() {
         sg_write "$sg_dir_existed" > "$HMG_SEOGAEMO_STATE/dex.dir-existed.tmp.$$" &&
         mv "$HMG_SEOGAEMO_STATE/dex.dir-existed.tmp.$$" "$HMG_SEOGAEMO_STATE/dex.dir-existed"
 }
-sg_dex_finalize() {
+sg_dex_finalize() { sg_glob_on _sg_dex_finalize "$@"; }
+_sg_dex_finalize() {
     [ -f "$HMG_SEOGAEMO_STATE/dex.cache" ] || return 0
     sg_cache=$(cat "$HMG_SEOGAEMO_STATE/dex.cache") || return 1
     sg_app_dir=$(cat "$HMG_SEOGAEMO_STATE/dex.app-dir") || return 1
@@ -1147,6 +1225,7 @@ sg_dex_finalize() {
 }
 # Called only for an already-installed wrapper, under the root operation lock.
 sg_zygote_upgrade() (
+    set +f
     journal=$HMG_SEOGAEMO_STATE/zygote-upgrade
     sg_zygote_sweep || exit 1
     sg_check_build && sg_applied "$sg_stock" && [ -x "$sg_stock" ] || exit 3
@@ -1352,7 +1431,8 @@ sg_zygote_guard_sweep() (
     done
     exit 0
 )
-sg_restore_material() {
+sg_restore_material() { sg_glob_on _sg_restore_material "$@"; }
+_sg_restore_material() {
     for sg_material in "$HMG_SEOGAEMO_STATE"/prop.*/ready "$HMG_SEOGAEMO_STATE"/file.*/ready \
         "$HMG_SEOGAEMO_STATE"/line.*/ready "$HMG_SEOGAEMO_STATE"/bind.* \
         "$HMG_SEOGAEMO_STATE"/changes "$HMG_SEOGAEMO_STATE"/dex.cache \
@@ -1525,6 +1605,7 @@ sg_vm_prepare() (
 # output in a private file and is killed after a fixed limit, so a hung VM can
 # neither wedge the caller nor keep operation.lock. Unusable output is unknown.
 sg_projection_runtime() (
+    set +f
     sg_validate owns_files /system/bin/app_process || exit 2
     sg_runtime=$SG_DATA_ROOT/runtime
     sg_projection=$sg_runtime/wireless-carplay-and-aa
@@ -1649,6 +1730,7 @@ sg_generated_dirs() {
 # holding the boot id. `sg_restart_cleanup_run` (boot reconcile) retries it after the
 # restart and the marker disappears once the declared directories are gone.
 sg_generated_dirs_remove() (
+    set +f
     list=$(sg_generated_dirs) || list=
     [ -n "$list" ] || exit 0
     id=${HMG_SEOGAEMO_STATE##*/}
@@ -1700,6 +1782,7 @@ sg_generated_dirs_remove() (
 # earlier boot is retried with the module's own declarations. A module that is desired on
 # or holds restore material again uses those directories legitimately: its marker is dropped.
 sg_restart_cleanup_run() (
+    set +f
     dir=$SG_DATA_ROOT/restart-cleanup
     [ -d "$dir" ] && [ ! -L "$dir" ] || exit 0
     boot=$(cat "${SG_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}" 2>/dev/null) || boot=
@@ -1728,6 +1811,7 @@ sg_restart_cleanup_run() (
 # paths (ancestors up to the project namespace) so no list is hand-written; rmdir
 # only, so a directory that still holds anything is simply kept.
 sg_legacy_dirs_cleanup() (
+    set +f
     namespace=/system/etc/hmg-seogaemo
     dirs=
     for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
@@ -1772,6 +1856,7 @@ sg_legacy_dirs_cleanup() (
 # root jars (mapper, update verifier APK, projection reader). Exact derived names
 # only: <our install path with @>@classes.dex.
 sg_legacy_dex_cleanup() (
+    set +f
     cache=${SG_TARGET_ROOT:-}/data/dalvik-cache
     [ -d "$cache" ] || exit 0
     sg_path_safe "$cache" || exit 3
@@ -1791,9 +1876,34 @@ sg_legacy_dex_cleanup() (
         done
     done
 )
+# A staged build that is gone (failed stage, removed version directory) must not
+# keep Dalvik cache entries of its jars: remove exactly
+# update@versions@<digits.dots><our jar suffix>@classes.dex whose version directory
+# under "$1" (the update versions directory) no longer exists.
+sg_update_dex_prune() (
+    set +f
+    cache=${SG_TARGET_ROOT:-}/data/dalvik-cache
+    [ -d "$cache" ] || exit 0
+    sg_path_safe "$cache" || exit 3
+    prefix=data@nemesis@backup@hmg-seogaemo@update@versions@
+    for suffix in @core@map@hmg-seogaemo-mapper.jar@classes.dex \
+        @app@hmg-seogaemo.apk@classes.dex \
+        @modules@wireless-carplay-and-aa.d@data@hmg-seogaemo-projection-runtime.jar@classes.dex; do
+        for entry in "$cache/$prefix"*"$suffix"; do
+            [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+            name=${entry##*/}
+            case "$name" in *[!a-zA-Z0-9_.@-]*) continue;; esac
+            version=${name#"$prefix"}; version=${version%"$suffix"}
+            case "$version" in ''|*[!0-9.]*) continue;; esac
+            [ ! -e "$1/$version" ] || continue
+            rm -f "$entry" || exit 1
+        done
+    done
+)
 # The private Dalvik cache of the mapper and update verifier, and scratch caches
 # (`core/vm.status.<digits>`) that an interrupted `map status` left behind.
 sg_vm_cleanup() (
+    set +f
     for vm in "$SG_DATA_ROOT"/core/vm.status.*; do
         case "${vm##*/vm.status.}" in ''|*[!0-9]*) continue;; esac
         [ -d "$vm" ] && [ ! -L "$vm" ] || continue

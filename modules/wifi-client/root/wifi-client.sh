@@ -34,10 +34,9 @@ external_owner() {
 
 parse_client_ip() {
     mode=$1
-    set -f
     line=
     while IFS= read -r line || [ -n "$line" ]; do
-        set -- $line
+        set -f; set -- $line; set +f
         ip=
         if [ "$mode" = netcfg ]; then
             [ "$#" -gt 0 ] || continue

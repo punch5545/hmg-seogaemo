@@ -526,6 +526,40 @@ sg_revert_all
     assert state.stat().st_mode & 0o777 == private_mode
     for entry in [usb / "HMG-Seogaemo-export", *(usb / "HMG-Seogaemo-export").rglob("*")]:
         assert entry.stat().st_mode & 0o777 == (0o755 if entry.is_dir() else 0o644)
+    # The stick is write-back: the export must be synced and verified before success.
+    assert "info.export_safe=usb" in result.stdout
+    published = next(usb.glob("HMG-Seogaemo-export/*"))
+    manifest = (published / "MANIFEST").read_text().splitlines()
+    sizes = dict(line.split("\t", 1)[::-1] for line in manifest)
+    assert sizes["ledger/ledger.tsv"] == str(ledger.stat().st_size)
+    assert sizes["package-version"] != "0" and "MANIFEST" not in sizes
+    for relative, size in sizes.items():
+        assert str((published / relative).stat().st_size) == size, relative
+    adb_result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
+    assert "info.export_safe=adb" in adb_result.stdout
+    sync_log = base / "sync.log"
+    script(fake / "sync", 'for m in "$FAKE_USB"/HMG-Seogaemo-export/*/MANIFEST; do [ ! -f "$m" ] || echo manifest >> "$FAKE_SYNC"; done; echo sync >> "$FAKE_SYNC"\n')
+    env.update(FAKE_USB=str(usb), FAKE_SYNC=str(sync_log))
+    time.sleep(1.1)
+    result = run(base / "bin/hmg-seogaemo-root", "export", "usb", env=env)
+    lines = sync_log.read_text().splitlines()
+    assert lines[-1] == "sync" and lines.count("sync") == 1, lines
+    # Both earlier published exports hold a MANIFEST; the new one was written before the sync.
+    newest = Path(result.stdout.split("detail=", 1)[1].split()[0])
+    assert (newest / "MANIFEST").is_file() and lines.count("manifest") == 2, lines
+    # A copy that lands with no data (write-back loss) must refuse instead of reporting success.
+    script(fake / "cp", """real=/bin/cp
+[ -x "$real" ] || real=/usr/bin/cp
+"$real" "$@" || exit $?
+for last; do :; done
+case "$last" in */ledger) : > "$last/ledger.tsv";; esac
+""")
+    time.sleep(1.1)
+    result = run(base / "bin/hmg-seogaemo-root", "export", "usb", env=env, ok=False)
+    assert "state=failed" in result.stdout and "USB write not flushed" in result.stdout, result.stdout
+    assert "state=on" not in result.stdout
+    (fake / "cp").unlink()
+    (fake / "sync").unlink()
 
 
 def test_service_call_api(temp):
@@ -831,6 +865,51 @@ def test_reconcile_does_not_watch(temp):
     assert " watch " not in text and "dumpsys" not in text
 
 
+def test_noglob_and_changes_dedup(temp):
+    base = temp / "noglob"
+    state = base / "state"
+    fake = base / "fake"
+    for path in (state, fake, base / "modules"):
+        path.mkdir(parents=True)
+    (base / "modules/state.properties").write_text("owns_props=demo\n")
+    script(fake / "getprop", 'cat "$FAKE_LIVE/$1" 2>/dev/null || true\n')
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"], FAKE_LIVE=str(base),
+               HMG_SEOGAEMO_STATE=str(state), HMG_SEOGAEMO_BASE=str(base),
+               SG_DATA_ROOT=str(base / "data"), SG_PROPERTY_ROOT=str(base / "backing"))
+    common = ROOT / "nemesis/package/lib/common.sh"
+    runner = base / "runner"
+    script(runner, f'''
+set -f
+. "{common}"
+make() {{
+    mkdir -p "$HMG_SEOGAEMO_STATE/prop.demo" "$HMG_SEOGAEMO_STATE/file.k" "$HMG_SEOGAEMO_STATE/bind.x"
+    : > "$HMG_SEOGAEMO_STATE/prop.demo/ready"; : > "$HMG_SEOGAEMO_STATE/file.k/ready"
+    : > "$HMG_SEOGAEMO_STATE/build"; : > "$HMG_SEOGAEMO_STATE/changes"
+}}
+make
+sg_restore_material || exit 1
+sg_baseline_clear || exit 2
+# The caller's noglob survives the runtime call.
+case $- in *f*) ;; *) exit 3;; esac
+if sg_restore_material; then exit 4; fi
+set -- "$HMG_SEOGAEMO_STATE"/*
+[ ! -e "$1" ] || exit 5
+make
+# A drifted property must still be seen by preflight under noglob.
+mkdir -p "$HMG_SEOGAEMO_STATE/prop.drifted"
+sg_write other > "$HMG_SEOGAEMO_STATE/prop.drifted/live"
+sg_write ours > "$HMG_SEOGAEMO_STATE/prop.drifted/applied"
+: > "$HMG_SEOGAEMO_STATE/prop.drifted/ready"
+sg_write NEEV.KOR.0000.V039.001.260902 > "$HMG_SEOGAEMO_STATE/build"
+sg_restore_preflight >/dev/null 2>&1 && exit 6
+rm -rf "$HMG_SEOGAEMO_STATE"/prop.*
+sg_changed prop demo; sg_changed prop demo; sg_changed file /x; sg_changed prop demo
+[ "$(grep -c . "$HMG_SEOGAEMO_STATE/changes")" -eq 2 ] || exit 7
+''')
+    run(runner, env=env)
+    assert (state / "changes").read_text() == "prop\tdemo\nfile\t/x\n"
+
+
 def test_lint(temp):
     safe = temp / "modules/safe/root/safe.sh"
     script(safe, 'sg_prop_set demo value\n')
@@ -844,6 +923,12 @@ def test_lint(temp):
         assert subprocess.run(["python3", str(lint), str(safe)], capture_output=True).returncode != 0
     script(safe, 'sg_file_put /system/etc/private payload 0600 0:0 # payload-mode: allow -- root-only boot secret\n')
     assert subprocess.run(["python3", str(lint), str(safe)], capture_output=True).returncode == 0
+    for body in ('set -efu\n', 'set -f\n', 'set -o noglob\n', 'set -- $x\nset -f\nset -- $x\n'):
+        script(safe, body)
+        assert subprocess.run(["python3", str(lint), str(safe)], capture_output=True).returncode != 0, body
+    for body in ('set -eu\n', 'set -f; set -- $line; set +f\n', "echo '-f'  # set -f\n"):
+        script(safe, body)
+        assert subprocess.run(["python3", str(lint), str(safe)], capture_output=True).returncode == 0, body
     package = temp / "nemesis/package/bin/bad.sh"
     lint = ROOT / "tools/lint-android44-shell.py"
     script(package, 'head -c 5 /tmp/file\n')
@@ -1240,6 +1325,26 @@ def test_residue_cleanup(temp):
     assert (cache / "data@nemesis@apps@hmg-seogaemo@app@link.apk@classes.dex").is_symlink()
     assert (base / "outside/keep").exists()
     assert (base / "ledgerroot/ledger/ledger.tsv").read_text().count("dex_legacy_remove") == len(ours)
+
+    # An applied OTA prunes the entries of versions that were removed, and only those.
+    (base / "ledgerroot/update/versions/0.1.25").mkdir(parents=True)
+    kept = [
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.25@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@current@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.23@core@map@other.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@versions@x1@app@hmg-seogaemo.apk@classes.dex",
+        "data@nemesis@backup@other@update@versions@0.1.23@app@hmg-seogaemo.apk@classes.dex",
+    ]
+    gone = [
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.23@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.24@app@hmg-seogaemo.apk@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.24@modules@wireless-carplay-and-aa.d@data@hmg-seogaemo-projection-runtime.jar@classes.dex",
+    ]
+    for name in kept + gone:
+        (cache / name).write_text("cache")
+    check(f'sg_update_dex_prune "{base}/ledgerroot/update/versions"\n')
+    assert not any((cache / name).exists() for name in gone)
+    assert all((cache / name).exists() for name in kept)
 
     # Private VM cache of the mapper and update verifier.
     vm = base / "ledgerroot/core/vm"
@@ -1972,6 +2077,7 @@ with tempfile.TemporaryDirectory() as directory:
     test_reconcile(root)
     test_watch_dispatch(root)
     test_reconcile_does_not_watch(root)
+    test_noglob_and_changes_dedup(root)
     test_lint(root)
     test_module_build_hook(root)
     test_zygote_and_dex(root)

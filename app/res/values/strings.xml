@@ -90,6 +90,7 @@
     <string name="module_confirm">Apply module changes?</string>
     <string name="module_no_changes">No changes needed.</string>
     <string name="export_changes_usb">Export changes to USB</string>
+    <string name="export_usb_done">Export saved to %1$s. It is safe to remove the USB.</string>
     <string name="export_changes_hint">Copy the change ledger and original files to a mounted USB drive.</string>
     <string name="update_current">Current version</string>
     <string name="update_current_hint">Installed HMG-Seogaemo build</string>

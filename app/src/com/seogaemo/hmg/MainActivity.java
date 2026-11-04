@@ -475,7 +475,7 @@ public final class MainActivity extends Activity {
                                         public void run() {
                                             dialog.dismiss();
                                             if (!isFinishing()) new AlertDialog.Builder(MainActivity.this)
-                                                    .setMessage(result.detail)
+                                                    .setMessage(exportMessage(result))
                                                     .setPositiveButton("OK", null).show();
                                         }
                                     });
@@ -601,6 +601,12 @@ public final class MainActivity extends Activity {
                 new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { mapOperation("export", dialog); } }, null);
     }
 
+    /** A USB export is reported done only after root flushed and verified the stick. */
+    private String exportMessage(RootResult result) {
+        return result.exitCode == 0 && "usb".equals(result.info.get("export_safe"))
+                ? getString(R.string.export_usb_done, result.detail) : result.detail;
+    }
+
     private void mapOperation(final String verb, final ConfirmDialog dialog) {
         mapBusy = true;
         dialog.showProgress();
@@ -612,7 +618,8 @@ public final class MainActivity extends Activity {
                 mapBusy = false;
                 mapStatus = observed;
                 mapResult = outcome.exitCode == 0 && "run".equals(verb)
-                        ? getString(R.string.mapping_run_done) : outcome.detail;
+                        ? getString(R.string.mapping_run_done)
+                        : "export".equals(verb) ? exportMessage(outcome) : outcome.detail;
                 dialog.dismiss();
                 if (settingsVisible && category == 1) showSettings();
                 if (!isFinishing()) new AlertDialog.Builder(MainActivity.this).setMessage(mapResult)

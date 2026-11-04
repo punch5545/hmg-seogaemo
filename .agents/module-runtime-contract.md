@@ -2,6 +2,54 @@ Status: partly superseded — the former parallel-work ownership table is histor
 
 # Module runtime contract (parallel-work interface)
 
+## Module shells keep globbing on (2026-11-04)
+
+A module script must not run with noglob (`set -f`, `set -o noglob`, or `f` in a
+`set -efu` flag cluster). On v0.1.25 `wireless-adb.sh` used `set -efu`, so
+`sg_baseline_clear` (`rm -rf "$STATE"/prop.* ...`) matched nothing: the module
+reported `state=off` but its restore material stayed, the restore failed in the
+fresh-shell re-check, and dispatch stayed paused. Rules:
+
+- `tools/lint-module-root.py` rejects any `set -f`, `-f` in a `set` flag cluster and
+  `noglob` in `modules/*/root/*.sh`. The only accepted form is a one-statement word
+  split on a single line: `set -f; set -- $x; set +f`.
+- The runtime does not rely on that. Every glob-dependent body in `lib/common.sh`
+  (`sg_baseline_clear`, `sg_restore_material`, `sg_restore_preflight`,
+  `sg_reapply_binds`, `sg_dex_cache_track`, `sg_dex_finalize`, and every subshell
+  helper that globs state) runs with globbing on, and the caller's options are left
+  unchanged (`sg_glob_on` for brace functions, `set +f` first in subshell functions).
+- `sg_changed` appends a `kind<TAB>target` line to `changes` only when the exact
+  line is not already there, so repeated applies do not grow the file.
+
+## Export flush and verification (2026-11-04)
+
+The head unit mounts USB sticks write-back. A directory entry can reach the stick
+while its data has not, so a stick pulled right after "success" held 0-byte files.
+`hmg-seogaemo-root export usb|adb` and `map export` therefore finish with
+`sg_export_seal <dest> <usb|adb> [key...]` after the last write and the public chmod:
+
+- writes `MANIFEST` (`<size><TAB><relative path>` for every exported file, sizes from
+  toolbox `ls -ln`), then runs `sync`;
+- for `usb`, re-reads every listed file and requires the recorded size, and requires
+  each key file to match its source size (`<relative>=<source>`) or be non-empty:
+  `ledger/ledger.tsv`, `package-version`, `ro.build.product`, `desired/*` for the ledger
+  export, `<layout>/map.json` and `car.json` for the map export;
+- a mismatch prints `state=failed`, `detail=USB write not flushed` and exits 1; only a
+  sealed export prints `state=on`, `detail=<dest>`, `info.export_safe=usb|adb`.
+
+The app shows "it is safe to remove the USB" (`export_usb_done`, KO "USB를 빼도 됩니다")
+only for `info.export_safe=usb`. The check compares sizes the kernel reports; it cannot
+prove the medium, so the instruction to the owner is still to wait for the dialog.
+
+## Dalvik cache of removed update versions (2026-11-04)
+
+`sg_legacy_dex_cleanup` (stock restore and uninstall) already removes
+`data@nemesis@backup@hmg-seogaemo@update@<anything>@<our jar suffix>@classes.dex`,
+which covers `update@versions@<v>@...`. `sg_update_dex_prune <versions dir>` runs after a
+successful OTA (`phase=healthy`) and after a failed stage removed its directory: it
+removes exactly `update@versions@<digits.dots>@<our jar suffix>@classes.dex` whose
+`versions/<v>` directory no longer exists. No ledger entry; failures never fail an update.
+
 ## Map verification input identity (2026-11-04)
 
 The verified seal retains its product, stock-file hash ID and boot ID as the

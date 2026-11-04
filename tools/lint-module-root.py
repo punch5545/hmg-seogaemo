@@ -13,6 +13,10 @@ BAD = re.compile(
     r"sg_dir_ensure|sg_dirs_revert|sg_export_public)\b|"
     r"\bsed\s+-i\b|\bnemesis\s+remount\b|"
     r"\bpm\s+(?:install|uninstall|enable|disable)\b|\bsettings\s+put\b")
+# Module shells keep globbing on: the runtime's state globs must never silently match nothing.
+# A word split may turn it off for one statement: `set -f; set -- $x; set +f`.
+NOGLOB = re.compile(r"(?<![\w-])set\s+(?:-[a-zA-Z]*f[a-zA-Z]*\b|(?:-[a-zA-Z]*o|\+o)\s+noglob\b)")
+SCOPED_NOGLOB = re.compile(r"^\s*set -f; set -- [^;]+; set \+f\s*$")
 REDIRECT = re.compile(r"(?<![0-9])(?:>>|>)\s*['\"]?([^\s'\"]+)")
 
 
@@ -38,6 +42,8 @@ def lint(path):
                 if not int(mode, 8) & 0o004 and not re.search(r"# payload-mode: allow -- \S", raw):
                     errors.append(f"{path}:{number}: private system payload mode (use inline payload-mode justification)")
         line = re.sub(r"'[^']*'", "''", raw.split("#", 1)[0])
+        if "modules/" in str(path) and NOGLOB.search(line) and not SCOPED_NOGLOB.search(line):
+            errors.append(f"{path}:{number}: module shells must keep globbing on (set -f only as 'set -f; set -- ...; set +f')")
         if "modules/" in str(path) and BAD.search(line):
             errors.append(f"{path}:{number}: direct mutation")
         for target in REDIRECT.findall(line) if "modules/" in str(path) else ():
