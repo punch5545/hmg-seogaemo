@@ -437,6 +437,12 @@
       "ret": "int",
       "static": false
     },
+    "framework.bcm_service.batt_cond_indicator": {
+      "method": "getBattCondIndSta",
+      "params": [],
+      "ret": "int",
+      "static": false
+    },
     "framework.bcm_service.charge_door": {
       "method": "requestChargeLockDoor",
       "params": [
@@ -517,6 +523,11 @@
       "static": true,
       "type": "java.lang.String"
     },
+    "framework.car_services.cluster": {
+      "field": "CLUSTER_SERVICE",
+      "static": true,
+      "type": "java.lang.String"
+    },
     "framework.car_services.datc": {
       "field": "DATC_SERVICE",
       "static": true,
@@ -561,6 +572,53 @@
       "field": "VR_SERVICE",
       "static": true,
       "type": "java.lang.String"
+    },
+    "framework.cluster_listener": {
+      "class": "com.hkmc.cluster.INavigationClusterListener"
+    },
+    "framework.cluster_listener_stub": {
+      "class": "com.hkmc.cluster.INavigationClusterListener$Stub"
+    },
+    "framework.cluster_listener_stub.as_interface": {
+      "method": "asInterface",
+      "params": [
+        "android.os.IBinder"
+      ],
+      "ret": "com.hkmc.cluster.INavigationClusterListener",
+      "static": true
+    },
+    "framework.cluster_listener_stub.battery_info": {
+      "field": "TRANSACTION_onHandleBatteryInfoResp",
+      "static": true,
+      "type": "int"
+    },
+    "framework.cluster_service": {
+      "class": "com.hkmc.cluster.IClusterService"
+    },
+    "framework.cluster_service.add_listener": {
+      "method": "addNavigationClusterListener",
+      "params": [
+        "com.hkmc.cluster.INavigationClusterListener"
+      ],
+      "ret": "void",
+      "static": false
+    },
+    "framework.cluster_service.battery_info": {
+      "method": "requestBatteryInfoReq",
+      "params": [],
+      "ret": "void",
+      "static": false
+    },
+    "framework.cluster_service_stub": {
+      "class": "com.hkmc.cluster.IClusterService$Stub"
+    },
+    "framework.cluster_service_stub.as_interface": {
+      "method": "asInterface",
+      "params": [
+        "android.os.IBinder"
+      ],
+      "ret": "com.hkmc.cluster.IClusterService",
+      "static": true
     },
     "framework.context_impl": {
       "class": "android.app.ContextImpl"
@@ -758,6 +816,11 @@
     },
     "framework.hev_flag": {
       "class": "com.hkmc.hev.HEVManager$HEVFlag"
+    },
+    "framework.hev_flag.batt_cond_failure": {
+      "field": "BMS_BATTCONDFAILPOPUP",
+      "static": true,
+      "type": "int"
     },
     "framework.hev_flag.battery_conditioning": {
       "field": "EV_BATTERYCONDITIONING",
@@ -1734,6 +1797,16 @@
       "static": true,
       "type": "int"
     },
+    "iap2.init_info.use_vehicle_information": {
+      "field": "iAP2UsedVehicelInformation",
+      "static": true,
+      "type": "int"
+    },
+    "iap2.init_info.use_vehicle_status": {
+      "field": "iAP2UsedVehicleStatus",
+      "static": true,
+      "type": "int"
+    },
     "iap2.service": {
       "class": "com.tcc.iap2server.Iap2Service"
     },
@@ -1749,8 +1822,32 @@
       "ret": "boolean",
       "static": true
     },
+    "iap2.service.native_handle": {
+      "field": "mHandleIap2",
+      "static": true,
+      "type": "long"
+    },
+    "iap2.service.native_lock": {
+      "field": "mLock",
+      "static": true,
+      "type": "java.lang.Object"
+    },
+    "iap2.service.on_bind": {
+      "method": "onBind",
+      "params": [
+        "android.content.Intent"
+      ],
+      "ret": "android.os.IBinder",
+      "static": false
+    },
     "iap2.service.on_create": {
       "method": "onCreate",
+      "params": [],
+      "ret": "void",
+      "static": false
+    },
+    "iap2.service.on_destroy": {
+      "method": "onDestroy",
       "params": [],
       "ret": "void",
       "static": false

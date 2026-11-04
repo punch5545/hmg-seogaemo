@@ -13,6 +13,12 @@ public final class HmgSeogaemoMapScannerTest {
         require(!scanner.points.containsKey("example.target.ambiguous"),"ambiguous method");
         require(scanner.points.containsKey("example.target.reference"),"reference method");
         require(scanner.byReference.contains("example.target.reference"),"reference marked");
+        require(Boolean.TRUE.equals(scanner.points.get("example.target.handle").get("static")),"static long field");
+        require("java.lang.Object".equals(scanner.points.get("example.target.lock").get("type")),"static lock field");
+        require("com.example.Example".equals(scanner.points.get("example.target.as_interface").get("ret")),"resolved return reference");
+        require(Boolean.FALSE.equals(scanner.points.get("example.target.add_listener").get("static")),"instance listener method");
+        require(!scanner.points.containsKey("example.target.wrong_static"),"wrong static flag rejected");
+        require(!scanner.points.containsKey("example.target.wrong_signature"),"wrong signature rejected");
         require(scanner.files.containsKey("/system/app/Example.odex"),"stock hash");
         Map<String,Object> json=HmgSeogaemoJsonIO.object(HmgSeogaemoJsonIO.encode(scanner.points.get("example.target.unique")));
         require("unique".equals(json.get("method")),"JSON names");

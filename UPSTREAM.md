@@ -48,11 +48,28 @@ recipes/converter), loader, zygote, copied hook classes, and `MemRecipe.java`
 are unchanged. The broader hook-runtime directory contains changes to
 `HmgApi.java`, `Mods.java`, and a new `ModDexCache.java`; these generic
 loader changes need separate assessment because our port replaces the generic loader.
-Catalogue additions are being translated separately; the
-mapper/catalogue baseline remains `4fab437` until that work is accepted.
+The 18 catalogue additions are translated below; every other mapper/catalogue
+rule keeps the `4fab437` baseline.
 The review also exposes install/restore, hmgapid/runtime-engine, and workflow
 changes for separate assessment; those upstream components are not installed
 alongside HMG-Seogaemo and are never imported automatically.
+
+Catalogue-only addition baseline (2026-11-04): translated the following 18 IDs
+from HMG-API `dd10045` (v1.0.1), iAP2 definitions introduced by
+`13a2b17`/`c4f24e9`/`02609bc` and framework definitions by `d120037`. All other
+catalogue rules and runtime/module provenance retain the `4fab437` baseline.
+No upstream mapper/tool source was copied. KOR names were resolved independently
+from exact-stock odex; see [coverage](docs/hookpoints.md) and the bundled evidence.
+
+- `iap2.service.on_destroy`, `iap2.service.on_bind`,
+  `iap2.service.native_handle`, `iap2.service.native_lock`,
+  `iap2.init_info.use_vehicle_information`, `iap2.init_info.use_vehicle_status`
+- `framework.bcm_service.batt_cond_indicator`, `framework.hev_flag.batt_cond_failure`,
+  `framework.car_services.cluster`, `framework.cluster_service`,
+  `framework.cluster_service_stub`, `framework.cluster_service_stub.as_interface`,
+  `framework.cluster_listener`, `framework.cluster_listener_stub`,
+  `framework.cluster_listener_stub.as_interface`, `framework.cluster_listener_stub.battery_info`,
+  `framework.cluster_service.add_listener`, `framework.cluster_service.battery_info`
 
 ## Startup consent screen reference
 

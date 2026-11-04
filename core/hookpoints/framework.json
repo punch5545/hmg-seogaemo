@@ -1,5 +1,5 @@
 {
-  "_origin": "Follows HMG-API core/hookpoints/framework.json@4fab437",
+  "_origin": "Follows HMG-API core/hookpoints/framework.json@4fab437; 2026-11-04 additions only: d120037",
   "files": [
     "/system/framework/framework.odex",
     "/system/framework/core.odex",
@@ -114,6 +114,15 @@
     "framework.bcm_service.ast_seat_heat_state": {
       "match": {
         "name": "getAstSeatHeatState",
+        "parameters": [],
+        "returns": "int"
+      },
+      "owner": "framework.bcm_service",
+      "type": "method"
+    },
+    "framework.bcm_service.batt_cond_indicator": {
+      "match": {
+        "name": "getBattCondIndSta",
         "parameters": [],
         "returns": "int"
       },
@@ -252,6 +261,15 @@
       "owner": "framework.car_services",
       "type": "field"
     },
+    "framework.car_services.cluster": {
+      "match": {
+        "class_member": true,
+        "name": "CLUSTER_SERVICE",
+        "type": "java.lang.String"
+      },
+      "owner": "framework.car_services",
+      "type": "field"
+    },
     "framework.car_services.datc": {
       "match": {
         "class_member": true,
@@ -332,6 +350,83 @@
       },
       "owner": "framework.car_services",
       "type": "field"
+    },
+    "framework.cluster_listener": {
+      "match": {
+        "name": "com.hkmc.cluster.INavigationClusterListener"
+      },
+      "type": "class"
+    },
+    "framework.cluster_listener_stub": {
+      "match": {
+        "name": "com.hkmc.cluster.INavigationClusterListener$Stub"
+      },
+      "type": "class"
+    },
+    "framework.cluster_listener_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.cluster_listener"
+      },
+      "owner": "framework.cluster_listener_stub",
+      "type": "method"
+    },
+    "framework.cluster_listener_stub.battery_info": {
+      "match": {
+        "class_member": true,
+        "name": "TRANSACTION_onHandleBatteryInfoResp",
+        "type": "int"
+      },
+      "owner": "framework.cluster_listener_stub",
+      "type": "field"
+    },
+    "framework.cluster_service": {
+      "match": {
+        "name": "com.hkmc.cluster.IClusterService"
+      },
+      "type": "class"
+    },
+    "framework.cluster_service.add_listener": {
+      "match": {
+        "name": "addNavigationClusterListener",
+        "parameters": [
+          "@framework.cluster_listener"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.cluster_service",
+      "type": "method"
+    },
+    "framework.cluster_service.battery_info": {
+      "match": {
+        "name": "requestBatteryInfoReq",
+        "parameters": [],
+        "returns": "void"
+      },
+      "owner": "framework.cluster_service",
+      "type": "method"
+    },
+    "framework.cluster_service_stub": {
+      "match": {
+        "name": "com.hkmc.cluster.IClusterService$Stub"
+      },
+      "type": "class"
+    },
+    "framework.cluster_service_stub.as_interface": {
+      "match": {
+        "class_member": true,
+        "name": "asInterface",
+        "parameters": [
+          "android.os.IBinder"
+        ],
+        "returns": "@framework.cluster_service"
+      },
+      "owner": "framework.cluster_service_stub",
+      "type": "method"
     },
     "framework.context_impl": {
       "match": {
@@ -676,6 +771,15 @@
         "name": "com.hkmc.hev.HEVManager$HEVFlag"
       },
       "type": "class"
+    },
+    "framework.hev_flag.batt_cond_failure": {
+      "match": {
+        "class_member": true,
+        "name": "BMS_BATTCONDFAILPOPUP",
+        "type": "int"
+      },
+      "owner": "framework.hev_flag",
+      "type": "field"
     },
     "framework.hev_flag.battery_conditioning": {
       "match": {

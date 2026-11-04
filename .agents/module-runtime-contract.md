@@ -2,6 +2,21 @@ Status: partly superseded — the former parallel-work ownership table is histor
 
 # Module runtime contract (parallel-work interface)
 
+## Map verification input identity (2026-11-04)
+
+The verified seal retains its product, stock-file hash ID and boot ID as the
+first three lines, then appends an MD5 identity of the selected map/car bytes and export layout,
+catalogue JSON files and packaged required-point manifests. A changed map,
+catalogue or requirement invalidates cached status even within the same boot;
+legacy three-line seals require verification once. Bundled verification binds
+the original bundle inputs even when optional failures are filtered from the
+published map; generated verification binds its published map/car. The immutable
+map ID also includes the complete published car metadata and layout to avoid collisions.
+The stock hash ID is unchanged. Zygote still accepts the first two seal lines
+and checks exact identity and stock MD5s independently, allowing a previously
+verified projection map to load before boot reconciliation completes. Optional
+new points do not expand any module's required set.
+
 Implemented interface between the shared module runtime, modules, and updater.
 The ownership table records the original parallel-work split; it no longer assigns active worktrees.
 

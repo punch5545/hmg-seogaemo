@@ -20,6 +20,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [user-button-shortcut.md](user-button-shortcut.md) | Current | Independent steering/head-unit shortcuts, owner-approved reassertion on boot/wake/property drift, original restore and KOR evidence. |
 | [skip-consent-screen.md](skip-consent-screen.md) | Current | Factory82 provenance, owner-tested NEEV KOR behavior, implemented watcher and reboot restore, on-car checklist. |
 | [research-car-mapping.md](research-car-mapping.md) | Implemented plus historical research | KOR evidence, core mapper design, and remaining on-car validation. |
+| [catalogue-v101.md](catalogue-v101.md) | Current | KOR evidence for 18 v1.0.1 additions, honest coverage, and verification-cache migration. |
 | [carplay-tbt-learnings.md](carplay-tbt-learnings.md) | Current | CarPlay turn-by-turn fixes ported from HMG-API, open problems, Wi-Fi client/AP findings. |
 | [research-nemesis-packaging.md](research-nemesis-packaging.md) | Partly superseded | NEMESIS source research and current package layout; older proposal marked historical. |
 | [research-ota-update.md](research-ota-update.md) | Partly superseded | Upstream OTA research and historical design choices, with current release notes. |
