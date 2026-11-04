@@ -637,12 +637,80 @@ def test_residue_on_restore(folder):
     assert (car.state / 'restart-cleanup/a').is_file()
 
 
+def only_module(car, name, properties, body=None, text=None):
+    for old in 'abc':
+        for ext in ('properties', 'sh'):
+            (car.base / f'modules/{old}.{ext}').unlink()
+    (car.base / 'modules.list').write_text(name + '\n')
+    (car.base / 'modules.graph').write_text(f'{name}\tdepends=\texcludes=\n')
+    (car.base / f'modules/{name}.properties').write_text(properties)
+    if body is not None:
+        script(car.base / f'modules/{name}.sh', body)
+    else:
+        (car.base / f'modules/{name}.sh').write_text(host_shell_script(text))
+        (car.base / f'modules/{name}.sh').chmod(0o755)
+
+
+def assert_fully_restored(car, name):
+    result = car.run('stock', 'restore')
+    assert 'state=off' in result.stdout, result.stdout
+    assert f'info.module_{name.replace("-", "_")}=reverted' in result.stdout, result.stdout
+    leftover = car.state / f'modules/{name}'
+    assert not leftover.exists() or not [
+        entry.name for entry in leftover.iterdir()
+        if entry.name.startswith(('prop.', 'file.', 'bind.')) or entry.name in ('changes', 'build')], \
+        sorted(entry.name for entry in leftover.iterdir())
+    assert (car.state / f'desired/{name}').read_text() == 'off'
+    assert not list((car.state / 'stock').glob('recovery.*'))
+
+
+def test_noglob_module_restore(folder):
+    # A module shell with noglob must still restore: the runtime globs state itself.
+    car = Car(folder)
+    only_module(car, 'a', 'owns_props=demo.a\nwatch=boot,screen_on\n', body='''
+set -efu
+. "$FAKE_COMMON"
+id=${HMG_SEOGAEMO_STATE##*/}
+case "$1" in
+    apply) sg_prop_set "demo.$id" ours; sg_status on none enabled ;;
+    revert) sg_revert_all || { sg_status conflict none drift; exit 3; }; sg_status off none restored ;;
+    status) sg_status off none restored ;;
+esac
+''')
+    car.run('a', 'apply')
+    assert (car.live / 'demo.a').read_text() == 'ours'
+    changes = car.state / 'modules/a/changes'
+    changes.write_text(changes.read_text() * 5)
+    assert_fully_restored(car, 'a')
+    assert (car.live / 'demo.a').read_text() == ''
+
+
+def test_wireless_adb_restore(folder):
+    car = Car(folder)
+    properties = (ROOT / 'modules/wireless-adb/module.properties').read_text().replace('@VERSION@', 'test')
+    only_module(car, 'wireless-adb', properties + 'watch=boot,screen_on\n',
+        text=(ROOT / 'modules/wireless-adb/root/wireless-adb.sh').read_text())
+    for name, body in {
+        'stop': 'sg_print "stop $*" >> "$FAKE_CALLS"\n',
+        'start': 'sg_print "start $*" >> "$FAKE_CALLS"; sg_write running > "$FAKE_LIVE/init.svc.adbd"\n',
+        'ifconfig': 'exit 1\n', 'netcfg': 'exit 0\n',
+    }.items():
+        script(car.fake / name, body)
+    (car.live / 'init.svc.adbd').write_text('running')
+    (car.live / 'ro.build.version.sdk').write_text('19')
+    car.run('wireless-adb', 'apply')
+    assert (car.state / 'modules/wireless-adb/changes').is_file()
+    changes = car.state / 'modules/wireless-adb/changes'
+    changes.write_text(changes.read_text() * 5)
+    assert_fully_restored(car, 'wireless-adb')
+
+
 with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
                  test_late_failure, test_detached_failure, test_missing_handoff,
                  test_shared_lines, test_file_metadata_diagnostic, test_reassert_restore, test_snapshot_free_recovery,
                  test_damaged_selection_recovery, test_unrecorded_swap, test_stale_wrapper_guard,
-                 test_residue_on_restore):
+                 test_residue_on_restore, test_noglob_module_restore, test_wireless_adb_restore):
         folder = Path(directory).resolve() / test.__name__
         folder.mkdir()
         test(folder)

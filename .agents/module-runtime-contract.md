@@ -2,6 +2,25 @@ Status: partly superseded — the former parallel-work ownership table is histor
 
 # Module runtime contract (parallel-work interface)
 
+## Module shells keep globbing on (2026-11-04)
+
+A module script must not run with noglob (`set -f`, `set -o noglob`, or `f` in a
+`set -efu` flag cluster). On v0.1.25 `wireless-adb.sh` used `set -efu`, so
+`sg_baseline_clear` (`rm -rf "$STATE"/prop.* ...`) matched nothing: the module
+reported `state=off` but its restore material stayed, the restore failed in the
+fresh-shell re-check, and dispatch stayed paused. Rules:
+
+- `tools/lint-module-root.py` rejects any `set -f`, `-f` in a `set` flag cluster and
+  `noglob` in `modules/*/root/*.sh`. The only accepted form is a one-statement word
+  split on a single line: `set -f; set -- $x; set +f`.
+- The runtime does not rely on that. Every glob-dependent body in `lib/common.sh`
+  (`sg_baseline_clear`, `sg_restore_material`, `sg_restore_preflight`,
+  `sg_reapply_binds`, `sg_dex_cache_track`, `sg_dex_finalize`, and every subshell
+  helper that globs state) runs with globbing on, and the caller's options are left
+  unchanged (`sg_glob_on` for brace functions, `set +f` first in subshell functions).
+- `sg_changed` appends a `kind<TAB>target` line to `changes` only when the exact
+  line is not already there, so repeated applies do not grow the file.
+
 ## Map verification input identity (2026-11-04)
 
 The verified seal retains its product, stock-file hash ID and boot ID as the
