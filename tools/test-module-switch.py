@@ -36,6 +36,7 @@ public class Context {
 }''',
 'com/seogaemo/hmg/module/ModuleRegistry.java': '''package com.seogaemo.hmg.module;
 public class ModuleRegistry {
+ public static boolean refreshInstalled(String locale){return true;}
  public static String[] orderedIds(){return new String[]{"wifi-client","wireless-carplay-and-aa"};}
  public static String[] depends(String id){for(String s:orderedIds())if(s.equals(id))return new String[0];throw new IllegalArgumentException(id);}
  public static String[] excludes(String id){return new String[]{id.equals("wifi-client")?"wireless-carplay-and-aa":"wifi-client"};}

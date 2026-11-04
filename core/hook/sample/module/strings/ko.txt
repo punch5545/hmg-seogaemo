@@ -1,0 +1,4 @@
+name=훅 샘플
+summary=코어 훅 호스트 확인용으로 설정 앱과 DiPO에서 로그를 남깁니다
+greeting=인사말
+how_it_works=켠 뒤 헤드유닛을 재시작하고 logcat에서 HMG-Seogaemo-Hook를 확인하세요.

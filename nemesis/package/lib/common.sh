@@ -323,16 +323,92 @@ _sg_baseline_clear() {
 }
 # Package-only mutation API. Metadata comes from the packaged, generated
 # module.properties; callers cannot nominate an arbitrary target.
+# Built-in, installed, then the runtime-generated core hook host manifest.
+sg_manifest_file() {
+    sg_mf_id=${HMG_SEOGAEMO_STATE##*/}
+    for sg_mf in "$HMG_SEOGAEMO_BASE/modules/$sg_mf_id.properties" "$SG_DATA_ROOT/installed/$sg_mf_id.properties"; do
+        [ ! -f "$sg_mf" ] || { sg_print "$sg_mf"; return 0; }
+    done
+    [ "$sg_mf_id" = core-hook ] && [ -f "$SG_DATA_ROOT/core/hook/core-hook.properties" ] || return 2
+    sg_print "$SG_DATA_ROOT/core/hook/core-hook.properties"
+}
 sg_validate() {
     [ -n "$HMG_SEOGAEMO_BASE" ] && [ -n "$HMG_SEOGAEMO_STATE" ] || return 2
-    sg_manifest=$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties
-    [ -f "$sg_manifest" ] || return 2
+    sg_manifest=$(sg_manifest_file) || return 2
     sg_found=0
     while IFS='=' read -r sg_field sg_values; do
         [ "$sg_field" = "$1" ] || continue
         case ",$sg_values," in *,"$2",*) sg_found=1;; esac
     done < "$sg_manifest"
     [ "$sg_found" -eq 1 ]
+}
+# Module catalog: package built-ins in generated order, then installed packages
+# in install order. An installed module may depend only on earlier entries.
+sg_module_list() { cat "$1/modules.list" "$SG_DATA_ROOT/installed.list" 2>/dev/null; }
+sg_module_graph() { cat "$1/modules.graph" "$SG_DATA_ROOT/installed.graph" 2>/dev/null; }
+sg_module_builtin() { grep -Fxq "$2" "$1/modules.list" 2>/dev/null; }
+sg_module_known() { sg_module_list "$1" | grep -Fxq "$2"; }
+sg_module_props() {
+    if sg_module_builtin "$1" "$2"; then sg_print "$1/modules/$2.properties"
+    else sg_print "$SG_DATA_ROOT/installed/$2.properties"; fi
+}
+sg_module_script() {
+    if sg_module_builtin "$1" "$2"; then sg_print "$1/modules/$2.sh"
+    else sg_print "$1/core/hsm-module.sh"; fi
+}
+sg_module_dir() {
+    if sg_module_builtin "$1" "$2"; then sg_print "$1/modules/$2.d"
+    else sg_print "$SG_DATA_ROOT/installed/$2"; fi
+}
+sg_module_field() {
+    sg_mf_value=
+    while IFS='=' read -r sg_mf_key sg_mf_val; do
+        [ "$sg_mf_key" = "$2" ] && sg_mf_value=$sg_mf_val
+    done < "$1"
+    sg_write "$sg_mf_value"
+}
+# Resource modes: read never conflicts, only conflicts with every other mode,
+# use is shared, and two different named modes conflict.
+sg_uses_clash() {
+    case "$1:$2" in read:*|*:read) return 1;; only:*|*:only) return 0;; use:*|*:use) return 1;; esac
+    [ "$1" != "$2" ]
+}
+sg_resource_overlap() {
+    [ "$1" = "$2" ] && return 0
+    case "$1" in "$2".*) return 0;; esac
+    case "$2" in "$1".*) return 0;; esac
+    return 1
+}
+# Prints the first enabled module that shares an owned property or clashes on a
+# declared resource with module $2 (whole files and lines are refused at install).
+sg_module_clash() {
+    sg_mc_props=$(sg_module_props "$1" "$2")
+    sg_mc_own=,$(sg_module_field "$sg_mc_props" owns_props),
+    sg_mc_uses=$(sg_module_field "$sg_mc_props" uses)
+    for sg_mc_other in $(sg_module_list "$1"); do
+        [ "$sg_mc_other" != "$2" ] || continue
+        [ "$(cat "$SG_DATA_ROOT/desired/$sg_mc_other" 2>/dev/null)" = on ] || continue
+        sg_mc_other_props=$(sg_module_props "$1" "$sg_mc_other")
+        [ -f "$sg_mc_other_props" ] || continue
+        sg_mc_ifs=$IFS
+        IFS=,
+        for sg_mc_prop in $(sg_module_field "$sg_mc_other_props" owns_props); do
+            case "$sg_mc_own" in *",$sg_mc_prop,"*) IFS=$sg_mc_ifs; sg_print "$sg_mc_other"; return 0;; esac
+        done
+        for sg_mc_mine in $sg_mc_uses; do
+            for sg_mc_theirs in $(sg_module_field "$sg_mc_other_props" uses); do
+                sg_mc_a=use; sg_mc_b=use
+                case "$sg_mc_mine" in *:*) sg_mc_a=${sg_mc_mine#*:};; esac
+                case "$sg_mc_theirs" in *:*) sg_mc_b=${sg_mc_theirs#*:};; esac
+                if sg_resource_overlap "${sg_mc_mine%%:*}" "${sg_mc_theirs%%:*}" &&
+                    sg_uses_clash "$sg_mc_a" "$sg_mc_b"; then
+                    IFS=$sg_mc_ifs; sg_print "$sg_mc_other"; return 0
+                fi
+            done
+        done
+        IFS=$sg_mc_ifs
+    done
+    return 1
 }
 sg_payload() {
     case "$1" in ''|/*|*..*|*[!a-zA-Z0-9_./-]*) return 2;; esac
@@ -717,6 +793,16 @@ sg_line_claim() (
 )
 sg_whole_exclusive() (
     set +f
+    # The core hook host shares the app_process files with the CarPlay module; only the
+    # owner that currently holds a baseline excludes the other.
+    if [ "${HMG_SEOGAEMO_STATE##*/}" = core-hook ]; then
+        key=$(sg_file_key "$1") || exit 1
+        for ready in "$SG_DATA_ROOT"/modules/*/file."$key"/ready; do
+            case "$ready" in "$HMG_SEOGAEMO_STATE"/*) continue;; esac
+            [ ! -f "$ready" ] || exit 3
+        done
+        exit 0
+    fi
     for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
         [ "$manifest" != "$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties" ] || continue
         while IFS='=' read -r key value; do
@@ -1318,8 +1404,8 @@ sg_zygote_install() {
     sg_payload "$3" || return 2; sg_jar=$sg_source
     sg_bin=${SG_TARGET_ROOT:-}/system/bin/app_process
     sg_stock=${SG_TARGET_ROOT:-}/system/bin/app_process.hmg-seogaemo-stock
-    sg_lib=${SG_TARGET_ROOT:-}/system/lib/libhmg_seogaemo_wireless_hook.so
-    sg_framework=${SG_TARGET_ROOT:-}/system/framework/hmg-seogaemo-wireless-hook.jar
+    sg_lib=${SG_TARGET_ROOT:-}/system/lib/${SG_ZYGOTE_LIB:-libhmg_seogaemo_wireless_hook.so}
+    sg_framework=${SG_TARGET_ROOT:-}/system/framework/${SG_ZYGOTE_JAR:-hmg-seogaemo-wireless-hook.jar}
     for sg_target in "$sg_bin" "$sg_stock" "$sg_lib" "$sg_framework" \
         "$HMG_SEOGAEMO_STATE/enable" "$HMG_SEOGAEMO_STATE/enabled" \
         "$HMG_SEOGAEMO_STATE/starts" "$HMG_SEOGAEMO_STATE/disable"; do
@@ -1372,10 +1458,16 @@ sg_zygote_foreign() (
     key=$(sg_file_key "$sg_bin") || exit 1
     [ ! -f "$HMG_SEOGAEMO_STATE/file.$key/ready" ] || exit 0
     [ ! -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ] || exit 0
+    # The swap is recorded when the other owner (core hook host or the CarPlay module) holds it.
+    set +f
+    for owner in "$SG_DATA_ROOT"/modules/*/file."$key"/ready; do
+        [ -f "$owner" ] || continue
+        case "$owner" in "$HMG_SEOGAEMO_STATE"/*) ;; *) exit 0;; esac
+    done
     found=
     for item in "$sg_bin.hmg-seogaemo-stock" \
-        "${SG_TARGET_ROOT:-}/system/lib/libhmg_seogaemo_wireless_hook.so" \
-        "${SG_TARGET_ROOT:-}/system/framework/hmg-seogaemo-wireless-hook.jar"; do
+        "${SG_TARGET_ROOT:-}/system/lib/${SG_ZYGOTE_LIB:-libhmg_seogaemo_wireless_hook.so}" \
+        "${SG_TARGET_ROOT:-}/system/framework/${SG_ZYGOTE_JAR:-hmg-seogaemo-wireless-hook.jar}"; do
         if [ -e "$item" ] || [ -L "$item" ]; then
             found="${found:+$found, }${item##*/}"
         fi
@@ -1387,7 +1479,7 @@ sg_zygote_foreign() (
         glob=${value%%:*}; rest=${value#*:}
         [ "${rest%%:*}" = /system/bin/app_process ] || continue
         case "$product" in $glob) expected=${rest#*:};; esac
-    done < "$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties"
+    done < "$(sg_manifest_file)"
     unknown=0
     if [ -n "$expected" ] && [ -f "$sg_bin" ]; then
         actual=$(md5 "$sg_bin") || exit 1
@@ -1429,6 +1521,64 @@ sg_zygote_guard_sweep() (
         sg_ledger zygote_guard_sweep "$item" "$item" "" "" swept || exit 1
         rm -f "$item" && [ ! -e "$item" ] && [ ! -L "$item" ] || exit 1
     done
+    exit 0
+)
+# Core hook host: one app_process wrapper shared by installed hook modules (hook_apps).
+# Its own ledger owner is the state directory modules/core-hook; the manifest is generated.
+sg_core_hook_vars() {
+    HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/core-hook
+    HMG_SEOGAEMO_MODULE_DIR=$HMG_SEOGAEMO_BASE/core/hook
+    SG_ZYGOTE_LIB=libhmg_seogaemo_hook.so
+    SG_ZYGOTE_JAR=hmg-seogaemo-hook.jar
+}
+sg_core_hook_manifest() {
+    sg_ch_dir=$SG_DATA_ROOT/core/hook
+    sg_ch_t=${SG_TARGET_ROOT:-}
+    mkdir -p "$sg_ch_dir/mods" && chmod 700 "$SG_DATA_ROOT/core" "$sg_ch_dir" "$sg_ch_dir/mods" || return 1
+    {
+        sg_print id=core-hook restart=head_unit
+        sg_print "owns_files=$sg_ch_t/system/bin/app_process,$sg_ch_t/system/bin/app_process.hmg-seogaemo-stock,$sg_ch_t/system/lib/libhmg_seogaemo_hook.so,$sg_ch_t/system/framework/hmg-seogaemo-hook.jar,$HMG_SEOGAEMO_STATE/enable,$HMG_SEOGAEMO_STATE/enabled,$HMG_SEOGAEMO_STATE/starts,$HMG_SEOGAEMO_STATE/disable"
+        grep '^known_stock\.[0-9]*=.*:/system/bin/app_process:' "$HMG_SEOGAEMO_BASE/modules/wireless-carplay-and-aa.properties" 2>/dev/null || :
+    } > "$sg_ch_dir/core-hook.properties.tmp.$$" &&
+        mv "$sg_ch_dir/core-hook.properties.tmp.$$" "$sg_ch_dir/core-hook.properties"
+}
+sg_core_hook_owned() {
+    sg_ch_key=$(sg_file_key "${SG_TARGET_ROOT:-}/system/bin/app_process") || return 1
+    [ -f "$SG_DATA_ROOT/modules/core-hook/file.$sg_ch_key/ready" ]
+}
+# Installs the wrapper (or upgrades it to this package) for a module that registered hooks.
+sg_core_hook_ensure() (
+    set +f
+    sg_core_hook_vars
+    sg_core_hook_manifest || exit 1
+    sg_ready || exit 1
+    sg_bind_build || exit 3
+    sg_zygote_foreign || exit 3
+    if ! sg_restore_material; then sg_zygote_guard_sweep || exit 3; fi
+    # Only a first install replaces the running zygote; re-applies keep the live wrapper.
+    key=$(sg_file_key "${SG_TARGET_ROOT:-}/system/bin/app_process") || exit 1
+    was=0
+    [ ! -f "$HMG_SEOGAEMO_STATE/file.$key/applied" ] || was=1
+    sg_dex_cache_track /system/framework/hmg-seogaemo-hook.jar android || exit $?
+    sg_zygote_install data/app_process data/libhmg_seogaemo_hook.so data/hmg-seogaemo-hook.jar || {
+        rc=$?
+        sg_revert_all || sg_log 'core hook rollback blocked'
+        exit "$rc"
+    }
+    [ "$was" -eq 1 ] || sg_restart_required || :
+)
+# Restores stock app_process once no installed module has hooks registered.
+sg_core_hook_release() (
+    set +f
+    for entry in "$SG_DATA_ROOT"/core/hook/mods/*/entry; do [ ! -f "$entry" ] || exit 0; done
+    sg_core_hook_vars
+    if sg_restore_material; then
+        [ -f "$SG_DATA_ROOT/core/hook/core-hook.properties" ] || sg_core_hook_manifest || exit 1
+        sg_revert_all || exit $?
+        sg_restart_required || :
+    fi
+    rm -rf "$SG_DATA_ROOT/core/hook/dex" "$SG_DATA_ROOT/core/hook/status"
+    for dir in "$SG_DATA_ROOT"/core/hook/mods/*; do [ ! -d "$dir" ] || rmdir "$dir" 2>/dev/null || :; done
     exit 0
 )
 sg_restore_material() { sg_glob_on _sg_restore_material "$@"; }

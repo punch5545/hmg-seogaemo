@@ -7,7 +7,7 @@ refuse() {
     exit "$1"
 }
 # Validate before executing any selected payload, and again in that payload.
-[ "$#" -eq 2 ] || [ "$#" -eq 3 ] || refuse 2 failed 'Invalid command'
+[ "$#" -ge 2 ] && [ "$#" -le 4 ] || refuse 2 failed 'Invalid command'
 case "$1" in
     device) [ "$#:$2" = 2:reboot ] || refuse 2 failed 'Invalid command' ;;
     stock) case "$#:$2" in 2:restore|2:status) ;; *) refuse 2 failed 'Invalid command';; esac ;;
@@ -15,10 +15,21 @@ case "$1" in
     export) case "$#:$2" in 2:usb|2:adb) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     map) case "$#:$2" in 2:status|2:run|2:verify|2:export) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     update) case "$#:$2" in 2:stage|2:apply|2:rollback|2:status) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+    module)
+        case "$#:$2" in
+            2:list) ;;
+            3:install) case "$3" in *[!0-9a-f]*|'') refuse 2 failed 'Invalid command';; esac
+                [ "${#3}" -eq 64 ] || refuse 2 failed 'Invalid command' ;;
+            3:remove) case "$3" in ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command';; esac ;;
+            4:describe) case "$3" in ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command';; esac
+                case "$4" in [a-z][a-z]) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+            *) refuse 2 failed 'Invalid command';; esac ;;
     *)
         case "$1" in ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command';; esac
         case "$#:$2" in 2:apply|2:revert|2:status|2:precheck|2:tbt-reset) ;;
             3:watch) case "$3" in boot|screen_on) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+            4:set) case "$3" in ''|*[!a-z0-9_]*) refuse 2 failed 'Invalid command';; esac
+                case "$4" in ''|*[!a-z0-9_.-]*) refuse 2 failed 'Invalid command';; esac ;;
             *) refuse 2 failed 'Invalid command';; esac ;;
 esac
 base=${0%/*}
@@ -135,21 +146,26 @@ if [ "$1" = map ]; then
     export SG_DATA_ROOT
     exec /system/bin/sh "$base/core/hmg-seogaemo-map.sh" "$2"
 fi
+if [ "$1" = module ]; then
+    export SG_DATA_ROOT
+    exec /system/bin/sh "$base/core/module.sh" "$2" ${3:+"$3"} ${4:+"$4"}
+fi
 case "$1" in
     ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command' ;;
 esac
-case "$2:$#" in apply:2|revert:2|status:2|precheck:2|tbt-reset:2) ;; watch:3)
+case "$2:$#" in apply:2|revert:2|status:2|precheck:2|tbt-reset:2|set:4) ;; watch:3)
     case "$3" in boot|screen_on) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     *) refuse 2 failed 'Invalid command' ;;
 esac
 [ "$base" != "$0" ] || refuse 2 failed 'Invalid command'
 [ -f "$base/modules.list" ] || refuse 2 failed 'Invalid command'
-grep -Fxq "$1" "$base/modules.list" || refuse 2 failed 'Invalid command'
-script=$base/modules/$1.sh
+sg_module_known "$base" "$1" || refuse 2 failed 'Invalid command'
+script=$(sg_module_script "$base" "$1")
 [ -f "$script" ] || refuse 2 failed 'Invalid command'
+manifest=$(sg_module_props "$base" "$1")
 HMG_SEOGAEMO_BASE=$base
 HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$1
-HMG_SEOGAEMO_MODULE_DIR=$base/modules/$1.d
+HMG_SEOGAEMO_MODULE_DIR=$(sg_module_dir "$base" "$1")
 unset SG_SKIP_CONSENT_FRAMEWORK SG_BOOT_ID_FILE HMG_SEOGAEMO_SERVICE_BIN
 export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE HMG_SEOGAEMO_MODULE_DIR SG_DATA_ROOT
 if [ "$2" = status ]; then
@@ -215,27 +231,52 @@ if [ "$2" = watch ]; then
     watch_events=
     while IFS='=' read -r field value; do
         [ "$field" = watch ] && watch_events=$value
-    done < "$base/modules/$1.properties"
+    done < "$manifest"
     case ",$watch_events," in *,"$3",*) ;; *) refuse 2 failed 'Invalid command';; esac
     /system/bin/sh "$script" watch "$3"
     exit $?
 fi
 relation() {
     relation_id=$1; relation_field=$2
-    while IFS='	' read -r graph_id graph_dep graph_exc; do
-        [ "$graph_id" = "$relation_id" ] || continue
-        case "$relation_field" in
-            depends) sg_print "${graph_dep#depends=}" ;;
-            excludes) sg_print "${graph_exc#excludes=}" ;;
-        esac
-        return
-    done < "$base/modules.graph"
+    for graph_file in "$base/modules.graph" "$SG_DATA_ROOT/installed.graph"; do
+        [ -f "$graph_file" ] || continue
+        while IFS='	' read -r graph_id graph_dep graph_exc; do
+            if [ "$graph_id" = "$relation_id" ]; then
+                case "$relation_field" in
+                    depends) sg_print "${graph_dep#depends=}" ;;
+                    excludes) sg_print "${graph_exc#excludes=}" ;;
+                esac
+            elif [ "$relation_field" = excludes ]; then
+                case ",${graph_exc#excludes=}," in *,"$relation_id",*) sg_print "$graph_id" ;; esac
+            fi
+        done < "$graph_file"
+    done
 }
 desired_on() { [ -f "$SG_DATA_ROOT/desired/$1" ] && [ "$(cat "$SG_DATA_ROOT/desired/$1")" = on ]; }
+if [ "$2" = set ]; then
+    # Settings exist only for installed packages; a running module is reverted and
+    # applied again so no target of the previous value survives.
+    [ ! -f "$SG_DATA_ROOT/uninstall/pending" ] || refuse 3 conflict 'Uninstall pending'
+    ! sg_module_builtin "$base" "$1" || refuse 2 failed 'Invalid command'
+    . "$base/lib/hsm.sh"
+    hsm_setting_decl "$3" && hsm_setting_valid "$4" || refuse 2 failed 'Invalid setting value'
+    settings=$SG_DATA_ROOT/settings/$1
+    mkdir -p "$settings" && chmod 700 "$SG_DATA_ROOT/settings" "$settings" &&
+        sg_write "$4" > "$settings/$3.tmp.$$" && mv "$settings/$3.tmp.$$" "$settings/$3" ||
+        refuse 1 failed 'Could not save setting'
+    if ! desired_on "$1"; then
+        sg_print state=off restart=none 'detail=Setting saved'
+        exit 0
+    fi
+    /system/bin/sh "$script" revert > /dev/null 2>&1 || refuse 1 failed 'Could not restore before applying the new setting'
+    /system/bin/sh "$script" apply
+    exit $?
+fi
 if [ "$2" = apply ]; then
     [ ! -f "$SG_DATA_ROOT/uninstall/pending" ] || { refuse 3 conflict 'Uninstall pending'; }
     [ -f "$base/modules.graph" ] || refuse 1 failed 'Could not prepare module operation'
-    old_ifs=$IFS; IFS=,
+    old_ifs=$IFS; IFS=',
+'
     for dep in $(relation "$1" depends); do
         [ -z "$dep" ] || desired_on "$dep" || { refuse 3 conflict "Dependency off: $dep"; }
     done
@@ -243,9 +284,10 @@ if [ "$2" = apply ]; then
         [ -z "$excluded" ] || ! desired_on "$excluded" || { refuse 3 conflict "Excluded module on: $excluded"; }
     done
     IFS=$old_ifs
+    if clash=$(sg_module_clash "$base" "$1"); then refuse 3 conflict "Conflicts with module on: $clash"; fi
 else
     # A direct root call may not leave an enabled dependent behind.
-    for other in $(cat "$base/modules.list"); do
+    for other in $(sg_module_list "$base"); do
         [ "$other" = "$1" ] && continue
         case ",$(relation "$other" depends)," in *,"$1",*)
             desired_on "$other" && { refuse 3 conflict "Dependent on: $other"; } ;;

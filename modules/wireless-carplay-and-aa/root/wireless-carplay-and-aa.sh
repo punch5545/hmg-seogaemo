@@ -45,6 +45,7 @@ compatibility() {
         conflict 'orphaned app_process backup'; return 3
     fi
     unrecorded_swap || return 3
+    if sg_core_hook_owned; then conflict 'app hook host of installed modules is on; turn those modules off first'; return 3; fi
     exists "$FEATURE" || { incompatible 'featurexml.cfg absent'; return 4; }
     for name in com.hkmc.software.connectivity.carplay_wireless com.hkmc.software.connectivity.androidauto_wireless com.hkmc.software.wifihotspot; do
         target=/system/etc/permissions/$name.xml

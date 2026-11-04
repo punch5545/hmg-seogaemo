@@ -432,6 +432,10 @@ def paths():
             if not path.is_file() or any(part in ('node_modules', '.git') for part in path.parts):
                 continue
             relative = path.relative_to(ROOT).as_posix()
+            # Installable-module scripts are run by lib/hsm.sh, never by a shell.
+            if path.name in ('apply.sh', 'check.sh', 'status.sh') and 'api=' in (
+                    (path.parent / 'module.properties').read_text() if (path.parent / 'module.properties').is_file() else ''):
+                continue
             if relative in excluded or '/test/' in relative or ('/build/' in relative and '/payload/' not in relative) or relative.startswith('tools/test'):
                 continue
             data = path.read_bytes()

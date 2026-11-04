@@ -53,13 +53,17 @@ void *mmap(void *addr, size_t len, int prot, int flags, int fd, long off);
 int mprotect(const void *addr, size_t len, int prot);
 int cacheflush(long start, long end, long flags);
 
+#ifndef TAG
 #define TAG "HMG-Seogaemo-Wireless"
+#endif
 #define LOG_INFO 4
 #define LOG_ERROR 6
 #define LOGI(...) __android_log_print(LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(LOG_ERROR, TAG, __VA_ARGS__)
 
+#ifndef JAR
 #define JAR "/system/framework/hmg-seogaemo-wireless-hook.jar"
+#endif
 #define BRIDGE "hmgapi.hook.Bridge"
 
 /* ---- Dalvik 4.4 layouts (offsets checked on the EV6 libdvm) ---- */

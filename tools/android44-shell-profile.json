@@ -845,6 +845,7 @@
   ],
   "host_only_scripts": [
     "tools/gen-modules.sh",
+    "core/hook/build.sh",
     "tools/upstream-diff.sh",
     "modules/wireless-carplay-and-aa/payload/build.sh",
     "modules/wireless-carplay-and-aa/payload/native/build.sh",

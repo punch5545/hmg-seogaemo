@@ -12,7 +12,7 @@ hmg_seogaemo_stock_key() {
 }
 hmg_seogaemo_stock_context() {
     HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$1
-    HMG_SEOGAEMO_MODULE_DIR=$base/modules/$1.d
+    HMG_SEOGAEMO_MODULE_DIR=$(sg_module_dir "$base" "$1")
     export HMG_SEOGAEMO_STATE HMG_SEOGAEMO_MODULE_DIR
     unset SG_SKIP_CONSENT_FRAMEWORK SG_BOOT_ID_FILE HMG_SEOGAEMO_SERVICE_BIN
 }
@@ -79,7 +79,7 @@ hmg_seogaemo_stock_residue() {
 hmg_seogaemo_stock_restore() {
     stock_reverse=
     [ -f "$base/modules.list" ] || return 1
-    for stock_id in $(cat "$base/modules.list"); do stock_reverse="$stock_id $stock_reverse"; done
+    for stock_id in $(sg_module_list "$base"); do stock_reverse="$stock_id $stock_reverse"; done
     stock_state=failed; stock_restart=none; stock_detail='Restore interrupted; retry required'
     # A second restore (notably preuninstall) cannot erase an outstanding
     # framework restart requirement from a successful restore in this boot.
@@ -136,7 +136,7 @@ hmg_seogaemo_stock_restore() {
             if [ "$stock_old" != on ] && ! hmg_seogaemo_stock_snapshots; then
                 # Nothing applied: do not fail on an unavailable unused module.
                 # Reboot-only modules still report their transient effect.
-                if ! grep -Fxq 'restore=reboot' "$base/modules/$stock_id.properties"; then
+                if ! grep -Fxq 'restore=reboot' "$(sg_module_props "$base" "$stock_id")"; then
                     sg_zygote_foreign || exit $?
                     sg_zygote_guard_sweep || exit $?
                     if [ "$stock_id" = wireless-carplay-and-aa ]; then
@@ -150,7 +150,7 @@ hmg_seogaemo_stock_restore() {
                     sg_status off none 'Already off'; exit $?
                 fi
             fi
-            /system/bin/sh "$base/modules/$stock_id.sh" revert
+            /system/bin/sh "$(sg_module_script "$base" "$stock_id")" revert
         ) > "$stock/module-output" 2>&1
         stock_code=$?
         if [ "$stock_code" -eq 0 ]; then
@@ -182,6 +182,16 @@ hmg_seogaemo_stock_restore() {
         rm -rf "$stock_recovery/$stock_id" "$stock_recovery/shared-lines"
         rmdir "$stock_recovery" 2>/dev/null || true
     done
+    # Installed hook modules release the shared wrapper themselves; this catches a release
+    # that an earlier failure left behind.
+    if (sg_core_hook_vars; sg_restore_material); then
+        if ! sg_core_hook_release > "$stock/module-output" 2>&1; then
+            stock_state=conflict
+            stock_detail='app hook host restore blocked; backups retained; watch paused'
+            hmg_seogaemo_stock_finish; return $?
+        fi
+        stock_restart=head_unit
+    fi
     hmg_seogaemo_stock_residue
     stock_state=off; stock_detail='All modules restored; HMG-Seogaemo remains installed'
     if [ "$stock_restart" = head_unit ]; then

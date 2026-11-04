@@ -30,7 +30,7 @@ property_drift() {
     drift_keys=
     while IFS='=' read -r drift_field drift_value; do
         [ "$drift_field" = reassert_props ] && drift_keys=$drift_value
-    done < "$base/modules/$1.properties"
+    done < "$(sg_module_props "$base" "$1")"
     drift_ifs=$IFS; IFS=,
     for drift_key in $drift_keys; do
         case "$drift_key" in ''|*[!a-zA-Z0-9_.-]*) continue;; esac
@@ -97,15 +97,16 @@ while :; do
     watch_now || { sleep 5; continue; }
     boot_ids=
     screen_ids=
-    for id in $(cat "$base/modules.list" 2>/dev/null); do
+    for id in $(sg_module_list "$base"); do
         [ ! -f "$state/stock/paused" ] || continue
         [ "$(cat "$state/desired/$id" 2>/dev/null)" = on ] || continue
-        [ -f "$base/modules/$id.properties" ] || continue
+        manifest=$(sg_module_props "$base" "$id")
+        [ -f "$manifest" ] || continue
         while IFS='=' read -r field value; do
             [ "$field" = watch ] || continue
             case ",$value," in *,boot,*) boot_ids="$boot_ids $id" ;; esac
             case ",$value," in *,screen_on,*) screen_ids="$screen_ids $id" ;; esac
-        done < "$base/modules/$id.properties"
+        done < "$manifest"
     done
     if [ -z "$boot_ids$screen_ids" ]; then
         last_display=unknown

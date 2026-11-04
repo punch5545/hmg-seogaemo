@@ -99,7 +99,7 @@ while :; do
     [ "$ready_wait" -le 30 ] || ready_wait=30
 done
 reverse=
-for id in $(cat "$base/modules.list"); do reverse="$id $reverse"; done
+for id in $(cat "$base/modules.list" "$state/installed.list" 2>/dev/null); do reverse="$id $reverse"; done
 failed=0
 missing_apk=0
 case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) missing_apk=1; echo 'APK missing: reverting modules' >> "$log";; esac
@@ -128,15 +128,18 @@ map_ready() {
 }
 dependency_deferred() {
     [ -f "$base/modules.graph" ] || return 1
-    while read -r graph_id graph_dep graph_excludes; do
-        [ "$graph_id" = "$id" ] || continue
-        deps=${graph_dep#depends=}
-        old_ifs=$IFS; IFS=,
-        for dep in $deps; do
-            case " $deferred " in *" $dep "*) IFS=$old_ifs; return 0;; esac
-        done
-        IFS=$old_ifs
-    done < "$base/modules.graph"
+    for graph_file in "$base/modules.graph" "$state/installed.graph"; do
+        [ -f "$graph_file" ] || continue
+        while read -r graph_id graph_dep graph_excludes; do
+            [ "$graph_id" = "$id" ] || continue
+            deps=${graph_dep#depends=}
+            old_ifs=$IFS; IFS=,
+            for dep in $deps; do
+                case " $deferred " in *" $dep "*) IFS=$old_ifs; return 0;; esac
+            done
+            IFS=$old_ifs
+        done < "$graph_file"
+    done
     return 1
 }
 apply_pending() {
@@ -153,7 +156,7 @@ apply_pending() {
             echo "deferred $id: dependency awaits verified map" >> "$log"
             continue
         fi
-        if [ -s "$base/hookpoints.required/$id" ]; then
+        if [ -s "$base/hookpoints.required/$id" ] || [ -s "$state/installed/$id.hookpoints" ]; then
             if [ "$map_checked" -eq 0 ]; then
                 map_checked=1
                 map_ready && map_ok=1
@@ -252,7 +255,7 @@ start_retry() {
     echo "$retry_pid $$" > "$retry_dir/ready"
     mv "$retry_dir/ready" "$retry_dir/pid"
 }
-pending=$(cat "$base/modules.list")
+pending=$(cat "$base/modules.list" "$state/installed.list" 2>/dev/null)
 apply_pending
 # NEMESIS starts this background service at boot and install/update.
 # OTA health also returns after this bounded pass; a deferred module still needs
