@@ -10,9 +10,44 @@ HMG_SEOGAEMO_BASE=$base
 HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
 export SG_DATA_ROOT HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE
 . "$base/lib/common.sh"
+map_pid=
+lock_owned=0
+cleanup() {
+    if [ -n "$map_pid" ]; then
+        kill "$map_pid" 2>/dev/null || :
+        kill -9 "$map_pid" 2>/dev/null || :
+        wait "$map_pid" 2>/dev/null || :
+    fi
+    [ -n "${HMG_SEOGAEMO_MAP_WORK:-}" ] && hmg_seogaemo_map_work_cleanup
+    [ "$lock_owned" -eq 0 ] || rm -rf "$lock"
+    return 0
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
 mapper() {
     CLASSPATH="$base/core/map/hmg-seogaemo-mapper.jar" app_process /system/bin com.seogaemo.hmg.core.map.HmgSeogaemoMapTool \
-        "$1" "$base" "$SG_DATA_ROOT" "$2"
+        "$1" "$base" "$SG_DATA_ROOT" "$2" &
+    # This is the app_process PID, not a background shell function.
+    map_pid=$!
+    case "$1" in status) limit=15;; verify) limit=30;; *) limit=0;; esac
+    elapsed=0
+    if [ "$limit" -gt 0 ]; then
+        while kill -0 "$map_pid" 2>/dev/null && [ "$elapsed" -lt "$limit" ]; do
+            sleep 1
+            elapsed=$((elapsed + 1))
+        done
+        if kill -0 "$map_pid" 2>/dev/null; then
+            kill "$map_pid" 2>/dev/null || :
+            kill -9 "$map_pid" 2>/dev/null || :
+            wait "$map_pid" 2>/dev/null || :
+            map_pid=
+            sg_print state=failed restart=none 'detail=map command timeout'
+            return 1
+        fi
+    fi
+    wait "$map_pid"; mapper_code=$?
+    map_pid=
+    return "$mapper_code"
 }
 if [ "$1" = status ]; then
     mapper status "$SG_DATA_ROOT/car-maps/.unused"
@@ -32,12 +67,8 @@ while ! mkdir "$lock" 2>/dev/null; do
     [ "$tries" -lt 10 ] || { sg_print "state=failed" "restart=none" "detail=operation busy"; exit 1; }
     sleep 1
 done
+lock_owned=1
 sg_write "$$" > "$lock/pid"
-cleanup() {
-    [ -n "${HMG_SEOGAEMO_MAP_WORK:-}" ] && hmg_seogaemo_map_work_cleanup
-    rm -rf "$lock"
-}
-trap cleanup EXIT HUP INT TERM
 if [ "$1" = export ]; then
     target=
     for drive in ${SG_USB_DIRS:-/storage/usb0 /storage/usb1 /storage/usb2 /mnt/media_rw/usb0 /mnt/media_rw/usb1 /mnt/media_rw/usb2}; do

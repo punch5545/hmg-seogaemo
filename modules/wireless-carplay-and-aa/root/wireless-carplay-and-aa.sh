@@ -87,6 +87,7 @@ revert() {
         sg_status off none 'disabled'; return 0
     fi
     sg_revert_all || { conflict 'restore blocked by drift; ledger retained'; return 3; }
+    sg_print info.desired=off
     sg_status pending-restart head_unit 'restart unit to finish restoration'
 }
 

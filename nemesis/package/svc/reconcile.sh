@@ -2,6 +2,8 @@
 umask 077
 base=${0%/*}
 base=${base%/svc}
+# Pin this process to its payload even if update/current changes during a retry.
+base=$(readlink -f "$base") || exit 1
 journal=/data/nemesis/backup/hmg-seogaemo/update/journal
 if [ "${HMG_SEOGAEMO_UPDATE_HEALTH:-}" != 1 ] && [ -f "$journal" ]; then
     IFS= read -r phase < "$journal" || :
@@ -9,10 +11,26 @@ if [ "${HMG_SEOGAEMO_UPDATE_HEALTH:-}" != 1 ] && [ -f "$journal" ]; then
         /system/bin/sh "$base/core/update.sh" rollback || exit 1 ;;
     esac
 fi
-current=/data/nemesis/backup/hmg-seogaemo/update/current
-if [ "$base" != "$current" ] && [ -L "$current" ]; then
-    exec /system/bin/sh "$current/svc/reconcile.sh"
-fi
+current=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update/current
+delegate_current() {
+    if [ -L "$current" ] && [ -f "$current/svc/reconcile.sh" ] && [ -r "$current/svc/reconcile.sh" ] &&
+            [ "$(readlink -f "$base")" != "$(readlink -f "$current")" ]; then
+        exec /system/bin/sh "$current/svc/reconcile.sh" "$@"
+    fi
+}
+delegate_current "$@"
+selected_current=
+[ ! -L "$current" ] || selected_current=$(readlink -f "$current")
+retry_worker=0
+check_current() {
+    [ "$retry_worker" -eq 1 ] || delegate_current "$@"
+    if [ "$retry_worker" -eq 1 ]; then
+        [ "$(cat "$retry_dir/pid" 2>/dev/null)" = "$retry_claim" ] || exit 0
+    fi
+    retry_current=
+    [ ! -L "$current" ] || retry_current=$(readlink -f "$current")
+    [ "$selected_current" = "$retry_current" ] || exit "$failed"
+}
 state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 root=$base/bin/hmg-seogaemo-root
 log=$state/reconcile.log
@@ -36,7 +54,10 @@ for id in $reverse; do
     desired=$(cat "$state/desired/$id" 2>/dev/null)
     [ "$desired" = on ] && [ "$missing_apk" -eq 0 ] && continue
     baseline=0
-    for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready "$state/modules/$id"/line.*/ready; do
+    for item in "$state/modules/$id"/prop.*/ready "$state/modules/$id"/file.*/ready \
+        "$state/modules/$id"/line.*/ready "$state/modules/$id"/bind.* \
+        "$state/modules/$id"/changes "$state/modules/$id"/dex.cache \
+        "$state/modules/$id"/dir.* "$state/modules/$id"/dir-order; do
         [ -f "$item" ] && baseline=1
     done
     [ "$baseline" -eq 1 ] || continue
@@ -44,12 +65,135 @@ for id in $reverse; do
         echo "reverted $id" >> "$log"
     else echo "revert failed: $id" >> "$log"; failed=1; fi
 done
-for id in $(cat "$base/modules.list"); do
-    [ ! -f "$state/stock/paused" ] || exit "$failed"
-    [ "$missing_apk" -eq 0 ] || continue
-    [ "$(cat "$state/desired/$id" 2>/dev/null)" = on ] || continue
-    if HMG_SEOGAEMO_RECONCILE=1 /system/bin/sh "$root" "$id" apply >> "$log" 2>&1; then
-        echo "applied $id" >> "$log"
-    else echo "apply failed: $id" >> "$log"; failed=1; fi
-done
+map_ready() {
+    map_result=$(/system/bin/sh "$root" map status 2>/dev/null) &&
+        echo "$map_result" | grep -Fxq state=on && return 0
+    [ ! -f "$state/stock/paused" ] || return 1
+    map_result=$(/system/bin/sh "$root" map verify 2>/dev/null) &&
+        echo "$map_result" | grep -Fxq state=on
+}
+dependency_deferred() {
+    [ -f "$base/modules.graph" ] || return 1
+    while read -r graph_id graph_dep graph_excludes; do
+        [ "$graph_id" = "$id" ] || continue
+        deps=${graph_dep#depends=}
+        old_ifs=$IFS; IFS=,
+        for dep in $deps; do
+            case " $deferred " in *" $dep "*) IFS=$old_ifs; return 0;; esac
+        done
+        IFS=$old_ifs
+    done < "$base/modules.graph"
+    return 1
+}
+apply_pending() {
+    deferred=
+    map_checked=0
+    map_ok=0
+    for id in $pending; do
+        [ ! -f "$state/stock/paused" ] || exit "$failed"
+        check_current "$@"
+        [ "$missing_apk" -eq 0 ] || continue
+        [ "$(cat "$state/desired/$id" 2>/dev/null)" = on ] || continue
+        if dependency_deferred; then
+            deferred="$deferred $id"
+            echo "deferred $id: dependency awaits verified map" >> "$log"
+            continue
+        fi
+        if [ -s "$base/hookpoints.required/$id" ]; then
+            if [ "$map_checked" -eq 0 ]; then
+                map_checked=1
+                map_ready && map_ok=1
+            fi
+            # Verification may take time: re-read intent before any apply.
+            [ ! -f "$state/stock/paused" ] || exit "$failed"
+            check_current "$@"
+            case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) exit "$failed";; esac
+            [ "$(cat "$state/desired/$id" 2>/dev/null)" = on ] || continue
+            if [ "$map_ok" -eq 0 ]; then
+                deferred="$deferred $id"
+                echo "deferred $id: verified map unavailable" >> "$log"
+                continue
+            fi
+        fi
+        if HMG_SEOGAEMO_RECONCILE=1 /system/bin/sh "$root" "$id" apply >> "$log" 2>&1; then
+            echo "applied $id" >> "$log"
+        else echo "apply failed: $id" >> "$log"; failed=1; fi
+    done
+}
+retry_cleanup() {
+    [ -n "$retry_claim" ] || return 0
+    [ "$(cat "$retry_dir/pid" 2>/dev/null)" != "$retry_claim" ] || rm -rf "$retry_dir"
+}
+retry_deferred() {
+    retry_worker=1
+    unset HMG_SEOGAEMO_UPDATE_HEALTH
+    retry_claim=
+    trap retry_cleanup EXIT
+    trap 'exit 0' INT TERM
+    cd / || exit 1
+    # The parent publishes $!; $$ here still identifies the original shell.
+    # Wait for that publication before taking responsibility for cleanup.
+    ready=0
+    while [ "$ready" -lt 5 ]; do
+        read -r retry_pid retry_owner < "$retry_dir/pid" 2>/dev/null || :
+        if [ "$retry_owner" = "$$" ] && [ "$retry_pid" != "$$" ]; then
+            retry_claim="$retry_pid $retry_owner"
+            break
+        fi
+        ready=$((ready + 1))
+        sleep 1
+    done
+    [ -n "$retry_claim" ] || exit 0
+    while [ -n "$deferred" ]; do
+        sleep 30
+        [ ! -f "$state/stock/paused" ] || exit 0
+        case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) exit 0;; esac
+        # New payload services own their retries. Never delegate from an old
+        # continuation or carry its deferred IDs into the newly selected code.
+        check_current
+        pending=$deferred
+        apply_pending
+    done
+}
+start_retry() {
+    retry_dir=$state/reconcile-retry
+    if ! mkdir "$retry_dir" 2>/dev/null; then
+        # Allow a concurrent launcher to publish its reservation. An interrupted
+        # mkdir before publication must not suppress retries for the whole boot.
+        ready=0
+        while [ ! -s "$retry_dir/pid" ] && [ "$ready" -lt 5 ]; do
+            ready=$((ready + 1))
+            sleep 1
+        done
+        retry_pid=
+        read -r retry_pid retry_owner < "$retry_dir/pid" 2>/dev/null || :
+        case "$retry_pid" in ''|*[!0-9]*) ;; *)
+            if kill -0 "$retry_pid" 2>/dev/null; then
+                [ "$(cat "$retry_dir/base" 2>/dev/null)" != "$base" ] || return 0
+                # A selected new payload may continue before the old worker wakes.
+                # Its owner token prevents the old worker deleting this claim.
+            fi;;
+        esac
+        rm -rf "$retry_dir"
+        mkdir "$retry_dir" 2>/dev/null || return 0
+    fi
+    echo "$base" > "$retry_dir/base"
+    echo "$$ $$" > "$retry_dir/pid"
+    trap '' HUP
+    # Redirect inside the subshell with exec: mksh otherwise retains saved
+    # copies of the caller's descriptors for the lifetime of the continuation.
+    (exec </dev/null >> "$log" 2>&1; retry_deferred) &
+    retry_pid=$!
+    echo "$retry_pid $$" > "$retry_dir/ready"
+    mv "$retry_dir/ready" "$retry_dir/pid"
+}
+pending=$(cat "$base/modules.list")
+apply_pending
+# NEMESIS waits for its once service; only deferred work may outlive this pass.
+# OTA health also returns after this bounded pass; a deferred module still needs
+# a continuation if the previous payload had no worker during this boot.
+if [ -n "$deferred" ]; then
+    check_current "$@"
+    start_retry
+fi
 exit "$failed"

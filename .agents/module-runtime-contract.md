@@ -91,6 +91,26 @@ with mode 0755. The package API commits the zygote wrapper as 0755 and preserves
 the stock executable’s baseline mode. These rules also cover ordinary files
 created by OTA extraction; no archive mode metadata is required.
 
+## OTA entry dispatch (2026-11-04)
+
+The installed dispatcher validates exact argument counts, fixed core verb pairs,
+module ID syntax and watch events before selecting an OTA payload. If current is
+a symlink to a readable dispatcher, exec that dispatcher with the same argv;
+compare canonical directories to prevent self/alias loops. Both copies validate.
+Broken or missing selection falls back to the installed package. Service and
+preuninstall/launch entry points use the same canonical guard; USB postinstall is excluded. Reconcile retains its
+pre-delegation interrupted-update rollback. The authenticated updater itself
+remains the fixed NEMESIS-tree implementation/trust anchor; selected dispatchers
+route update verbs to that fixed core, not downloaded updater copies.
+`bin/install-apk.sh` deliberately installs its own payload: update/rollback callers
+choose the exact APK, so this helper must not redirect to current. Existing old
+installed wrappers need one NEMESIS package refresh to gain this delegation;
+a new payload alone cannot change code in an already installed old wrapper.
+
+USB postinstall never delegates. After successful APK install (or Android down), retire current/current-path, previous rollback pointers and update journal; retain version directories, baselines and ledger. Failed APK installation preserves selection.
+
+Dispatcher refusals emit state/restart/detail. Status adds saved info.desired=on|off, with live fallback for missing legacy intent. Plans revert exclusions if observed active OR saved on. Successful pending-restart reverts require info.desired=off and permit the next step. App execution retains step outcomes and strongest restart even on later failure, showing one final result. OTA resume survives restart and waits for target readiness and network.
+
 ## Root side
 
 ### Head-unit restart
@@ -497,3 +517,85 @@ Restore preflight and property restore accept external drift only for explicitly
 owned reassert_props. They still fail on product mismatch and retain backups on
 failure. Restore ledger before bytes for these properties describe the observed
 live drifted value, while the immutable baseline remains the first-apply value.
+
+
+### Empty restore and diagnostics (2026-11-04)
+
+A module with no restore material is already stock: sg_revert_all succeeds without
+requiring a build marker. Restore material includes property/file/line ready
+markers, bind records, changes, dex.cache, directory references (dir.* and
+dir-order). Any such material retains the firmware, drift and metadata guards.
+A stale saved desired=on is cleared only after a successful revert receipt.
+Preflight conflicts expose the stage and target through detail output, and
+whole-package restore includes that diagnostic in its final receipt.
+
+
+### Status punctuation (2026-11-04)
+
+sg_clean preserves ASCII semicolons in human-readable status detail. Module root
+status strings are ASCII; auditing found no non-ASCII punctuation in those sources.
+
+
+Confirmed app plans execute their reviewed steps without replanning. An OTA
+switch resume stores its originating kernel boot ID; a collected head-unit
+restart requires a different boot before update continuation, plus target
+readiness and usable network. Map refresh completion retries the continuation
+so an already-connected launch does not lose its only connectivity event.
+
+## Boot map verification and deferred application (2026-11-04)
+
+Reconcile checks a packaged nonempty `hookpoints.required/<id>` before applying
+desired-on modules. It requires successful map status `state=on`, otherwise
+attempts fixed `map verify` once per pass. Unverified modules and their
+transitive dependents remain desired on and are deferred; independent modules
+continue normally. Pause, APK presence, desired state and selected payload are
+checked again after verification before application. Reverse restore discovery
+includes every restore-material class, including directory-only partial applies.
+
+The NEMESIS once service and OTA health return after the initial bounded pass.
+Map deferral is not a package health failure; actual module failures still fail.
+Deferred work continues in one private, deduplicated detached worker, retrying
+only deferred IDs every 30 seconds. It ignores HUP, disconnects caller stdio with
+internal exec redirection, changes to `/`, and clears the OTA health flag. Its
+root-owned `reconcile-retry` marker holds the actual child PID, launcher token and
+canonical payload identity. Stale or interrupted claims are reclaimed after at
+most five one-second publication polls. A changed payload can replace an old
+claim; the old worker checks exact ownership before applying and cannot remove
+the replacement marker. Workers terminate on stock pause, missing APK, payload
+selection change, or no remaining desired work. No public root verb is added;
+watcher continues to invoke only declared watch events, never apply/revert.
+
+Mapper `status` is bounded to 15 seconds and `verify` to 30 seconds, in addition
+to the existing operation-lock wait of at most nine seconds. Timeout or signal
+cancellation terminates and reaps the actual app_process child and cleans up
+owned lock and scratch state. Confirmed full mapping scans retain their existing
+behavior. Later successful app verification is observed by the deferred worker.
+
+## Automatic intent recheck under lock (2026-11-04)
+
+After acquiring operation.lock, reconcile calls re-read current desired state and
+APK presence before journaling or executing module code. Automatic apply requires
+desired on and an installed APK. Automatic reverse revert requires desired not on
+or a missing APK. If the condition no longer holds, return success with
+state=not-implemented, restart=none, info.skipped=true, current info.desired and
+detail=Automatic module intent changed. This receipt describes skipped work, not
+observed module state. It does not rewrite desired state, invalidate stock
+receipts or invoke the module. Explicit user calls retain their confirmed intent.
+
+## Recovery when the selected OTA payload is damaged (2026-11-04)
+
+The installed dispatcher routes update stage/apply/rollback/status and package
+stock restore/status/uninstall through the stable installation before OTA
+selection. Device reboot and ledger export also remain available there. Stock
+transactions may use the selected runtime only after checking required nonempty
+runtime files, generated module manifests and shell syntax with sh -n; otherwise
+they retain the installed guarded restore implementation. The NEMESIS uninstall
+hook always enters the installed stock controller rather than a selected hook.
+
+Ordinary dispatch delegates only after the same completeness and syntax check.
+An invalid selected payload falls back to the installed runtime for module
+status/precheck and map status. Other module/map mutations return a structured
+failed/none receipt directing the owner to rollback or USB reinstall, without
+executing either payload's mutation. A failed delegated mutation is never
+replayed. These checks detect missing/empty files and shell parse damage; they do
+not replace signed OTA verification or prove runtime behavior of valid syntax.

@@ -1,29 +1,73 @@
 #!/system/bin/sh
 umask 077
-if [ "$#" -ne 2 ] && [ "$#" -ne 3 ]; then
-    echo 'usage: hmg-seogaemo-root <id> apply|revert|status|precheck or <id> watch boot|screen_on' >&2
-    exit 2
-fi
-[ "$#" -ne 3 ] || [ "$2" = watch ] || exit 2
+refuse() {
+    echo "state=$2"
+    echo restart=none
+    echo "detail=$3"
+    exit "$1"
+}
+# Validate before executing any selected payload, and again in that payload.
+[ "$#" -eq 2 ] || [ "$#" -eq 3 ] || refuse 2 failed 'Invalid command'
+case "$1" in
+    device) [ "$#:$2" = 2:reboot ] || refuse 2 failed 'Invalid command' ;;
+    stock) case "$#:$2" in 2:restore|2:status) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+    package) [ "$#:$2" = 2:uninstall ] || refuse 2 failed 'Invalid command' ;;
+    export) case "$#:$2" in 2:usb|2:adb) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+    map) case "$#:$2" in 2:status|2:run|2:verify|2:export) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+    update) case "$#:$2" in 2:stage|2:apply|2:rollback|2:status) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+    *)
+        case "$1" in ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command';; esac
+        case "$#:$2" in 2:apply|2:revert|2:status|2:precheck) ;;
+            3:watch) case "$3" in boot|screen_on) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+            *) refuse 2 failed 'Invalid command';; esac ;;
+esac
 base=${0%/*}
 base=${base%/bin}
 SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
+current=$SG_DATA_ROOT/update/current
+stable=$base
+# OTA archives omit the installed NEMESIS descriptor and lifecycle hooks.
+if [ ! -f "$base/NEMESIS.data" ] && [ -L "$current" ] &&
+        [ "$(readlink -f "$base")" = "$(readlink -f "$current")" ]; then
+    stable=/data/nemesis/apps/hmg-seogaemo
+fi
+# Recovery must remain reachable without sourcing or executing selected code.
+case "$1" in
+    update) exec /system/bin/sh "$stable/core/update.sh" "$2";;
+    stock|package)
+        stock_verb=$2
+        [ "$1" != package ] || stock_verb=uninstall
+        export SG_DATA_ROOT
+        exec /system/bin/sh "$stable/core/stock.sh" "$stock_verb";;
+    device|export) base=$stable;;
+    *)
+        if [ -L "$current" ] && [ "$(readlink -f "$stable")" != "$(readlink -f "$current")" ]; then
+            . "$stable/lib/payload.sh"
+            if hmg_seogaemo_payload_valid "$current"; then
+                if [ "$(readlink -f "$base")" != "$(readlink -f "$current")" ]; then
+                    exec /system/bin/sh "$current/bin/hmg-seogaemo-root" "$@"
+                fi
+            else
+                case "$1:$2" in
+                    *:status|*:precheck) base=$stable;;
+                    *) refuse 1 failed 'Selected OTA payload damaged; roll back or reinstall from USB';;
+                esac
+            fi
+        fi;;
+esac
 . "$base/lib/common.sh"
 if [ "$1" = device ]; then
-    [ "$#" -eq 2 ] && [ "$2" = reboot ] || exit 2
-    sync && reboot
-    exit $?
-fi
-if [ "$1" = stock ] || [ "$1" = package ]; then
-    [ "$#" -eq 2 ] || exit 2
-    case "$1:$2" in stock:restore|stock:status) stock_verb=$2;;
-        package:uninstall) stock_verb=uninstall;; *) exit 2;; esac
-    export SG_DATA_ROOT
-    exec /system/bin/sh "$base/core/stock.sh" "$stock_verb"
+    [ "$#" -eq 2 ] && [ "$2" = reboot ] || refuse 2 failed 'Invalid command'
+    sync || refuse 1 failed 'Could not sync before restart'
+    reboot || refuse 1 failed 'Could not restart head unit'
+    echo state=pending-restart
+    echo restart=head_unit
+    echo 'detail=Head unit restart requested'
+    exit 0
 fi
 if [ "$1" = export ]; then
     export_mode=$2
-    case "$2" in usb|adb) ;; *) exit 2;; esac
+    case "$2" in usb|adb) ;; *) refuse 2 failed 'Invalid command';; esac
     [ -f "$SG_DATA_ROOT/ledger/ledger.tsv" ] || {
         echo 'state=failed'; echo 'restart=none'; echo 'detail=No change ledger'; exit 1;
     }
@@ -53,9 +97,9 @@ if [ "$1" = export ]; then
     stamp=$(date +%Y%m%d-%H%M%S)
     case "$export_base" in */hmg-seogaemo-export) dest=$export_base/$stamp;; *)
         dest=$export_base/HMG-Seogaemo-export/$stamp;; esac
-    mkdir -p "$dest" || exit 1
-    cp -R "$SG_DATA_ROOT/ledger" "$dest/ledger" || exit 1
-    mkdir -p "$dest/desired" || exit 1
+    mkdir -p "$dest" || refuse 1 failed 'Could not prepare module operation'
+    cp -R "$SG_DATA_ROOT/ledger" "$dest/ledger" || refuse 1 failed 'Could not prepare module operation'
+    mkdir -p "$dest/desired" || refuse 1 failed 'Could not prepare module operation'
     for record in "$SG_DATA_ROOT"/desired/*; do
         [ -f "$record" ] && cp "$record" "$dest/desired/" || true
     done
@@ -65,51 +109,54 @@ if [ "$1" = export ]; then
     export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE SG_DATA_ROOT
     . "$base/lib/common.sh"
     hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
-    chmod -R 755 "$dest" || exit 1
+    chmod -R 755 "$dest" || refuse 1 failed 'Could not prepare module operation'
     # umask 077 also protects mkdir -p parents; adb must traverse this root.
     if [ "$export_mode" = adb ]; then
-        chmod 755 "$export_base" || exit 1
+        chmod 755 "$export_base" || refuse 1 failed 'Could not prepare module operation'
     fi
     sg_print "state=on" "restart=none" "detail=$dest"
     exit 0
 fi
 if [ "$1" = map ]; then
-    case "$2" in status|run|verify|export) ;; *) exit 2;; esac
-    [ -L "$SG_DATA_ROOT/update/current" ] && base=$SG_DATA_ROOT/update/current
+    case "$2" in status|run|verify|export) ;; *) refuse 2 failed 'Invalid command';; esac
     export SG_DATA_ROOT
     exec /system/bin/sh "$base/core/hmg-seogaemo-map.sh" "$2"
 fi
-if [ "$1" = update ]; then
-    case "$2" in stage|apply|rollback|status) ;; *) exit 2 ;; esac
-    base=${0%/*}
-    base=${base%/bin}
-    exec /system/bin/sh "$base/core/update.sh" "$2"
-fi
 case "$1" in
-    ''|*[!a-z0-9-]*|-*|*--*|*-) exit 2 ;;
+    ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command' ;;
 esac
 case "$2:$#" in apply:2|revert:2|status:2|precheck:2) ;; watch:3)
-    case "$3" in boot|screen_on) ;; *) exit 2;; esac ;;
-    *) exit 2 ;;
+    case "$3" in boot|screen_on) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+    *) refuse 2 failed 'Invalid command' ;;
 esac
-base=${0%/*}
-base=${base%/bin}
-[ -L /data/nemesis/backup/hmg-seogaemo/update/current ] && base=/data/nemesis/backup/hmg-seogaemo/update/current
-[ "$base" != "$0" ] || exit 2
-[ -f "$base/modules.list" ] || exit 2
-grep -Fxq "$1" "$base/modules.list" || exit 2
+[ "$base" != "$0" ] || refuse 2 failed 'Invalid command'
+[ -f "$base/modules.list" ] || refuse 2 failed 'Invalid command'
+grep -Fxq "$1" "$base/modules.list" || refuse 2 failed 'Invalid command'
 script=$base/modules/$1.sh
-[ -f "$script" ] || exit 2
+[ -f "$script" ] || refuse 2 failed 'Invalid command'
 HMG_SEOGAEMO_BASE=$base
 HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$1
 HMG_SEOGAEMO_MODULE_DIR=$base/modules/$1.d
 unset SG_SKIP_CONSENT_FRAMEWORK SG_BOOT_ID_FILE HMG_SEOGAEMO_SERVICE_BIN
 export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE HMG_SEOGAEMO_MODULE_DIR SG_DATA_ROOT
-if [ "$2" = status ] || [ "$2" = precheck ]; then
+if [ "$2" = status ]; then
+    status_result=$(/system/bin/sh "$script" status 2>&1)
+    status_code=$?
+    sg_print "$status_result"
+    saved=$(cat "$SG_DATA_ROOT/desired/$1" 2>/dev/null)
+    case "$saved" in on|off) ;; *)
+        saved=off
+        case "$status_result" in *info.desired=off*) ;;
+            state=on*|state=pending-restart*) saved=on;; esac ;;
+    esac
+    sg_print "info.desired=$saved"
+    exit "$status_code"
+fi
+if [ "$2" = precheck ]; then
     exec /system/bin/sh "$script" "$2"
 fi
-mkdir -p "$SG_DATA_ROOT/desired" "$SG_DATA_ROOT/modules" || exit 1
-chmod 700 "$SG_DATA_ROOT" "$SG_DATA_ROOT/desired" "$SG_DATA_ROOT/modules" || exit 1
+mkdir -p "$SG_DATA_ROOT/desired" "$SG_DATA_ROOT/modules" || refuse 1 failed 'Could not prepare module operation'
+chmod 700 "$SG_DATA_ROOT" "$SG_DATA_ROOT/desired" "$SG_DATA_ROOT/modules" || refuse 1 failed 'Could not prepare module operation'
 lock=$SG_DATA_ROOT/operation.lock
 tries=0
 while ! mkdir "$lock" 2>/dev/null; do
@@ -120,22 +167,37 @@ while ! mkdir "$lock" 2>/dev/null; do
         esac
     fi
     tries=$((tries + 1))
-    [ "$tries" -lt 10 ] || { echo 'module operation busy' >&2; exit 1; }
+    [ "$tries" -lt 10 ] || { refuse 1 failed 'Module operation busy'; }
     sleep 1
 done
 sg_write "$$" > "$lock/pid"
 trap 'rm -rf "$lock"' EXIT HUP INT TERM
 if [ "${HMG_SEOGAEMO_RECONCILE:-0}" = 1 ]; then
-    [ ! -f "$SG_DATA_ROOT/stock/paused" ] || exit 3
+    [ ! -f "$SG_DATA_ROOT/stock/paused" ] || refuse 3 conflict 'Automatic module calls paused'
+    automatic_desired=$(cat "$SG_DATA_ROOT/desired/$1" 2>/dev/null)
+    automatic_apk=0
+    case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) automatic_apk=1;; esac
+    automatic_skip=0
+    case "$2:$automatic_desired:$automatic_apk" in
+        apply:on:1) ;;
+        apply:*) automatic_skip=1;;
+        revert:on:1) automatic_skip=1;;
+    esac
+    if [ "$automatic_skip" -eq 1 ]; then
+        case "$automatic_desired" in on|off) ;; *) automatic_desired=off;; esac
+        sg_print state=not-implemented restart=none info.skipped=true \
+            "info.desired=$automatic_desired" 'detail=Automatic module intent changed'
+        exit 0
+    fi
 fi
 if [ "$2" = watch ]; then
-    [ ! -f "$SG_DATA_ROOT/stock/paused" ] || exit 3
-    [ "$(cat "$SG_DATA_ROOT/desired/$1" 2>/dev/null)" = on ] || exit 3
+    [ ! -f "$SG_DATA_ROOT/stock/paused" ] || refuse 3 conflict 'Automatic module calls paused'
+    [ "$(cat "$SG_DATA_ROOT/desired/$1" 2>/dev/null)" = on ] || refuse 3 conflict 'Module desired off'
     watch_events=
     while IFS='=' read -r field value; do
         [ "$field" = watch ] && watch_events=$value
     done < "$base/modules/$1.properties"
-    case ",$watch_events," in *,"$3",*) ;; *) exit 2;; esac
+    case ",$watch_events," in *,"$3",*) ;; *) refuse 2 failed 'Invalid command';; esac
     /system/bin/sh "$script" watch "$3"
     exit $?
 fi
@@ -152,14 +214,14 @@ relation() {
 }
 desired_on() { [ -f "$SG_DATA_ROOT/desired/$1" ] && [ "$(cat "$SG_DATA_ROOT/desired/$1")" = on ]; }
 if [ "$2" = apply ]; then
-    [ ! -f "$SG_DATA_ROOT/uninstall/pending" ] || { echo 'uninstall pending' >&2; exit 1; }
-    [ -f "$base/modules.graph" ] || exit 1
+    [ ! -f "$SG_DATA_ROOT/uninstall/pending" ] || { refuse 3 conflict 'Uninstall pending'; }
+    [ -f "$base/modules.graph" ] || refuse 1 failed 'Could not prepare module operation'
     old_ifs=$IFS; IFS=,
     for dep in $(relation "$1" depends); do
-        [ -z "$dep" ] || desired_on "$dep" || { echo "dependency off: $dep" >&2; exit 3; }
+        [ -z "$dep" ] || desired_on "$dep" || { refuse 3 conflict "Dependency off: $dep"; }
     done
     for excluded in $(relation "$1" excludes); do
-        [ -z "$excluded" ] || ! desired_on "$excluded" || { echo "excluded module on: $excluded" >&2; exit 3; }
+        [ -z "$excluded" ] || ! desired_on "$excluded" || { refuse 3 conflict "Excluded module on: $excluded"; }
     done
     IFS=$old_ifs
 else
@@ -167,12 +229,12 @@ else
     for other in $(cat "$base/modules.list"); do
         [ "$other" = "$1" ] && continue
         case ",$(relation "$other" depends)," in *,"$1",*)
-            desired_on "$other" && { echo "dependent on: $other" >&2; exit 3; } ;;
+            desired_on "$other" && { refuse 3 conflict "Dependent on: $other"; } ;;
         esac
     done
 fi
 sg_print "$(date +%s) $1 $2" > "$SG_DATA_ROOT/journal.tmp.$$" &&
-    mv "$SG_DATA_ROOT/journal.tmp.$$" "$SG_DATA_ROOT/journal" || exit 1
+    mv "$SG_DATA_ROOT/journal.tmp.$$" "$SG_DATA_ROOT/journal" || refuse 1 failed 'Could not prepare module operation'
 result=$SG_DATA_ROOT/result.$$
 /system/bin/sh "$script" "$2" > "$result" 2>&1
 code=$?
@@ -181,6 +243,11 @@ if [ "$code" -eq 0 ] && [ "$2" = apply ]; then
     sg_reapply_binds >> "$result" 2>&1 || code=1
 fi
 dd if="$result" bs=1 count=4096 2>/dev/null
+if [ "$code" -ne 0 ]; then
+    while IFS='=' read -r field value; do
+        [ "$field" != info.restore_conflict ] || sg_print "detail=$value"
+    done < "$result"
+fi
 if [ "$code" -eq 0 ]; then
     case "$2" in
         apply) grep -q '^state=on$' "$result" ||

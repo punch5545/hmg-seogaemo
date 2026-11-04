@@ -124,6 +124,16 @@ public final class ConfirmDialog extends Dialog {
     /** Keep the dialog visible while the confirmed work runs. */
     public void showProgress() { progress.setVisibility(View.VISIBLE); }
 
+    /** Read-only result using the same typography and touch targets as confirmations. */
+    public static ConfirmDialog showResult(Activity activity, String title, CharSequence message,
+            String closeLabel) {
+        ConfirmDialog dialog = show(activity, title, message, closeLabel, closeLabel, false,
+                new Action() { public void run(ConfirmDialog dialog) { dialog.dismiss(); } }, null);
+        dialog.cancel.setVisibility(View.GONE);
+        dialog.confirm.requestFocus();
+        return dialog;
+    }
+
     private static int dp(Activity activity, int value) { return SettingsUi.dp(activity, value); }
 
     private static TextView label(Activity activity, CharSequence value, int sp,

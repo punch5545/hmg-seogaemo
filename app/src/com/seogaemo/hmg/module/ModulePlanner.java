@@ -13,25 +13,33 @@ public final class ModulePlanner {
     public static ModulePlan plan(String id, boolean enable, String[] order,
             Map<String, String[]> dependencies, Map<String, String[]> exclusions,
             Set<String> on) {
+        return plan(id, enable, order, dependencies, exclusions, on, on);
+    }
+
+    public static ModulePlan plan(String id, boolean enable, String[] order,
+            Map<String, String[]> dependencies, Map<String, String[]> exclusions,
+            Set<String> on, Set<String> desired) {
         if (!dependencies.containsKey(id)) throw new IllegalArgumentException(id);
+        Set<String> active = new HashSet<String>(on);
+        active.addAll(desired);
         Set<String> toEnable = new HashSet<String>();
         Set<String> toDisable = new HashSet<String>();
         if (enable) {
             addDependencies(id, dependencies, toEnable);
             for (String candidate : toEnable) {
                 for (String excluded : exclusions.get(candidate)) {
-                    if (on.contains(excluded))
-                        addDependents(excluded, dependencies, on, toDisable, order);
+                    if (active.contains(excluded))
+                        addDependents(excluded, dependencies, active, toDisable, order);
                 }
             }
-        } else addDependents(id, dependencies, on, toDisable, order);
+        } else addDependents(id, dependencies, active, toDisable, order);
         List<ModulePlan.Step> steps = new ArrayList<ModulePlan.Step>();
         for (int i = order.length - 1; i >= 0; i--) {
-            if (toDisable.contains(order[i]) && on.contains(order[i]))
+            if (toDisable.contains(order[i]) && active.contains(order[i]))
                 steps.add(new ModulePlan.Step(order[i], false));
         }
         for (String candidate : order) {
-            if (toEnable.contains(candidate) && !on.contains(candidate))
+            if (toEnable.contains(candidate) && (!on.contains(candidate) || !desired.contains(candidate)))
                 steps.add(new ModulePlan.Step(candidate, true));
         }
         return new ModulePlan(steps, new ArrayList<Warning>());

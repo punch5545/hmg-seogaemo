@@ -9,6 +9,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/wifi-client-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 mkdir -p "$work/base/lib" "$work/bin" "$work/system/onebin/neev_kr" \
     "$work/base/bin" \
+    "$work/system/wifi" \
     "$work/system/etc/permissions" "$work/sys/bus/sdio/devices" \
     "$work/sys/class/net" "$work/state"
 cfg=$work/system/onebin/neev_kr/featurexml.cfg
@@ -17,7 +18,10 @@ xml=$work/system/etc/permissions/android.hardware.wifi.xml
 sg_print "before" "#-/system/etc/permissions/com.hkmc.software.wifihotspot.xml" "after" > "$cfg"
 cp "$cfg" "$work/original.cfg"
 mkdir "$work/props"
-: > "$work/sys/bus/sdio/devices/chip"
+# Supported stock capability remains present while SDIO/WLAN are powered off.
+sg_print broadcom > "$work/vendor"
+sg_print driver > "$work/system/wifi/bcmdhd.ko"
+sg_print firmware > "$work/system/wifi/fw_bcmdhd.bin"
 sg_print NEEV.KOR.0000.V039.001.260902 > "$work/product"
 : > "$work/owners"
 : > "$work/pm-feature"
@@ -106,6 +110,7 @@ cat > "$work/bin/getprop" <<'EOF'
 #!/bin/sh
 . "$HMG_SEOGAEMO_TEST_COMMON"
 case "$1" in ro.build.product) cat "$TEST_WORK/product";; init.svc.hostapd) cat "$TEST_WORK/hostapd" 2>/dev/null || :;;
+    tcc.wifi.vendor) cat "$TEST_WORK/vendor";;
     persist.wifi.state) cat "$TEST_WORK/props/$1" 2>/dev/null || sg_print "";; esac
 EOF
 cat > "$work/bin/setprop" <<'EOF'
@@ -144,8 +149,7 @@ chmod 644 "$work/base/bin/hmg-seogaemo-root"
 # remain the actual absolute paths used on the car.
 sed -e "s|/system/bin/sh|$car_shell|g" \
     -e "s|^xml=/system/|xml=$work/system/|" \
-    -e "s|/sys/bus/sdio/devices/\*|$work/sys/bus/sdio/devices/*|" \
-    -e "s|/sys/class/net/wlan\*|$work/sys/class/net/wlan*|" \
+    -e "s|/system/wifi/|$work/system/wifi/|g" \
     -e "s|/sys/class/net/wlan0|$work/sys/class/net/wlan0|" \
     "$repo/modules/wifi-client/root/wifi-client.sh" > "$work/wifi-client.sh"
 
@@ -177,6 +181,7 @@ assert_line() { grep -Fxq "$1" "$work/output" || { cat "$work/output"; exit 1; }
 
 prop_value() { cat "$work/props/persist.wifi.state" 2>/dev/null || :; }
 
+# No SDIO/WLAN devices exist: precheck and apply must still work with radio off.
 run status; assert_state off
 run precheck; assert_state off
 run apply; assert_state pending-restart; assert_line restart=head_unit
@@ -215,11 +220,36 @@ assert_state incompatible
 if run precheck; then exit 1; fi
 assert_state incompatible
 sg_print NEEV.KOR.0000.V039.001.260902 > "$work/product"
-rm "$work/sys/bus/sdio/devices/chip"
 rm "$work/sys/class/net/wlan0"
-if run apply; then exit 1; fi
-assert_state incompatible
+# Live enumeration alone is insufficient, including unrelated SDIO devices.
 : > "$work/sys/bus/sdio/devices/chip"
+: > "$work/sys/class/net/wlan0"
+for file in bcmdhd.ko fw_bcmdhd.bin; do
+    mv "$work/system/wifi/$file" "$work/$file.saved"
+    for verb in precheck apply; do
+        if run "$verb"; then exit 1; fi
+        assert_state incompatible
+    done
+    : > "$work/system/wifi/$file"
+    for verb in precheck apply; do
+        if run "$verb"; then exit 1; fi
+        assert_state incompatible
+    done
+    mv "$work/$file.saved" "$work/system/wifi/$file"
+done
+for vendor in '' realtek; do
+    sg_print "$vendor" > "$work/vendor"
+    for verb in precheck apply; do
+        if run "$verb"; then exit 1; fi
+        assert_state incompatible
+    done
+done
+[ ! -e "$xml" ]
+[ -z "$(prop_value)" ]
+[ "$(wc -l < "$work/marks")" -eq 2 ]
+sg_print broadcom > "$work/vendor"
+rm "$work/sys/bus/sdio/devices/chip" "$work/sys/class/net/wlan0"
+run precheck; assert_state off
 sg_print "leafia" > "$work/owners"
 if run apply; then exit 1; fi
 assert_state conflict
