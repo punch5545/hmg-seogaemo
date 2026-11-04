@@ -428,7 +428,7 @@ public final class MainActivity extends Activity {
                                     runOnUiThread(new Runnable() {
                                         public void run() {
                                             dialog.dismiss();
-                                            new AlertDialog.Builder(MainActivity.this)
+                                            if (!isFinishing()) new AlertDialog.Builder(MainActivity.this)
                                                     .setMessage(result.detail)
                                                     .setPositiveButton("OK", null).show();
                                         }
@@ -569,7 +569,7 @@ public final class MainActivity extends Activity {
                         ? getString(R.string.mapping_run_done) : outcome.detail;
                 dialog.dismiss();
                 if (settingsVisible && category == 1) showSettings();
-                new AlertDialog.Builder(MainActivity.this).setMessage(mapResult)
+                if (!isFinishing()) new AlertDialog.Builder(MainActivity.this).setMessage(mapResult)
                         .setPositiveButton("OK", null).show();
                 resumeUpdateWhenReady();
             } });
@@ -965,7 +965,7 @@ public final class MainActivity extends Activity {
                     runOnUiThread(new Runnable() { public void run() {
                         stockBusy = false;
                         dialog.dismiss();
-                        if (result.exitCode != 0) new AlertDialog.Builder(MainActivity.this)
+                        if (result.exitCode != 0 && !isFinishing()) new AlertDialog.Builder(MainActivity.this)
                                 .setMessage(R.string.device_reboot_failed)
                                 .setPositiveButton("OK", null).show();
                     }});

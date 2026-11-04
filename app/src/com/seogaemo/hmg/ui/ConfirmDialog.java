@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.Dialog;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -28,6 +29,7 @@ public final class ConfirmDialog extends Dialog {
     private final TextView cancel;
     private final ProgressBar progress;
     private boolean submitted;
+    private long shownAt;
 
     private ConfirmDialog(final Activity activity, String title, CharSequence message,
             String confirmLabel, String cancelLabel, boolean destructive,
@@ -91,6 +93,8 @@ public final class ConfirmDialog extends Dialog {
         confirm.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
                 if (submitted) return;
+                // A touch that began before the dialog appeared must not confirm it.
+                if (!armed(shownAt, SystemClock.uptimeMillis())) return;
                 submitted = true;
                 confirm.setEnabled(false);
                 cancel.setEnabled(false);
@@ -108,9 +112,11 @@ public final class ConfirmDialog extends Dialog {
     public static ConfirmDialog show(Activity activity, String title, CharSequence message,
             String confirmLabel, String cancelLabel, boolean destructive,
             Action onConfirm, Runnable onCancel) {
+        if (activity.isFinishing()) return null; // Callers ignore the result.
         ConfirmDialog dialog = new ConfirmDialog(activity, title, message, confirmLabel,
                 cancelLabel, destructive, onConfirm, onCancel);
         dialog.show();
+        dialog.shownAt = SystemClock.uptimeMillis();
         Window window = dialog.getWindow();
         window.setLayout(dp(activity, 760), WindowManager.LayoutParams.WRAP_CONTENT);
         window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
@@ -121,12 +127,20 @@ public final class ConfirmDialog extends Dialog {
         return dialog;
     }
 
+    /** Confirm taps are ignored for this long after the dialog appears; Cancel is never delayed. */
+    static final long CONFIRM_ARM_DELAY_MS = 600L;
+
+    static boolean armed(long shownAtMs, long nowMs) {
+        return shownAtMs != 0 && nowMs - shownAtMs >= CONFIRM_ARM_DELAY_MS;
+    }
+
     /** Keep the dialog visible while the confirmed work runs. */
     public void showProgress() { progress.setVisibility(View.VISIBLE); }
 
     /** Read-only result using the same typography and touch targets as confirmations. */
     public static ConfirmDialog showResult(Activity activity, String title, CharSequence message,
             String closeLabel) {
+        if (activity.isFinishing()) return null;
         ConfirmDialog dialog = show(activity, title, message, closeLabel, closeLabel, false,
                 new Action() { public void run(ConfirmDialog dialog) { dialog.dismiss(); } }, null);
         dialog.cancel.setVisibility(View.GONE);
