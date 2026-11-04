@@ -72,6 +72,10 @@ final class CpTurns {
         return s == null ? -1 : s.length();
     }
 
+    /** diagnostics: RouteGuidanceUpdates seen, and when the last one arrived (turn() runs only for these, there is no resend timer) */
+    private int rgCount, firstTurnLogged;
+    private long rgAt, firstRgAt;
+
     private void d(String m) {
         Dipo.log("TBT " + m);
     }
@@ -85,6 +89,12 @@ final class CpTurns {
     /** RouteGuidanceUpdate (DiPO e/u.c) */
     void routeGuidance(Iap2NotiMsg msg) {
         if (msg == null) return;
+        rgCount++;
+        rgAt = System.currentTimeMillis();
+        if (rgCount == 1) {
+            firstRgAt = rgAt;
+            d("first RouteGuidanceUpdate (120) received");
+        }
         sourceCheck(msg);
         int[] ids = componentIds(msg);
         if (ids == null) {
@@ -421,6 +431,10 @@ final class CpTurns {
         }
         int icon = icon(x.type, x.side, x.junction, x.exit, u.state);
         cluster.crossroadName(x.afterRoad);
+        if (firstTurnLogged == 0) {
+            firstTurnLogged = 1;
+            d("first turn() push: rg#" + rgCount + ", " + (System.currentTimeMillis() - firstRgAt) + " ms after the first RouteGuidanceUpdate");
+        }
         if (sample("tn", id + "|" + icon + "|" + u.state + "|" + list[0])) d("turn comp=" + id + " state=" + u.state + " index=" + list[0] + " type=" + x.type + " side=" + x.side + " junction=" + x.junction + " exit=" + x.exit + " -> icon " + icon + " dist=" + dist + " unit=" + unit + (icon == 0 ? " (UNMAPPED, nothing sent to tbtInfo/HUD)" : ""));
         if (icon == 0) {
             return;
@@ -628,6 +642,7 @@ final class CpTurns {
      */
     void sendTrip(Update u) {
         int d = u.distLeft, units = u.distLeftUnits;
+        if (sample("trip", d + "|" + units)) d("trip source: rg#" + rgCount + " ageMs=" + (System.currentTimeMillis() - rgAt) + " distLeft=" + u.distLeft + " phoneUnits=" + u.distLeftUnits + " distLeftStr='" + u.distLeftStr + "' ownerUnit=" + Car.distanceUnit(context) + " eta=" + u.eta + " timeLeft=" + u.timeLeft);
         int whole = 0, tenths = 0, unit = Cluster.UNIT_M;
         if (d > 0) {
             whole = d;
@@ -689,6 +704,7 @@ final class CpTurns {
             timeFormat = -1;
         }
         if (d <= 0 && timeType < 0) return;
+        if (sample("trip-out", whole + "|" + tenths + "|" + unit)) d("trip sent: rg#" + rgCount + " ageMs=" + (System.currentTimeMillis() - rgAt) + " whole=" + whole + " tenths=" + tenths + " unit=" + unit + " (tbtSubInfo = REMAINING TRIP distance, not next-turn distance)");
         cluster.tbtSubInfo(whole + tenths / 10f, d > 0 ? 0 : -1, unit, hour, minute, timeType, timeType < 0 ? -1 : timeFormat, 0f, -1, 0);
     }
 
