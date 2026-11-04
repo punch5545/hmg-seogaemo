@@ -40,12 +40,29 @@ public final class Cluster {
         }
     }
 
-    /** diagnostics: where the traced cluster calls are logged (null: not traced) */
-    public interface Trace {
-        void log(String m);
+    /**
+     * Diagnostics: trace the cluster calls (set by DiPO's turn-by-turn). Failures are always
+     * logged; ok calls only while `persist.hmg_seogaemo.dev` is 1 (re-read every 3 s). Kept as a
+     * plain field and not a callback interface: a mods-dex class implementing a hook-dex
+     * interface fails to link on Dalvik ("Class resolved by unexpected DEX").
+     */
+    public static volatile boolean traced;
+    private static volatile long devAt;
+    private static volatile boolean devOn;
+
+    static boolean dev() {
+        long now = System.currentTimeMillis();
+        if (devAt != 0 && now - devAt < 3000L) return devOn;
+        devAt = now;
+        try {
+            Method get = Class.forName("android.os.SystemProperties").getMethod("get", String.class, String.class);
+            devOn = "1".equals(get.invoke(null, "persist.hmg_seogaemo.dev", "0"));
+        } catch (Throwable t) {
+            devOn = false;
+        }
+        return devOn;
     }
 
-    public static volatile Trace trace;
     private static final Map<String, int[]> counts = new HashMap<String, int[]>();
 
     private static String show(Object a) {
@@ -63,8 +80,7 @@ public final class Cluster {
 
     /** the first 20 calls per point, then every 10th; a failure is always logged (first 40 per point) */
     private static void traced(String point, Object[] args, Throwable t) {
-        Trace tr = trace;
-        if (tr == null) return;
+        if (!traced) return;
         int n;
         synchronized (counts) {
             int[] c = counts.get(point);
@@ -79,11 +95,8 @@ public final class Cluster {
         StringBuilder sb = new StringBuilder("TBT cluster ").append(point).append(" #").append(n).append(" (");
         for (int k = 0; args != null && k < args.length; k++) sb.append(k == 0 ? "" : ", ").append(show(args[k]));
         sb.append(") -> ").append(t == null ? "ok" : "FAILED " + t);
-        try {
-            tr.log(sb.toString());
-        } catch (Throwable x) {
-            // diagnostics only
-        }
+        if (t == null && !dev()) return;
+        HmgApi.i(sb.toString());
     }
 
     private void call(String point, Object... args) {

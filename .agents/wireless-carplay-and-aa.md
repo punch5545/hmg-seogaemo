@@ -196,3 +196,10 @@ Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe mat
   trip still go out). Fallback never uses "straight" for a turn. A 1 s refresh (`CpTurns.refresh`) resends the last state while guidance is active;
   evidence for it: the car's own navigation calls `updateTBTSubInfo` every 0.5-0.75 s, and no keep-alive or handshake call is documented
   in the API inventory (`updateAlive` exists but phone guidance deliberately never claims the cluster).
+
+- **Dalvik cross-dex rule (learned on the car, 2026-11-04).** The hook classes (`hmgapi.hook.*`) are loaded in the zygote from the
+  boot-time jar, while each app's mods are loaded from its own dex copy. A mods class that *implements a new hook-package interface*
+  is pre-verified against the copy in its own dex and then fails to link at runtime ("Class resolved by unexpected DEX" →
+  `NoClassDefFoundError`), which took down DiPO's whole part (`part.dipo=failed`, no wireless CarPlay). Do not add callback
+  interfaces in `hmgapi.hook` for mods to implement; use static fields/flags or existing types (`MethodHook`, `Runnable`).
+  Check with `dexdump` that no new `hmgapi/mods` class has a `hmgapi/hook` superclass/interface other than `MethodHook`.
