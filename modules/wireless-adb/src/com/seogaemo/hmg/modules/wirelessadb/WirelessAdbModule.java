@@ -30,6 +30,8 @@ public final class WirelessAdbModule extends RootBackedModule {
     public String[] ownedFiles() { return new String[0]; }
     public InfoRow[] infoRows() {
         InfoRow[] hotspot = new InfoRow[] {
+            new InfoRow(R.string.wireless_adb_effective_port, "effective_port"),
+            new InfoRow(R.string.wireless_adb_daemon_state, "adbd_state"),
             new InfoRow(R.string.wireless_adb_hotspot_ssid, "hotspot_ssid"),
             new InfoRow(R.string.wireless_adb_hotspot_ip, "hotspot_ip"),
             new InfoRow(R.string.wireless_adb_adb_endpoint, "adb_endpoint")
@@ -39,7 +41,7 @@ public final class WirelessAdbModule extends RootBackedModule {
             return hotspot;
         }
         return new InfoRow[] {
-            hotspot[0], hotspot[1], hotspot[2],
+            hotspot[0], hotspot[1], hotspot[2], hotspot[3], hotspot[4],
             new InfoRow(R.string.wireless_adb_client_ip, "client_ip"),
             new InfoRow(R.string.wireless_adb_client_adb_endpoint, "client_adb_endpoint")
         };
