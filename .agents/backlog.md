@@ -18,19 +18,7 @@ Local evidence from the 2026-11-04 drives (gitignored, on the owner's Mac):
 `tmp/car-sessions/2026-11-04-tbt/` (live logcat, USB export with `diagnostics/tbt/`,
 ledger, `analysis/` reports on maneuver table, raw 0x5204 lanes and follow-ups).
 
-## 1. Release and on-car verification of v0.1.26
-
-- [ ] Confirm the v0.1.26 GitHub release is published with all assets
-  (`release.yml`), then update the car to the release-signed build (app OTA or
-  `nemesis install --update` over adb). Payload is identical to the car's build, so
-  no CarPlay restart should be needed; check `wireless-carplay-and-aa status`.
-- [ ] Pending-restart status line and the confirmed head-unit restart button on the
-  module page (see `wireless-carplay-and-aa.md`, `ui-guidelines.md`).
-- [ ] Restore stock no longer fails at `wireless-adb` (noglob fix; `stock-restore.md`).
-  Only run it when the owner wants the stock state.
-- [ ] USB export is synced and verified before "safe to remove" (no 0-byte files).
-
-## 2. CarPlay turn-by-turn follow-ups
+## 1. CarPlay turn-by-turn follow-ups
 
 Background and fixed causes: `carplay-tbt-learnings.md`, `wireless-carplay-and-aa.md`
 (observation records, developer toggle `persist.hmg_seogaemo.dev`, Dalvik cross-dex rule),
@@ -69,7 +57,7 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
 - [ ] Guard test: no new `hmgapi/mods` class may extend/implement a `hmgapi/hook` type
   other than `MethodHook` (dexdump check in the module test).
 
-## 3. Older open items
+## 2. Older open items
 
 - [ ] `nemesis root -c` with long commands fails with "daemon write failed"; find the
   limit and keep app/root commands below it (split or script file).
@@ -84,7 +72,7 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
   (`user-button-shortcut.md`); full NEMESIS uninstall leaves the unit byte-identical
   (`stock-restore.md`); QuickBoot/ignition-only cycle behaviour (`boot-lifecycle.md`).
 
-## 4. Planned features (owner-approved direction)
+## 3. Planned features (owner-approved direction)
 
 Evidence and candidate hooks: `neev-kor-api-inventory.md`.
 
@@ -94,7 +82,7 @@ Evidence and candidate hooks: `neev-kor-api-inventory.md`.
 - [ ] Battery diagnostics, read-only first; any control needs owner approval.
 - [ ] EV information to the phone over iAP2 (EV routing).
 
-## 5. Security
+## 4. Security
 
 - [ ] Consider rotating the release keystore password (printed in a 2026-11-03
   session transcript); update the GitHub `release` environment secret and the owner's
