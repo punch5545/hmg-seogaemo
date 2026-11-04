@@ -563,7 +563,7 @@ def test_reconcile(temp):
     fake = base / "fake"
     fake.mkdir()
     script(fake / "getprop", 'echo 1\n')
-    script(fake / "pm", 'case "$1" in path) [ -f "$FAKE_PM_MARKER" ] && echo package:fake;; uninstall) rm -f "$FAKE_PM_MARKER"; echo Success;; esac\n')
+    script(fake / "pm", 'case "$1" in path) if [ "$2" = android ] || [ -f "$FAKE_PM_MARKER" ]; then echo package:fake; fi;; uninstall) rm -f "$FAKE_PM_MARKER"; echo Success;; esac\n')
     log = base / "calls"
     marker = base / "apk-installed"
     marker.write_text("1")

@@ -20,7 +20,7 @@ name=reconcile
 kind=sh
 path=svc/reconcile.sh
 uid=root
-mode=once
+mode=background
 
 [service.1]
 name=watcher

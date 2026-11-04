@@ -2,6 +2,16 @@ Status: partly superseded — the former parallel-work ownership table is histor
 
 # Module runtime contract (parallel-work interface)
 
+## Boot lifecycle readiness (2026-11-04)
+
+Reconcile is a NEMESIS `background` shell service: start asynchronously on each
+service-manager startup and package install/update, without restarting after exit.
+Normal startup waits for `sys.boot_completed=1` and `pm path android` before
+interpreting an absent app as removal. Readiness retries back off from 2 seconds
+to a 30-second cap, with no permanent boot timeout. OTA health remains finite
+(six readiness waits); map-dependent applies retain their detached retry worker.
+Desired-on modules are still reapplied on the install/update path.
+
 Implemented interface between the shared module runtime, modules, and updater.
 The ownership table records the original parallel-work split; it no longer assigns active worktrees.
 
