@@ -81,7 +81,7 @@ The package API must baseline each owned path before writing it, record applied 
 | `/system/etc/permissions/com.hkmc.software.connectivity.androidauto_wireless.xml` | Same. |
 | `/system/etc/permissions/com.hkmc.software.wifihotspot.xml` | Same. |
 | `/system/lib/libleafiaaac.so` | Put rebuilt converter; restore bytes or absence. |
-| `/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/aa-tbt-48ee793a.recipe`, `aa-tbt-a0bea1c4.recipe`, `carplay-core-wifi.recipe`, `carplay-audio-formats.recipe`, `carplay-utils-converter.recipe` | Put five recipes; restore each exact original or absence and remove newly created empty directories. |
+| `/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/aa-tbt-48ee793a.recipe`, `aa-tbt-a0bea1c4.recipe`, `carplay-core-wifi.recipe`, `carplay-audio-formats.recipe`, `carplay-utils-converter.recipe`, `iap2-lane-msgid.recipe` | Put six recipes; restore each exact original or absence and remove newly created empty directories. |
 | `/system/bin/app_process` | `sg_zygote_install` installs wrapper; restore exact stock executable bytes/mode/owner. |
 | `/system/bin/app_process.hmg-seogaemo-stock` | `sg_zygote_install` copies the current original here before swap; restore prior bytes or absence. |
 | `/system/lib/libhmg_seogaemo_wireless_hook.so`, `/system/framework/hmg-seogaemo-wireless-hook.jar` | `sg_zygote_install` installs runtime; restore exact bytes or absence. |
@@ -163,3 +163,43 @@ cleanup and retain recovery material.
 5. On boot failure, after three unsuccessful zygote starts the wrapper should stop preloading and still exec stock. ADB/NEMESIS root can call the root dispatcher to revert, inspect/export ledger, then restart. If dispatcher is unavailable, use a saved ledger and stock executable through NEMESIS full-root recovery; never restore an older firmware's `app_process` over a newer one. The runtime owner must provide and test the exact emergency recovery command before release.
 
 Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe matches, working wireless sessions, or head-unit boot recovery. The shared API and off-car gates pass; do not release before on-car validation passes.
+
+
+## CarPlay turn-by-turn: lane fix, fallback icons, developer toggle
+
+- **Lane guidance (`iap2-lane-msgid.recipe`).** Stock `libiap2session.so` (md5 `fc7cb675b46a44bd893a1edc054c5e71`, NEEV KOR) registers
+  `LaneGuidanceInformation` under msgId 0x5202 (copy of the maneuver's id) in its control-message table, and the lookup is first-match,
+  so a real 0x5204 only logs `iAP2ControlSessionHandleMsg msgType=0x5204`. The recipe (a `data` recipe: offsets are virtual
+  addresses in `.data`, file offset + 0x1000, written through `/proc/self/mem` so page protection is untouched) changes the u32 at
+  vaddr `0x31c80` (file `0x30c80`) from `02 52 00 00` to `04 52 00 00`, after verifying the msgIds of the two rows before it
+  (0x5201 at `0x31c50`, 0x5202 at `0x31c68`). Pointer words are never verified (they are relocated at load). Applied in the iap2server
+  process (`Wireless.iap2`, setting `tbt`); state is `native.libiap2session.so.state` in the runtime result and does not gate readiness.
+  The lane parameter tables (`iAP2LaneGuidanceInformationList` 0x34b78, `iAP2LaneInformationGroupList` 0x349e0) match what
+  `CpTurns.lanes()` reads: item 2 is the lane group array, per lane item 1 status, 2 angles, 3 highlighted angles. 0x5204 carries no distance;
+  the maneuver distance comes from RouteGuidanceUpdate.
+- **No silent skips.** `CpTurns.turn()` used icon 0 to stop everything (no turn, HUD, trip). An unmapped maneuver now uses
+  `fallbackIcon` (direction arrow, else straight) and logs `no exact icon for maneuver type ...` once per combination. A missing maneuver
+  still sends HUD distance and trip, and asks the phone to resend (Stop then Start), at most once in 30 s.
+- **Developer toggle.** Verbose TBT / iAP2 logs (`TBT ...`, `bridge: iAP2 in ...`, `TBT cluster ...` traces) follow the property
+  `persist.hmg_seogaemo.dev`, read every 3 s, so no restart. Off (default) keeps only one-line state and failures. From adb, with full root:
+
+      adb shell cp /system/xbin/nemesis /data/local/tmp/nemesis-d
+      adb shell /data/local/tmp/nemesis-d root -c 'setprop persist.hmg_seogaemo.dev 1'   # on
+      adb shell /data/local/tmp/nemesis-d root -c 'setprop persist.hmg_seogaemo.dev 0'   # off
+      adb shell getprop persist.hmg_seogaemo.dev
+      adb logcat -s HMG-Seogaemo-Wireless:*
+- `Wireless.NAVI_TBT` now also skips the car navigation's `update_lane_info` while a phone guides (its free-drive writes would overwrite our lane frames).
+- **Observation records.** `tbt-icons.*` / `tbt-lanes.*` (summary + about 10 MiB of append-only journals, with the phone's instruction texts; kept permanently so the icon table keeps improving) in DiPO's runtime directory, format and the `tbt-reset` verb in
+  `module-runtime-contract.md` ("Turn-by-turn observation records"). The module page shows `info.tbt_inexact` / `info.tbt_blank`
+  and a confirmed reset. Match kinds: `exact` (table), `band` (types 1/2/47-50 by angle), `angle` (any other type by angle,
+  roundabouts by nearest exit icon), `semantic` (type only, e.g. keep left/right, enter roundabout, arrive), `blank` (icon 64: distances, lanes and
+  trip still go out). Fallback never uses "straight" for a turn. A 1 s refresh (`CpTurns.refresh`) resends the last state while guidance is active;
+  evidence for it: the car's own navigation calls `updateTBTSubInfo` every 0.5-0.75 s, and no keep-alive or handshake call is documented
+  in the API inventory (`updateAlive` exists but phone guidance deliberately never claims the cluster).
+
+- **Dalvik cross-dex rule (learned on the car, 2026-11-04).** The hook classes (`hmgapi.hook.*`) are loaded in the zygote from the
+  boot-time jar, while each app's mods are loaded from its own dex copy. A mods class that *implements a new hook-package interface*
+  is pre-verified against the copy in its own dex and then fails to link at runtime ("Class resolved by unexpected DEX" →
+  `NoClassDefFoundError`), which took down DiPO's whole part (`part.dipo=failed`, no wireless CarPlay). Do not add callback
+  interfaces in `hmgapi.hook` for mods to implement; use static fields/flags or existing types (`MethodHook`, `Runnable`).
+  Check with `dexdump` that no new `hmgapi/mods` class has a `hmgapi/hook` superclass/interface other than `MethodHook`.

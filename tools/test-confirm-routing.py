@@ -34,6 +34,11 @@ assert "confirmCheckUpdate()" in method("showUpdate")
 assert "ConfirmDialog.show" in method("confirmInstall")
 assert "ConfirmDialog.show" in method("confirmRollback")
 assert "ConfirmDialog.show" in method("showSettings")  # USB export
+assert "confirmTbtReset()" in method("dispatchModuleAction")
+assert "ConfirmDialog.show" in method("confirmTbtReset")
+assert method("confirmTbtReset").index("ConfirmDialog.show") < method("confirmTbtReset").index("RootClient.tbtReset()")
+assert "dialog.showProgress()" in method("confirmTbtReset") and "new Thread" in method("confirmTbtReset")
+assert "getString(R.string.cancel), true," in method("confirmTbtReset")  # destructive styling, Cancel stays the default
 assert "ConfirmDialog.show" in method("confirmMapRun")
 assert "ConfirmDialog.show" in method("confirmMapExport")
 assert "mapOperation(\"run\", dialog)" in method("confirmMapRun")

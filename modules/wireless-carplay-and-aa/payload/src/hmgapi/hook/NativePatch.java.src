@@ -69,6 +69,23 @@ final class NativePatch {
         }
 
         @Override
+        public boolean pokeData(long addr, byte[] data) {
+            // already writable data: through /proc/self/mem, so no page protection changes (the native poke would leave the page read+exec)
+            java.io.RandomAccessFile f = null;
+            try {
+                f = new java.io.RandomAccessFile("/proc/self/mem", "rw");
+                f.seek(addr);
+                f.write(data);
+                return true;
+            } catch (Throwable t) {
+                lastErrno = 13;
+                return false;
+            } finally {
+                if (f != null) try { f.close(); } catch (Exception ignored) {}
+            }
+        }
+
+        @Override
         public long mapCode(long hint, int len) {
             long result = Bridge.mapCodeNative(hint, len);
             if (result < 0) { lastErrno = (int) -result; return 0; }

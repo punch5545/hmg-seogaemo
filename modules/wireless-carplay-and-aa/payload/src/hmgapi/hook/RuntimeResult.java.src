@@ -113,6 +113,11 @@ public final class RuntimeResult {
         } catch (Throwable ignored) {}
     }
 
+    /** the private runtime directory of this process, if diagnostics are on for it */
+    static File directoryOrNull() {
+        return writable() ? directory : null;
+    }
+
     static boolean writable() {
         return directory != null && stem != null && writerPid == android.os.Process.myPid();
     }

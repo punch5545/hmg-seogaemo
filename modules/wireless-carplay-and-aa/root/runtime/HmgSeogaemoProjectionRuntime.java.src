@@ -119,6 +119,62 @@ public final class HmgSeogaemoProjectionRuntime {
         String detail = prefix + "=" + state + " " + get(r, prefix + ".reason") + " " + get(r, prefix + ".errno");
         return new Result("failed".equals(state) || "off".equals(state) ? "failed" : "unknown", detail);
     }
+    /** DiPO's turn-by-turn records: summaries (read by status for the counts) and their journals */
+    static final String[] OBSERVATIONS = {"tbt-icons.txt", "tbt-lanes.txt"};
+    static final String[] JOURNALS = {"tbt-icons.journal", "tbt-lanes.journal"};
+    static final int SUMMARY_LIMIT = 1048576, JOURNAL_SHARDS = 6;
+    File dipoDir() throws Exception {
+        File data = path("/data/data/" + PACKAGES[0]);
+        if (!safe(data) || !data.isDirectory()) throw new IOException("package directory");
+        return new File(data, "app_hmg-seogaemo-wireless-runtime");
+    }
+    boolean present(File f) {
+        try { metadata.stat(f); return true; } catch (Exception e) { return false; }
+    }
+    /** {maneuver combinations not matched exactly, of them blank} from DiPO's icon record; null if unknown */
+    int[] tbtCounts() throws Exception {
+        File dir = dipoDir();
+        int uid = metadata.stat(path("/data/data/" + PACKAGES[0]))[0];
+        if (!present(dir) || !owned(dir, uid, true)) return null;
+        File f = new File(dir, OBSERVATIONS[0]);
+        if (!present(f)) return new int[] {0, 0};
+        if (!owned(f, uid, false)) return null;
+        int inexact = 0, blank = 0;
+        for (String line : text(f, SUMMARY_LIMIT).split("\n")) {
+            String[] p = line.split("\\|", -1);
+            if ((p.length != 5 && p.length != 6) || p[1].indexOf("kind=") < 0) continue;
+            if (p[1].indexOf("kind=exact") >= 0) continue;
+            inexact++;
+            if (p[1].indexOf("kind=blank") >= 0) blank++;
+        }
+        return new int[] {inexact, blank};
+    }
+    /** removes DiPO's generated turn-by-turn records (summaries, temporaries, journals); a symlink, other type or owner is refused */
+    int tbtReset() throws Exception {
+        File dir = dipoDir();
+        int uid = metadata.stat(path("/data/data/" + PACKAGES[0]))[0];
+        if (!present(dir)) return 0;
+        if (!owned(dir, uid, true)) throw new IOException("runtime directory owner/type");
+        List<File> doomed = new ArrayList<File>();
+        List<String> names = new ArrayList<String>();
+        for (String name : OBSERVATIONS) { names.add(name); names.add(name + ".tmp"); }
+        for (String name : JOURNALS) {
+            names.add(name);
+            for (int i = 1; i < JOURNAL_SHARDS; i++) names.add(name + "." + i);
+        }
+        for (String name : names) {
+            File f = new File(dir, name);
+            if (!present(f)) continue;
+            if (!owned(f, uid, false)) throw new IOException("refused: " + f.getName() + " is not a plain file of the app");
+            doomed.add(f);
+        }
+        int removed = 0;
+        for (File f : doomed) {
+            if (!f.delete()) throw new IOException("delete failed");
+            removed++;
+        }
+        return removed;
+    }
     Result merge(Result a, Result b) { return b.rank() > a.rank() ? b : a; }
     Result readiness(Map<String,String> r, int index) {
         if (!jarHash.equals(r.get("payload_jar_sha256")) || !loaderHash.equals(r.get("payload_loader_sha256")))
@@ -219,14 +275,28 @@ public final class HmgSeogaemoProjectionRuntime {
         return s.toString();
     }
     public static void main(String[] args) {
-        if (args.length != 2 || !(args[0].equals("status") || args[0].equals("applying") || args[0].equals("clear"))) { System.exit(2); return; }
+        if (args.length != 2 || !(args[0].equals("status") || args[0].equals("applying") || args[0].equals("clear") || args[0].equals("tbt-reset"))) { System.exit(2); return; }
         try {
             File runtime = new File(args[1], "runtime/wireless-carplay-and-aa");
             HmgSeogaemoProjectionRuntime reader = new HmgSeogaemoProjectionRuntime(new File("/"), runtime, new KitKatMetadata());
             if (args[0].equals("clear")) { reader.deleteTree(runtime, 4); new File(args[1], "runtime").delete(); return; }
+            if (args[0].equals("tbt-reset")) {
+                try {
+                    int n = reader.tbtReset();
+                    System.out.println("state=on\nrestart=none\ndetail=removed " + n + " files");
+                } catch (Exception e) {
+                    System.out.println("state=failed\nrestart=none\ndetail=reset refused: " + clean(String.valueOf(e.getMessage())));
+                    System.exit(1);
+                }
+                return;
+            }
             Result r = reader.status();
             if (args[0].equals("applying") && r.state.equals("unknown")) r = new Result("pending-restart", r.detail);
             System.out.println("state=" + r.state + "\nrestart=" + (r.state.equals("pending-restart") ? "head_unit" : "none") + "\ndetail=" + clean(r.detail));
+            try {
+                int[] t = reader.tbtCounts();
+                if (t != null) System.out.println("info.tbt_inexact=" + t[0] + "\ninfo.tbt_blank=" + t[1]);
+            } catch (Exception ignored) { /* unknown: no info lines */ }
             if (r.state.equals("failed")) System.exit(1);
         } catch (Exception e) {
             if (args[0].equals("clear")) { System.err.println("runtime cleanup refused: " + e.getClass().getSimpleName()); System.exit(1); return; }

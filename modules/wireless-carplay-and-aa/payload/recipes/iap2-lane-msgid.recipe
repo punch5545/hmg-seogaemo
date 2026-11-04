@@ -1,0 +1,10 @@
+# libiap2session (iap2server): LaneGuidanceInformation is registered under msgId 0x5202 (a copy of RouteGuidanceManeuverUpdate's), so
+# the stock parser never sees a real 0x5204. msgId word of table row 3 (RouteGuidanceUpdate 0x5201, Maneuver 0x5202, Lane 0x5202 -> 0x5204).
+# Offsets are virtual addresses in .data (file offset + 0x1000); only the non-relocated msgId words are verified, never the pointer words.
+id iap2-lane-msgid
+file /system/lib/libiap2session.so
+data
+verify 0x31c50 4 0b588328ef7e89f56403f99144cb7236 -
+verify 0x31c68 4 7854bf9d170009565c2c9028213539a2 -
+verify 0x31c80 4 7854bf9d170009565c2c9028213539a2 dd92dc890f4f1e381a54d7e674e96ae7
+patch 0x31c80 04520000

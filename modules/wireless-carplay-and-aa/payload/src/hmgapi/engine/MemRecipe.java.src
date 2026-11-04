@@ -22,6 +22,9 @@ import java.util.List;
  * A verify region holding a branch has no fixed "after" ("-"): it depends on where the
  * segment lands.
  *
+ * data                     the recipe's offsets are virtual addresses in the library's writable data
+ *                           (a table, say), patched in place without changing page protection
+ *
  * Nothing is written unless every verify region is the stock bytes; the segment goes in
  * first, then patches, then branches, so a jump only goes live once its target is there.
  */
@@ -31,6 +34,9 @@ public final class MemRecipe {
         byte[] peek(long addr, int len);
 
         boolean poke(long addr, byte[] data);
+
+        /** writes into already writable data (a library's .data), page protection untouched */
+        boolean pokeData(long addr, byte[] data);
 
         /** an anonymous code page run at hint if possible (any address otherwise), 0 if none */
         long mapCode(long hint, int len);
@@ -50,6 +56,7 @@ public final class MemRecipe {
     }
 
     public String id = "", file = "";
+    public boolean data;
     public final List<String> natives = new ArrayList<String>();
     public final List<Verify> verifies = new ArrayList<Verify>();
     public final List<long[]> patchAt = new ArrayList<long[]>();   // {off}
@@ -71,6 +78,7 @@ public final class MemRecipe {
             try {
                 if (w[0].equals("id")) r.id = w[1];
                 else if (w[0].equals("file")) r.file = w[1];
+                else if (w[0].equals("data")) r.data = true;
                 else if (w[0].equals("native")) r.natives.add(w[1]);
                 else if (w[0].equals("verify")) r.verifies.add(new Verify(num(w[1]), (int) num(w[2]), w[3], w[4]));
                 else if (w[0].equals("patch")) {
@@ -128,7 +136,8 @@ public final class MemRecipe {
     /** the library regions this recipe owns (verify regions): [off, off+len) pairs */
     public List<long[]> regions() {
         List<long[]> r = new ArrayList<long[]>();
-        for (Verify v : verifies) r.add(new long[] { v.off, v.off + v.len });
+        long shift = data ? 1L << 40 : 0;   // data addresses never overlap code offsets
+        for (Verify v : verifies) r.add(new long[] { shift + v.off, shift + v.off + v.len });
         return r;
     }
 
@@ -162,7 +171,7 @@ public final class MemRecipe {
         int before = 0, after = 0;
         StringBuilder spots = new StringBuilder();
         for (Verify v : verifies) {
-            if (v.off + v.len > textEnd) {
+            if (!data && v.off + v.len > textEnd) {
                 spots.append(" 0x").append(Long.toHexString(v.off)).append(":outside");
                 continue;
             }
@@ -190,7 +199,8 @@ public final class MemRecipe {
             if (!m.poke(seg, code)) return new Result(Result.FAILED, id + ": couldn't write its code", seg);
         }
         for (int i = 0; i < patchAt.size(); i++) {
-            if (!m.poke(base + patchAt.get(i)[0], patchBytes.get(i))) return new Result(Result.FAILED, id + ": couldn't write at 0x" + Long.toHexString(patchAt.get(i)[0]), seg);
+            boolean wrote = data ? m.pokeData(base + patchAt.get(i)[0], patchBytes.get(i)) : m.poke(base + patchAt.get(i)[0], patchBytes.get(i));
+            if (!wrote) return new Result(Result.FAILED, id + ": couldn't write at 0x" + Long.toHexString(patchAt.get(i)[0]), seg);
         }
         for (long[] b : branches) {
             byte[] bw = branchW(base + b[0], seg + b[1]);

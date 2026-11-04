@@ -407,6 +407,56 @@ ownership; never source/eval the record as shell. These app-owned reports are
 diagnostic evidence, not a defense against a compromised OEM app. Seal validation
 still checks only `product\nhash-id\n`; additional seal lines remain compatible.
 
+### Turn-by-turn observation records and `tbt-reset` (2026-11-04)
+
+DiPO keeps two always-on, bounded turn-by-turn records in its app-private runtime directory,
+`/data/data/com.daudio.app.dipo/app_hmg-seogaemo-wireless-runtime/`: `tbt-icons.*` (which icon
+each maneuver combination got, with the phone's instruction text) and `tbt-lanes.*` (lane data
+seen and the 81-byte frame sent). Purpose: build the maneuver → icon table from real drives (the
+iAP2 maneuver list is MFi-only). The data stays on the head unit and leaves it only when the user
+exports logs and shares them; instruction texts may contain road names. They are generated
+diagnostics: not a baseline, not ledgered, not an authorization channel. Files are UTF-8, 0600,
+owned by the app UID.
+
+- **Summary** `tbt-icons.txt` / `tbt-lanes.txt`: `format=2`, `kind=tbt-icons|tbt-lanes`, then one
+  line per key `key|detail|count|first_ms|last_ms|samples` (epoch ms; `samples` = up to 3 distinct
+  instruction texts joined by ` ¦ `, each at most 80 characters, empty for lanes; `|`, `¦` and
+  control characters never occur in a field; key/detail at most 400 characters). Readers also
+  accept the 5-field `format=1`. At most 1024 (icons) / 512 (lanes) keys and 1 MiB: at the limit
+  the least-used, then oldest keys are evicted. Rewritten atomically (`.txt.tmp`, rename) at most
+  every 5 min and at route end; read back at the next start so counts and texts survive restarts.
+  Only this summary-sized aggregate is held in DiPO's memory.
+- **Journal** `tbt-icons.journal` (+ `.journal.1` … `.journal.5`) and `tbt-lanes.journal`
+  (+ `.journal.1` … `.journal.3`), oldest last: every sighting appended as
+  `ms|key|detail|sample`, never rewritten, flushed at most every 30 s (sooner past 32 KiB pending)
+  and at route end. A shard rotates at 1 MiB and the oldest is deleted, so the journals stay within
+  6 + 4 MiB (about 10 MiB in all). A torn last line after a crash is ignored by readers.
+
+Icon key `type=<n> junction=<n> side=<n> exit~<deg rounded to 15>` (plus `state=<n>` for type 12),
+detail `icon=<n> kind=exact|band|angle|semantic|blank exit=<exact deg>`, sample
+`<instruction>[ -> <road after>]`. Lane key `n=<lanes> [s<status> a[angles] h[highlight]]...`,
+detail `mode= sent= marks= frame=<all 81 bytes sent, hex> laneIndex= laneCount= distNext= nextStr=`.
+The files are not pruned with the per-process `p-*` stems and are not copied by `status` (too
+large for the per-status gather). The exporter (`lib/diagnostics.sh`) copies the fixed names
+directly from DiPO's directory into `diagnostics/tbt/`, whole up to 1 MiB + 64 KiB each, outside the
+32-log budget and without line redaction (generated data, no credentials). Revert cleanup removes
+them as plain regular files of `owns_generated_dirs` (well within its 64-file limit).
+
+Status gains two optional read-only lines, computed by the same bounded reader run that
+produces the status (no extra process): `info.tbt_inexact=<N>` (combinations whose `kind` is not
+`exact`) and `info.tbt_blank=<M>` (of them, `kind=blank`), digits only, both or neither; absent
+when the records cannot be read safely. Old consumers ignore them; the app treats absence as
+unknown.
+
+New fixed verb, only for `wireless-carplay-and-aa`: `hmg-seogaemo-root wireless-carplay-and-aa tbt-reset`
+(exactly this argv; any other module or argument is `Invalid command`, exit 2). It takes the
+operation lock, writes no journal or desired state, and runs `sg_projection_runtime tbt-reset`,
+whose root reader deletes only `tbt-icons.txt`, `tbt-lanes.txt`, their `.tmp` and the fixed journal
+shard names above in DiPO's runtime directory: every candidate must be a plain regular file owned by the app UID in a directory
+owned by it (lstat; symlinks, other types and foreign owners refuse the whole reset before
+anything is deleted). Output is the usual three lines (`state=on|failed`, `restart=none`,
+`detail=removed N files`); nothing else is touched.
+
 The consumer uses `sg_projection_runtime prepare|status|applying|clear` in the
 package API, restricted to the projection owner. `prepare` creates the runtime
 parent and module directory as root:root 0700 before loader installation. The

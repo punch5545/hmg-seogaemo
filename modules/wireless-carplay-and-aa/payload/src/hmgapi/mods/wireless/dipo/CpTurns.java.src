@@ -50,6 +50,70 @@ final class CpTurns {
     String hudRoad;
     /** the last lane log line, so an unchanged one isn't logged again */
 
+    /** diagnostics: per kind, how many were seen and the last "change key" logged */
+    private final java.util.HashMap<String, int[]> seenN = new java.util.HashMap<String, int[]>();
+    private final java.util.HashMap<String, String> seenKey = new java.util.HashMap<String, String>();
+
+    /** first 20 per kind, then every 10th, and always when the change key differs from the last one logged */
+    private boolean sample(String kind, String changeKey) {
+        int[] c = seenN.get(kind);
+        if (c == null) seenN.put(kind, c = new int[1]);
+        int n = ++c[0];
+        boolean changed = changeKey != null && !changeKey.equals(seenKey.get(kind));
+        if (changeKey != null) seenKey.put(kind, changeKey);
+        return n <= 20 || n % 10 == 0 || changed;
+    }
+
+    private static String arr(int[] v) {
+        return v == null ? "null" : java.util.Arrays.toString(v);
+    }
+
+    private static int len(String s) {
+        return s == null ? -1 : s.length();
+    }
+
+    /** the component whose turn-by-turn is on the cluster (null: none), when it was last sent, and the last lane frame: refresh() resends them */
+    Integer activeId;
+    long lastSendAt;
+    private byte[] lastLane;
+    private int refreshes;
+
+    /**
+     * Called about every second on the same thread: while guidance is active and the phone has
+     * said nothing for a moment, the last known state goes out again (the car's own navigation
+     * calls the cluster every 0.5-0.75 s), so the cluster and HUD don't age it out.
+     */
+    void refresh() {
+        Dipo.flushObservations(false);
+        Integer id = activeId;
+        if (id == null) return;
+        Update u = updates.get(id);
+        if (u == null || u.state == 0) {
+            activeId = null;
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastSendAt < 900L) return;
+        refreshes++;
+        if (sample("refresh", null)) d("refresh without fresh phone data: last update " + (now - rgAt) + " ms ago, last send " + (now - lastSendAt) + " ms ago, refresh #" + refreshes);
+        turn(id, u);
+        if (lastLane != null) cluster.laneInfo(lastLane);
+    }
+
+    /** diagnostics: RouteGuidanceUpdates seen, and when the last one arrived (turn() runs only for these, there is no resend timer) */
+    private int rgCount, firstTurnLogged;
+    private long rgAt, firstRgAt;
+
+    /** verbose diagnostics: only while the developer toggle is on (Dipo.dev) */
+    private void d(String m) {
+        if (Dipo.dev()) Dipo.log("TBT " + m);
+    }
+
+    /** one-line state worth keeping with the toggle off */
+    private void essential(String m) {
+        Dipo.log("TBT " + m);
+    }
+
     CpTurns(Context context, Cluster cluster, Runnable restart) {
         this.context = context;
         this.cluster = cluster;
@@ -59,12 +123,20 @@ final class CpTurns {
     /** RouteGuidanceUpdate (DiPO e/u.c) */
     void routeGuidance(Iap2NotiMsg msg) {
         if (msg == null) return;
+        rgCount++;
+        rgAt = System.currentTimeMillis();
+        if (rgCount == 1) {
+            firstRgAt = rgAt;
+            essential("first RouteGuidanceUpdate (120) received");
+        }
         sourceCheck(msg);
         int[] ids = componentIds(msg);
         if (ids == null) {
+            if (updates.isEmpty() && sample("rg-drop", null)) d("rg update dropped: message names no component and none is known yet");
             for (Integer id : updates.keySet()) {
                 Update u = updates.get(id);
                 if (u != null) u.read(id, msg);
+                logUpdate("no ids, applied to known", id, u);
                 turn(id, u);
             }
             return;
@@ -77,9 +149,22 @@ final class CpTurns {
             } else {
                 u = new Update(id, msg);
                 updates.put(id, u);
+                if (id <= 0) d("rg update: component id " + id + " starts with nothing set (Update ctor skips read for id <= 0)");
             }
+            logUpdate("ids=" + arr(ids), id, u);
             turn(id, u);
         }
+    }
+
+    private void logUpdate(String how, Integer id, Update u) {
+        if (u == null) return;
+        String key = id + "|" + u.state + "|" + u.maneuverState + "|" + arr(u.list);
+        if (!sample("rg", key)) return;
+        d("rg update comp=" + id + " (" + how + ") state=" + u.state + " maneuverState=" + u.maneuverState
+                + " list=" + arr(u.list) + " count=" + u.count + " distNext=" + u.distNext + " nextStr='" + u.nextStr + "' nextUnits=" + u.nextUnits
+                + " distLeft=" + u.distLeft + " distLeftStr='" + u.distLeftStr + "' distLeftUnits=" + u.distLeftUnits
+                + " laneIndex=" + u.laneIndex + " laneCount=" + u.laneCount + " lanesShown=" + u.lanesShown + " visible=" + u.visible + " supports=" + u.supports
+                + " roadLen=" + len(u.road) + " destLen=" + len(u.destination) + " sourceLen=" + len(u.sourceName) + " eta=" + u.eta + " timeLeft=" + u.timeLeft);
     }
 
     /** the components a RouteGuidanceUpdate is for (item 0); null if it doesn't say */
@@ -123,7 +208,11 @@ final class CpTurns {
             }
             if (whole) ids = found;
         }
-        if (index < 0) return;
+        if (index < 0) {
+            if (sample("mn-drop", null)) d("maneuver dropped: no maneuver index in the message (ids=" + arr(ids) + ")");
+            return;
+        }
+        if (ids == null && maneuvers.isEmpty() && sample("mn-drop2", null)) d("maneuver #" + index + " lost: names no component and no component is known yet");
         if (ids == null) {
             for (Integer id : maneuvers.keySet()) {
                 LinkedHashMap<Integer, Maneuver> m = maneuvers.get(id);
@@ -131,6 +220,7 @@ final class CpTurns {
                 Maneuver x = m.get(index);
                 if (x != null) x.read(index, id, msg);
                 else m.put(index, new Maneuver(index, id, msg));
+                logManeuver("no ids, applied to known", id, m.get(index));
             }
             return;
         }
@@ -146,13 +236,26 @@ final class CpTurns {
                 m.put(index, new Maneuver(index, id, msg));
                 maneuvers.put(id, m);
             }
+            logManeuver("ids=" + arr(ids), id, m.get(index));
         }
+    }
+
+    private void logManeuver(String how, int id, Maneuver x) {
+        if (x == null) return;
+        String key = id + "|" + x.index + "|" + x.type + "|" + x.junction + "|" + x.exit;
+        if (!sample("mn", key)) return;
+        d("maneuver comp=" + id + " (" + how + ") index=" + x.index + " type=" + x.type + " junction=" + x.junction + " side=" + x.side
+                + " exit=" + x.exit + " angles=" + arr(x.angles) + " distance=" + x.distance + " distUnits=" + x.distUnits + " distStr='" + x.distStr + "'"
+                + " linkedLane=" + x.linkedLane + " descLen=" + len(x.description) + " afterRoadLen=" + len(x.afterRoad) + " stored=" + (maneuvers.get(id) == null ? 0 : maneuvers.get(id).size()));
     }
 
     /** LaneGuidance (the build's applyLanes): up to 8 lanes as the cluster's 0xF1 frame */
     void lanes(Iap2NotiMsg msg) {
         Iap2NotiMsg.Iap2ObjGroup g = msg == null ? null : msg.getItemGroup();
-        if (g == null) return;
+        if (g == null) {
+            if (sample("ln-drop", null)) d("lanes dropped: message has no item group");
+            return;
+        }
         int[] status = new int[8], a = new int[8], b = new int[8], c = new int[8];
         int n = 0;
         Iap2NotiMsg.Iap2ObjGroup[] lanes = null;
@@ -182,6 +285,11 @@ final class CpTurns {
             f[k * 3 + 20] = (byte) b[k];
             f[k * 3 + 21] = (byte) c[k];
         }
+        StringBuilder sb = new StringBuilder();
+        for (int k = 0; k < n; k++) sb.append(k == 0 ? "" : " ").append(status[k]).append(':').append(a[k]).append('/').append(b[k]).append('/').append(c[k]);
+        if (sample("ln", n + "|" + sb)) d("lanes mode=" + mode + " phoneLanes=" + (lanes == null ? -1 : lanes.length) + " sent=" + n + " [" + sb + "]");
+        lastLane = f.clone();
+        observeLanes(lanes, mode, n, sb.toString(), f);
         cluster.laneInfo(f);
     }
 
@@ -276,6 +384,7 @@ final class CpTurns {
 
     /** the iAP2 session ended (DiPO e/u.disconnected) */
     void disconnected() {
+        Dipo.flushObservations(true);
         reset();
         hudBlank();
         source = null;
@@ -283,11 +392,14 @@ final class CpTurns {
 
     /** route guidance stopped (DiPO e/u.nS: the car's navigation took turn-by-turn back, or state 0) */
     void stop() {
+        activeId = null;
         hudBlank();
+        Dipo.flushObservations(true);
     }
 
     /** forget every component's state and maneuvers (DiPO e/u.nT) */
     void reset() {
+        activeId = null;
         for (LinkedHashMap<Integer, Maneuver> m : maneuvers.values()) {
             if (m != null) m.clear();
         }
@@ -320,12 +432,16 @@ final class CpTurns {
     /** one component's update to the cluster (DiPO e/u.a(Integer, Object), with the build's changes) */
     void turn(Integer id, Update u) {
         if (id < 0 || u == null) {
+            if (sample("tn-drop", null)) d("turn skipped: comp=" + id + " update=" + (u == null ? "null" : "yes"));
             return;
         }
         if (u.state == 0) {
+            if (sample("tn-state0", null)) d("turn: comp=" + id + " state 0, HUD cleared");
             stop();
             return;
         }
+        activeId = id;
+        lastSendAt = System.currentTimeMillis();
         int[] list = u.list == null ? null : u.list.clone();
         float dist = 0f;
         if (u.nextStr != null && !u.nextStr.equals("")) {
@@ -337,14 +453,6 @@ final class CpTurns {
             }
         }
         if (u.state == 6) cluster.destinationName(0, u.destination);
-        LinkedHashMap<Integer, Maneuver> m = maneuvers.get(id);
-        if (m == null || list == null) {
-            return;
-        }
-        Maneuver x = m.get(list[0]);
-        if (x == null) {
-            return;
-        }
         int unit;
         switch (u.nextUnits) {
             case 0: unit = Cluster.UNIT_KM; break;
@@ -353,16 +461,171 @@ final class CpTurns {
             case 4: unit = Cluster.UNIT_FT; break;
             default: unit = Cluster.UNIT_M; break;
         }
-        int icon = icon(x.type, x.side, x.junction, x.exit, u.state);
-        cluster.crossroadName(x.afterRoad);
-        if (icon == 0) {
+        LinkedHashMap<Integer, Maneuver> m = maneuvers.get(id);
+        Maneuver x = m == null || list == null ? null : m.get(list[0]);
+        if (x == null) {
+            // the maneuver isn't here (yet): what is known still goes out, and the phone is asked to resend
+            if (sample("tn-drop2", u.state + "|" + (m == null) + "|" + (list == null) + "|" + (list == null ? -1 : list[0]))) d("turn without maneuver: comp=" + id + " state=" + u.state + " maneuvers=" + (m == null ? "none" : String.valueOf(m.size())) + " list=" + arr(list) + " (known comps=" + maneuvers.keySet() + ")");
+            sendHudDist(dist, unit);
+            sendTrip(u);
+            askResend("maneuver " + (list == null ? "list" : String.valueOf(list[0])) + " missing");
             return;
         }
+        int icon = icon(x.type, x.side, x.junction, x.exit, u.state);
+        String kind = matchKind(x.type, x.side, x.junction, x.exit, u.state);
+        if (icon == 0) {
+            icon = fallbackIcon(x.type, x.side, x.junction, x.exit);
+            noteUnmapped(x, icon);
+        }
+        observeIcon(x, u.state, icon, kind);
+        cluster.crossroadName(x.afterRoad);
+        if (firstTurnLogged == 0) {
+            firstTurnLogged = 1;
+            essential("first turn() push: rg#" + rgCount + ", " + (System.currentTimeMillis() - firstRgAt) + " ms after the first RouteGuidanceUpdate");
+        }
+        if (sample("tn", id + "|" + icon + "|" + u.state + "|" + list[0])) d("turn comp=" + id + " state=" + u.state + " index=" + list[0] + " type=" + x.type + " side=" + x.side + " junction=" + x.junction + " exit=" + x.exit + " -> icon " + icon + " dist=" + dist + " unit=" + unit);
         cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);
         sendHud(icon, id, u);
         sendHudDist(dist, unit);
         sendTrip(u);
         sendAhead(id, u);
+    }
+
+    private long resendAt;
+    private final java.util.HashSet<String> unmapped = new java.util.HashSet<String>();
+
+    /** have the phone resend its guidance (Stop, then Start), at most once in 30 s */
+    private void askResend(String why) {
+        long now = System.currentTimeMillis();
+        if (restart == null || now - resendAt < 30000L) return;
+        resendAt = now;
+        Dipo.log("CarPlay: asking the phone to resend route guidance (" + why + ")");
+        new Thread(restart, "hmgapi-cp-rg-restart").start();
+    }
+
+    /** an icon the exact tables lack: logged once per combination (up to 40), always */
+    private void noteUnmapped(Maneuver x, int icon) {
+        String k = x.type + "/" + x.side + "/" + x.junction + "/" + x.exit;
+        if (unmapped.size() < 40 && unmapped.add(k)) Dipo.log("CarPlay: no exact icon for maneuver type " + x.type + " side " + x.side + " junction " + x.junction + " exit " + x.exit + ", using " + icon);
+    }
+
+    private String lastIconObs, lastLaneObs;
+
+    /** how an icon was found: exact table, angle band (types 1/2/47-50), angle (any type), semantic (type only), blank */
+    static String matchKind(int type, int side, int junction, int exit, int state) {
+        if (exactIcon(type, side, junction, exit, state) != 0) return "exact";
+        if (bandedTurn(type, junction, exit) != 0) return "band";
+        if (fallbackIcon(type, side, junction, exit) == NO_ICON) return "blank";
+        return exit != 0 ? "angle" : "semantic";
+    }
+
+    /** an exit angle rounded to the nearest 15 degrees (the record's key; the exact angle goes in the detail) */
+    static int exitBucket(int exit) {
+        return Math.round(exit / 15f) * 15;
+    }
+
+    /**
+     * The local mapping record (runtime dir, tbt-icons.*): one sighting per change of maneuver
+     * presentation, with the phone's instruction text and the road after it, so the table can be
+     * built from drives (the iAP2 maneuver list isn't public).
+     */
+    private void observeIcon(Maneuver x, int state, int icon, String kind) {
+        String key = "type=" + x.type + " junction=" + x.junction + " side=" + x.side + " exit~" + exitBucket(x.exit) + (x.type == 12 ? " state=" + state : "");
+        String detail = "icon=" + icon + " kind=" + kind + " exit=" + x.exit;
+        String text = x.description == null ? "" : x.description;
+        if (x.afterRoad != null && x.afterRoad.length() > 0) text = text + " -> " + x.afterRoad;
+        String both = key + "|" + detail + "|" + text;
+        if (both.equals(lastIconObs)) return;
+        lastIconObs = both;
+        Dipo.observe(false, key, detail, text);
+    }
+
+    private void observeLanes(Iap2NotiMsg.Iap2ObjGroup[] lanes, String mode, int n, String marks, byte[] frame) {
+        StringBuilder key = new StringBuilder("n=" + (lanes == null ? 0 : lanes.length));
+        for (int k = 0; lanes != null && k < lanes.length && k < 8; k++) {
+            Iap2NotiMsg.Iap2ObjGroup g = lanes[k];
+            int status = -1;
+            int[] angles = null, highlight = null;
+            for (int j = 0; g != null && j < g.getItemCnt(); j++) {
+                Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(j);
+                if (it == null || (it.getItemParamType() != 5 && it.getItemParamType() != 8)) continue;
+                int[] v = it.getItemIntArray();
+                if (v == null || v.length == 0) continue;
+                if (it.getItemId() == 1) status = v[0];
+                else if (it.getItemId() == 2) angles = v;
+                else if (it.getItemId() == 3) highlight = v;
+            }
+            key.append(" [s").append(status).append(" a").append(arr(angles)).append(" h").append(arr(highlight)).append(']');
+        }
+        Update u = activeId == null ? null : updates.get(activeId);
+        StringBuilder hex = new StringBuilder();
+        for (int k = 0; k < frame.length; k++) hex.append(Character.forDigit((frame[k] >> 4) & 15, 16)).append(Character.forDigit(frame[k] & 15, 16));
+        String detail = "mode=" + mode + " sent=" + n + " marks=" + marks + " frame=" + hex + (u == null ? "" : " laneIndex=" + u.laneIndex + " laneCount=" + u.laneCount + " distNext=" + u.distNext + " nextStr=" + u.nextStr);
+        String both = key + "|" + detail;
+        if (both.equals(lastLaneObs)) return;
+        lastLaneObs = both;
+        Dipo.observe(true, key.toString(), detail, null);
+    }
+
+    /** the cluster's "no turn icon" (the turn list's 64): distances, lanes and trip still go out */
+    static final int NO_ICON = 64;
+
+    /**
+     * An icon for a maneuver the exact tables don't list, so the stream goes on. A misleading
+     * arrow is worse than none, so: with an exit angle, the nearest direction arrow (any type);
+     * a type with a clear meaning but no angle, its own icon; else NO_ICON (never "straight"
+     * for a turn).
+     */
+    static int fallbackIcon(int type, int side, int junction, int exit) {
+        int a = bandedTurn(type, junction, exit);
+        if (a != 0) return a;
+        if (exit != 0) {
+            if (junction != 0) return roundaboutIcon(side, exit);
+            boolean left;
+            switch (type) {
+                case 1: case 47: case 49: case 13: left = true; break;
+                case 2: case 48: case 50: case 14: left = false; break;
+                default: left = exit < 0; break;
+            }
+            int deg = Math.abs(exit);
+            if (deg > 180) deg = 360 - deg;
+            if (deg >= 157) return side == 0 ? 72 : 73;
+            if (deg <= 22 && type != 1 && type != 2) return 65;
+            int sharpness = deg <= 67 ? 0 : deg <= 112 ? 1 : 2;
+            return left ? 71 - sharpness : 66 + sharpness;
+        }
+        switch (type) {
+            // no exit angle (Apple Maps in Korea sends none): the turn type alone says the direction
+            case 1: return 70;    // left turn
+            case 2: return 67;    // right turn
+            case 47: return 69;   // sharp left
+            case 48: return 68;   // sharp right
+            case 49: return 71;   // slight left
+            case 50: return 66;   // slight right
+            case 13: return 71;   // keep left
+            case 14: return 66;   // keep right
+            case 3: return 65;
+            case 4: case 18: return side == 0 ? 72 : 73;
+            case 5: case 9: return 172;
+            case 6: return side == 0 ? 96 : 97;   // enter a roundabout
+            case 10: case 12: return 112;
+            case 15: return 176;
+            default: return NO_ICON;
+        }
+    }
+
+    /** the roundabout icon with the nearest exit angle (the ones the exact tables use) */
+    static int roundaboutIcon(int side, int exit) {
+        int[] angle = { -180, -135, -120, -90, -45, -30, 0, 90, 120, 135, 180 };
+        int[] icon = { 102, 104, 104, 105, 104, 107, side == 0 ? 96 : 97, 99, 100, 100, 102 };
+        int e = exit;
+        if (e > 180) e -= 360;
+        else if (e < -180) e += 360;
+        int best = 0;
+        for (int k = 1; k < angle.length; k++) {
+            if (Math.abs(angle[k] - e) < Math.abs(angle[best] - e)) best = k;
+        }
+        return icon[best];
     }
 
     /**
@@ -542,6 +805,7 @@ final class CpTurns {
 
     /** HUD list and extras cleared (the build's sendHudBlank) */
     void hudBlank() {
+        lastLane = null;
         cluster.tbtSubInfo2C(0, 0, 0, 0, 0, 0, 0, 0, 0);
         byte[] lanes = new byte[81];
         lanes[0] = (byte) 0xF1;
@@ -561,6 +825,7 @@ final class CpTurns {
      */
     void sendTrip(Update u) {
         int d = u.distLeft, units = u.distLeftUnits;
+        if (sample("trip", d + "|" + units)) d("trip source: rg#" + rgCount + " ageMs=" + (System.currentTimeMillis() - rgAt) + " distLeft=" + u.distLeft + " phoneUnits=" + u.distLeftUnits + " distLeftStr='" + u.distLeftStr + "' ownerUnit=" + Car.distanceUnit(context) + " eta=" + u.eta + " timeLeft=" + u.timeLeft);
         int whole = 0, tenths = 0, unit = Cluster.UNIT_M;
         if (d > 0) {
             whole = d;
@@ -622,6 +887,7 @@ final class CpTurns {
             timeFormat = -1;
         }
         if (d <= 0 && timeType < 0) return;
+        if (sample("trip-out", whole + "|" + tenths + "|" + unit)) d("trip sent: rg#" + rgCount + " ageMs=" + (System.currentTimeMillis() - rgAt) + " whole=" + whole + " tenths=" + tenths + " unit=" + unit + " (tbtSubInfo = REMAINING TRIP distance, not next-turn distance)");
         cluster.tbtSubInfo(whole + tenths / 10f, d > 0 ? 0 : -1, unit, hour, minute, timeType, timeType < 0 ? -1 : timeFormat, 0f, -1, 0);
     }
 

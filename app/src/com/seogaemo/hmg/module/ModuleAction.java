@@ -1,7 +1,7 @@
 package com.seogaemo.hmg.module;
 
 public final class ModuleAction {
-    public enum Type { ENABLE_MODULE, OPEN_STOCK_WIFI_SETTINGS }
+    public enum Type { ENABLE_MODULE, OPEN_STOCK_WIFI_SETTINGS, RESET_TBT_RECORDS }
 
     public final int labelResId;
     public final Type type;

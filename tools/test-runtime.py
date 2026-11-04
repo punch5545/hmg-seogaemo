@@ -278,6 +278,8 @@ echo detail=
         assert 'detail=' + detail in response.stdout, response.stdout
     refused(("b", "apply"), "Dependency off: a")
     refused(("a", "bogus"), "Invalid command", 2)
+    refused(("a", "tbt-reset"), "Invalid command", 2)   # only the wireless module has it
+    refused(("a", "tbt-reset", "extra"), "Invalid command", 2)
     refused(("a", "status", "extra"), "Invalid command", 2)
     refused(("unknown", "status"), "Invalid command", 2)
     run(root, "a", "apply", env=env)
@@ -488,6 +490,14 @@ sg_revert_all
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
     (data / "runtime/carplay/linked.log").symlink_to(data / "runtime/carplay/wpa_supplicant.conf")
+    dipo = base / "dipo-runtime"
+    dipo.mkdir()
+    summary = "format=2\nkind=tbt-icons\n" + "type=1 junction=0 side=0 exit~-90|icon=70 kind=exact exit=-90|1|1|2|좌회전\n" * 3000
+    (dipo / "tbt-icons.txt").write_text(summary)
+    (dipo / "tbt-lanes.journal.3").write_bytes(b"1|n=2|frame=f102|\n" * 80000)
+    (dipo / "tbt-icons.journal.9").write_text("not a fixed name\n")
+    (dipo / "p-1-2.txt").write_text("not a turn-by-turn record\n")
+    env["HMG_SEOGAEMO_DIPO_RUNTIME"] = str(dipo)
     result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
     assert "state=on" in result.stdout
     exported = next(export_root.glob("*/ledger/ledger.tsv"))
@@ -501,8 +511,13 @@ sg_revert_all
                      "runtime/wireless-carplay-and-aa/apps/com.daudio.app.dipo/p-10-20.log.1",
                      "map-status.txt", "module-test-status.txt", "properties.txt", "owned-paths.txt"):
         assert (diagnostics / relative).is_file(), relative
+    # turn-by-turn records: fixed names only, copied whole up to 1 MiB + 64 KiB
+    assert (diagnostics / "tbt/tbt-icons.txt").read_bytes() == (dipo / "tbt-icons.txt").read_bytes()
+    lanes_copy = (diagnostics / "tbt/tbt-lanes.journal.3").stat().st_size
+    assert lanes_copy == min((dipo / "tbt-lanes.journal.3").stat().st_size, 272 * 4096), lanes_copy
+    assert sorted(p.name for p in (diagnostics / "tbt").iterdir()) == ["tbt-icons.txt", "tbt-lanes.journal.3"]
     for entry in diagnostics.rglob("*"):
-        if entry.is_file():
+        if entry.is_file() and entry.parent.name != "tbt":
             assert entry.stat().st_size <= 65537, entry
             assert b"private-" not in entry.read_bytes(), entry
     assert not (diagnostics / "runtime/carplay/linked.log").exists()
@@ -1975,6 +1990,20 @@ esac
     assert result.returncode == 1 and 'state=failed' in result.stdout and 'detail=broken' in result.stdout
     result = reader('exit 0\n', mode='applying')
     assert 'state=pending-restart' in result.stdout and 'restart=head_unit' in result.stdout
+    # Optional read-only tbt counters: digits only, both or neither, status and applying only.
+    result = reader('sg_print state=on restart=none detail=ready info.tbt_inexact=3 info.tbt_blank=1\n')
+    assert 'state=on' in result.stdout and 'info.tbt_inexact=3' in result.stdout and 'info.tbt_blank=1' in result.stdout
+    result = reader('sg_print state=on restart=none detail=ready\n')
+    assert 'state=on' in result.stdout and 'info.tbt' not in result.stdout
+    for bad in ('info.tbt_inexact=x info.tbt_blank=1', 'info.tbt_inexact=3', 'info.tbt_inexact=1 info.tbt_blank=2 info.tbt_other=1'):
+        result = reader('sg_print state=on restart=none detail=ready ' + bad + '\n')
+        assert 'state=unknown' in result.stdout and 'state=on' not in result.stdout, bad
+    result = reader('sg_print state=on restart=none detail=removed2files\n', mode='tbt-reset')
+    assert 'state=on' in result.stdout and 'detail=removed2files' in result.stdout
+    result = reader('sg_print state=on restart=none detail=x info.tbt_inexact=1 info.tbt_blank=0\n', mode='tbt-reset', ok=False)
+    assert 'state=failed' in result.stdout and 'state=on' not in result.stdout, 'counters are not valid on reset'
+    result = reader('exit 0\n', mode='tbt-reset', ok=False)
+    assert result.returncode == 1 and 'state=failed' in result.stdout
     # A hung VM is killed (with its child) after the limit; the caller is not held.
     hung = reader('sleep 60 &\nsg_write "$! $$" > "$SG_DATA_ROOT/hung-pids"\nwait\n',
                   SG_READER_TIMEOUT='2')

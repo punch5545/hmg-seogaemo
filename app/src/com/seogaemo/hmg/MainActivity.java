@@ -406,6 +406,42 @@ public final class MainActivity extends Activity {
             prepareModuleChange(ModuleRegistry.find(action.target), true, false);
         else if (action.type == ModuleAction.Type.OPEN_STOCK_WIFI_SETTINGS)
             startActivity(new Intent("android.settings.WIFI_SETTINGS"));
+        else if (action.type == ModuleAction.Type.RESET_TBT_RECORDS)
+            confirmTbtReset();
+    }
+
+    private boolean tbtResetBusy;
+
+    /** Deletes the two generated turn-by-turn observation files: confirmed, off the main thread, count refreshed after. */
+    private void confirmTbtReset() {
+        if (tbtResetBusy || stockBusy || moduleWorking || modulePlanning) return;
+        ConfirmDialog.show(this, getString(R.string.wireless_carplay_and_aa_tbt_reset),
+                getString(R.string.wireless_carplay_and_aa_tbt_reset_confirm),
+                getString(R.string.wireless_carplay_and_aa_tbt_reset), getString(R.string.cancel), true,
+                new ConfirmDialog.Action() {
+                    public void run(final ConfirmDialog dialog) {
+                        tbtResetBusy = true;
+                        dialog.showProgress();
+                        new Thread(new Runnable() {
+                            public void run() {
+                                final RootResult result = RootClient.tbtReset();
+                                runOnUiThread(new Runnable() {
+                                    public void run() {
+                                        tbtResetBusy = false;
+                                        dialog.dismiss();
+                                        if (settingsVisible) showSettings();
+                                        ConfirmDialog.showResult(MainActivity.this,
+                                                getString(R.string.wireless_carplay_and_aa_tbt_reset),
+                                                result.exitCode == 0 && "on".equals(result.state)
+                                                        ? getString(R.string.wireless_carplay_and_aa_tbt_reset_done)
+                                                        : result.detail,
+                                                getString(R.string.close));
+                                    }
+                                });
+                            }
+                        }, "tbt-reset").start();
+                    }
+                }, null);
     }
 
     private void showSettings() {

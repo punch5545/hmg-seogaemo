@@ -176,5 +176,16 @@ hmg_seogaemo_diagnostics() (
             esac
         done
     done
-    sg_print 'limits: 32 logs, 64 KiB each; status 64 KiB/10 seconds each; metadata 8 KiB/module; properties 64 KiB' >> "$diag/manifest.txt"
+    # CarPlay turn-by-turn records (DiPO's generated maneuver/lane summaries and
+    # journals, no credentials): fixed names, copied whole outside the log budget,
+    # at most 1 MiB + 64 KiB per file (12 files, about 13 MiB).
+    tbt=${HMG_SEOGAEMO_DIPO_RUNTIME:-/data/data/com.daudio.app.dipo/app_hmg-seogaemo-wireless-runtime}
+    for name in tbt-icons.txt tbt-lanes.txt tbt-icons.journal tbt-icons.journal.1 tbt-icons.journal.2 \
+        tbt-icons.journal.3 tbt-icons.journal.4 tbt-icons.journal.5 tbt-lanes.journal tbt-lanes.journal.1 \
+        tbt-lanes.journal.2 tbt-lanes.journal.3; do
+        [ -f "$tbt/$name" ] && sg_path_safe "$tbt/$name" || continue
+        mkdir -p "$diag/tbt" || exit 1
+        dd if="$tbt/$name" bs=4096 count=272 2>/dev/null > "$diag/tbt/$name"
+    done
+    sg_print 'limits: 32 logs, 64 KiB each; status 64 KiB/10 seconds each; metadata 8 KiB/module; properties 64 KiB; turn-by-turn records 1 MiB + 64 KiB each' >> "$diag/manifest.txt"
 )

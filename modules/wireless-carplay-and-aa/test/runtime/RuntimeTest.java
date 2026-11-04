@@ -119,6 +119,77 @@ public final class RuntimeTest {
         apply.invoke(null, want, "/system/lib/libTest.so", 0L, 1L);
         record = RuntimeResult.read(result);
         check("applied".equals(record.get("native.libTest.so.state")) && "0".equals(record.get("native.libTest.so.errno")), "successful recipe clears errno and records application");
+        // the iap2 lane msgId data recipe against a byte array shaped like the stock table
+        final byte[] mem = new byte[0x32000];
+        mem[0x31c50] = 0x01; mem[0x31c51] = 0x52;
+        mem[0x31c68] = 0x02; mem[0x31c69] = 0x52;
+        mem[0x31c80] = 0x02; mem[0x31c81] = 0x52;
+        hmgapi.engine.MemRecipe.Memory ram = new hmgapi.engine.MemRecipe.Memory() {
+            public byte[] peek(long a, int n) { return java.util.Arrays.copyOfRange(mem, (int) a, (int) a + n); }
+            public boolean poke(long a, byte[] d) { return false; }
+            public boolean pokeData(long a, byte[] d) { System.arraycopy(d, 0, mem, (int) a, d.length); return true; }
+            public long mapCode(long h, int n) { return 0; }
+        };
+        java.io.File rf = new java.io.File(System.getProperty("recipes", "payload/recipes"), "iap2-lane-msgid.recipe");
+        hmgapi.engine.MemRecipe lane = NativePatch.readOne(rf);
+        check(lane.data, "lane recipe is a data recipe");
+        hmgapi.engine.MemRecipe.Result lr = lane.apply(ram, 0, 0x2e334, null);
+        check(lr.status == hmgapi.engine.MemRecipe.Result.APPLIED && mem[0x31c80] == 0x04 && mem[0x31c81] == 0x52 && mem[0x31c68] == 0x02, "lane msgId 0x5202 -> 0x5204 only in row 3");
+        mem[0x31c80] = 0x09;
+        check(lane.apply(ram, 0, 0x2e334, null).status == hmgapi.engine.MemRecipe.Result.MISMATCH && mem[0x31c80] == 0x09, "other bytes: fail closed, nothing written");
+        // bounded, atomic, rate-limited observation records
+        File od = new File(new File(args[0]).getCanonicalFile(), "obs");
+        od.mkdirs();
+        RuntimeResult.configure(od, android.os.Process.myPid(), "9");
+        Observations.clock = 1000;
+        Observations ob = new Observations("tbt-icons", 256, 3);
+        for (int k = 0; k < 300; k++) ob.note("type=" + k, "icon=1 kind=blank");
+        check(ob.size() == 256, "keys capped at the instance limit");
+        ob.flush(false);
+        File of = new File(od, "tbt-icons.txt"), oj = new File(od, "tbt-icons.journal");
+        check(of.isFile() && !new File(od, "tbt-icons.txt.tmp").exists() && of.length() <= Observations.MAX_BYTES, "summary written atomically (no .tmp left) within the byte cap");
+        check(oj.isFile() && RuntimeResult.text(oj, 1 << 20).split("\n").length == 300, "every sighting appended to the journal, evicted keys included");
+        Observations.clock = 1000 + 10000;
+        ob.note("type=1000", "icon=2 kind=band");
+        long len0 = of.length(), jl0 = oj.length();
+        ob.flush(false);
+        check(of.length() == len0 && oj.length() == jl0, "nothing written again within 30 s");
+        Observations.clock = 1000 + 45000;
+        ob.flush(false);
+        check(oj.length() > jl0 && of.length() == len0, "journal appended after 30 s, summary waits for 5 min");
+        ob.flush(true);
+        Observations.clock = 1000 + 400000;
+        for (int k = 0; k < 6; k++) ob.note("type=7", "icon=3 kind=exact", k < 4 ? "Turn left " + k : "Turn left 0");
+        for (int k = 0; k < 300; k++) ob.note("fresh=" + k, "d");
+        ob.flush(true);
+        String text = RuntimeResult.text(of, Observations.MAX_BYTES);
+        check(text.startsWith("format=2\nkind=tbt-icons\n") && text.contains("type=7|icon=3 kind=exact|6|"), "most-used key survives eviction with its count");
+        check(text.contains("|Turn left 0 \u00a6 Turn left 1 \u00a6 Turn left 2\n"), "up to three distinct instruction texts per key");
+        Observations again = new Observations("tbt-icons", 256, 3);
+        again.note("type=7", "icon=3 kind=exact", "Turn left 9");
+        again.flush(true);
+        String back = RuntimeResult.text(of, Observations.MAX_BYTES);
+        check(back.contains("type=7|icon=3 kind=exact|7|") && back.contains("Turn left 2\n") && !back.contains("Turn left 9"), "counts and texts persist across a restart (summary read back)");
+        // journal rotation: shards x 1 MiB, oldest deleted
+        StringBuilder chunk = new StringBuilder();
+        for (int k = 0; k < 390; k++) chunk.append('y');
+        Observations rot = new Observations("tbt-rot", 8, 3);
+        for (int round = 0; round < 60; round++) {
+            for (int k = 0; k < 120; k++) rot.note("k" + (k % 8), chunk.toString());
+            Observations.clock += 31000;
+            rot.flush(false);
+        }
+        File j0 = new File(od, "tbt-rot.journal"), j1 = new File(od, "tbt-rot.journal.1"), j2 = new File(od, "tbt-rot.journal.2"), j3 = new File(od, "tbt-rot.journal.3");
+        check(j0.isFile() && j1.isFile() && j2.isFile() && !j3.exists(), "journal rotates into shards and drops the oldest");
+        check(j0.length() <= Observations.JOURNAL_BYTES && j1.length() <= Observations.JOURNAL_BYTES && j2.length() <= Observations.JOURNAL_BYTES, "each shard within 1 MiB");
+        StringBuilder longDetail = new StringBuilder();
+        for (int k = 0; k < 400; k++) longDetail.append('x');
+        Observations big = new Observations("tbt-lanes", 4096, 1);
+        for (int k = 0; k < 4096; k++) big.note(longDetail.substring(0, 150) + k, longDetail.toString());
+        big.flush(true);
+        check(new File(od, "tbt-lanes.txt").length() <= Observations.MAX_BYTES, "byte cap holds with long fields (evicts)");
+        check(Observations.clean("a|b\nc\u00a6d").equals("a_b_c_d"), "separators and control characters never reach the files");
+        Observations.clock = -1;
         System.out.println("ok payload runtime results, log rotation, point enforcement, errno: " + checks + " checks");
     }
 }

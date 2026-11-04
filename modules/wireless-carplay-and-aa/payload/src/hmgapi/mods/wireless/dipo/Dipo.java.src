@@ -73,6 +73,40 @@ public final class Dipo {
         mod.log(m);
     }
 
+    /** developer diagnostics: `setprop persist.hmg_seogaemo.dev 1` (as root) turns the verbose TBT / iAP2 logs on, `0` off, live; re-read every 3 s */
+    static final String DEV_PROP = "persist.hmg_seogaemo.dev";
+    private static volatile long devAt;
+    private static volatile boolean devOn;
+    private static java.lang.reflect.Method sysGet;
+
+    /**
+     * The local icon-mapping and lane records (runtime dir tbt-icons.* and tbt-lanes.*), always on:
+     * summaries of up to 1024 / 512 keys plus append-only journals of 6 / 4 MiB (about 10 MiB in all)
+     */
+    static final hmgapi.hook.Observations ICONS = new hmgapi.hook.Observations("tbt-icons", 1024, 6), LANES = new hmgapi.hook.Observations("tbt-lanes", 512, 4);
+
+    static void observe(boolean lane, String key, String detail, String sample) {
+        (lane ? LANES : ICONS).note(key, detail, sample);
+    }
+
+    static void flushObservations(boolean force) {
+        ICONS.flush(force);
+        LANES.flush(force);
+    }
+
+    static boolean dev() {
+        long now = System.currentTimeMillis();
+        if (devAt != 0 && now - devAt < 3000L) return devOn;
+        devAt = now;
+        try {
+            if (sysGet == null) sysGet = Class.forName("android.os.SystemProperties").getMethod("get", String.class, String.class);
+            devOn = "1".equals(sysGet.invoke(null, DEV_PROP, "0"));
+        } catch (Throwable t) {
+            devOn = false;
+        }
+        return devOn;
+    }
+
     /** setting "lanes" (auto, off, rec, dim0, dim3): how CarPlay lanes are marked, read at each lane update so a change applies at once */
     static String laneMode() {
         return mod == null ? "auto" : mod.settingString("lanes", "auto");
@@ -137,10 +171,26 @@ public final class Dipo {
             }
         });
         rg = new RgListener();
+        turnsHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    turns.refresh();
+                } catch (Throwable x) {
+                    error("CarPlay turn-by-turn refresh", x);
+                }
+                turnsHandler.postDelayed(this, 1000L);
+            }
+        }, 1000L);
+        Cluster.traced = true;
         mod.hook(app.classLoader, "dipo.iap2_proxy.stop_route_guidance", new MethodHook() {
             @Override
             protected void beforeHookedMethod(Param p) {
-                if (OWN.get() != null) return;
+                if (OWN.get() != null) {
+                    log("TBT stop hook: own restart, ignored");
+                    return;
+                }
+                log("TBT stop hook: DiPO stop_route_guidance, clearing the HUD");
                 post(new Runnable() {
                     @Override
                     public void run() {
@@ -172,6 +222,7 @@ public final class Dipo {
             info.onSetSupportType(LISTENER_ROUTE_GUIDANCE);
             info.onSetListenerName("HMGAPI_RG");
             log("CarPlay: Iap2SvcInit(HMGAPI_RG, 0x1000) = " + s.Iap2SvcInit(rg, info));
+            log("TBT iap2 components for route guidance: " + java.util.Arrays.toString(RG_COMPONENTS));
         } catch (Throwable t) {
             error("CarPlay: route guidance listener", t);
         }
@@ -183,11 +234,14 @@ public final class Dipo {
         if (s == null) return;
         OWN.set(Boolean.TRUE);
         try {
+            log("TBT restartRouteGuidance: stop " + java.util.Arrays.toString(RG_COMPONENTS));
             s.Iap2SvcStopRouteGuidanceUpdate(RG_COMPONENTS);
             Thread.sleep(200);
+            log("TBT restartRouteGuidance: start " + java.util.Arrays.toString(RG_COMPONENTS) + " true,true");
             s.Iap2SvcStartRouteGuidanceUpdate(RG_COMPONENTS, true, true);
         } catch (Throwable t) {
             // the session went away meanwhile
+            log("TBT restartRouteGuidance failed: " + t);
         } finally {
             OWN.remove();
         }
@@ -196,10 +250,15 @@ public final class Dipo {
     /** HMG-API's iAP2 listener for route guidance: everything goes to CpTurns on its thread */
     static final class RgListener extends IIap2Listener.Stub {
         @Override
-        public void connected(int component, String serial) {}
+        public void connected(int component, String serial) {
+            log("TBT rg connected component=" + component + " serial=" + (serial == null ? "null" : "len" + serial.length()));
+        }
+
+        private final java.util.HashMap<Integer, Integer> seen = new java.util.HashMap<Integer, Integer>();
 
         @Override
         public void disconnected(final int component) {
+            log("TBT rg disconnected component=" + component);
             // as DiPO's listener: component 2 isn't a session, and the bridge's own sessions end while wireless CarPlay runs
             if (component == 2 || (bridge && Bridge.dipoIgnoreDisconnect(component))) return;
             post(new Runnable() {
@@ -212,7 +271,15 @@ public final class Dipo {
 
         @Override
         public void notify(final int what, int a1, int a2, final Iap2NotiMsg msg) {
-            if ((what != RG_UPDATE && what != RG_MANEUVER && what != RG_LANES) || msg == null) return;
+            int n;
+            synchronized (seen) {
+                Integer c = seen.get(what);
+                n = c == null ? 1 : c + 1;
+                seen.put(what, n);
+            }
+            boolean handled = what == RG_UPDATE || what == RG_MANEUVER || what == RG_LANES;
+            if (n == 1 || (dev() && (n <= 10 || n % 25 == 0))) log("TBT rg notify what=" + what + " a1=" + a1 + " a2=" + a2 + " msg=" + (msg == null ? "null" : "yes") + (handled ? "" : " (ignored)") + " #" + n);
+            if (!handled || msg == null) return;
             post(new Runnable() {
                 @Override
                 public void run() {
