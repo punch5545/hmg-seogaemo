@@ -55,6 +55,7 @@ test: export PATH := $(CURDIR)/tools/testlib/fakebin:$(PATH)
 test: package
 	python3 tools/validate-maps.py all
 	python3 tools/test-validate-maps.py
+	python3 tools/test-map-evidence.py
 	python3 tools/test-map-scanner.py
 	python3 tools/test-map-verification.py
 	python3 tools/test-map-car.py

@@ -118,7 +118,7 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 ## Car mapping
 
 - The core owns mapping; modules declare stable IDs in `hookpoints.required`. The build validates
-  those manifests against the full catalogue. The bundled NEEV KOR map has 324 of 325 points;
+  those manifests against the full catalogue. The bundled NEEV KOR map has 342 of 343 points;
   `themesettings.split_item.type` remains unresolved and no module requires it.
 - `map status` is read-only and matches the exact product, onebin, Android release, and MD5 of every
   stock file in `car.json`. Known maps get reflection verification once per boot on a worker.
@@ -179,7 +179,7 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 
 ## Known gaps / risks (not yet verified on a car)
 
-- HMG-Seogaemo's mapper, verifier, and modules have not run on a real head unit; tests use fakes and an emulator.
+- The original 324 KOR map points passed on-car reflection on 2026-11-03. The 18 v1.0.1 additions have exact-stock host evidence and still need on-car reflection. Wireless CarPlay works without audio at 0.1.21; the audio fix remains pending physical verification. Other feature claims require their own evidence.
 - `wireless-carplay-and-aa` replaces `/system/bin/app_process` (boot guard disables it after 3
   quick restarts). Dalvik offsets were proven on a US EV6 only. Keep an adb recovery path ready.
 - `wifi-client` STA vs the CarPlay AP on one radio: treated as mutually exclusive; concurrency is

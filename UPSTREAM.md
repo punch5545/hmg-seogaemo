@@ -27,6 +27,23 @@ HMG-Seogaemo's core mapper and hookpoint catalogue are independently implemented
 
 Run `sh tools/upstream-diff.sh [path/to/HMG-API]` after updating a local clone. Review the reported commits and changed paths, then translate relevant behavior into our schema and implementation. Keep point IDs stable. Re-run `make test`, `tools/verify-map`, and on-car mapping before accepting changed shape rules. Upstream changes are never copied automatically.
 
+Catalogue-only addition baseline (2026-11-04): translated the following 18 IDs
+from HMG-API `dd10045` (v1.0.1), iAP2 definitions introduced by
+`13a2b17`/`c4f24e9`/`02609bc` and framework definitions by `d120037`. All other
+catalogue rules and runtime/module provenance retain the `4fab437` baseline.
+No upstream mapper/tool source was copied. KOR names were resolved independently
+from exact-stock odex; see [coverage](docs/hookpoints.md) and the bundled evidence.
+
+- `iap2.service.on_destroy`, `iap2.service.on_bind`,
+  `iap2.service.native_handle`, `iap2.service.native_lock`,
+  `iap2.init_info.use_vehicle_information`, `iap2.init_info.use_vehicle_status`
+- `framework.bcm_service.batt_cond_indicator`, `framework.hev_flag.batt_cond_failure`,
+  `framework.car_services.cluster`, `framework.cluster_service`,
+  `framework.cluster_service_stub`, `framework.cluster_service_stub.as_interface`,
+  `framework.cluster_listener`, `framework.cluster_listener_stub`,
+  `framework.cluster_listener_stub.as_interface`, `framework.cluster_listener_stub.battery_info`,
+  `framework.cluster_service.add_listener`, `framework.cluster_service.battery_info`
+
 ## Startup consent screen reference
 
 The community [HKMC Factory 82 package](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (`local.hkmc.factory82`, release `4.2.1`, MIT) is the behavioral reference for `skip-consent-screen`. Its `packages/hkmc-factory82/svc/watch.sh` calls `com.hkmc.factory` Binder transaction `82` after startup or display wake. HMG-Seogaemo independently implements a fixed-call API and shared `watcher` service; it has not copied the package scripts. See [.agents/skip-consent-screen.md](.agents/skip-consent-screen.md).

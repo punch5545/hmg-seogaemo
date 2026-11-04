@@ -35,7 +35,7 @@ python3 tools/map-car.py stock/system \
 ./tools/verify-map maps/hyundai/ioniq5/kor/260902
 ```
 
-Use the actual facts and target layout for the new firmware. `--strict` requires all 325 current points, including optional ones, so it is usually unsuitable when an unrelated point is unresolved. The normal run records unresolved IDs in `car.json`. Review every required point and every file MD5 before opening a PR.
+Use the actual facts and target layout for the new firmware. `--strict` requires all 343 current points, including optional ones, so it is usually unsuitable when an unrelated point is unresolved. The normal run records unresolved IDs in `car.json`. Review every required point and every file MD5 before opening a PR.
 
 ## Map on the head unit
 
@@ -64,11 +64,23 @@ The comparison lists differing point IDs and file hashes. Resolve differences fr
 
 ## Pull Request
 
-Commit only `maps/<make>/<model>/<region>/<firmware>/{map.json,car.json,README.md}` plus any justified catalogue changes. Do not commit the Car Report, stock binaries, raw smali, VIN, serials, network details, or personal data. The PR template asks for exact product, onebin, Android version, unresolved IDs, host/on-car comparison, and verification evidence. CI runs schema, catalogue, required-point, and forbidden-field validation.
+Add a host-side `evidence.json` beside each bundled map, using the existing bundle as the schema reference. Mapping observations bind exact class/member signatures to stock paths and MD5s. Reflection observations list only the point snapshot actually checked on the car, with its date, product, onebin, Android release, stock hashes and signature digest. Keep physical feature outcomes separate, including partial or pending results. An updated map does not inherit reflection or feature claims for new points. The sidecar does not change runtime `car.json` or grant runtime verification.
+
+Validate evidence and regenerate the coverage document:
+
+```sh
+python3 tools/hmg-seogaemo-map-evidence.py validate --stock stock/system
+python3 tools/hmg-seogaemo-map-evidence.py generate
+python3 tools/hmg-seogaemo-map-evidence.py check
+```
+
+The optional `--stock` argument compares every recorded MD5 with the supplied dump. Host checks validate evidence consistency, not the truth of a reported physical test. `make test` rejects stale generated coverage.
+
+Commit only `maps/<make>/<model>/<region>/<firmware>/{map.json,car.json,README.md,evidence.json}`, regenerated `docs/hookpoints.md`, and justified implementation/catalogue changes. Device exports provide runtime map data; prepare the reviewed evidence sidecar on the host. Do not commit the Car Report, stock binaries, raw smali, VIN, serials, network details, or personal data. The PR template asks for exact product, onebin, Android version, unresolved IDs, host/on-car comparison, and verification evidence. CI runs schema, catalogue, required-point, evidence, and forbidden-field validation.
 
 ## Upstream updates
 
-`UPSTREAM.md` pins HMG-API at `4fab437` and maps each independent component and hookpoint group to its upstream source. After updating a local HMG-API clone, run `sh tools/upstream-diff.sh /path/to/HMG-API`. Review only the tracked upstream changes, translate relevant rule or behavior changes into our own schema and code, preserve stable point IDs, and repeat host and on-car checks. The diff tool never copies upstream code.
+`UPSTREAM.md` pins the general HMG-API baseline at `4fab437`, records the 18 catalogue-only v1.0.1 additions, and maps each independent component and hookpoint group to its upstream source. After updating a local HMG-API clone, run `sh tools/upstream-diff.sh /path/to/HMG-API`. Review only the tracked upstream changes, translate relevant rule or behavior changes into our own schema and code, preserve stable point IDs, and repeat host and on-car checks. The diff tool never copies upstream code.
 
 ## Prompt for an AI agent with adb access
 
