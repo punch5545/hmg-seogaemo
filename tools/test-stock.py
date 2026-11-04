@@ -224,7 +224,9 @@ def test_failure_and_hook(folder):
     assert not car.apk.exists()
     assert not (car.state / 'modules').exists()
     assert (car.state / 'ledger/ledger.tsv').exists()
-    assert 'info.module_a=reverted' in (car.state / 'stock/result').read_text()
+    # The pause marker and receipt belong to the removed installation; ledger rows stay.
+    assert not (car.state / 'stock').exists()
+    assert 'stock_finish' in (car.state / 'ledger/ledger.tsv').read_text()
 
 
 def test_detached(folder):
@@ -257,6 +259,9 @@ rm -rf "$FAKE_PACKAGE"
     assert (job / 'result').read_text() == 'removed', (job / 'log').read_text()
     assert (job / 'exit-code').read_text() == '0'
     assert not car.base.exists() and not car.apk.exists()
+    # Nothing of the restore bookkeeping survives; the uninstall record does.
+    assert not (car.state / 'stock').exists() and not (car.state / 'restart-cleanup').exists()
+    assert (job / 'log').exists() and (job / 'exit-code').exists()
     assert 'nemesis uninstall hmg-seogaemo' in car.calls.read_text()
     assert 'package_uninstall' in (car.state / 'ledger/ledger.tsv').read_text()
 
@@ -606,6 +611,8 @@ def test_residue_on_restore(folder):
     vm = car.state / 'core/vm/dalvik-cache'
     vm.mkdir(parents=True)
     (vm / 'entry').write_text('cache')
+    scratch = car.state / 'core/vm.status.4242/dalvik-cache'
+    scratch.mkdir(parents=True)
     (car.base / 'modules/a.properties').write_text(
         'owns_props=demo.a\nwatch=boot,screen_on\n'
         'owns_files=/system/etc/hmg-seogaemo/a/recipes/x.recipe\n'
@@ -615,6 +622,7 @@ def test_residue_on_restore(folder):
     assert 'state=off' in result.stdout or 'state=pending-restart' in result.stdout
     assert not generated.exists() and not namespace.exists()
     assert not ours.exists() and other.exists() and not (car.state / 'core/vm').exists()
+    assert not scratch.exists()
     ledger = (car.state / 'ledger/ledger.tsv').read_text()
     assert 'generated_dir_remove' in ledger and 'legacy_dir_remove' in ledger
     assert 'dex_legacy_remove' in ledger and 'stock_residue' in ledger

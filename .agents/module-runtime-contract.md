@@ -264,7 +264,7 @@ never by a module directly and never with a caller-supplied path:
   `data@nemesis@apps@hmg-seogaemo` or `data@nemesis@backup@hmg-seogaemo@update` plus an
   optional `@...` middle plus `@core@map@hmg-seogaemo-mapper.jar`,
   `@app@hmg-seogaemo.apk` or the projection reader jar path, ending `@classes.dex`) and
-  `sg_vm_cleanup` (the private `core/vm` cache). Each removal is a ledger row.
+  `sg_vm_cleanup` (the private `core/vm` cache and `core/vm.status.<digits>` scratch caches). Each removal is a ledger row.
 
 ## Wireless ADB and diagnostic export (2026-11-04)
 
@@ -994,7 +994,10 @@ update verifier, projection reader) uses `sg_bounded_wait` and a private
 the mapper and update verifier, the module's `vm/` tree for the projection reader.
 The update verifier is bounded to 240 seconds. They export a validated
 `BOOTCLASSPATH` (`sg_bootclasspath`) when the environment lacks one. Nothing of
-ours then writes to `/data/dalvik-cache`.
+ours then writes to `/data/dalvik-cache`. `map status` is read-only: it uses `core/vm`
+only when it already exists and otherwise runs on a scratch cache `core/vm.status.<pid>` that
+the dispatcher removes on exit; only `map verify`, `map run` and the update verifier create
+`core/vm`. Restore residue and the uninstall hook (which runs the same restore) remove it.
 
 ## Automatic intent recheck under lock (2026-11-04)
 

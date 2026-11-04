@@ -47,6 +47,24 @@ again through `scripts/preuninstall.sh`; the staged-update exception still
 preserves state. The hook removes and verifies the APK before allowing package
 removal. A framework restart may still be required after removal.
 
+## State after a completed uninstall
+
+The NEMESIS pre-uninstall hook (reached from the app's `package uninstall`, from the
+NEMESIS UI and from the staged-update exception alike, the last of which exits early
+and changes nothing) ends a successful removal by deleting `desired/`, `modules/`,
+`journal`, `reconcile.log`, `app-install/`, `stock/` and `restart-cleanup/`. `stock/`
+holds `paused`, `result`, `product`, `boot`, `outcome.*` and any `recovery.*` copies; none
+of it describes a later installation, and a surviving `stock/paused` would silently
+keep a fresh install from reapplying modules, so it must not survive. Kept on purpose:
+`uninstall/` (result, exit code, log, the copied runner), the `ledger/`, `car-maps/`
+and the OTA version directories. The restore that precedes it also removes `core/vm`
+(the mapper's private Dalvik cache) and any `core/vm.status.*` scratch cache; `map status`
+does not recreate it (it only uses an existing cache or a scratch one removed on exit).
+A failed hook or a failed removal deletes nothing: the pause, receipt and backups remain
+for the retry. Generated app directories that the still-running hooks rewrote after the
+restore are not retried after an uninstall (nothing is left to run the retry); they hold
+only diagnostic files and no stock state.
+
 ## Detached lifecycle
 
 The runner and its helper copy live in the root-only retained directory

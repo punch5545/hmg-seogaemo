@@ -1236,8 +1236,16 @@ def test_residue_cleanup(temp):
     vm = base / "ledgerroot/core/vm"
     (vm / "dalvik-cache").mkdir(parents=True)
     (vm / "dalvik-cache/entry").write_text("cache")
+    for leftover in ("vm.status.4242", "vm.status.7"):
+        (base / "ledgerroot/core" / leftover / "dalvik-cache").mkdir(parents=True)
+    (base / "ledgerroot/core/vm.status.abc").mkdir()
+    (base / "ledgerroot/core/vm.statusX").mkdir()
     check("sg_vm_cleanup\n")
     assert not vm.exists() and (base / "ledgerroot/core").is_dir()
+    assert not list((base / "ledgerroot/core").glob("vm.status.[0-9]*"))
+    assert (base / "ledgerroot/core/vm.status.abc").is_dir() and (base / "ledgerroot/core/vm.statusX").is_dir()
+    (base / "ledgerroot/core/vm.status.abc").rmdir()
+    (base / "ledgerroot/core/vm.statusX").rmdir()
     (base / "ledgerroot/core").rmdir()
     (base / "ledgerroot/core").symlink_to(base / "outside", target_is_directory=True)
     (base / "outside/vm").mkdir()

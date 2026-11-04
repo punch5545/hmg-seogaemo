@@ -1791,8 +1791,14 @@ sg_legacy_dex_cleanup() (
         done
     done
 )
-# The private Dalvik cache of the mapper and update verifier.
+# The private Dalvik cache of the mapper and update verifier, and scratch caches
+# (`core/vm.status.<digits>`) that an interrupted `map status` left behind.
 sg_vm_cleanup() (
+    for vm in "$SG_DATA_ROOT"/core/vm.status.*; do
+        case "${vm##*/vm.status.}" in ''|*[!0-9]*) continue;; esac
+        [ -d "$vm" ] && [ ! -L "$vm" ] || continue
+        rm -rf "$vm" || exit 1
+    done
     vm=$SG_DATA_ROOT/core/vm
     [ -e "$vm" ] || exit 0
     sg_path_safe "$vm" && [ -d "$vm" ] || exit 3
