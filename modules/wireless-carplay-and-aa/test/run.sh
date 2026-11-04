@@ -19,8 +19,13 @@ sg_payload_dirs() {
     while [ "$parent" != "$SG_WIRELESS_TEST_ROOT" ]; do
         mkdir -p "$parent"; chmod 0755 "$parent"; parent=${parent%/*}
     done
+    # Simulate interruption after traversal is repaired but before file puts.
+    [ "${SG_FAIL_AFTER_DIR_REPAIR:-0}" != 1 ] || return 1
 }
-sg_restart_required() { cat "$SG_WIRELESS_TEST_ROOT/proc/sys/kernel/random/boot_id" > "$HMG_SEOGAEMO_STATE/assets-repaired-boot"; }
+sg_restart_required() {
+    [ "${SG_FAIL_RESTART_MARKER:-0}" != 1 ] || return 1
+    cat "$SG_WIRELESS_TEST_ROOT/proc/sys/kernel/random/boot_id" > "$HMG_SEOGAEMO_STATE/assets-repaired-boot"
+}
 sg_restart_pending() {
     [ -f "$HMG_SEOGAEMO_STATE/assets-repaired-boot" ] &&
         [ "$(cat "$HMG_SEOGAEMO_STATE/assets-repaired-boot")" = "$(cat "$SG_WIRELESS_TEST_ROOT/proc/sys/kernel/random/boot_id")" ]
@@ -227,6 +232,18 @@ grep -q '^state=on$' "$T/output" || fail loaded-state
 chmod 700 "$T/root/system/etc/hmg-seogaemo" "$T/root/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes"
 run status && fail unreadable-assets-accepted
 grep -q 'assets unreadable' "$T/output" || fail unreadable-detail
+# A marker write failure must stop before any permission repair.
+export SG_FAIL_RESTART_MARKER=1
+run apply && fail failed-restart-marker-accepted
+case "$(ls -ldn "$T/root/system/etc/hmg-seogaemo")" in drwx------*) ;; *) fail marker-failure-mutated-dirs;; esac
+unset SG_FAIL_RESTART_MARKER
+# Interruption after directories become searchable must retain restart intent.
+export SG_FAIL_AFTER_DIR_REPAIR=1
+run apply && fail interrupted-repair-accepted
+unset SG_FAIL_AFTER_DIR_REPAIR
+[ "$(cat "$T/state/assets-repaired-boot")" = boot-two ] || fail interrupted-restart-marker
+run status || fail interrupted-repair-status
+grep -q '^state=pending-restart$' "$T/output" || fail interrupted-repair-restart
 run apply || fail already-applied-repair
 grep -q '^state=pending-restart$' "$T/output" || fail repaired-restart
 case "$(ls -ldn "$T/root/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes")" in drwxr-xr-x*) ;; *) fail repair-mode;; esac

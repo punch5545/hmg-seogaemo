@@ -49,8 +49,11 @@ file-put provenance does not prove directory absence. Uninstall restores that
 metadata and never deletes these legacy directories. No guessed absent baseline.
 
 CarPlay apply reconciles recipes and ancestors before its already-applied return.
-Repairs record the current boot and remain pending-restart through that boot,
-because DiPO reads recipes when registering native patches. Read-only status
+When assets are initially unreadable, repairs record the current boot before
+their first mutation and remain pending-restart through that boot, because DiPO
+reads recipes when registering native patches. Marker publication failure stops
+repair before mutation; an interrupted repair retains the restart intent even
+if all assets are already readable on retry. Read-only status
 checks world-read file bits and world-search ancestor bits using permission
 digits directly (leading-zero arithmetic differs between POSIX shells and
 Android mksh). It reports failed with an assets-unreadable detail and does not

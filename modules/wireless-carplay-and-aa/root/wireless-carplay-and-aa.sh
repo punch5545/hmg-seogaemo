@@ -73,16 +73,14 @@ assets_readable() {
 }
 
 repair_assets() {
-    repaired=0
-    assets_readable || repaired=1
+    if ! assets_readable; then
+        # DiPO registers once: retain restart intent even if repair is interrupted.
+        sg_restart_required || return 1
+    fi
     for recipe in aa-tbt-48ee793a aa-tbt-a0bea1c4 carplay-core-wifi carplay-audio-formats carplay-utils-converter; do
         sg_payload_dirs "$ASSET/recipes/$recipe.recipe" || return 1
     done
     put_assets || return 1
-    if [ "$repaired" -eq 1 ]; then
-        # Read by DiPO once at registration: repairs take effect after restart.
-        sg_restart_required || return 1
-    fi
 }
 
 apply() {
