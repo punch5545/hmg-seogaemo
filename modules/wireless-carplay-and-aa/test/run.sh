@@ -13,6 +13,17 @@ mkdir -p "$T/base/lib" "$T/bin" "$T/props" "$T/state" "$T/root/system/bin" "$T/r
 cat > "$T/base/lib/common.sh" <<'SH'
 . "$HMG_SEOGAEMO_TEST_COMMON"
 sg_log() { sg_print "$*" >&2; }
+sg_projection_runtime() {
+    case "$1" in
+        prepare) mkdir -p "$HMG_SEOGAEMO_STATE/runtime"; chmod 700 "$HMG_SEOGAEMO_STATE/runtime";;
+        clear) rm -rf "$HMG_SEOGAEMO_STATE/runtime";;
+        status|applying)
+            if [ -f "$HMG_SEOGAEMO_STATE/runtime/ready" ]; then sg_status on none 'validated runtime ready'
+            elif [ "$1" = applying ]; then sg_status pending-restart head_unit 'runtime evidence absent'
+            else sg_print state=unknown restart=none 'detail=runtime evidence absent'; fi;;
+        *) return 2;;
+    esac
+}
 sg_payload_dirs() {
     case "$1" in /system/*) ;; *) return 0;; esac
     parent=$(sg_path "$1"); parent=${parent%/*}
@@ -101,6 +112,7 @@ sg_prop_set() {
 sg_dex_cache_track() { sg_print "$1 $2" > "$HMG_SEOGAEMO_STATE/dex-track"; }
 sg_restore_material() { [ -f "$HMG_SEOGAEMO_STATE/ops.list" ]; }
 sg_zygote_install() {
+    [ -d "$HMG_SEOGAEMO_STATE/runtime" ] || return 1
     [ "${SG_FAIL_ZYGOTE:-0}" != 1 ] || return 1
     stock=/system/bin/app_process.hmg-seogaemo-stock
     if ! sg_applied /system/bin/app_process; then
@@ -220,7 +232,7 @@ grep -q '^state=pending-restart$' "$T/output" || fail apply-state
 [ -f "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file
 sg_print "boot-two" > "$T/root/proc/sys/kernel/random/boot_id"
 run status || fail status
-grep -q '^state=pending-restart$' "$T/output" || fail pending-state
+grep -q '^state=unknown$' "$T/output" || fail missing-evidence-state
 cat > "$T/bin/ps" <<'SH'
 #!/bin/sh
 . "$HMG_SEOGAEMO_TEST_COMMON"
@@ -229,6 +241,9 @@ SH
 chmod +x "$T/bin/ps"
 mkdir -p "$T/root/proc/123"
 sg_print '/system/lib/libhmg_seogaemo_wireless_hook.so' > "$T/root/proc/123/maps"
+run status || fail maps-only-status
+grep -q '^state=unknown$' "$T/output" || fail maps-only-claimed-ready
+touch "$T/state/runtime/ready"
 run status || fail loaded-status
 grep -q '^state=on$' "$T/output" || fail loaded-state
 grep -q '^info.restore_material=present$' "$T/output" || fail rollback-restore-guard
@@ -285,8 +300,10 @@ cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail 
 [ ! -e "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file-present
 [ "$(cat "$T/props/persist.ium.support")" = stock ] || fail exact-prop-restore
 [ ! -f "$T/state/enabled" ] || fail enabled-marker-present
+[ ! -e "$T/state/runtime" ] || fail runtime-diagnostics-residue
 run status || fail reverted-status
 grep -q '^info.restore_material=absent$' "$T/output" || fail rollback-after-restore
 sh "$HERE/test/runtime/run.sh" > "$T/runtime.out" 2>&1 || { cat "$T/runtime.out"; fail runtime; }
+sh "$HERE/test/consumer/run.sh" > "$T/consumer.out" 2>&1 || { cat "$T/consumer.out"; fail consumer; }
 sh "$HERE/test/cpturns/run.sh" > "$T/cpturns.out" 2>&1 || { cat "$T/cpturns.out"; fail cpturns; }
 sg_print "ok wireless-carplay-and-aa toolbox parse, guards, rollback, drift refusal, exact revert"

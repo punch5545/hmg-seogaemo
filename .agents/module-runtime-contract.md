@@ -217,6 +217,27 @@ ownership; never source/eval the record as shell. These app-owned reports are
 diagnostic evidence, not a defense against a compromised OEM app. Seal validation
 still checks only `product\nhash-id\n`; additional seal lines remain compatible.
 
+The consumer uses `sg_projection_runtime prepare|status|applying|clear` in the
+package API, restricted to the projection owner. `prepare` creates the runtime
+parent and module directory as root:root 0700 before loader installation. The
+API invokes the packaged API 19 Java reader (SHA-256 through MessageDigest,
+KitKat libcore lstat for UID/type); it never executes record contents. Expected
+app UID comes from the fixed package's data directory, and proc UID, cmdline,
+record process and start ticks must agree. Only the package main process or its
+colon subprocesses qualify. Every current record is considered, so a ready
+record cannot hide another current failure. Zygote plus all five packages and
+their relevant parts/native recipes are required for `on`. Missing evidence is
+`unknown`; an apply receipt uses `pending-restart` for missing evidence so the
+dispatcher can retain enabled intent. Old loaded hashes mean `pending-restart`.
+
+Collection replaces only generated app copies, never baselines, with at most
+32 files of 64 KiB across the fixed packages; malformed, stale, aliased or
+incorrectly owned inputs are omitted. Current old-generation records remain
+exportable as restart evidence. `clear` removes the generated root module tree
+after successful revert (including an already reverted module), and removes an
+empty runtime parent. App-private originals may remain. Export probes status
+first, then includes the fixed app-copy depth and `.log.1`.
+
 ## Shared text-file line ownership (2026-11-03)
 
 `owns_files=` grants exclusive whole-file ownership. No other module may claim

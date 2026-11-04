@@ -481,6 +481,8 @@ sg_revert_all
         "runtime/carplay/runtime.log": "psk=private-password\nsafe runtime log\n",
         "runtime/carplay/wpa_supplicant.conf": "private-config\n",
         "runtime/carplay/softap.conf": "private-config\n",
+        "runtime/wireless-carplay-and-aa/apps/com.daudio.app.dipo/p-10-20.txt": "gate.state=ready\n",
+        "runtime/wireless-carplay-and-aa/apps/com.daudio.app.dipo/p-10-20.log.1": "native EACCES\n",
     }.items():
         target = data / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -495,6 +497,8 @@ sg_revert_all
     for relative in ("logs/reconcile.log", "logs/watcher.log", "modules/test/module.log",
                      "stock/result", "stock/module-output", "uninstall/result", "uninstall/log",
                      "update/journal", "runtime/carplay/result", "runtime/carplay/runtime.log",
+                     "runtime/wireless-carplay-and-aa/apps/com.daudio.app.dipo/p-10-20.txt",
+                     "runtime/wireless-carplay-and-aa/apps/com.daudio.app.dipo/p-10-20.log.1",
                      "map-status.txt", "module-test-status.txt", "properties.txt", "owned-paths.txt"):
         assert (diagnostics / relative).is_file(), relative
     for entry in diagnostics.rglob("*"):

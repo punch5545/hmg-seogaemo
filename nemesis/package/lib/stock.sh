@@ -117,6 +117,9 @@ hmg_seogaemo_stock_restore() {
                 # Nothing applied: do not fail on an unavailable unused module.
                 # Reboot-only modules still report their transient effect.
                 if ! grep -Fxq 'restore=reboot' "$base/modules/$stock_id.properties"; then
+                    if [ "$stock_id" = wireless-carplay-and-aa ]; then
+                        sg_projection_runtime clear || exit $?
+                    fi
                     sg_status off none 'Already off'; exit $?
                 fi
             fi

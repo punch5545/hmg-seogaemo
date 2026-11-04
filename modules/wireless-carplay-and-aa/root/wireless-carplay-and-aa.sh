@@ -86,6 +86,7 @@ repair_assets() {
 
 apply() {
     compatibility || return $?
+    sg_projection_runtime prepare || { fail 'private runtime directory unavailable'; return 1; }
     if sg_applied /system/bin/app_process || [ -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then
         sg_dex_cache_track /system/framework/hmg-seogaemo-wireless-hook.jar com.daudio.app.dipo || return 1
         sg_zygote_install data/app_process data/libhmg_seogaemo_wireless_hook.so data/hmg-seogaemo-wireless-hook.jar || {
@@ -97,7 +98,7 @@ apply() {
         sg_prop_set persist.ium.support carplay &&
             sg_prop_set persist.sys.iap2.wifi t &&
             sg_prop_set persist.iap2.iden.wireless t || { fail 'property reapply failed'; return 1; }
-        status; return $?
+        status applying; return $?
     fi
     if ! put_assets ||
        ! sg_prop_set persist.ium.support carplay ||
@@ -106,6 +107,7 @@ apply() {
        ! sg_dex_cache_track /system/framework/hmg-seogaemo-wireless-hook.jar com.daudio.app.dipo ||
        ! sg_zygote_install data/app_process data/libhmg_seogaemo_wireless_hook.so data/hmg-seogaemo-wireless-hook.jar; then
         sg_revert_all || sg_log 'rollback failed; ledger and baselines retained'
+        if ! sg_restore_material; then sg_projection_runtime clear || return 1; fi
         fail 'apply failed; inspect change ledger'; return 1
     fi
     sg_status pending-restart head_unit 'restart unit to load projection features and hooks'
@@ -115,9 +117,11 @@ revert() {
     if ! sg_applied /system/bin/app_process && [ ! -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then
         # An interrupted apply can have feature/property changes without the wrapper.
         sg_revert_all || { conflict 'partial apply restore blocked; ledger retained'; return 3; }
+        sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
         sg_status off none 'disabled'; return 0
     fi
     sg_revert_all || { conflict 'restore blocked by drift; ledger retained'; return 3; }
+    sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
     sg_print info.desired=off
     sg_status pending-restart head_unit 'restart unit to finish restoration'
 }
@@ -138,23 +142,10 @@ status() {
        [ "$(value persist.iap2.iden.wireless)" != t ]; then fail 'projection property drift'; return 1; fi
     assets_readable || { fail 'projection assets unreadable; reapply and restart required'; return 1; }
     if sg_restart_pending; then
+        runtime_result=$(sg_projection_runtime status) || { sg_print "$runtime_result"; return 1; }
         sg_status pending-restart head_unit 'restart unit to register repaired native recipes'; return 0
     fi
-    # Runtime loaded in the zygote only after a full unit restart. A boot guard
-    # that disabled preloading also leaves this pending instead of claiming success.
-    process=$(ps 2>/dev/null | grep '[z]ygote') || process=
-    pid=
-    if [ -n "$process" ]; then
-        read -r user pid rest <<EOF
-$process
-EOF
-    fi
-    if [ -n "$pid" ] &&
-       grep -q 'libhmg_seogaemo_wireless_hook.so' "$(path "/proc/$pid/maps")" 2>/dev/null; then
-        sg_status on none 'wireless projection hooks loaded'
-    else
-        sg_status pending-restart head_unit 'unit restart or hook recovery required'
-    fi
+    sg_projection_runtime "${1:-status}"
 }
 
 [ "$#" -eq 1 ] || exit 2
