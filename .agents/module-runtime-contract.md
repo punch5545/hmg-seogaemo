@@ -5,6 +5,49 @@ Status: partly superseded — the former parallel-work ownership table is histor
 Implemented interface between the shared module runtime, modules, and updater.
 The ownership table records the original parallel-work split; it no longer assigns active worktrees.
 
+## Applied projection payload upgrades (2026-11-04)
+
+`sg_zygote_install` compares the selected wrapper, loader and JAR on every
+apply, including desired-on reconciliation after OTA and NEMESIS USB postinstall.
+An applied install may advance only from its recorded applied bytes/metadata;
+unknown drift conflicts before any payload write. The stock executable backup
+and every original file baseline remain immutable through all generations.
+A durable `zygote-upgrade` journal publishes intended bytes/metadata before
+mutation. Guards also recognize those intended states after interruption, so
+retry converges and stock restore can undo a partial upgrade. A different
+selected generation during a pending upgrade is refused; restore or resume the
+same selected payload first. The journal remains until all new applied markers
+and ledger entries are committed.
+
+Upgrade captures then invalidates tracked Dalvik caches, writes loader and JAR,
+and atomically replaces the wrapper last. It records restart-required before
+the first mutation; the old running zygote still holds its previous inodes.
+Cache deletions remain journaled until their applied-absence markers are
+committed, including paths no longer visible in cache globs after interruption.
+No zygote service restart is performed. A same-payload reapply makes no payload
+or cache writes. Projection reapply reasserts all three owned properties using
+`sg_prop_set`; status checks all three.
+
+OTA rollback (explicit, automatic and interrupted-update recovery) refuses
+before selecting another package/APK while projection restore material remains.
+Disable projection or restore stock first, then retry rollback. Failed update
+health with active projection keeps the selected package and reports blocked
+rollback, rather than mixing old package code with new system payload bytes.
+This conservative policy also covers interrupted first apply and upgrade.
+Uninstall always restores ORIGINAL stock, never the previous applied generation.
+
+The guarded fixed updater advertises `HMG_SEOGAEMO_PROJECTION_ROLLBACK_GUARD=1`
+to its health reconcile. With `HMG_SEOGAEMO_UPDATE_HEALTH=1` and no capability,
+`sg_zygote_install` keeps the applied generation and returns successful
+`info.hook_upgrade=deferred until update is finalized`; caches remain intact.
+After finalization, ordinary reapply upgrades. The new APK checks fixed module
+status `info.restore_material=absent` before dispatching rollback; missing or
+present material refuses with localized guidance after the normal confirmation.
+This protects app rollback even with an older fixed updater. USB replaces that
+updater and uses ordinary postinstall reconcile, so it does not defer. Direct
+root rollback through a pre-upgrade fixed updater cannot acquire this new guard;
+disable projection first or reinstall via USB before using that legacy command.
+
 ## Payload metadata and directory transactions (2026-11-04)
 
 Whole-file applied markers include `applied-meta` (four octal mode digits,

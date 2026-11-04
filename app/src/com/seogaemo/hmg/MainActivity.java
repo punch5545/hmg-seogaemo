@@ -1074,6 +1074,13 @@ public final class MainActivity extends Activity {
         dialog.showProgress();
         new Thread(new Runnable() { public void run() {
             try {
+                if (!install) {
+                    RootResult projection = RootClient.run("wireless-carplay-and-aa", "status");
+                    if (!"absent".equals(projection.info.get("restore_material"))) {
+                        updateMessage(getString(R.string.update_rollback_projection_blocked));
+                        return;
+                    }
+                }
                 if (install) { updateMessage(getString(R.string.update_staging)); UpdateClient.root("stage"); }
                 updateMessage(getString(install ? R.string.update_applying : R.string.update_rolling_back));
                 UpdateClient.root(install ? "apply" : "rollback");
