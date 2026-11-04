@@ -20,7 +20,8 @@ ledger, `analysis/` reports on maneuver table, raw 0x5204 lanes and follow-ups).
 
 ## 1. CarPlay turn-by-turn follow-ups
 
-Background and fixed causes: `carplay-tbt-learnings.md`, `wireless-carplay-and-aa.md`
+Background and fixed causes: `carplay-tbt-learnings.md`, external research
+`carplay-tbt-external-research.md` (0x5204 layout, ManeuverType enum, icon codes), `wireless-carplay-and-aa.md`
 (observation records, developer toggle `persist.hmg_seogaemo.dev`, Dalvik cross-dex rule),
 runtime contract section "Turn-by-turn observation records and `tbt-reset`".
 
