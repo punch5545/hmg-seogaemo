@@ -1,5 +1,5 @@
 package hmgapi.mods.wireless.dipo;
-// Modified by HMG-Seogaemo: Korean CarPlay turn-by-turn fixes (icon bands, lane marking modes, HUD distance rounding, trace log); see .agents/carplay-tbt-learnings.md.
+// Modified by HMG-Seogaemo: Korean CarPlay turn-by-turn fixes (icon bands, lane marking modes, HUD distance rounding); see .agents/carplay-tbt-learnings.md.
 
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -77,10 +77,6 @@ public final class Dipo {
         return mod == null ? "auto" : mod.settingString("lanes", "auto");
     }
 
-    /** setting "trace": a line for every route guidance, maneuver and lane message and why an update didn't reach the cluster */
-    static boolean trace() {
-        return mod != null && mod.settingBoolean("trace", true);
-    }
 
     static void error(String m, Throwable t) {
         mod.error(m, t);

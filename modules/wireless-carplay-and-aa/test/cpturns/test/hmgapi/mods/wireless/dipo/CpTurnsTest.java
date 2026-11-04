@@ -119,18 +119,10 @@ public final class CpTurnsTest {
                 "list {1 70 0 [Oak Ave] [] 800.0 0} {2 72 0 [Pine St] [] 2.0 1}");
         Car.unit = Car.DISTANCE_MILES;
 
-        Dipo.trace = true;
-        Dipo.logs.clear();
         t.maneuver(msg(0, U16, i(1), 1, U16, i(0), 5, U32, i(250)));
         t.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES)));
         expect("maneuver update without its exit angle: DiPO resets the angle, so no turn icon (crossroad only)", "road [Main St]");
-        Dipo.trace = false;
-        String traced = Dipo.logs.toString();
-        check("trace: the incoming messages are logged as numbers and the skipped turn says why",
-                traced.contains("T mv ") && traced.contains("T rg ") && traced.contains("T turn skip c1: no icon for maneuver"));
-        Dipo.logs.clear();
         t.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES)));
-        check("trace off: nothing logged for an update", !Dipo.logs.toString().contains("T "));
         expect("(the update above, still without its exit angle: crossroad only)", "road [Main St]");
         t.maneuver(maneuver(0, RIGHT, 0, 0, 90, "Main St", 250));
 
@@ -205,32 +197,23 @@ public final class CpTurnsTest {
         pref.add(1, U16, i(2)).add(2, U16, i(0)).add(3, U16, i(0));
         along.add(1, U16, i(1)).add(2, U16, i(0, 90)).add(3, U16, i(0));
         off.add(1, U16, i(0)).add(2, U16, i(90));
-        StringBuilder seen = new StringBuilder();
         check("lane marks, off: preferred 2, route 2, other 1 (as before)",
-                CpTurns.laneOne(pref, "off", null)[0] == 2 && CpTurns.laneOne(along, "off", null)[0] == 2 && CpTurns.laneOne(off, "off", null)[0] == 1
+                CpTurns.laneOne(pref, "off")[0] == 2 && CpTurns.laneOne(along, "off")[0] == 2 && CpTurns.laneOne(off, "off")[0] == 1
                         && CpTurns.laneOne(pref)[0] == 2);
         check("lane marks, rec: only the preferred lane is 2",
-                CpTurns.laneOne(pref, "rec", null)[0] == 2 && CpTurns.laneOne(along, "rec", null)[0] == 1 && CpTurns.laneOne(off, "rec", null)[0] == 1);
+                CpTurns.laneOne(pref, "rec")[0] == 2 && CpTurns.laneOne(along, "rec")[0] == 1 && CpTurns.laneOne(off, "rec")[0] == 1);
         check("lane marks, dim0 / dim3: preferred 2, route lane 1, the rest 0 / 3",
-                CpTurns.laneOne(pref, "dim0", null)[0] == 2 && CpTurns.laneOne(along, "dim0", null)[0] == 1 && CpTurns.laneOne(off, "dim0", null)[0] == 0
-                        && CpTurns.laneOne(off, "dim3", null)[0] == 3 && CpTurns.laneOne(along, "dim3", null)[0] == 1);
-        CpTurns.laneOne(along, "rec", seen);
-        check("lane log says what the phone sent and the mark", seen.toString().equals("status 1 angles [0, 90] route [0] -> mark 1"));
+                CpTurns.laneOne(pref, "dim0")[0] == 2 && CpTurns.laneOne(along, "dim0")[0] == 1 && CpTurns.laneOne(off, "dim0")[0] == 0
+                        && CpTurns.laneOne(off, "dim3")[0] == 3 && CpTurns.laneOne(along, "dim3")[0] == 1);
         Dipo.laneMode = "auto";
         Iap2NotiMsg.Iap2ObjGroup[] withPref = { along, pref, off }, noPref = { along, off };
         check("auto: a preferred lane is named", CpTurns.anyPreferred(withPref) && !CpTurns.anyPreferred(noPref) && !CpTurns.anyPreferred(null));
-        Dipo.logs.clear();
-        Dipo.trace = false;
         Iap2NotiMsg am = new Iap2NotiMsg();
         am.getItemGroup().add(0, U16, i(1)).add(2, GROUPS, withPref);
         t.lanes(am);
-        check("auto with a preferred lane: logged as rec, the lane marks 1 2 1", Dipo.logs.toString().contains("(auto > rec)")
-                && Dipo.logs.toString().contains("-> mark 1") && Dipo.logs.toString().contains("-> mark 2"));
-        Dipo.logs.clear();
         Iap2NotiMsg am2 = new Iap2NotiMsg();
         am2.getItemGroup().add(0, U16, i(1)).add(2, GROUPS, noPref);
         t.lanes(am2);
-        check("auto without one: as off (route lane highlighted)", Dipo.logs.toString().contains("(auto > off)") && Dipo.logs.toString().contains("-> mark 2"));
         Dipo.laneMode = "off";
         expect("auto: with a preferred lane the frame marks 1 2 1; without one the route lane is 2 (marks 2 1)",
                 "lanes f103000102010000000000000000000000000001030001000003", "lanes f102000201000000000000000000000000000001030003");

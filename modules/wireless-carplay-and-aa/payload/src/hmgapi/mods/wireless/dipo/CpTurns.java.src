@@ -1,5 +1,5 @@
 package hmgapi.mods.wireless.dipo;
-// Modified by HMG-Seogaemo: Korean CarPlay turn-by-turn fixes (icon bands, lane marking modes, HUD distance rounding, trace log); see .agents/carplay-tbt-learnings.md.
+// Modified by HMG-Seogaemo: Korean CarPlay turn-by-turn fixes (icon bands, lane marking modes, HUD distance rounding); see .agents/carplay-tbt-learnings.md.
 
 import android.content.Context;
 import android.text.format.DateFormat;
@@ -49,7 +49,6 @@ final class CpTurns {
     int hudType, hudNext;
     String hudRoad;
     /** the last lane log line, so an unchanged one isn't logged again */
-    String lastLaneLog;
 
     CpTurns(Context context, Cluster cluster, Runnable restart) {
         this.context = context;
@@ -60,7 +59,6 @@ final class CpTurns {
     /** RouteGuidanceUpdate (DiPO e/u.c) */
     void routeGuidance(Iap2NotiMsg msg) {
         if (msg == null) return;
-        if (Dipo.trace()) trace("rg " + dump(msg));
         sourceCheck(msg);
         int[] ids = componentIds(msg);
         if (ids == null) {
@@ -104,7 +102,6 @@ final class CpTurns {
      */
     void maneuver(Iap2NotiMsg msg) {
         if (msg == null) return;
-        if (Dipo.trace()) trace("mv " + dump(msg));
         int index = -1;
         int[] ids = null;
         Iap2NotiMsg.Iap2ObjGroup g = msg.getItemGroup();
@@ -156,7 +153,6 @@ final class CpTurns {
     void lanes(Iap2NotiMsg msg) {
         Iap2NotiMsg.Iap2ObjGroup g = msg == null ? null : msg.getItemGroup();
         if (g == null) return;
-        if (Dipo.trace()) trace("lanes " + dump(msg));
         int[] status = new int[8], a = new int[8], b = new int[8], c = new int[8];
         int n = 0;
         Iap2NotiMsg.Iap2ObjGroup[] lanes = null;
@@ -165,24 +161,17 @@ final class CpTurns {
             if (it != null && it.getItemParamType() == 13 && it.getItemId() == 2) lanes = it.getItemGroupArray();
         }
         String mode = Dipo.laneMode();
-        String asked = mode;
         // auto: the phone's preferred lane alone when it names one, else every lane along the route
         if ("auto".equals(mode)) mode = anyPreferred(lanes) ? "rec" : "off";
-        StringBuilder seen = new StringBuilder();
         if (lanes != null) {
             for (int k = 0; k < lanes.length && n < 8; k++) {
-                int[] one = laneOne(lanes[k], mode, seen);
+                int[] one = laneOne(lanes[k], mode);
                 status[n] = one[0];
                 a[n] = one[1];
                 b[n] = one[2];
                 c[n] = one[3];
                 n++;
             }
-        }
-        String line = "CarPlay: lanes (" + (asked.equals(mode) ? mode : asked + " > " + mode) + ") " + seen;
-        if (!line.equals(lastLaneLog)) {
-            lastLaneLog = line;
-            Dipo.log(line);
         }
         byte[] f = new byte[81];
         f[0] = (byte) 0xF1;
@@ -216,7 +205,7 @@ final class CpTurns {
 
     /** one lane as lanes() sends it today */
     static int[] laneOne(Iap2NotiMsg.Iap2ObjGroup g) {
-        return laneOne(g, "off", null);
+        return laneOne(g, "off");
     }
 
     /**
@@ -229,9 +218,8 @@ final class CpTurns {
      *   rec  preferred: 2, the rest 1
      *   dim0 preferred: 2, a lane that leads along the route: 1, the rest 0
      *   dim3 preferred: 2, a lane that leads along the route: 1, the rest 3
-     * What the phone sent for the lane is appended to {@code seen} when it isn't null.
      */
-    static int[] laneOne(Iap2NotiMsg.Iap2ObjGroup g, String mode, StringBuilder seen) {
+    static int[] laneOne(Iap2NotiMsg.Iap2ObjGroup g, String mode) {
         int[] r = new int[4];
         r[0] = 1;
         if (g == null) return r;
@@ -265,11 +253,6 @@ final class CpTurns {
                 int icon = laneIcon(angles[k]);
                 if (icon != 0) r[1 + n++] = icon;
             }
-        }
-        if (seen != null) {
-            if (seen.length() > 0) seen.append(" | ");
-            seen.append("status ").append(status).append(" angles ").append(java.util.Arrays.toString(angles))
-                    .append(" route ").append(java.util.Arrays.toString(highlight)).append(" -> mark ").append(r[0]);
         }
         return r;
     }
@@ -337,11 +320,9 @@ final class CpTurns {
     /** one component's update to the cluster (DiPO e/u.a(Integer, Object), with the build's changes) */
     void turn(Integer id, Update u) {
         if (id < 0 || u == null) {
-            if (Dipo.trace()) trace("turn skip: no update (component " + id + ")");
             return;
         }
         if (u.state == 0) {
-            if (Dipo.trace()) trace("turn c" + id + ": state 0, cleared");
             stop();
             return;
         }
@@ -352,19 +333,16 @@ final class CpTurns {
                 dist = Float.parseFloat(u.nextStr.replace(',', '.'));
                 if (Float.isNaN(dist) || Float.isInfinite(dist)) dist = 0f;
             } catch (NumberFormatException e) {
-                if (Dipo.trace()) trace("turn c" + id + ": distance \"" + u.nextStr + "\" isn't a number, shown as 0");
                 dist = 0f;
             }
         }
         if (u.state == 6) cluster.destinationName(0, u.destination);
         LinkedHashMap<Integer, Maneuver> m = maneuvers.get(id);
         if (m == null || list == null) {
-            if (Dipo.trace()) trace("turn skip c" + id + ": " + (m == null ? "no maneuvers received" : "no maneuver list") + ", state " + u.state);
             return;
         }
         Maneuver x = m.get(list[0]);
         if (x == null) {
-            if (Dipo.trace()) trace("turn skip c" + id + ": maneuver " + list[0] + " not received yet, have " + m.keySet() + ", state " + u.state);
             return;
         }
         int unit;
@@ -378,78 +356,13 @@ final class CpTurns {
         int icon = icon(x.type, x.side, x.junction, x.exit, u.state);
         cluster.crossroadName(x.afterRoad);
         if (icon == 0) {
-            if (Dipo.trace()) trace("turn skip c" + id + ": no icon for " + describe(x) + ", state " + u.state + ", the cluster keeps the last turn");
             return;
         }
-        if (Dipo.trace()) trace("turn c" + id + ": icon " + icon + " dist " + dist + " unit " + unit + " state " + u.state + " list " + java.util.Arrays.toString(list) + " " + describe(x));
         cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);
         sendHud(icon, id, u);
         sendHudDist(dist, unit);
         sendTrip(u);
         sendAhead(id, u);
-    }
-
-    /** one line in the drive trace (the log, tag HMG-API; the mod's trace service keeps it for USB) */
-    static void trace(String m) {
-        Dipo.log("T " + m);
-    }
-
-    static String describe(Maneuver x) {
-        return "maneuver " + x.index + " type " + x.type + " side " + x.side + " junction " + x.junction + " exit " + x.exit
-                + " dist " + x.distance + "/" + x.distUnits + " angles " + java.util.Arrays.toString(x.angles);
-    }
-
-    /**
-     * A message's items as "id:type=values", groups in braces. Numbers only: strings (road names,
-     * the destination) are only counted, so a trace holds no places.
-     */
-    static String dump(Iap2NotiMsg msg) {
-        try {
-            Iap2NotiMsg.Iap2ObjGroup g = msg == null ? null : msg.getItemGroup();
-            return g == null ? "-" : dump(g, 0);
-        } catch (Throwable t) {
-            return "dump failed " + t;
-        }
-    }
-
-    static String dump(Iap2NotiMsg.Iap2ObjGroup g, int depth) {
-        StringBuilder s = new StringBuilder();
-        for (int k = 0; k < g.getItemCnt(); k++) {
-            Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(k);
-            if (it == null) {
-                s.append("null ");
-                continue;
-            }
-            s.append(it.getItemId()).append(':').append(it.getItemParamType()).append('=');
-            Iap2NotiMsg.Iap2ObjGroup[] groups = null;
-            int[] ints = null;
-            long[] longs = null;
-            String[] strs = null;
-            byte[] bytes = null;
-            try { groups = it.getItemGroupArray(); } catch (Throwable t) { }
-            try { ints = it.getItemIntArray(); } catch (Throwable t) { }
-            try { longs = it.getItemLongArray(); } catch (Throwable t) { }
-            try { strs = it.getItemStringArray(); } catch (Throwable t) { }
-            try { bytes = it.getItemByteArray(); } catch (Throwable t) { }
-            if (groups != null && depth < 4) {
-                s.append('[');
-                for (int j = 0; j < groups.length; j++) s.append(groups[j] == null ? "null" : "{" + dump(groups[j], depth + 1) + "}");
-                s.append(']');
-            } else if (ints != null) {
-                s.append(java.util.Arrays.toString(ints));
-            } else if (longs != null) {
-                s.append(java.util.Arrays.toString(longs));
-            } else if (strs != null) {
-                s.append("str*").append(strs.length);
-                for (int j = 0; j < strs.length; j++) s.append(' ').append(strs[j] == null ? 0 : strs[j].length()).append("ch");
-            } else if (bytes != null) {
-                s.append("bytes*").append(bytes.length);
-            } else {
-                s.append('-');
-            }
-            s.append(' ');
-        }
-        return s.toString();
     }
 
     /**
