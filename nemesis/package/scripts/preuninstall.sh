@@ -12,6 +12,11 @@ case "$caller" in
 esac
 base=${0%/*}
 base=${base%/scripts}
+current=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update/current
+if [ -L "$current" ] && [ -f "$current/scripts/preuninstall.sh" ] && [ -r "$current/scripts/preuninstall.sh" ] &&
+        [ "$(readlink -f "$base")" != "$(readlink -f "$current")" ]; then
+    exec /system/bin/sh "$current/scripts/preuninstall.sh" "$@"
+fi
 state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 # One implementation for app restore and NEMESIS removal, including OTA payloads.
 SG_DATA_ROOT=$state

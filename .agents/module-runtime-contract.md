@@ -91,6 +91,26 @@ with mode 0755. The package API commits the zygote wrapper as 0755 and preserves
 the stock executable’s baseline mode. These rules also cover ordinary files
 created by OTA extraction; no archive mode metadata is required.
 
+## OTA entry dispatch (2026-11-04)
+
+The installed dispatcher validates exact argument counts, fixed core verb pairs,
+module ID syntax and watch events before selecting an OTA payload. If current is
+a symlink to a readable dispatcher, exec that dispatcher with the same argv;
+compare canonical directories to prevent self/alias loops. Both copies validate.
+Broken or missing selection falls back to the installed package. Service and
+lifecycle/launch entry points use the same canonical guard. Reconcile retains its
+pre-delegation interrupted-update rollback. The authenticated updater itself
+remains the fixed NEMESIS-tree implementation/trust anchor; selected dispatchers
+route update verbs to that fixed core, not downloaded updater copies.
+`bin/install-apk.sh` deliberately installs its own payload: update/rollback callers
+choose the exact APK, so this helper must not redirect to current. Existing old
+installed wrappers need one NEMESIS package refresh to gain this delegation;
+a new payload alone cannot change code in an already installed old wrapper.
+
+USB postinstall never delegates. After successful APK install (or Android down), retire current/current-path, previous rollback pointers and update journal; retain version directories, baselines and ledger. Failed APK installation preserves selection.
+
+Dispatcher refusals emit state/restart/detail. Status adds saved info.desired=on|off, with live fallback for missing legacy intent. Plans revert exclusions if observed active OR saved on. Successful pending-restart reverts require info.desired=off and permit the next step. App execution retains step outcomes and strongest restart even on later failure, showing one final result. OTA resume survives restart and waits for target readiness and network.
+
 ## Root side
 
 ### Head-unit restart

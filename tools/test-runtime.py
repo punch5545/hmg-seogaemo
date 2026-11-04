@@ -259,17 +259,33 @@ echo detail=
     calls.write_text("")
     run(root, "device", "reboot", env=dict(device_env, FAKE_SYNC_FAIL="1"), ok=False)
     assert calls.read_text() == "sync\n"
-    run(root, "b", "apply", env=env, ok=False)
+    def refused(args, detail, code=3):
+        response = run(root, *args, env=env, ok=False)
+        assert response.returncode == code, response
+        assert ('state=conflict' if code == 3 else 'state=failed') in response.stdout
+        assert 'restart=none' in response.stdout
+        assert 'detail=' + detail in response.stdout, response.stdout
+    refused(("b", "apply"), "Dependency off: a")
+    refused(("a", "bogus"), "Invalid command", 2)
+    refused(("a", "status", "extra"), "Invalid command", 2)
+    refused(("unknown", "status"), "Invalid command", 2)
     run(root, "a", "apply", env=env)
+    status = run(root, "a", "status", env=env).stdout
+    assert 'info.desired=on' in status
     run(root, "b", "apply", env=env)
     run(root, "a", "watch", "boot", env=env)
     run(root, "a", "watch", "bogus", env=env, ok=False)
     run(root, "b", "watch", "boot", env=env, ok=False)
-    run(root, "c", "apply", env=env, ok=False)
-    run(root, "a", "revert", env=env, ok=False)
+    refused(("c", "apply"), "Excluded module on: a")
+    refused(("a", "revert"), "Dependent on: b")
     run(root, "b", "revert", env=env)
     run(root, "a", "revert", env=env)
+    assert 'info.desired=off' in run(root, "a", "status", env=env).stdout
     run(root, "a", "watch", "boot", env=env, ok=False)
+    (state / "uninstall").mkdir()
+    (state / "uninstall/pending").touch()
+    refused(("c", "apply"), "Uninstall pending")
+    (state / "uninstall/pending").unlink()
     run(root, "c", "apply", env=env)
     run(root, "c", "revert", env=env)
     assert (state / "desired/c").read_text() == "off"

@@ -9,9 +9,11 @@ if [ "${HMG_SEOGAEMO_UPDATE_HEALTH:-}" != 1 ] && [ -f "$journal" ]; then
         /system/bin/sh "$base/core/update.sh" rollback || exit 1 ;;
     esac
 fi
-current=/data/nemesis/backup/hmg-seogaemo/update/current
-if [ "$base" != "$current" ] && [ -L "$current" ]; then
-    exec /system/bin/sh "$current/svc/reconcile.sh"
+
+current=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update/current
+if [ -L "$current" ] && [ -f "$current/svc/reconcile.sh" ] && [ -r "$current/svc/reconcile.sh" ] &&
+        [ "$(readlink -f "$base")" != "$(readlink -f "$current")" ]; then
+    exec /system/bin/sh "$current/svc/reconcile.sh" "$@"
 fi
 state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 root=$base/bin/hmg-seogaemo-root
