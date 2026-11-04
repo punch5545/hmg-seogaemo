@@ -2000,7 +2000,21 @@ hmg_seogaemo_map_publish() {
     sg_ledger map_contents "$hmg_seogaemo_map_final/map.json" "" "$hmg_seogaemo_map_final/map.json" "" || return 1
     sg_ledger map_contents "$hmg_seogaemo_map_final/car.json" "" "$hmg_seogaemo_map_final/car.json" "" || return 1
     rm -f "$hmg_seogaemo_map_root/.before.$$"
+    hmg_seogaemo_map_prune "$hmg_seogaemo_map_root/$hmg_seogaemo_map_product" "$hmg_seogaemo_map_hash/$hmg_seogaemo_map_id" || :
 }
+# Every verification publishes a new map id and only the active one is read (the hook
+# engines read it once at zygote start), so older copies of this product are removed.
+hmg_seogaemo_map_prune() (
+    set +f
+    for dir in "$1"/*/*; do
+        [ -d "$dir" ] && [ ! -L "$dir" ] || continue
+        rel=${dir#"$1"/}
+        [ "$rel" != "$2" ] || continue
+        case "$rel" in *[!0-9a-f/]*) continue;; esac
+        rm -rf "$dir"
+    done
+    for dir in "$1"/*; do [ ! -d "$dir" ] || rmdir "$dir" 2>/dev/null || :; done
+)
 hmg_seogaemo_map_active_dir() {
     [ -f "$SG_DATA_ROOT/car-maps/active" ] || return 1
     hmg_seogaemo_map_rel=$(cat "$SG_DATA_ROOT/car-maps/active")
