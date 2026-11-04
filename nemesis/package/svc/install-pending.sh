@@ -12,7 +12,7 @@ if ! mkdir "$worker" 2>/dev/null; then
     n=0
     while [ ! -s "$worker/pid" ] && [ "$n" -lt 5 ]; do n=$((n + 1)); sleep 1; done
     holder=; holder_boot=
-    read -r holder holder_boot < "$worker/pid" 2>/dev/null || :
+    { read -r holder holder_boot < "$worker/pid"; } 2>/dev/null || :
     case "$holder" in ''|*[!0-9]*) ;; *)
         if [ "$holder_boot" = "$boot_id" ] && kill -0 "$holder" 2>/dev/null &&
                 grep -q install-pending.sh "/proc/$holder/cmdline" 2>/dev/null; then exit 0; fi;;
@@ -51,7 +51,7 @@ while active; do
 done
 active || exit 0
 attempt_boot=; attempts=0
-read -r attempt_boot attempts < "$job/attempts" 2>/dev/null || :
+{ read -r attempt_boot attempts < "$job/attempts"; } 2>/dev/null || :
 [ "$attempt_boot" = "$boot_id" ] || attempts=0
 case "$attempts" in ''|*[!0-9]*) exit 1;; esac
 while [ "$attempts" -lt 4 ] && active; do
@@ -71,7 +71,7 @@ while [ "$attempts" -lt 4 ] && active; do
     active || exit 0
     # Reread reservations under the shared lock even after stale-worker recovery.
     attempt_boot=; attempts=0
-    read -r attempt_boot attempts < "$job/attempts" 2>/dev/null || :
+    { read -r attempt_boot attempts < "$job/attempts"; } 2>/dev/null || :
     [ "$attempt_boot" = "$boot_id" ] || attempts=0
     case "$attempts" in ''|*[!0-9]*) exit 1;; esac
     case "$(pm path com.seogaemo.hmg 2>/dev/null)" in

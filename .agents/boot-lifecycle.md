@@ -17,7 +17,9 @@ not copied into this repository.
 Normal readiness retries use 2, 4, 8, 16, then 30 seconds, capped at 30 with no
 permanent timeout. OTA health permits six waits and fails if still unavailable.
 Existing map verification retries stay detached and reread desired state, stock
-pause, app presence and payload selection before applying deferred modules.
+pause, app presence and payload selection before applying deferred modules. Each
+retry pass costs two JVMs, so waits back off 30, 60, 120, then 300 seconds and stop
+after eight passes per boot (logged as exhausted); a later boot starts fresh.
 
 ## QuickBoot evidence boundary
 
