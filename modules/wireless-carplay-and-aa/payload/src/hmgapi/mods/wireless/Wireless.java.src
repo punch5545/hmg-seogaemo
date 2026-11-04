@@ -127,8 +127,11 @@ public final class Wireless extends ModEntry {
     private void iap2(final ModContext mod, LoadedApp app) {
         final ClassLoader cl = app.classLoader;
         if (mod.settingBoolean("tbt", true)) {
-            // the stock parser registers LaneGuidanceInformation under 0x5202 (the maneuver's id), so a real 0x5204 is never parsed: fixed in memory
-            mod.nativePatch(app, "libiap2session.so");
+            // The stock table registers LaneGuidanceInformation under 0x5202, so a real 0x5204 is never
+            // parsed. Do NOT route it to the stock parser (iap2-lane-msgid recipe): on the car (2026-11-04)
+            // the first 0x5204 then crashed the iAP2 server in libIap2Acc.so
+            // iAP2NativeMsg2Parcel::convertSubGroup (SIGSEGV) and route guidance stopped. Lanes need our own
+            // decoder of the raw 0x5204 instead.
             mod.hook(cl, "iap2.init_info.check_supports_features", new MethodHook() {
                 @Override
                 protected void afterHookedMethod(Param p) {
