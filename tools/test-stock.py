@@ -688,8 +688,16 @@ esac
 def test_wireless_adb_restore(folder):
     car = Car(folder)
     properties = (ROOT / 'modules/wireless-adb/module.properties').read_text().replace('@VERSION@', 'test')
-    only_module(car, 'wireless-adb', properties + 'watch=boot,screen_on\n',
-        text=(ROOT / 'modules/wireless-adb/root/wireless-adb.sh').read_text())
+    # The listener check reads /proc/net/tcp*: point it at a fake table with adbd
+    # listening on 5555, never at the host's (Linux CI has a real, empty one).
+    proc = folder / 'proc-net'
+    proc.mkdir()
+    (proc / 'tcp').write_text('  sl  local_address rem_address   st\n'
+                              '   0: 00000000:15B3 00000000:0000 0A 00000000:00000000 00:00000000 00000000\n')
+    (proc / 'tcp6').write_text('  sl  local_address rem_address   st\n')
+    text = (ROOT / 'modules/wireless-adb/root/wireless-adb.sh').read_text()
+    text = text.replace('/proc/net/tcp6', f'{proc}/tcp6').replace('/proc/net/tcp', f'{proc}/tcp')
+    only_module(car, 'wireless-adb', properties + 'watch=boot,screen_on\n', text=text)
     for name, body in {
         'stop': 'sg_print "stop $*" >> "$FAKE_CALLS"\n',
         'start': 'sg_print "start $*" >> "$FAKE_CALLS"; sg_write running > "$FAKE_LIVE/init.svc.adbd"\n',
