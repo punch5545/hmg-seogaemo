@@ -599,6 +599,54 @@ sg_export_public() (
         else exit 3; fi
     done
 )
+# Size in bytes of a regular file from toolbox ls -l (no stat on the unit).
+sg_file_size() (
+    set -f
+    sg_fs_line=$(ls -ln "$1" 2>/dev/null) || exit 1
+    set -- $sg_fs_line
+    case "$5" in *[!0-9]*|'') sg_fs_size=$4;; *) sg_fs_size=$5;; esac
+    case "$sg_fs_size" in ''|*[!0-9]*) exit 1;; esac
+    sg_write "$sg_fs_size"
+)
+sg_export_sizes() (
+    set +f
+    for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+        [ -e "$entry" ] || continue
+        if [ -d "$entry" ]; then sg_export_sizes "$entry" "$2${entry##*/}/" || exit 1
+        elif [ -f "$entry" ]; then
+            size=$(sg_file_size "$entry") || exit 1
+            sg_print "$size	$2${entry##*/}" || exit 1
+        fi
+    done
+)
+# The head unit mounts the stick write-back: a name can reach the stick while its
+# data has not. Record every file size in MANIFEST, sync, and (usb) re-read: each
+# file must keep its recorded size and each key file must match its source size.
+# Key arguments: "<relative path>=<source file>" or "<relative path>" (non-empty).
+# Returns 1 when the export could not be written, 4 when it was not flushed.
+sg_export_seal() (
+    set +f
+    sg_path_safe "$1" && [ -d "$1" ] || exit 3
+    sg_es_dest=$1; sg_es_mode=$2; shift 2
+    sg_es_sizes=$(sg_export_sizes "$sg_es_dest" '') || exit 1
+    sg_print "$sg_es_sizes" > "$sg_es_dest/MANIFEST" && chmod 0644 "$sg_es_dest/MANIFEST" || exit 1
+    sync || exit 4
+    [ "$sg_es_mode" = usb ] || exit 0
+    while IFS='	' read -r sg_es_size sg_es_rel; do
+        [ -n "$sg_es_rel" ] || continue
+        [ "$(sg_file_size "$sg_es_dest/$sg_es_rel")" = "$sg_es_size" ] || exit 4
+    done < "$sg_es_dest/MANIFEST"
+    for sg_es_key do
+        sg_es_rel=${sg_es_key%%=*}
+        sg_es_have=$(sg_file_size "$sg_es_dest/$sg_es_rel") || exit 4
+        [ "$sg_es_have" -gt 0 ] || exit 4
+        case "$sg_es_key" in *=*)
+            sg_es_want=$(sg_file_size "${sg_es_key#*=}") || exit 4
+            [ "$sg_es_have" = "$sg_es_want" ] || exit 4 ;;
+        esac
+    done
+    exit 0
+)
 sg_commit_file() (
     sg_target=$1; sg_input=$2; sg_mode=$3; sg_owner=$4
     sg_validate owns_files "$sg_target" || return 2

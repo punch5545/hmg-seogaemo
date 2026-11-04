@@ -526,6 +526,40 @@ sg_revert_all
     assert state.stat().st_mode & 0o777 == private_mode
     for entry in [usb / "HMG-Seogaemo-export", *(usb / "HMG-Seogaemo-export").rglob("*")]:
         assert entry.stat().st_mode & 0o777 == (0o755 if entry.is_dir() else 0o644)
+    # The stick is write-back: the export must be synced and verified before success.
+    assert "info.export_safe=usb" in result.stdout
+    published = next(usb.glob("HMG-Seogaemo-export/*"))
+    manifest = (published / "MANIFEST").read_text().splitlines()
+    sizes = dict(line.split("\t", 1)[::-1] for line in manifest)
+    assert sizes["ledger/ledger.tsv"] == str(ledger.stat().st_size)
+    assert sizes["package-version"] != "0" and "MANIFEST" not in sizes
+    for relative, size in sizes.items():
+        assert str((published / relative).stat().st_size) == size, relative
+    adb_result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
+    assert "info.export_safe=adb" in adb_result.stdout
+    sync_log = base / "sync.log"
+    script(fake / "sync", 'for m in "$FAKE_USB"/HMG-Seogaemo-export/*/MANIFEST; do [ ! -f "$m" ] || echo manifest >> "$FAKE_SYNC"; done; echo sync >> "$FAKE_SYNC"\n')
+    env.update(FAKE_USB=str(usb), FAKE_SYNC=str(sync_log))
+    time.sleep(1.1)
+    result = run(base / "bin/hmg-seogaemo-root", "export", "usb", env=env)
+    lines = sync_log.read_text().splitlines()
+    assert lines[-1] == "sync" and lines.count("sync") == 1, lines
+    # Both earlier published exports hold a MANIFEST; the new one was written before the sync.
+    newest = Path(result.stdout.split("detail=", 1)[1].split()[0])
+    assert (newest / "MANIFEST").is_file() and lines.count("manifest") == 2, lines
+    # A copy that lands with no data (write-back loss) must refuse instead of reporting success.
+    script(fake / "cp", """real=/bin/cp
+[ -x "$real" ] || real=/usr/bin/cp
+"$real" "$@" || exit $?
+for last; do :; done
+case "$last" in */ledger) : > "$last/ledger.tsv";; esac
+""")
+    time.sleep(1.1)
+    result = run(base / "bin/hmg-seogaemo-root", "export", "usb", env=env, ok=False)
+    assert "state=failed" in result.stdout and "USB write not flushed" in result.stdout, result.stdout
+    assert "state=on" not in result.stdout
+    (fake / "cp").unlink()
+    (fake / "sync").unlink()
 
 
 def test_service_call_api(temp):

@@ -21,6 +21,26 @@ fresh-shell re-check, and dispatch stayed paused. Rules:
 - `sg_changed` appends a `kind<TAB>target` line to `changes` only when the exact
   line is not already there, so repeated applies do not grow the file.
 
+## Export flush and verification (2026-11-04)
+
+The head unit mounts USB sticks write-back. A directory entry can reach the stick
+while its data has not, so a stick pulled right after "success" held 0-byte files.
+`hmg-seogaemo-root export usb|adb` and `map export` therefore finish with
+`sg_export_seal <dest> <usb|adb> [key...]` after the last write and the public chmod:
+
+- writes `MANIFEST` (`<size><TAB><relative path>` for every exported file, sizes from
+  toolbox `ls -ln`), then runs `sync`;
+- for `usb`, re-reads every listed file and requires the recorded size, and requires
+  each key file to match its source size (`<relative>=<source>`) or be non-empty:
+  `ledger/ledger.tsv`, `package-version`, `ro.build.product`, `desired/*` for the ledger
+  export, `<layout>/map.json` and `car.json` for the map export;
+- a mismatch prints `state=failed`, `detail=USB write not flushed` and exits 1; only a
+  sealed export prints `state=on`, `detail=<dest>`, `info.export_safe=usb|adb`.
+
+The app shows "it is safe to remove the USB" (`export_usb_done`, KO "USB를 빼도 됩니다")
+only for `info.export_safe=usb`. The check compares sizes the kernel reports; it cannot
+prove the medium, so the instruction to the owner is still to wait for the dialog.
+
 ## Map verification input identity (2026-11-04)
 
 The verified seal retains its product, stock-file hash ID and boot ID as the
