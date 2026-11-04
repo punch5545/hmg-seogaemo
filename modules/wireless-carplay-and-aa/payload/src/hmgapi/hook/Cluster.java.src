@@ -40,6 +40,52 @@ public final class Cluster {
         }
     }
 
+    /** diagnostics: where the traced cluster calls are logged (null: not traced) */
+    public interface Trace {
+        void log(String m);
+    }
+
+    public static volatile Trace trace;
+    private static final Map<String, int[]> counts = new HashMap<String, int[]>();
+
+    private static String show(Object a) {
+        if (a == null) return "null";
+        if (a instanceof byte[]) {
+            byte[] b = (byte[]) a;
+            StringBuilder sb = new StringBuilder("bytes[" + b.length + "]");
+            for (int k = 0; k < b.length && k < 6; k++) sb.append(k == 0 ? ' ' : ',').append(b[k] & 0xff);
+            return sb.toString();
+        }
+        if (a instanceof String) return "str(" + ((String) a).length() + ")";
+        if (a.getClass().isArray()) return a.getClass().getSimpleName() + "[" + java.lang.reflect.Array.getLength(a) + "]";
+        return a.getClass().isPrimitive() || a instanceof Number || a instanceof Boolean ? String.valueOf(a) : a.getClass().getSimpleName();
+    }
+
+    /** the first 20 calls per point, then every 10th; a failure is always logged (first 40 per point) */
+    private static void traced(String point, Object[] args, Throwable t) {
+        Trace tr = trace;
+        if (tr == null) return;
+        int n;
+        synchronized (counts) {
+            int[] c = counts.get(point);
+            if (c == null) counts.put(point, c = new int[2]);
+            n = ++c[0];
+            if (t != null) {
+                if (++c[1] > 40) return;
+                n = 1;
+            }
+        }
+        if (t == null && n > 20 && n % 10 != 0) return;
+        StringBuilder sb = new StringBuilder("TBT cluster ").append(point).append(" #").append(n).append(" (");
+        for (int k = 0; args != null && k < args.length; k++) sb.append(k == 0 ? "" : ", ").append(show(args[k]));
+        sb.append(") -> ").append(t == null ? "ok" : "FAILED " + t);
+        try {
+            tr.log(sb.toString());
+        } catch (Throwable x) {
+            // diagnostics only
+        }
+    }
+
     private void call(String point, Object... args) {
         try {
             Method m;
@@ -48,7 +94,9 @@ public final class Cluster {
                 if (m == null) methods.put(point, m = Points.method(null, NC + "." + point));
             }
             m.invoke(nc, args);
+            traced(point, args, null);
         } catch (Throwable t) {
+            traced(point, args, t);
             HmgApi.i("cluster: " + point + " failed (" + t + ")");
         }
     }

@@ -50,6 +50,32 @@ final class CpTurns {
     String hudRoad;
     /** the last lane log line, so an unchanged one isn't logged again */
 
+    /** diagnostics: per kind, how many were seen and the last "change key" logged */
+    private final java.util.HashMap<String, int[]> seenN = new java.util.HashMap<String, int[]>();
+    private final java.util.HashMap<String, String> seenKey = new java.util.HashMap<String, String>();
+
+    /** first 20 per kind, then every 10th, and always when the change key differs from the last one logged */
+    private boolean sample(String kind, String changeKey) {
+        int[] c = seenN.get(kind);
+        if (c == null) seenN.put(kind, c = new int[1]);
+        int n = ++c[0];
+        boolean changed = changeKey != null && !changeKey.equals(seenKey.get(kind));
+        if (changeKey != null) seenKey.put(kind, changeKey);
+        return n <= 20 || n % 10 == 0 || changed;
+    }
+
+    private static String arr(int[] v) {
+        return v == null ? "null" : java.util.Arrays.toString(v);
+    }
+
+    private static int len(String s) {
+        return s == null ? -1 : s.length();
+    }
+
+    private void d(String m) {
+        Dipo.log("TBT " + m);
+    }
+
     CpTurns(Context context, Cluster cluster, Runnable restart) {
         this.context = context;
         this.cluster = cluster;
@@ -62,9 +88,11 @@ final class CpTurns {
         sourceCheck(msg);
         int[] ids = componentIds(msg);
         if (ids == null) {
+            if (updates.isEmpty() && sample("rg-drop", null)) d("rg update dropped: message names no component and none is known yet");
             for (Integer id : updates.keySet()) {
                 Update u = updates.get(id);
                 if (u != null) u.read(id, msg);
+                logUpdate("no ids, applied to known", id, u);
                 turn(id, u);
             }
             return;
@@ -77,9 +105,22 @@ final class CpTurns {
             } else {
                 u = new Update(id, msg);
                 updates.put(id, u);
+                if (id <= 0) d("rg update: component id " + id + " starts with nothing set (Update ctor skips read for id <= 0)");
             }
+            logUpdate("ids=" + arr(ids), id, u);
             turn(id, u);
         }
+    }
+
+    private void logUpdate(String how, Integer id, Update u) {
+        if (u == null) return;
+        String key = id + "|" + u.state + "|" + u.maneuverState + "|" + arr(u.list);
+        if (!sample("rg", key)) return;
+        d("rg update comp=" + id + " (" + how + ") state=" + u.state + " maneuverState=" + u.maneuverState
+                + " list=" + arr(u.list) + " count=" + u.count + " distNext=" + u.distNext + " nextStr='" + u.nextStr + "' nextUnits=" + u.nextUnits
+                + " distLeft=" + u.distLeft + " distLeftStr='" + u.distLeftStr + "' distLeftUnits=" + u.distLeftUnits
+                + " laneIndex=" + u.laneIndex + " laneCount=" + u.laneCount + " lanesShown=" + u.lanesShown + " visible=" + u.visible + " supports=" + u.supports
+                + " roadLen=" + len(u.road) + " destLen=" + len(u.destination) + " sourceLen=" + len(u.sourceName) + " eta=" + u.eta + " timeLeft=" + u.timeLeft);
     }
 
     /** the components a RouteGuidanceUpdate is for (item 0); null if it doesn't say */
@@ -123,7 +164,11 @@ final class CpTurns {
             }
             if (whole) ids = found;
         }
-        if (index < 0) return;
+        if (index < 0) {
+            if (sample("mn-drop", null)) d("maneuver dropped: no maneuver index in the message (ids=" + arr(ids) + ")");
+            return;
+        }
+        if (ids == null && maneuvers.isEmpty() && sample("mn-drop2", null)) d("maneuver #" + index + " lost: names no component and no component is known yet");
         if (ids == null) {
             for (Integer id : maneuvers.keySet()) {
                 LinkedHashMap<Integer, Maneuver> m = maneuvers.get(id);
@@ -131,6 +176,7 @@ final class CpTurns {
                 Maneuver x = m.get(index);
                 if (x != null) x.read(index, id, msg);
                 else m.put(index, new Maneuver(index, id, msg));
+                logManeuver("no ids, applied to known", id, m.get(index));
             }
             return;
         }
@@ -146,13 +192,26 @@ final class CpTurns {
                 m.put(index, new Maneuver(index, id, msg));
                 maneuvers.put(id, m);
             }
+            logManeuver("ids=" + arr(ids), id, m.get(index));
         }
+    }
+
+    private void logManeuver(String how, int id, Maneuver x) {
+        if (x == null) return;
+        String key = id + "|" + x.index + "|" + x.type + "|" + x.junction + "|" + x.exit;
+        if (!sample("mn", key)) return;
+        d("maneuver comp=" + id + " (" + how + ") index=" + x.index + " type=" + x.type + " junction=" + x.junction + " side=" + x.side
+                + " exit=" + x.exit + " angles=" + arr(x.angles) + " distance=" + x.distance + " distUnits=" + x.distUnits + " distStr='" + x.distStr + "'"
+                + " linkedLane=" + x.linkedLane + " descLen=" + len(x.description) + " afterRoadLen=" + len(x.afterRoad) + " stored=" + (maneuvers.get(id) == null ? 0 : maneuvers.get(id).size()));
     }
 
     /** LaneGuidance (the build's applyLanes): up to 8 lanes as the cluster's 0xF1 frame */
     void lanes(Iap2NotiMsg msg) {
         Iap2NotiMsg.Iap2ObjGroup g = msg == null ? null : msg.getItemGroup();
-        if (g == null) return;
+        if (g == null) {
+            if (sample("ln-drop", null)) d("lanes dropped: message has no item group");
+            return;
+        }
         int[] status = new int[8], a = new int[8], b = new int[8], c = new int[8];
         int n = 0;
         Iap2NotiMsg.Iap2ObjGroup[] lanes = null;
@@ -182,6 +241,9 @@ final class CpTurns {
             f[k * 3 + 20] = (byte) b[k];
             f[k * 3 + 21] = (byte) c[k];
         }
+        StringBuilder sb = new StringBuilder();
+        for (int k = 0; k < n; k++) sb.append(k == 0 ? "" : " ").append(status[k]).append(':').append(a[k]).append('/').append(b[k]).append('/').append(c[k]);
+        if (sample("ln", n + "|" + sb)) d("lanes mode=" + mode + " phoneLanes=" + (lanes == null ? -1 : lanes.length) + " sent=" + n + " [" + sb + "]");
         cluster.laneInfo(f);
     }
 
@@ -320,9 +382,11 @@ final class CpTurns {
     /** one component's update to the cluster (DiPO e/u.a(Integer, Object), with the build's changes) */
     void turn(Integer id, Update u) {
         if (id < 0 || u == null) {
+            if (sample("tn-drop", null)) d("turn skipped: comp=" + id + " update=" + (u == null ? "null" : "yes"));
             return;
         }
         if (u.state == 0) {
+            if (sample("tn-state0", null)) d("turn: comp=" + id + " state 0, HUD cleared");
             stop();
             return;
         }
@@ -339,10 +403,12 @@ final class CpTurns {
         if (u.state == 6) cluster.destinationName(0, u.destination);
         LinkedHashMap<Integer, Maneuver> m = maneuvers.get(id);
         if (m == null || list == null) {
+            if (sample("tn-drop2", u.state + "|" + (m == null) + "|" + (list == null))) d("turn waits: comp=" + id + " state=" + u.state + " maneuvers=" + (m == null ? "none" : String.valueOf(m.size())) + " list=" + arr(list) + " (known comps=" + maneuvers.keySet() + ")");
             return;
         }
         Maneuver x = m.get(list[0]);
         if (x == null) {
+            if (sample("tn-drop3", String.valueOf(list[0]))) d("turn waits: comp=" + id + " maneuver index " + list[0] + " not received (have " + m.keySet() + ")");
             return;
         }
         int unit;
@@ -355,6 +421,7 @@ final class CpTurns {
         }
         int icon = icon(x.type, x.side, x.junction, x.exit, u.state);
         cluster.crossroadName(x.afterRoad);
+        if (sample("tn", id + "|" + icon + "|" + u.state + "|" + list[0])) d("turn comp=" + id + " state=" + u.state + " index=" + list[0] + " type=" + x.type + " side=" + x.side + " junction=" + x.junction + " exit=" + x.exit + " -> icon " + icon + " dist=" + dist + " unit=" + unit + (icon == 0 ? " (UNMAPPED, nothing sent to tbtInfo/HUD)" : ""));
         if (icon == 0) {
             return;
         }
