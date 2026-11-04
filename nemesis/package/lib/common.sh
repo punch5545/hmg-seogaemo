@@ -1387,25 +1387,45 @@ sg_revert_all() {
 # child in the background, redirect its output to a file, and pass its PID here.
 # Returns the child's status, or 124 after the whole attempt was killed.
 # Children are found through toolbox ps (PID is field 2, PPID field 3).
-sg_kill_tree() {
-    sg_kt_pid=$1; sg_kt_depth=${2:-3}
-    if [ "$sg_kt_depth" -gt 0 ]; then
-        sg_kt_list=$(ps 2>/dev/null) || sg_kt_list=
-        sg_kt_kids=
-        if [ -n "$sg_kt_list" ]; then
-            while read -r sg_kt_user sg_kt_child sg_kt_parent sg_kt_rest; do
-                [ "$sg_kt_parent" = "$sg_kt_pid" ] || continue
-                case "$sg_kt_child" in ''|*[!0-9]*) continue;; esac
-                sg_kt_kids="$sg_kt_kids $sg_kt_child"
-            done <<EOF
-$sg_kt_list
+# The whole tree is collected first (one ps snapshot, parent before children),
+# then signalled from that fixed list: SIGTERM to every member, and after a
+# short grace SIGKILL to every member again. Variables are local to the
+# subshell so nothing can overwrite the list; the target is never skipped.
+sg_kill_tree() (
+    pid=$1; depth=${2:-3}
+    case "$pid" in ''|*[!0-9]*) exit 2;; esac
+    case "$depth" in ''|*[!0-9]*) exit 2;; esac
+    [ "$pid" -gt 1 ] || exit 2
+    all=$pid; level=$pid
+    list=$(ps 2>/dev/null) || list=
+    while [ "$depth" -gt 0 ] && [ -n "$level" ] && [ -n "$list" ]; do
+        next=
+        while read -r user child parent rest; do
+            case "$child:$parent" in *[!0-9:]*|:*|*:) continue;; esac
+            case " $level " in *" $parent "*) ;; *) continue;; esac
+            case " $all " in *" $child "*) continue;; esac
+            next="$next $child"; all="$all $child"
+        done <<EOF
+$list
 EOF
-        fi
-        for sg_kt_child in $sg_kt_kids; do sg_kill_tree "$sg_kt_child" "$((sg_kt_depth - 1))"; done
-    fi
-    kill "$sg_kt_pid" 2>/dev/null || :
-    kill -9 "$sg_kt_pid" 2>/dev/null || :
-}
+        level=$next
+        depth=$((depth - 1))
+    done
+    for victim in $all; do
+        [ "$victim" != "$$" ] && [ "$victim" -gt 1 ] || continue
+        kill "$victim" 2>/dev/null || :
+    done
+    # Escalate once after the grace instead of polling: a not-yet-reaped child
+    # still answers kill -0, so liveness checks cannot be trusted here.
+    sleep 1
+    for victim in $all; do
+        [ "$victim" != "$$" ] && [ "$victim" -gt 1 ] || continue
+        kill -9 "$victim" 2>/dev/null || :
+    done
+    exit 0
+)
+# SIGKILL is not catchable, so the final wait on the target returns as soon as
+# the kernel reaps it; only an uninterruptible process could delay it.
 sg_bounded_wait() {
     case "$1:$2" in ''|*[!0-9:]*|:*|*:) return 2;; esac
     sg_bw_pid=$1; sg_bw_limit=$2; sg_bw_elapsed=0

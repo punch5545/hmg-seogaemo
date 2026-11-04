@@ -362,7 +362,12 @@ inline. It requires a non-empty `BOOTCLASSPATH` (the inherited value, else the
 with stdout and stderr in private files directly under the data root, waits with
 `sg_bounded_wait <pid> <seconds>` (1-second polls, 15 seconds by default,
 `SG_READER_TIMEOUT` for tests, capped at 120), and on expiry kills the reader and
-its children (`sg_kill_tree`, toolbox `ps` PID/PPID fields) and returns 124.
+its whole process tree and returns 124. `sg_kill_tree <pid> [depth]` is a subshell
+function: it snapshots toolbox `ps` (PID/PPID fields), collects target and all
+descendants (default depth 3) before signalling anything, sends TERM to every
+member, waits one second and sends KILL to every member, so no member is
+skipped when an intermediate process ignores TERM or children are reparented.
+The following `wait` on the target returns once KILL is delivered.
 Output must be exactly one `state=`, `restart=` and `detail=` line with a known
 state/restart pair and a clean exit (1 only with `state=failed`); anything else,
 or a timeout, is `state=unknown` (`pending-restart`/`head_unit` for `applying`).

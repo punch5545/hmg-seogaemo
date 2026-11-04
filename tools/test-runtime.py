@@ -1563,6 +1563,52 @@ def test_zygote_foreign(temp):
     assert result.returncode == 3 and paths[0].read_bytes() == b"wrapper" and paths[1].read_bytes() == b"stock-executable"
 
 
+def test_kill_tree(temp):
+    """Every process of a live tree, TERM-ignoring ones included, is signalled and dies."""
+    base = temp / 'kill-tree'
+    base.mkdir()
+    # Each node records its own PID, optionally starts a child node and then idles
+    # without ever exiting by itself (bounded to 40 seconds so a failure cleans up).
+    idle = 'i=0\nwhile [ "$i" -lt 40 ]; do sleep 1; i=$((i + 1)); done\n'
+    (base / 'leaf.sh').write_text(host_shell_script(
+        '#!/bin/sh\ntrap "" TERM\necho $$ > "$T/leaf"\n' + idle))
+    (base / 'mid.sh').write_text(host_shell_script(
+        '#!/bin/sh\ntrap "" TERM\necho $$ > "$T/mid"\n' + SHELL + ' "$T/leaf.sh" &\n' + idle))
+    (base / 'side.sh').write_text(host_shell_script(
+        '#!/bin/sh\necho $$ > "$T/side"\n' + idle))
+    (base / 'top.sh').write_text(host_shell_script(
+        '#!/bin/sh\necho $$ > "$T/top"\n' + SHELL + ' "$T/mid.sh" &\n' + SHELL + ' "$T/side.sh" &\n' + idle))
+    runner = base / 'runner'
+    script(runner, f'''
+set -eu
+T={base}; export T
+{SHELL} "$T/top.sh" < /dev/null > /dev/null 2>&1 &
+top=$!
+tries=0
+while [ ! -s "$T/leaf" ] || [ ! -s "$T/mid" ] || [ ! -s "$T/side" ] || [ ! -s "$T/top" ]; do
+    tries=$((tries + 1)); [ "$tries" -lt 100 ] || exit 9
+    sleep 1
+done
+# Tree: top with children mid (ignores TERM) and side; leaf (ignores TERM) below mid.
+sg_kill_tree "$top" 5
+''')
+    result = subprocess.run([SHELL, str(runner)], env=car_env(), text=True, capture_output=True, timeout=60)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+    for name in ('top', 'mid', 'leaf', 'side'):
+        pid = int((base / name).read_text())
+        for _ in range(20):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.2)
+        else:
+            raise AssertionError(f'{name} process {pid} survived sg_kill_tree')
+    # Invalid targets are refused without signalling anything.
+    script(runner, 'for bad in "" abc 0 1 "1 2"; do if sg_kill_tree "$bad"; then exit 1; fi; done\n')
+    run(runner, env=os.environ)
+
+
 def test_projection_reader_vm(temp):
     base = temp / 'projection-reader'
     state = base / 'state/modules/wireless-carplay-and-aa'
@@ -1693,5 +1739,6 @@ with tempfile.TemporaryDirectory() as directory:
     test_residue_cleanup(root)
     test_public_readable(root)
     test_file_metadata_guards(root)
+    test_kill_tree(root)
     test_projection_reader_vm(root)
 print("shared runtime tests passed")
