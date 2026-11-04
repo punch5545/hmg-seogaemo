@@ -8,6 +8,13 @@ case "$(getprop ro.build.product)" in
     NEEV.KOR.*.260902) ;;
     *) echo 'Unsupported firmware' >&2; exit 1 ;;
 esac
+# An explicit USB install selects this newly installed tree. Clear the OTA
+# selection before anything that can fail (APK step, paused stock restore), so
+# a retained older OTA payload never keeps serving root verbs. Version dirs and
+# baselines are retained; stock/paused is deliberately left untouched.
+update=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update
+rm -f "$update/current" "$update/current-path" "$update/previous-path" \
+    "$update/previous-version" "$update/journal" || exit 1
 # NEMESIS ignores ZIP modes. Shell callers use /system/bin/sh; also permit
 # Manager Launch implementations that execute kind=sh directly.
 chmod 755 "$base/bin/hmg-seogaemo-root" "$base/bin/open.sh" "$base/bin/install-apk.sh" || exit 1
@@ -36,8 +43,4 @@ if [ "$android_ready" -eq 1 ]; then
     /system/bin/sh "$base/svc/install-pending.sh" install || exit 1
     [ ! -f "$job/pending" ] || exit 1
 fi
-# USB repair selects this newly installed tree; retain version dirs and baselines.
-update=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update
-rm -f "$update/current" "$update/current-path" "$update/previous-path" \
-    "$update/previous-version" "$update/journal" || exit 1
 [ "$android_ready" -eq 1 ] || echo 'Android is not ready; APK retained for automatic installation when ready'

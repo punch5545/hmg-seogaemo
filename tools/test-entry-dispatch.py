@@ -151,6 +151,22 @@ with tempfile.TemporaryDirectory() as tmp:
         result = run(hook)
         assert 'fresh-install' in result.stdout and 'stale' not in result.stdout, result
         assert result.returncode == (1 if failure == '1' else 0), result
-        assert current.is_symlink() == (failure == '1')
-        assert (current.parent / 'previous-path').exists() == (failure == '1')
+        # The OTA selection is retired before the APK step, so even a failed
+        # install never leaves the older selected payload serving root verbs.
+        assert not current.is_symlink()
+        assert not (current.parent / 'previous-path').exists()
+        assert selected.is_dir()
+    # An explicit USB install proceeds while a failed stock restore is paused,
+    # and leaves the pause (and its stale desired states) untouched.
+    paused = root / 'state/stock/paused'
+    paused.parent.mkdir(parents=True, exist_ok=True)
+    paused.write_text('paused')
+    current.symlink_to(selected, target_is_directory=True)
+    (current.parent / 'journal').write_text('old')
+    env['FAIL_INSTALL'] = '0'
+    (root / 'state/app-install/seen').unlink()  # fake pm never reports the app
+    result = run(hook)
+    assert result.returncode == 0 and 'fresh-install' in result.stdout, result
+    assert not current.is_symlink() and not (current.parent / 'journal').exists()
+    assert paused.read_text() == 'paused'
 print('stable and OTA entry dispatch passed')

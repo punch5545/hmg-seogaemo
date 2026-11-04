@@ -375,7 +375,7 @@ esac
         assert result.returncode == (1 if mode in ("fail", "health") else 0), (mode, result)
         assert not (job / "worker").exists()
         assert not (state / "operation.lock").exists()
-        if mode in ("removed", "paused", "uninstall", "no-request", "health"):
+        if mode in ("removed", "uninstall", "no-request", "health"):
             assert not (state / "installs").exists(), mode
             if mode == "removed":
                 assert not (job / "pending").exists() and not (job / "payload").exists()
@@ -385,6 +385,13 @@ esac
             assert (state / "installs").read_text().splitlines() == ["install"] * 4
             assert (state / "waits").read_text().splitlines() == ["5", "10", "20"]
             assert (job / "pending").exists() and (job / "payload/app/hmg-seogaemo.apk").exists()
+            # A retained OTA selection (version dir kept) that a completed
+            # USB-requested install must drop; stock/paused itself stays.
+            update = state / "update"
+            (update / "versions/0.1.22").mkdir(parents=True)
+            (update / "current").symlink_to(update / "versions/0.1.22")
+            for name in ("current-path", "previous-path", "previous-version", "journal"):
+                (update / name).write_text("x\n")
             assert worker(base, env).returncode == 1
             assert (state / "installs").read_text().splitlines() == ["install"] * 4
             (state / "boot-id").write_text("boot-two\n")
@@ -398,6 +405,9 @@ esac
         if mode in ("slow", "late-pm"):
             assert (state / "waits").read_text().splitlines() == ["2", "4", "8", "16"] + ["30"] * 6
         (state / "installed").unlink()
+            if mode == "uninstall":
+                # Queued uninstall keeps the request and the OTA selection.
+                assert (job / "pending").exists() and (state / "update/current").is_symlink()
         assert worker(base, env).returncode == 0
         assert not (state / "installed").exists()
 
@@ -414,6 +424,14 @@ esac
         cmdline.write_text("sh install-pending.sh")
         assert worker(base, env).returncode == 0
         assert (job / "worker/pid").read_text() == claim
+        if mode == "paused":
+            # Explicit USB install proceeds despite a paused stock restore,
+            # drops the OTA selection, and never clears the pause itself.
+            update = state / "update"
+            assert (state / "stock/paused").exists()
+            for name in ("current", "current-path", "previous-path", "previous-version", "journal"):
+                assert not (update / name).exists() and not (update / name).is_symlink(), name
+            assert (update / "versions/0.1.22").is_dir()
         assert (state / "installs").read_text().splitlines() == ["install"]
         assert (state / "operation.lock").is_dir()
     finally:
@@ -440,10 +458,30 @@ esac
         result = invoke(base, env)
         assert result.returncode == (1 if mode == "fail" else 0), (mode, result)
         calls = (state / "calls").read_text().splitlines() if (state / "calls").exists() else []
+    # A paused stock restore must not strand an explicit USB install request:
+    # reconcile completes the APK, drops the OTA selection, but applies nothing.
+    base, state, job, env = setup("reconcile-paused-install")
+    (state / "stock").mkdir(); (state / "stock/paused").touch()
+    old = folder / "paused-old-payload"
+    (old / "svc").mkdir(parents=True)
+    script(old / "svc/reconcile.sh", 'echo selected >> "$SG_DATA_ROOT/calls"\n')
+    (state / "update").mkdir()
+    (state / "update/current").symlink_to(old)
+    (state / "update/journal").write_text("phase=healthy\n")
+    result = invoke(base, env)
+    assert result.returncode == 0, result
+    assert (state / "installs").read_text().splitlines() == ["install"]
+    assert not (job / "pending").exists() and not (state / "calls").exists()
+    assert not (state / "update/current").is_symlink() and not (state / "update/journal").exists()
+    assert (state / "stock/paused").exists()
+
         if mode in ("success", "update-failed"):
             assert "mapped apply" in calls and "mapped revert" not in calls, calls
         elif mode == "old-selection":
-            assert calls == ["selected"] and not (job / "pending").exists(), calls
+            # Completing the USB request drops the stale OTA selection, so this
+            # tree (matching the installed APK) reconciles instead of the old one.
+            assert "selected" not in calls and "mapped apply" in calls, calls
+            assert not (job / "pending").exists() and not (state / "update/current").is_symlink()
         elif mode == "removed":
             assert calls == ["mapped revert"], calls
         else:

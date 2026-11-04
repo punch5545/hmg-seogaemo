@@ -14,7 +14,9 @@ fi
 # The installed entry owns USB APK recovery, including when a failed repair
 # retained an older OTA selection that predates pending-install support.
 state=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
-[ ! -f "$state/stock/paused" ] || exit 0
+# The pending request was explicitly published by a USB install, so it is
+# completed even when a failed stock restore paused automatic module calls
+# (install-pending.sh still refuses while an uninstall is queued).
 if [ -f "$state/app-install/pending" ]; then
     /system/bin/sh "$base/svc/install-pending.sh" >> "$state/reconcile.log" 2>&1 || :
     if [ -f "$state/app-install/pending" ]; then
@@ -23,6 +25,7 @@ if [ -f "$state/app-install/pending" ]; then
         case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) exit 1;; esac
     fi
 fi
+[ ! -f "$state/stock/paused" ] || exit 0
 current=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}/update/current
 delegate_current() {
     if [ -L "$current" ] && [ -f "$current/svc/reconcile.sh" ] && [ -r "$current/svc/reconcile.sh" ] &&

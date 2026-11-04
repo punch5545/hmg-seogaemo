@@ -29,7 +29,15 @@ A single worker waits with capped readiness backoff and attempts installation
 at most four times per kernel boot (5/10/20-second delays), retaining the request
 after failure for a later boot. Attempt reservations survive worker restarts.
 The worker holds the shared operation lock during installation and respects
-stock pause and uninstall pending. Once it observes the app installed, it records
+uninstall pending. It deliberately ignores `stock/paused`: the request exists
+only because the owner explicitly installed from USB, and the pause only stops
+automatic module calls; reconcile therefore runs the worker before its pause
+gate, and a failed stock restore can never strand the new APK on an old version.
+USB postinstall clears the OTA selection (`update/current`, `current-path`,
+`previous-path`, `previous-version`, `journal`; version dirs and baselines are
+retained, `stock/paused` is never cleared) before any APK step, and the worker
+repeats that exact clear after a successful install, so root verbs and the
+installed app never run different versions. Once it observes the app installed, it records
 `seen`; a later absence cancels the request and lets removal cleanup proceed.
 Successful installation retires the request before deleting retained payload.
 Preuninstall cancels the request after guarded stock restore. No request means

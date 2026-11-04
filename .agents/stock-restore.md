@@ -10,7 +10,10 @@ resume preferences are cleared so a later app launch cannot re-enable modules.
 `hmg-seogaemo-root stock restore` retains the installation and runs a serialized
 reverse dependency restore. All baselines are checked before any module revert.
 The persistent `stock/paused` marker prevents watcher calls and boot reapply,
-even if a failed module retains desired on. Only verified successful modules
+even if a failed module retains desired on. An explicit USB install is still
+permitted while paused: postinstall clears the OTA payload selection first (so
+the paused restore retries against the freshly installed tree), the pending APK
+install ignores the pause, and the pause itself is never cleared by install. Only verified successful modules
 commit desired off. Failure stops immediately; successful earlier restores stay
 off and the failed/unvisited desired states remain unchanged. An operation copy
 under `stock/recovery.<time>.<pid>/` preserves recovery data for a late failure

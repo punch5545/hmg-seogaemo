@@ -43,7 +43,7 @@ a new signal; existing declared property-drift handling is unaffected.
 USB postinstall retains the APK and its fixed helper under private
 `app-install/payload/` and publishes a pending request. Reconcile completes it
 before missing-APK cleanup. The worker shares the operation lock with module
-and restore operations, honors stock pause/uninstall, and reserves at most four
+and restore operations, honors uninstall pending but not stock pause (an explicit USB request), and reserves at most four
 attempts per boot with 5/10/20-second delays. Failure retains the request and
 APK for the next boot. The synchronous Android-up hook spends one attempt;
 the service launch can use the remaining budget. A seen-installed receipt

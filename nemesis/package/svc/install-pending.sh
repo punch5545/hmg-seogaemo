@@ -29,10 +29,13 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 request=$(cat "$job/pending") || exit 1
+# A request exists only because the owner explicitly installed from USB, so a
+# paused stock restore (which pauses automatic module calls) does not cancel it.
+# Only a queued uninstall does.
 active() {
     [ "$(cat "$job/pending" 2>/dev/null)" = "$request" ] &&
         [ "$(cat "$worker/pid" 2>/dev/null)" = "$$ $boot_id" ] &&
-        [ ! -f "$state/stock/paused" ] && [ ! -f "$state/uninstall/pending" ]
+        [ ! -f "$state/uninstall/pending" ]
 }
 delay=2
 ready_attempt=0
@@ -88,6 +91,11 @@ while [ "$attempts" -lt 4 ] && active; do
         active || exit 0
         # The fixed helper verifies registration before reporting success.
         echo installed > "$job/seen" || exit 1
+        # The APK now matches this tree: drop any OTA selection so root verbs
+        # do not run a different version than the installed app.
+        update=$state/update
+        rm -f "$update/current" "$update/current-path" "$update/previous-path" \
+            "$update/previous-version" "$update/journal" || exit 1
         rm -f "$job/pending" || exit 1
         rm -rf "$job/payload"
         echo 'Pending APK installed' >> "$state/reconcile.log"
