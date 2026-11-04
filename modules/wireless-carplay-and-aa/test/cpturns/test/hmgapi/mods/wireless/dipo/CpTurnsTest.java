@@ -259,6 +259,16 @@ public final class CpTurnsTest {
             r.refresh();
             check("no refresh once guidance state is 0", c.calls.isEmpty());
         }
+        check("match kinds: exact, band, angle, semantic, blank",
+                "exact".equals(CpTurns.matchKind(2, 0, 0, 90, 1)) && "band".equals(CpTurns.matchKind(2, 0, 0, 75, 1))
+                        && "angle".equals(CpTurns.matchKind(8, 0, 0, -75, 1)) && "semantic".equals(CpTurns.matchKind(13, 0, 0, 0, 1))
+                        && "blank".equals(CpTurns.matchKind(2, 0, 0, 0, 1)));
+        boolean sawBlank = false, sawLane = false;
+        for (String o : Dipo.observed) {
+            if (o.startsWith("icon type=2 junction=0 side=0 exit=0 => icon=64 kind=blank")) sawBlank = true;
+            if (o.startsWith("lane n=2")) sawLane = true;
+        }
+        check("observations: the blank mapping and the lane sighting were recorded (" + Dipo.observed.size() + ")", sawBlank && sawLane && Dipo.flushes > 0);
         Dipo.dev = false;
         Dipo.logs.clear();
         CpTurns quiet = new CpTurns(new android.content.Context(), new Cluster(), null);

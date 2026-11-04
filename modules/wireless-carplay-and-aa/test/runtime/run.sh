@@ -5,7 +5,7 @@ HERE=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/src/hmgapi/hook" "$T/src/hmgapi/engine" "$T/out"
-for name in RuntimeResult RequiredPoints Points NativePatch MethodHook; do
+for name in RuntimeResult Observations RequiredPoints Points NativePatch MethodHook; do
     cp "$HERE/../../payload/src/hmgapi/hook/$name.java.src" "$T/src/hmgapi/hook/$name.java"
 done
 cp "$HERE/../../payload/src/hmgapi/engine/MemRecipe.java.src" "$T/src/hmgapi/engine/MemRecipe.java"

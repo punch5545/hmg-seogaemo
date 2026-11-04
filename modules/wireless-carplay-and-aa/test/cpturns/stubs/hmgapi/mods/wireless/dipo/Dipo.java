@@ -11,6 +11,17 @@ final class Dipo {
         logs.add(m);
     }
 
+    static final java.util.List<String> observed = new java.util.ArrayList<String>();
+    static int flushes;
+
+    static void observe(boolean lane, String key, String detail) {
+        observed.add((lane ? "lane " : "icon ") + key + " => " + detail);
+    }
+
+    static void flushObservations(boolean force) {
+        flushes++;
+    }
+
     static boolean dev = true;
 
     static boolean dev() {

@@ -137,6 +137,42 @@ public final class RuntimeTest {
         check(lr.status == hmgapi.engine.MemRecipe.Result.APPLIED && mem[0x31c80] == 0x04 && mem[0x31c81] == 0x52 && mem[0x31c68] == 0x02, "lane msgId 0x5202 -> 0x5204 only in row 3");
         mem[0x31c80] = 0x09;
         check(lane.apply(ram, 0, 0x2e334, null).status == hmgapi.engine.MemRecipe.Result.MISMATCH && mem[0x31c80] == 0x09, "other bytes: fail closed, nothing written");
+        // bounded, atomic, rate-limited observation records
+        File od = new File(new File(args[0]).getCanonicalFile(), "obs");
+        od.mkdirs();
+        RuntimeResult.configure(od, android.os.Process.myPid(), "9");
+        Observations.clock = 1000;
+        Observations ob = new Observations("tbt-icons");
+        for (int k = 0; k < 300; k++) ob.note("type=" + k, "icon=1 kind=blank");
+        check(ob.size() == Observations.MAX_KEYS, "keys capped at " + Observations.MAX_KEYS);
+        ob.flush(false);
+        File of = new File(od, "tbt-icons.txt");
+        check(of.isFile() && !new File(od, "tbt-icons.txt.tmp").exists() && of.length() <= Observations.MAX_BYTES, "written atomically (no .tmp left) within the byte cap");
+        Observations.clock = 1000 + 10000;
+        ob.note("type=1000", "icon=2 kind=band");
+        long len0 = of.length();
+        ob.flush(false);
+        check(of.length() == len0, "a second write within 30 s is skipped");
+        ob.flush(true);
+        Observations.clock = 1000 + 40000;
+        for (int k = 0; k < 5; k++) ob.note("type=7", "icon=3 kind=exact");
+        ob.note("type=7", "icon=3 kind=exact");
+        for (int k = 0; k < 300; k++) ob.note("fresh=" + k, "d");
+        ob.flush(true);
+        String text = RuntimeResult.text(of, Observations.MAX_BYTES);
+        check(text.startsWith("format=1\nkind=tbt-icons\n") && text.contains("type=7|icon=3 kind=exact|6|"), "most-used key survives eviction with its count");
+        Observations again = new Observations("tbt-icons");
+        again.note("type=7", "icon=3 kind=exact");
+        again.flush(true);
+        check(RuntimeResult.text(of, Observations.MAX_BYTES).contains("type=7|icon=3 kind=exact|7|"), "counts persist across a restart (file read back)");
+        StringBuilder longDetail = new StringBuilder();
+        for (int k = 0; k < 400; k++) longDetail.append('x');
+        Observations big = new Observations("tbt-lanes");
+        for (int k = 0; k < 256; k++) big.note(longDetail.substring(0, 150) + k, longDetail.toString());
+        big.flush(true);
+        check(new File(od, "tbt-lanes.txt").length() <= Observations.MAX_BYTES, "byte cap holds with long fields (evicts)");
+        check(Observations.clean("a|b\nc").equals("a_b_c"), "separators and control characters never reach the file");
+        Observations.clock = -1;
         System.out.println("ok payload runtime results, log rotation, point enforcement, errno: " + checks + " checks");
     }
 }
