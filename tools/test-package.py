@@ -206,7 +206,7 @@ def run():
             assert apk_version(Path(temp.name), args.aapt) == (version, code)
         # Exercise the fixed updater transaction against a fake root tree.
         with tempfile.TemporaryDirectory() as fake_temp:
-            fake_root = Path(fake_temp)
+            fake_root = Path(fake_temp).resolve()
             package_root = fake_root / "package"
             (package_root / "core").mkdir(parents=True)
             (package_root / "lib").mkdir()
@@ -234,6 +234,7 @@ def run():
             fake_bin = fake_root / "bin"
             fake_bin.mkdir()
             (fake_bin / "app_process").write_text("""#!/bin/sh
+[ "$ANDROID_DATA" = "$SG_STATE_FOR_TEST/core/vm" ] && [ -d "$ANDROID_DATA/dalvik-cache" ] || exit 9
 case "$3" in
   copy) mkdir "$5"; cp "$4"/hmg-seogaemo-* "$5/"; cp -R "$4/payload" "$5/";;
   verify) echo 0.1.1;;
@@ -244,7 +245,7 @@ esac
             (fake_bin / "dumpsys").write_text("#!/bin/sh\necho versionName=0.1.1\n")
             for name in ("app_process", "dumpsys"):
                 (fake_bin / name).chmod(0o755)
-            env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}")
+            env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}", SG_STATE_FOR_TEST=str(state))
             updater_cmd = [SHELL, str(package_root / "core/update.sh")]
             for verb in ("stage", "apply", "rollback"):
                 if verb == 'apply':

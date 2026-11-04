@@ -527,11 +527,11 @@ while True: time.sleep(1)
 
 
 with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-reconcile-map-") as tmp:
-    test_pending_install(Path(tmp) / "pending")
-    test_android_readiness(Path(tmp) / "readiness")
-    test_reconcile(Path(tmp) / "reconcile")
-    test_detached_lifecycle(Path(tmp) / "detached")
-    test_reverse_restore_material(Path(tmp) / "reverse")
-    test_payload_replacement(Path(tmp) / "replacement")
-    test_mapper_deadlines(Path(tmp) / "deadline")
+    test_pending_install(Path(tmp).resolve() / "pending")
+    test_android_readiness(Path(tmp).resolve() / "readiness")
+    test_reconcile(Path(tmp).resolve() / "reconcile")
+    test_detached_lifecycle(Path(tmp).resolve() / "detached")
+    test_reverse_restore_material(Path(tmp).resolve() / "reverse")
+    test_payload_replacement(Path(tmp).resolve() / "replacement")
+    test_mapper_deadlines(Path(tmp).resolve() / "deadline")
 print("reconcile map verification, retries, dependencies and deadlines passed")

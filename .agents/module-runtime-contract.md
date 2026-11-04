@@ -871,8 +871,17 @@ watcher continues to invoke only declared watch events, never apply/revert.
 Mapper `status` is bounded to 15 seconds and `verify` to 30 seconds, in addition
 to the existing operation-lock wait of at most nine seconds. Timeout or signal
 cancellation terminates and reaps the actual app_process child and cleans up
-owned lock and scratch state. Confirmed full mapping scans retain their existing
-behavior. Later successful app verification is observed by the deferred worker.
+owned lock and scratch state. A confirmed full scan (`run`) is bounded to 590
+seconds, inside the app's 600-second root-call window. Later successful app
+verification is observed by the deferred worker.
+
+Every root-spawned Dalvik process other than the module's loaded hook (mapper,
+update verifier, projection reader) uses `sg_bounded_wait` and a private
+`ANDROID_DATA`: `<data root>/core/vm/dalvik-cache` (0700, `sg_vm_prepare`) for
+the mapper and update verifier, the module's `vm/` tree for the projection reader.
+The update verifier is bounded to 240 seconds. They export a validated
+`BOOTCLASSPATH` (`sg_bootclasspath`) when the environment lacks one. Nothing of
+ours then writes to `/data/dalvik-cache`.
 
 ## Automatic intent recheck under lock (2026-11-04)
 
