@@ -79,7 +79,7 @@ Evidence and candidate hooks: `neev-kor-api-inventory.md`.
 - [ ] USB ADB role switch.
 - [ ] Battery diagnostics, read-only first; any control needs owner approval.
 - [ ] EV information to the phone over iAP2 (EV routing).
-- [ ] Virtual exhaust / driving sound (Ioniq 5 has no stock e-ASD/"N Active Sound" on this trim):
-  research the audio path and vehicle-speed/accelerator signals available to the head unit.
+- [ ] Virtual exhaust / driving sound in the cabin: research the head-unit audio path and the
+  vehicle-speed/accelerator signals available to it (and any stock sound feature to reuse).
 - [ ] Manual battery preconditioning (start battery conditioning without a navigation
   destination to a charger); find the BMS/thermal request the stock EV navigation sends.
