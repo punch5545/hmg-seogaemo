@@ -581,3 +581,21 @@ state=not-implemented, restart=none, info.skipped=true, current info.desired and
 detail=Automatic module intent changed. This receipt describes skipped work, not
 observed module state. It does not rewrite desired state, invalidate stock
 receipts or invoke the module. Explicit user calls retain their confirmed intent.
+
+## Recovery when the selected OTA payload is damaged (2026-11-04)
+
+The installed dispatcher routes update stage/apply/rollback/status and package
+stock restore/status/uninstall through the stable installation before OTA
+selection. Device reboot and ledger export also remain available there. Stock
+transactions may use the selected runtime only after checking required nonempty
+runtime files, generated module manifests and shell syntax with sh -n; otherwise
+they retain the installed guarded restore implementation. The NEMESIS uninstall
+hook always enters the installed stock controller rather than a selected hook.
+
+Ordinary dispatch delegates only after the same completeness and syntax check.
+An invalid selected payload falls back to the installed runtime for module
+status/precheck and map status. Other module/map mutations return a structured
+failed/none receipt directing the owner to rollback or USB reinstall, without
+executing either payload's mutation. A failed delegated mutation is never
+replayed. These checks detect missing/empty files and shell parse damage; they do
+not replace signed OTA verification or prove runtime behavior of valid syntax.

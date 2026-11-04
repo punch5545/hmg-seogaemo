@@ -25,10 +25,36 @@ base=${0%/*}
 base=${base%/bin}
 SG_DATA_ROOT=${SG_DATA_ROOT:-/data/nemesis/backup/hmg-seogaemo}
 current=$SG_DATA_ROOT/update/current
-if [ -L "$current" ] && [ -f "$current/bin/hmg-seogaemo-root" ] && [ -r "$current/bin/hmg-seogaemo-root" ] &&
-        [ "$(readlink -f "$base")" != "$(readlink -f "$current")" ]; then
-    exec /system/bin/sh "$current/bin/hmg-seogaemo-root" "$@"
+stable=$base
+# OTA archives omit the installed NEMESIS descriptor and lifecycle hooks.
+if [ ! -f "$base/NEMESIS.data" ] && [ -L "$current" ] &&
+        [ "$(readlink -f "$base")" = "$(readlink -f "$current")" ]; then
+    stable=/data/nemesis/apps/hmg-seogaemo
 fi
+# Recovery must remain reachable without sourcing or executing selected code.
+case "$1" in
+    update) exec /system/bin/sh "$stable/core/update.sh" "$2";;
+    stock|package)
+        stock_verb=$2
+        [ "$1" != package ] || stock_verb=uninstall
+        export SG_DATA_ROOT
+        exec /system/bin/sh "$stable/core/stock.sh" "$stock_verb";;
+    device|export) base=$stable;;
+    *)
+        if [ -L "$current" ] && [ "$(readlink -f "$stable")" != "$(readlink -f "$current")" ]; then
+            . "$stable/lib/payload.sh"
+            if hmg_seogaemo_payload_valid "$current"; then
+                if [ "$(readlink -f "$base")" != "$(readlink -f "$current")" ]; then
+                    exec /system/bin/sh "$current/bin/hmg-seogaemo-root" "$@"
+                fi
+            else
+                case "$1:$2" in
+                    *:status|*:precheck) base=$stable;;
+                    *) refuse 1 failed 'Selected OTA payload damaged; roll back or reinstall from USB';;
+                esac
+            fi
+        fi;;
+esac
 . "$base/lib/common.sh"
 if [ "$1" = device ]; then
     [ "$#" -eq 2 ] && [ "$2" = reboot ] || refuse 2 failed 'Invalid command'
@@ -38,13 +64,6 @@ if [ "$1" = device ]; then
     echo restart=head_unit
     echo 'detail=Head unit restart requested'
     exit 0
-fi
-if [ "$1" = stock ] || [ "$1" = package ]; then
-    [ "$#" -eq 2 ] || refuse 2 failed 'Invalid command'
-    case "$1:$2" in stock:restore|stock:status) stock_verb=$2;;
-        package:uninstall) stock_verb=uninstall;; *) refuse 2 failed 'Invalid command';; esac
-    export SG_DATA_ROOT
-    exec /system/bin/sh "$base/core/stock.sh" "$stock_verb"
 fi
 if [ "$1" = export ]; then
     export_mode=$2
@@ -103,14 +122,6 @@ if [ "$1" = map ]; then
     export SG_DATA_ROOT
     exec /system/bin/sh "$base/core/hmg-seogaemo-map.sh" "$2"
 fi
-if [ "$1" = update ]; then
-    case "$2" in stage|apply|rollback|status) ;; *) refuse 2 failed 'Invalid command' ;; esac
-    # The updater/verifier trust anchor stays in the NEMESIS installation.
-    if [ "$(readlink -f "$base")" = "$(readlink -f "$current")" ] && [ -L "$current" ]; then
-        base=/data/nemesis/apps/hmg-seogaemo
-    fi
-    exec /system/bin/sh "$base/core/update.sh" "$2"
-fi
 case "$1" in
     ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command' ;;
 esac
@@ -118,8 +129,6 @@ case "$2:$#" in apply:2|revert:2|status:2|precheck:2) ;; watch:3)
     case "$3" in boot|screen_on) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     *) refuse 2 failed 'Invalid command' ;;
 esac
-base=${0%/*}
-base=${base%/bin}
 [ "$base" != "$0" ] || refuse 2 failed 'Invalid command'
 [ -f "$base/modules.list" ] || refuse 2 failed 'Invalid command'
 grep -Fxq "$1" "$base/modules.list" || refuse 2 failed 'Invalid command'

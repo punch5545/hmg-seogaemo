@@ -147,6 +147,38 @@ def test_restore(folder):
         car.run(*args, ok=False)
 
 
+def test_damaged_selection_recovery(folder):
+    car = Car(folder)
+    car.enable()
+    selected = folder / 'damaged-ota'
+    (selected / 'bin').mkdir(parents=True)
+    (selected / 'bin/hmg-seogaemo-root').write_text('if then\n')
+    (selected / 'scripts').mkdir()
+    (selected / 'scripts/preuninstall.sh').write_text('exit 90\n')
+    current = car.state / 'update/current'
+    current.parent.mkdir(parents=True)
+    current.symlink_to(selected, target_is_directory=True)
+    result = car.run('stock', 'restore')
+    assert 'info.module_a=reverted' in result.stdout, result
+    for name in 'abc':
+        assert (car.state / f'desired/{name}').read_text() == 'off'
+        assert (car.live / f'demo.{name}').read_text() == ''
+    # Genuine drift still blocks fallback restore and retains the exact baseline.
+    current.unlink()
+    car.run('a', 'apply')
+    current.symlink_to(selected, target_is_directory=True)
+    (car.live / 'demo.a').write_text('external')
+    result = car.run('stock', 'restore', ok=False)
+    assert 'state=conflict' in result.stdout
+    assert (car.state / 'modules/a/prop.demo.a/ready').exists()
+    car.hook(ok=False)
+    assert car.apk.exists()
+    (car.live / 'demo.a').write_text('ours')
+    car.hook()
+    assert not car.apk.exists()
+    assert (car.live / 'demo.a').read_text() == ''
+
+
 def test_conflict(folder):
     car = Car(folder)
     car.enable()
@@ -406,7 +438,8 @@ def test_snapshot_free_recovery(folder):
 with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
                  test_late_failure, test_detached_failure, test_missing_handoff,
-                 test_shared_lines, test_reassert_restore, test_snapshot_free_recovery):
+                 test_shared_lines, test_reassert_restore, test_snapshot_free_recovery,
+                 test_damaged_selection_recovery):
         folder = Path(directory) / test.__name__
         folder.mkdir()
         test(folder)
