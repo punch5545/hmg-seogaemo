@@ -38,6 +38,7 @@ public final class WirelessCarplayAndAaModule extends RootBackedModule {
         "/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/carplay-core-wifi.recipe",
         "/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/carplay-audio-formats.recipe",
         "/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/carplay-utils-converter.recipe",
+        "/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/iap2-lane-msgid.recipe",
         "/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/enable",
         "/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/enabled",
         "/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/starts",

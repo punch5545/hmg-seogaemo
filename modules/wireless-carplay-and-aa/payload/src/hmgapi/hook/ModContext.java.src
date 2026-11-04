@@ -35,6 +35,7 @@ public final class ModContext {
             } else if ("libCarPlayCore.so".equals(lib)) recipes.add(NativePatch.readOne(new File(dir, "recipes/carplay-core-wifi.recipe")));
             else if ("libCarPlayAudio.so".equals(lib)) recipes.add(NativePatch.readOne(new File(dir, "recipes/carplay-audio-formats.recipe")));
             else if ("libCarPlayUtils.so".equals(lib)) recipes.add(NativePatch.readOne(new File(dir, "recipes/carplay-utils-converter.recipe")));
+            else if ("libiap2session.so".equals(lib)) recipes.add(NativePatch.readOne(new File(dir, "recipes/iap2-lane-msgid.recipe")));
             else throw new IllegalArgumentException(lib);
             NativePatch.request(this, lib, recipes);
         } catch (Throwable t) { RuntimeResult.phase("native." + lib, "failed", "recipe registration: " + t); error("native patch " + lib, t); }

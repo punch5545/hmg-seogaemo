@@ -119,6 +119,25 @@ public final class RuntimeTest {
         apply.invoke(null, want, "/system/lib/libTest.so", 0L, 1L);
         record = RuntimeResult.read(result);
         check("applied".equals(record.get("native.libTest.so.state")) && "0".equals(record.get("native.libTest.so.errno")), "successful recipe clears errno and records application");
+        // the iap2 lane msgId data recipe against a byte array shaped like the stock table
+        final byte[] mem = new byte[0x32000];
+        mem[0x31c50] = 0x01; mem[0x31c51] = 0x52;
+        mem[0x31c68] = 0x02; mem[0x31c69] = 0x52;
+        mem[0x31c80] = 0x02; mem[0x31c81] = 0x52;
+        hmgapi.engine.MemRecipe.Memory ram = new hmgapi.engine.MemRecipe.Memory() {
+            public byte[] peek(long a, int n) { return java.util.Arrays.copyOfRange(mem, (int) a, (int) a + n); }
+            public boolean poke(long a, byte[] d) { return false; }
+            public boolean pokeData(long a, byte[] d) { System.arraycopy(d, 0, mem, (int) a, d.length); return true; }
+            public long mapCode(long h, int n) { return 0; }
+        };
+        java.io.File rf = new java.io.File(System.getProperty("user.dir"), "payload/recipes/iap2-lane-msgid.recipe");
+        if (!rf.exists()) rf = new java.io.File(args[0] + "/../../payload/recipes/iap2-lane-msgid.recipe");
+        hmgapi.engine.MemRecipe lane = NativePatch.readOne(rf);
+        check(lane.data, "lane recipe is a data recipe");
+        hmgapi.engine.MemRecipe.Result lr = lane.apply(ram, 0, 0x2e334, null);
+        check(lr.status == hmgapi.engine.MemRecipe.Result.APPLIED && mem[0x31c80] == 0x04 && mem[0x31c81] == 0x52 && mem[0x31c68] == 0x02, "lane msgId 0x5202 -> 0x5204 only in row 3");
+        mem[0x31c80] = 0x09;
+        check(lane.apply(ram, 0, 0x2e334, null).status == hmgapi.engine.MemRecipe.Result.MISMATCH && mem[0x31c80] == 0x09, "other bytes: fail closed, nothing written");
         System.out.println("ok payload runtime results, log rotation, point enforcement, errno: " + checks + " checks");
     }
 }

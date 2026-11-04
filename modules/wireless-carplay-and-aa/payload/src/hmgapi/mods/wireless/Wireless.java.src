@@ -127,6 +127,8 @@ public final class Wireless extends ModEntry {
     private void iap2(final ModContext mod, LoadedApp app) {
         final ClassLoader cl = app.classLoader;
         if (mod.settingBoolean("tbt", true)) {
+            // the stock parser registers LaneGuidanceInformation under 0x5202 (the maneuver's id), so a real 0x5204 is never parsed: fixed in memory
+            mod.nativePatch(app, "libiap2session.so");
             mod.hook(cl, "iap2.init_info.check_supports_features", new MethodHook() {
                 @Override
                 protected void afterHookedMethod(Param p) {
