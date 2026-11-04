@@ -534,3 +534,10 @@ whole-package restore includes that diagnostic in its final receipt.
 
 sg_clean preserves ASCII semicolons in human-readable status detail. Module root
 status strings are ASCII; auditing found no non-ASCII punctuation in those sources.
+
+
+Confirmed app plans execute their reviewed steps without replanning. An OTA
+switch resume stores its originating kernel boot ID; a collected head-unit
+restart requires a different boot before update continuation, plus target
+readiness and usable network. Map refresh completion retries the continuation
+so an already-connected launch does not lose its only connectivity event.

@@ -56,3 +56,6 @@ assert "setCanceledOnTouchOutside(false)" in dialog
 assert "confirm.setEnabled(false)" in dialog
 assert "cancel.requestFocus()" in dialog
 print("confirmation routing: OK")
+import subprocess
+import sys
+subprocess.run([sys.executable, str(root / 'tools/test-module-switch.py')], check=True)
