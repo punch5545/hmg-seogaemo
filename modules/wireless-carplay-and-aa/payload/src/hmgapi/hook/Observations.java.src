@@ -9,90 +9,141 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A small persistent aggregate of what the car and phone were seen to do (turn-by-turn:
- * which icon a maneuver got, which lane data arrived), kept in the app's private runtime
- * directory next to the process records and gathered with them by the root exporter.
+ * What the car and phone were seen to do (turn-by-turn: which icon a maneuver got and the
+ * phone's instruction text for it, which lane data arrived), kept on disk in the app's
+ * private runtime directory so the maneuver → icon table can be built from real drives.
+ * The data stays on the head unit; it leaves only when the user exports logs and shares them.
  *
- * Bounded: at most MAX_KEYS keys and MAX_BYTES of file; at the limit the least-used, then
- * oldest key goes. Written atomically (.tmp, then rename), on change at most every
- * MIN_WRITE_MS, and when flushed with force (route end). It survives process restarts: the
- * file is read back at first use.
+ * Two files per kind:
+ *   - <name>.txt, the summary: one line per key with its latest outcome, count, first and last
+ *     time and up to SAMPLES distinct instruction texts. Bounded (maxKeys keys, MAX_BYTES);
+ *     at the limit the least-used, then oldest key goes. Rewritten atomically (.tmp, rename)
+ *     at most every SUMMARY_MS, and when flushed with force (route end). Read back at first
+ *     use, so it survives process restarts. Only a summary-sized aggregate is held in memory.
+ *   - <name>.journal (+ .journal.1 ... .journal.<shards-1>, oldest last), every sighting
+ *     appended (never rewritten), at most every MIN_WRITE_MS; a shard rotates at
+ *     JOURNAL_BYTES and the oldest is deleted, so the journal never exceeds shards x 1 MiB.
  *
- * File: UTF-8 text, "format=1", "kind=<name>", then one line per key:
- *   key|detail|count|first_ms|last_ms   (epoch milliseconds; "|" and control characters never occur in a field)
+ * Summary: UTF-8, "format=2", "kind=<name>", then
+ *   key|detail|count|first_ms|last_ms|sample1 ¦ sample2 ¦ sample3
+ * Journal: UTF-8 lines  ms|key|detail|sample   (a torn last line after a crash is ignored by
+ * readers). "|", "¦" and control characters never occur inside a field.
  */
 public final class Observations {
-    static final int MAX_KEYS = 256, MAX_BYTES = 32768, FIELD = 400;
-    static final long MIN_WRITE_MS = 30000L;
+    static final int MAX_BYTES = 1048576, FIELD = 400, SAMPLES = 3, SAMPLE_CHARS = 80;
+    static final int JOURNAL_BYTES = 1048576, PENDING_MAX = 65536;
+    static final long MIN_WRITE_MS = 30000L, SUMMARY_MS = 300000L;
+    static final String SEP = " ¦ ";
     /** test clock: a value of 0 or more replaces System.currentTimeMillis */
     static volatile long clock = -1;
 
     static final class Entry {
         String detail;
         long count, first, last;
+        final List<String> samples = new ArrayList<String>(SAMPLES);
     }
 
     private final String name;
+    final int maxKeys, shards;
     private final LinkedHashMap<String, Entry> entries = new LinkedHashMap<String, Entry>();
+    private final StringBuilder pending = new StringBuilder();
     private boolean loaded, dirty;
-    private long wroteAt = Long.MIN_VALUE / 2;
+    private long wroteAt = Long.MIN_VALUE / 2, summaryAt = Long.MIN_VALUE / 2;
 
-    public Observations(String name) {
+    /** maxKeys bounds the summary (and memory); shards x 1 MiB bounds the journal */
+    public Observations(String name, int maxKeys, int shards) {
         this.name = name;
+        this.maxKeys = maxKeys;
+        this.shards = shards;
     }
 
     static long now() {
         return clock >= 0 ? clock : System.currentTimeMillis();
     }
 
-    static String clean(String s) {
+    static String clean(String s, int max) {
         StringBuilder b = new StringBuilder();
-        for (int i = 0; s != null && i < s.length() && b.length() < FIELD; i++) {
+        for (int i = 0; s != null && i < s.length() && b.length() < max; i++) {
             char c = s.charAt(i);
-            b.append(c == '|' || Character.isISOControl(c) ? '_' : c);
+            b.append(c == '|' || c == '¦' || Character.isISOControl(c) ? '_' : c);
         }
         return b.toString();
     }
 
-    /** one more sighting of key; detail is the latest outcome for it */
-    public synchronized void note(String key, String detail) {
+    static String clean(String s) {
+        return clean(s, FIELD);
+    }
+
+    /** one more sighting of key; detail is the latest outcome, sample an optional instruction text */
+    public synchronized void note(String key, String detail, String sample) {
         try {
             load();
             key = clean(key);
+            detail = clean(detail);
+            sample = sample == null ? "" : clean(sample.trim(), SAMPLE_CHARS);
             Entry e = entries.get(key);
             long t = now();
             if (e == null) {
-                while (entries.size() >= MAX_KEYS) evict();
+                while (entries.size() >= maxKeys) evict();
                 e = new Entry();
                 e.first = t;
                 entries.put(key, e);
             }
-            e.detail = clean(detail);
+            e.detail = detail;
             e.count++;
             e.last = t;
+            if (sample.length() > 0 && !e.samples.contains(sample) && e.samples.size() < SAMPLES) e.samples.add(sample);
+            if (pending.length() < PENDING_MAX) pending.append(t).append('|').append(key).append('|').append(detail).append('|').append(sample).append('\n');
             dirty = true;
         } catch (Throwable ignored) {
             // diagnostics only
         }
     }
 
-    /** writes the file if something changed and 30 s have passed since the last write (or force) */
+    public void note(String key, String detail) {
+        note(key, detail, null);
+    }
+
+    /** appends the journal (30 s apart) and rewrites the summary (5 min apart); force does both now */
     public synchronized void flush(boolean force) {
         try {
-            if (!dirty) return;
             long t = now();
-            if (!force && t - wroteAt < MIN_WRITE_MS) return;
             File dir = RuntimeResult.directoryOrNull();
             if (dir == null) return;
-            byte[] bytes = serialize();
-            File tmp = new File(dir, name + ".txt.tmp"), target = new File(dir, name + ".txt");
-            RuntimeResult.write(tmp, bytes, false);
-            if (!tmp.renameTo(target)) throw new IOException("observations rename failed");
-            dirty = false;
-            wroteAt = t;
+            if (pending.length() > 0 && (force || t - wroteAt >= MIN_WRITE_MS || pending.length() >= PENDING_MAX / 2)) {
+                appendJournal(dir, pending.toString().getBytes("UTF-8"));
+                pending.setLength(0);
+                wroteAt = t;
+            }
+            if (dirty && (force || t - summaryAt >= SUMMARY_MS)) {
+                byte[] bytes = serialize();
+                File tmp = new File(dir, name + ".txt.tmp"), target = new File(dir, name + ".txt");
+                RuntimeResult.write(tmp, bytes, false);
+                if (!tmp.renameTo(target)) throw new IOException("observations rename failed");
+                dirty = false;
+                summaryAt = t;
+            }
         } catch (Throwable ignored) {
             // diagnostics only
         }
+    }
+
+    private void appendJournal(File dir, byte[] bytes) throws IOException {
+        File current = new File(dir, name + ".journal");
+        if (current.length() + bytes.length > JOURNAL_BYTES && current.length() > 0) {
+            File oldest = new File(dir, name + ".journal." + (shards - 1));
+            if (shards > 1 && oldest.exists() && !oldest.delete()) throw new IOException("journal rotate failed");
+            for (int i = shards - 2; i >= 1; i--) {
+                File f = new File(dir, name + ".journal." + i);
+                if (f.exists() && !f.renameTo(new File(dir, name + ".journal." + (i + 1)))) throw new IOException("journal rotate failed");
+            }
+            if (shards > 1) {
+                if (!current.renameTo(new File(dir, name + ".journal.1"))) throw new IOException("journal rotate failed");
+            } else if (!current.delete()) {
+                throw new IOException("journal rotate failed");
+            }
+        }
+        RuntimeResult.write(current, bytes, true);
     }
 
     public synchronized int size() {
@@ -114,18 +165,22 @@ public final class Observations {
 
     private byte[] serialize() throws IOException {
         while (true) {
-            StringBuilder s = new StringBuilder("format=1\nkind=").append(name).append('\n');
+            StringBuilder s = new StringBuilder("format=2\nkind=").append(name).append('\n');
             for (Map.Entry<String, Entry> e : entries.entrySet()) {
                 Entry v = e.getValue();
-                s.append(e.getKey()).append('|').append(v.detail).append('|').append(v.count).append('|').append(v.first).append('|').append(v.last).append('\n');
+                s.append(e.getKey()).append('|').append(v.detail).append('|').append(v.count).append('|').append(v.first).append('|').append(v.last).append('|');
+                for (int i = 0; i < v.samples.size(); i++) s.append(i == 0 ? "" : SEP).append(v.samples.get(i));
+                s.append('\n');
             }
             byte[] b = s.toString().getBytes("UTF-8");
             if (b.length <= MAX_BYTES || entries.isEmpty()) return b;
-            evict();
+            // over the cap: drop the excess share of keys at once (least-used, oldest first)
+            long excess = (long) entries.size() * (b.length - MAX_BYTES) / b.length + 1;
+            for (long k = 0; k < excess && !entries.isEmpty(); k++) evict();
         }
     }
 
-    /** reads an earlier file back (bounded, malformed lines skipped) */
+    /** reads an earlier summary back (format 1 or 2; bounded, malformed lines skipped) */
     private void load() {
         if (loaded) return;
         loaded = true;
@@ -135,11 +190,9 @@ public final class Observations {
             File f = new File(dir, name + ".txt");
             if (!f.isFile() || f.length() > MAX_BYTES) return;
             String text = RuntimeResult.text(f, MAX_BYTES);
-            List<String> lines = new ArrayList<String>();
-            for (String l : text.split("\n")) lines.add(l);
-            for (String l : lines) {
+            for (String l : text.split("\n")) {
                 String[] p = l.split("\\|", -1);
-                if (p.length != 5 || entries.size() >= MAX_KEYS) continue;
+                if ((p.length != 5 && p.length != 6) || entries.size() >= maxKeys) continue;
                 Entry e = new Entry();
                 try {
                     e.count = Long.parseLong(p[2]);
@@ -149,6 +202,12 @@ public final class Observations {
                     continue;
                 }
                 e.detail = clean(p[1]);
+                if (p.length == 6 && p[5].length() > 0) {
+                    for (String s : p[5].split(SEP, -1)) {
+                        String c = clean(s.trim(), SAMPLE_CHARS);
+                        if (c.length() > 0 && e.samples.size() < SAMPLES && !e.samples.contains(c)) e.samples.add(c);
+                    }
+                }
                 entries.put(clean(p[0]), e);
             }
         } catch (Throwable ignored) {

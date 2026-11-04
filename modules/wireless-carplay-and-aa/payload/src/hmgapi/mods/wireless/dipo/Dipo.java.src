@@ -79,11 +79,14 @@ public final class Dipo {
     private static volatile boolean devOn;
     private static java.lang.reflect.Method sysGet;
 
-    /** the local icon-mapping and lane records (runtime dir tbt-icons.txt, tbt-lanes.txt), always on, bounded */
-    static final hmgapi.hook.Observations ICONS = new hmgapi.hook.Observations("tbt-icons"), LANES = new hmgapi.hook.Observations("tbt-lanes");
+    /**
+     * The local icon-mapping and lane records (runtime dir tbt-icons.* and tbt-lanes.*), always on:
+     * summaries of up to 1024 / 512 keys plus append-only journals of 6 / 4 MiB (about 10 MiB in all)
+     */
+    static final hmgapi.hook.Observations ICONS = new hmgapi.hook.Observations("tbt-icons", 1024, 6), LANES = new hmgapi.hook.Observations("tbt-lanes", 512, 4);
 
-    static void observe(boolean lane, String key, String detail) {
-        (lane ? LANES : ICONS).note(key, detail);
+    static void observe(boolean lane, String key, String detail, String sample) {
+        (lane ? LANES : ICONS).note(key, detail, sample);
     }
 
     static void flushObservations(boolean force) {

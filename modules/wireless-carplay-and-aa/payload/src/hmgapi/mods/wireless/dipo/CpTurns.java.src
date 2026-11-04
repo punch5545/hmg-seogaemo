@@ -519,14 +519,25 @@ final class CpTurns {
         return exit != 0 ? "angle" : "semantic";
     }
 
-    /** the local mapping record (runtime dir, tbt-icons.txt): one sighting per change of maneuver presentation */
+    /** an exit angle rounded to the nearest 15 degrees (the record's key; the exact angle goes in the detail) */
+    static int exitBucket(int exit) {
+        return Math.round(exit / 15f) * 15;
+    }
+
+    /**
+     * The local mapping record (runtime dir, tbt-icons.*): one sighting per change of maneuver
+     * presentation, with the phone's instruction text and the road after it, so the table can be
+     * built from drives (the iAP2 maneuver list isn't public).
+     */
     private void observeIcon(Maneuver x, int state, int icon, String kind) {
-        String key = "type=" + x.type + " junction=" + x.junction + " side=" + x.side + " exit=" + x.exit + (x.type == 12 ? " state=" + state : "");
-        String detail = "icon=" + icon + " kind=" + kind;
-        String both = key + "|" + detail;
+        String key = "type=" + x.type + " junction=" + x.junction + " side=" + x.side + " exit~" + exitBucket(x.exit) + (x.type == 12 ? " state=" + state : "");
+        String detail = "icon=" + icon + " kind=" + kind + " exit=" + x.exit;
+        String text = x.description == null ? "" : x.description;
+        if (x.afterRoad != null && x.afterRoad.length() > 0) text = text + " -> " + x.afterRoad;
+        String both = key + "|" + detail + "|" + text;
         if (both.equals(lastIconObs)) return;
         lastIconObs = both;
-        Dipo.observe(false, key, detail);
+        Dipo.observe(false, key, detail, text);
     }
 
     private void observeLanes(Iap2NotiMsg.Iap2ObjGroup[] lanes, String mode, int n, String marks, byte[] frame) {
@@ -553,7 +564,7 @@ final class CpTurns {
         String both = key + "|" + detail;
         if (both.equals(lastLaneObs)) return;
         lastLaneObs = both;
-        Dipo.observe(true, key.toString(), detail);
+        Dipo.observe(true, key.toString(), detail, null);
     }
 
     /** the cluster's "no turn icon" (the turn list's 64): distances, lanes and trip still go out */

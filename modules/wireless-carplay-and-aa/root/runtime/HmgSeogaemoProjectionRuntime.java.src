@@ -119,7 +119,10 @@ public final class HmgSeogaemoProjectionRuntime {
         String detail = prefix + "=" + state + " " + get(r, prefix + ".reason") + " " + get(r, prefix + ".errno");
         return new Result("failed".equals(state) || "off".equals(state) ? "failed" : "unknown", detail);
     }
+    /** DiPO's turn-by-turn records: summaries (read by status for the counts) and their journals */
     static final String[] OBSERVATIONS = {"tbt-icons.txt", "tbt-lanes.txt"};
+    static final String[] JOURNALS = {"tbt-icons.journal", "tbt-lanes.journal"};
+    static final int SUMMARY_LIMIT = 1048576, JOURNAL_SHARDS = 6;
     File dipoDir() throws Exception {
         File data = path("/data/data/" + PACKAGES[0]);
         if (!safe(data) || !data.isDirectory()) throw new IOException("package directory");
@@ -137,29 +140,33 @@ public final class HmgSeogaemoProjectionRuntime {
         if (!present(f)) return new int[] {0, 0};
         if (!owned(f, uid, false)) return null;
         int inexact = 0, blank = 0;
-        for (String line : text(f, 32768).split("\n")) {
+        for (String line : text(f, SUMMARY_LIMIT).split("\n")) {
             String[] p = line.split("\\|", -1);
-            if (p.length != 5 || p[1].indexOf("kind=") < 0) continue;
+            if ((p.length != 5 && p.length != 6) || p[1].indexOf("kind=") < 0) continue;
             if (p[1].indexOf("kind=exact") >= 0) continue;
             inexact++;
             if (p[1].indexOf("kind=blank") >= 0) blank++;
         }
         return new int[] {inexact, blank};
     }
-    /** removes DiPO's two generated observation files (and their temporaries); a symlink, other type or owner is refused */
+    /** removes DiPO's generated turn-by-turn records (summaries, temporaries, journals); a symlink, other type or owner is refused */
     int tbtReset() throws Exception {
         File dir = dipoDir();
         int uid = metadata.stat(path("/data/data/" + PACKAGES[0]))[0];
         if (!present(dir)) return 0;
         if (!owned(dir, uid, true)) throw new IOException("runtime directory owner/type");
         List<File> doomed = new ArrayList<File>();
-        for (String name : OBSERVATIONS) {
-            for (String suffix : new String[] {"", ".tmp"}) {
-                File f = new File(dir, name + suffix);
-                if (!present(f)) continue;
-                if (!owned(f, uid, false)) throw new IOException("refused: " + f.getName() + " is not a plain file of the app");
-                doomed.add(f);
-            }
+        List<String> names = new ArrayList<String>();
+        for (String name : OBSERVATIONS) { names.add(name); names.add(name + ".tmp"); }
+        for (String name : JOURNALS) {
+            names.add(name);
+            for (int i = 1; i < JOURNAL_SHARDS; i++) names.add(name + "." + i);
+        }
+        for (String name : names) {
+            File f = new File(dir, name);
+            if (!present(f)) continue;
+            if (!owned(f, uid, false)) throw new IOException("refused: " + f.getName() + " is not a plain file of the app");
+            doomed.add(f);
         }
         int removed = 0;
         for (File f : doomed) {
@@ -229,9 +236,6 @@ public final class HmgSeogaemoProjectionRuntime {
                 found = true; result = merge(result, readiness(r, index));
                 if (output != null) {
                     privateDir(output); copy(f, new File(output, f.getName()), uid);
-                    if (index == 0) for (String name : OBSERVATIONS) {
-                        try { copy(new File(dir, name), new File(output, name), uid); } catch (Exception ignored) { }
-                    }
                     String stem = f.getName().substring(0, f.getName().length() - 4);
                     for (String suffix : new String[] {".log", ".log.1"}) {
                         File log = new File(dir, stem + suffix);

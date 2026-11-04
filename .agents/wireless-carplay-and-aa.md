@@ -189,7 +189,7 @@ Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe mat
       adb shell getprop persist.hmg_seogaemo.dev
       adb logcat -s HMG-Seogaemo-Wireless:*
 - `Wireless.NAVI_TBT` now also skips the car navigation's `update_lane_info` while a phone guides (its free-drive writes would overwrite our lane frames).
-- **Observation records.** `tbt-icons.txt` / `tbt-lanes.txt` in DiPO's runtime directory, format and the `tbt-reset` verb in
+- **Observation records.** `tbt-icons.*` / `tbt-lanes.*` (summary + about 10 MiB of append-only journals, with the phone's instruction texts; kept permanently so the icon table keeps improving) in DiPO's runtime directory, format and the `tbt-reset` verb in
   `module-runtime-contract.md` ("Turn-by-turn observation records"). The module page shows `info.tbt_inexact` / `info.tbt_blank`
   and a confirmed reset. Match kinds: `exact` (table), `band` (types 1/2/47-50 by angle), `angle` (any other type by angle,
   roundabouts by nearest exit icon), `semantic` (type only, e.g. keep left/right, enter roundabout, arrive), `blank` (icon 64: distances, lanes and

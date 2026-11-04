@@ -490,6 +490,14 @@ sg_revert_all
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
     (data / "runtime/carplay/linked.log").symlink_to(data / "runtime/carplay/wpa_supplicant.conf")
+    dipo = base / "dipo-runtime"
+    dipo.mkdir()
+    summary = "format=2\nkind=tbt-icons\n" + "type=1 junction=0 side=0 exit~-90|icon=70 kind=exact exit=-90|1|1|2|좌회전\n" * 3000
+    (dipo / "tbt-icons.txt").write_text(summary)
+    (dipo / "tbt-lanes.journal.3").write_bytes(b"1|n=2|frame=f102|\n" * 80000)
+    (dipo / "tbt-icons.journal.9").write_text("not a fixed name\n")
+    (dipo / "p-1-2.txt").write_text("not a turn-by-turn record\n")
+    env["HMG_SEOGAEMO_DIPO_RUNTIME"] = str(dipo)
     result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
     assert "state=on" in result.stdout
     exported = next(export_root.glob("*/ledger/ledger.tsv"))
@@ -503,8 +511,13 @@ sg_revert_all
                      "runtime/wireless-carplay-and-aa/apps/com.daudio.app.dipo/p-10-20.log.1",
                      "map-status.txt", "module-test-status.txt", "properties.txt", "owned-paths.txt"):
         assert (diagnostics / relative).is_file(), relative
+    # turn-by-turn records: fixed names only, copied whole up to 1 MiB + 64 KiB
+    assert (diagnostics / "tbt/tbt-icons.txt").read_bytes() == (dipo / "tbt-icons.txt").read_bytes()
+    lanes_copy = (diagnostics / "tbt/tbt-lanes.journal.3").stat().st_size
+    assert lanes_copy == min((dipo / "tbt-lanes.journal.3").stat().st_size, 272 * 4096), lanes_copy
+    assert sorted(p.name for p in (diagnostics / "tbt").iterdir()) == ["tbt-icons.txt", "tbt-lanes.journal.3"]
     for entry in diagnostics.rglob("*"):
-        if entry.is_file():
+        if entry.is_file() and entry.parent.name != "tbt":
             assert entry.stat().st_size <= 65537, entry
             assert b"private-" not in entry.read_bytes(), entry
     assert not (diagnostics / "runtime/carplay/linked.log").exists()

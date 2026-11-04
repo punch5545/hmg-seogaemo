@@ -265,10 +265,11 @@ public final class CpTurnsTest {
                         && "blank".equals(CpTurns.matchKind(2, 0, 0, 0, 1)));
         boolean sawBlank = false, sawLane = false;
         for (String o : Dipo.observed) {
-            if (o.startsWith("icon type=2 junction=0 side=0 exit=0 => icon=64 kind=blank")) sawBlank = true;
+            if (o.startsWith("icon type=2 junction=0 side=0 exit~0 => icon=64 kind=blank exit=0")) sawBlank = true;
             if (o.startsWith("lane n=2")) sawLane = true;
         }
         check("observations: the blank mapping and the lane sighting were recorded (" + Dipo.observed.size() + ")", sawBlank && sawLane && Dipo.flushes > 0);
+        check("observations: exit angles keyed by 15-degree buckets", CpTurns.exitBucket(37) == 30 && CpTurns.exitBucket(38) == 45 && CpTurns.exitBucket(-97) == -90 && CpTurns.exitBucket(0) == 0);
         Dipo.dev = false;
         Dipo.logs.clear();
         CpTurns quiet = new CpTurns(new android.content.Context(), new Cluster(), null);
