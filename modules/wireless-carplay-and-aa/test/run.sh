@@ -13,6 +13,36 @@ mkdir -p "$T/base/lib" "$T/bin" "$T/props" "$T/state" "$T/root/system/bin" "$T/r
 cat > "$T/base/lib/common.sh" <<'SH'
 . "$HMG_SEOGAEMO_TEST_COMMON"
 sg_log() { sg_print "$*" >&2; }
+sg_payload_dirs() {
+    case "$1" in /system/*) ;; *) return 0;; esac
+    parent=$(sg_path "$1"); parent=${parent%/*}
+    while [ "$parent" != "$SG_WIRELESS_TEST_ROOT" ]; do
+        mkdir -p "$parent"; chmod 0755 "$parent"; parent=${parent%/*}
+    done
+    # Simulate interruption after traversal is repaired but before file puts.
+    [ "${SG_FAIL_AFTER_DIR_REPAIR:-0}" != 1 ] || return 1
+}
+sg_restart_required() {
+    [ "${SG_FAIL_RESTART_MARKER:-0}" != 1 ] || return 1
+    cat "$SG_WIRELESS_TEST_ROOT/proc/sys/kernel/random/boot_id" > "$HMG_SEOGAEMO_STATE/assets-repaired-boot"
+}
+sg_restart_pending() {
+    [ -f "$HMG_SEOGAEMO_STATE/assets-repaired-boot" ] &&
+        [ "$(cat "$HMG_SEOGAEMO_STATE/assets-repaired-boot")" = "$(cat "$SG_WIRELESS_TEST_ROOT/proc/sys/kernel/random/boot_id")" ]
+}
+sg_public_readable() (
+    SG_TARGET_ROOT=$SG_WIRELESS_TEST_ROOT
+    target=$1
+    [ -f "$target" ] || exit 1
+    set -- $(sg_file_meta "$target")
+    case "$1" in *[4567]) ;; *) exit 1;; esac
+    parent=${target%/*}
+    while [ "$parent" != "$SG_TARGET_ROOT" ]; do
+        set -- $(sg_file_meta "$parent")
+        case "$1" in *[1357]) ;; *) exit 1;; esac
+        parent=${parent%/*}
+    done
+)
 sg_path() { case "$1" in "$HMG_SEOGAEMO_STATE"/*) sg_print "$1";; *) sg_print "$SG_WIRELESS_TEST_ROOT$1";; esac; }
 sg_key() { sg_print "$HMG_SEOGAEMO_STATE/$2$1"; }
 sg_file_baseline() {
@@ -43,6 +73,7 @@ sg_file_put() {
     sg_file_baseline "$target"
     dest=$(sg_path "$target"); mkdir -p "${dest%/*}"
     cp "$HMG_SEOGAEMO_MODULE_DIR/$source" "$dest"
+    sg_payload_dirs "$target"; chmod "${3:-644}" "$dest"
     sg_file_mark_applied "$target"
     sg_print "file $target" >> "$HMG_SEOGAEMO_STATE/ops.list"
 }
@@ -197,6 +228,32 @@ mkdir -p "$T/root/proc/123"
 sg_print '/system/lib/libhmg_seogaemo_wireless_hook.so' > "$T/root/proc/123/maps"
 run status || fail loaded-status
 grep -q '^state=on$' "$T/output" || fail loaded-state
+# Existing applied wrapper must not skip repair of old private ancestors.
+chmod 700 "$T/root/system/etc/hmg-seogaemo" "$T/root/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes"
+run status && fail unreadable-assets-accepted
+grep -q 'assets unreadable' "$T/output" || fail unreadable-detail
+# A marker write failure must stop before any permission repair.
+export SG_FAIL_RESTART_MARKER=1
+run apply && fail failed-restart-marker-accepted
+case "$(ls -ldn "$T/root/system/etc/hmg-seogaemo")" in drwx------*) ;; *) fail marker-failure-mutated-dirs;; esac
+unset SG_FAIL_RESTART_MARKER
+# Interruption after directories become searchable must retain restart intent.
+export SG_FAIL_AFTER_DIR_REPAIR=1
+run apply && fail interrupted-repair-accepted
+unset SG_FAIL_AFTER_DIR_REPAIR
+[ "$(cat "$T/state/assets-repaired-boot")" = boot-two ] || fail interrupted-restart-marker
+run status || fail interrupted-repair-status
+grep -q '^state=pending-restart$' "$T/output" || fail interrupted-repair-restart
+run apply || fail already-applied-repair
+grep -q '^state=pending-restart$' "$T/output" || fail repaired-restart
+case "$(ls -ldn "$T/root/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes")" in drwxr-xr-x*) ;; *) fail repair-mode;; esac
+sg_print "boot-three" > "$T/root/proc/sys/kernel/random/boot_id"
+run status || fail after-repair-status
+grep -q '^state=on$' "$T/output" || fail after-repair-state
+chmod 600 "$T/root/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/carplay-audio-formats.recipe"
+run status && fail private-recipe-accepted
+grep -q 'assets unreadable' "$T/output" || fail private-recipe-detail
+chmod 644 "$T/root/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/carplay-audio-formats.recipe"
 rm -f "$T/bin/ps" "$T/root/proc/123/maps"
 sg_print "external-change" >> "$T/root/system/onebin/neev_kr/featurexml.cfg"
 run revert && fail drift-accepted

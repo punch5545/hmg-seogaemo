@@ -95,11 +95,14 @@ if [ "$1" = export ]; then
         echo 'state=failed'; echo 'restart=none'; echo 'detail=Ledger exceeds 50 MB'; exit 1;
     }
     stamp=$(date +%Y%m%d-%H%M%S)
-    case "$export_base" in */hmg-seogaemo-export) dest=$export_base/$stamp;; *)
-        dest=$export_base/HMG-Seogaemo-export/$stamp;; esac
-    mkdir -p "$dest" || refuse 1 failed 'Could not prepare module operation'
-    cp -R "$SG_DATA_ROOT/ledger" "$dest/ledger" || refuse 1 failed 'Could not prepare module operation'
-    mkdir -p "$dest/desired" || refuse 1 failed 'Could not prepare module operation'
+    if [ "$export_mode" = adb ]; then container=$export_base
+    else container=$export_base/HMG-Seogaemo-export; fi
+    sg_path_safe "$container" || refuse 1 failed 'Could not prepare export'
+    dest=$container/$stamp
+    sg_path_safe "$dest" || refuse 1 failed 'Could not prepare export'
+    mkdir -p "$dest" || refuse 1 failed 'Could not prepare export'
+    cp -R "$SG_DATA_ROOT/ledger" "$dest/ledger" || refuse 1 failed 'Could not prepare export'
+    mkdir -p "$dest/desired" || refuse 1 failed 'Could not prepare export'
     for record in "$SG_DATA_ROOT"/desired/*; do
         [ -f "$record" ] && cp "$record" "$dest/desired/" || true
     done
@@ -109,11 +112,7 @@ if [ "$1" = export ]; then
     export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE SG_DATA_ROOT
     . "$base/lib/common.sh"
     hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
-    chmod -R 755 "$dest" || refuse 1 failed 'Could not prepare module operation'
-    # umask 077 also protects mkdir -p parents; adb must traverse this root.
-    if [ "$export_mode" = adb ]; then
-        chmod 755 "$export_base" || refuse 1 failed 'Could not prepare module operation'
-    fi
+    sg_export_public "$dest" && chmod 0755 "$container" || refuse 1 failed 'Could not prepare export'
     sg_print "state=on" "restart=none" "detail=$dest"
     exit 0
 fi

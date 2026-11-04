@@ -77,8 +77,9 @@ if [ "$1" = export ]; then
         break
     done
     [ -n "$target" ] || target=${SG_EXPORT_ROOT:-/data/local/tmp/hmg-seogaemo-export}/$(date +%Y%m%d-%H%M%S)
+    sg_path_safe "$target" || exit 1
     hmg_seogaemo_map_export "$target" || { sg_print "state=failed" "restart=none" "detail=no verified map"; exit 1; }
-    chmod -R 755 "$target" || exit 1
+    sg_export_public "$target" && chmod 0755 "${target%/*}" || exit 1
     sg_print "state=on" "restart=none" "detail=$target"
     exit 0
 fi

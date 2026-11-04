@@ -367,6 +367,38 @@ esac
     assert list((car.state / 'stock').glob('recovery.*/b/line.*'))
 
 
+def test_file_metadata_diagnostic(folder):
+    car = Car(folder)
+    target = folder / "target"
+    target.write_text("stock")
+    target.chmod(0o644)
+    payload = folder / "payload"
+    payload.write_text("ours")
+    (car.base / "modules/a.properties").write_text(f"owns_files={target}\n")
+    car.env.update(FAKE_TARGET=str(target), FAKE_PAYLOAD=str(payload))
+    script(car.base / "modules/a.sh", '''
+case "$1" in
+    apply)
+        sg_commit_file "$FAKE_TARGET" "$FAKE_PAYLOAD" "" "" || exit $?
+        sg_status on none enabled ;;
+    revert)
+        sg_revert_all || { sg_status conflict none drift; exit 3; }
+        sg_status off none restored ;;
+    status) sg_status off none restored ;;
+esac
+''')
+    car.run("a", "apply")
+    target.chmod(0o600)  # Same bytes, unexpected metadata.
+    result = car.run("stock", "restore", ok=False)
+    assert "state=conflict" in result.stdout
+    assert f"detail=a file preflight: {target}; backups retained; watch paused" in result.stdout
+    assert list((car.state / "modules/a").glob("file.*/ready"))
+    assert target.read_text() == "ours" and target.stat().st_mode & 0o777 == 0o600
+    target.chmod(0o644)
+    car.run("stock", "restore")
+    assert target.read_text() == "stock" and target.stat().st_mode & 0o777 == 0o644
+
+
 def test_reassert_restore(folder):
     car = Car(folder)
     manifest = car.base / 'modules/a.properties'
@@ -438,9 +470,9 @@ def test_snapshot_free_recovery(folder):
 with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
                  test_late_failure, test_detached_failure, test_missing_handoff,
-                 test_shared_lines, test_reassert_restore, test_snapshot_free_recovery,
+                 test_shared_lines, test_file_metadata_diagnostic, test_reassert_restore, test_snapshot_free_recovery,
                  test_damaged_selection_recovery):
-        folder = Path(directory) / test.__name__
+        folder = Path(directory).resolve() / test.__name__
         folder.mkdir()
         test(folder)
 print('stock restore, shared hook, and detached uninstall passed')

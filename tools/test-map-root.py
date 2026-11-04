@@ -10,7 +10,7 @@ from testlib import car_env, SHELL, copy_shell_script
 ROOT=Path(__file__).resolve().parent.parent
 os.environ.update(car_env())
 with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-root-") as tmp:
-    t=Path(tmp);base=t/"package";state=t/"state";fake=t/"bin"
+    t=Path(tmp).resolve();base=t/"package";state=t/"state";fake=t/"bin"
     for folder in (base/"bin",base/"core",base/"lib",fake,state):folder.mkdir(parents=True,exist_ok=True)
     for source,dest in (("nemesis/package/bin/hmg-seogaemo-root","bin/hmg-seogaemo-root"),
                         ("nemesis/package/core/hmg-seogaemo-map.sh","core/hmg-seogaemo-map.sh"),
@@ -34,6 +34,12 @@ sg_print state=on restart=none "detail=map verified"
     env=dict(os.environ,PATH=str(fake)+":"+os.environ["PATH"],SG_DATA_ROOT=str(state),
              SG_EXPORT_ROOT=str(t/"export"),SG_FAKE_MAP=str(ROOT/"maps/hyundai/ioniq5/kor/260902"),
              SG_USB_DIRS=str(t/"no-usb"))
+    (t/"export").mkdir(mode=0o700)
+    state.chmod(0o700)
+    def public_tree(container):
+        for entry in [container, *container.rglob("*")]:
+            assert entry.stat().st_mode & 0o777 == (0o755 if entry.is_dir() else 0o644), entry
+        assert state.stat().st_mode & 0o777 == 0o700
     command=[SHELL,str(base/"bin/hmg-seogaemo-root")]
     for invalid in ("bad","apply","../../etc"):
         result=subprocess.run(command+["map",invalid],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
@@ -51,8 +57,20 @@ sg_print state=on restart=none "detail=map verified"
     destination=Path(exported.stdout.split("detail=",1)[1].strip())
     assert (destination/"maps/hyundai/ioniq5/kor/260902/map.json").is_file()
     assert (destination/"maps/hyundai/ioniq5/kor/260902/car.json").is_file()
+    public_tree(t/"export")
     ledger_export=subprocess.run(command+["export","adb"],env=env,capture_output=True,text=True)
     assert ledger_export.returncode==0,(ledger_export.stdout,ledger_export.stderr)
     ledger_destination=Path(ledger_export.stdout.split("detail=",1)[1].strip())
     assert (ledger_destination/"maps/hyundai/ioniq5/kor/260902/map.json").is_file()
+    public_tree(t/"export")
+    usb=t/"usb"
+    usb.mkdir(mode=0o711)
+    (usb/"HMG-Seogaemo-export").mkdir(mode=0o700)
+    mounts=t/"mounts"
+    mounts.write_text(f"/dev/sda1 {usb} vfat rw 0 0\n")
+    env.update(SG_USB_DIRS=str(usb), SG_MOUNTS_FILE=str(mounts))
+    exported=subprocess.run(command+["map","export"],env=env,capture_output=True,text=True)
+    assert exported.returncode==0,(exported.stdout,exported.stderr)
+    public_tree(usb/"HMG-Seogaemo-export")
+    assert usb.stat().st_mode & 0o777 == 0o711
 print("map root verbs, ledger publish, and PR export passed")

@@ -51,6 +51,12 @@ if sg_file_mark_applied /owned; then exit 1; fi
     run(runner, env=dict(os.environ, HMG_SEOGAEMO_STATE=str(temp)))
 
 
+def fake_ownership(fake):
+    for name in ("ls", "chown"):
+        script(fake / name, f'exec {sys.executable} "{ROOT / "tools/testlib/fake-ownership.py"}" {name} "$@"\n')
+    script(fake / "nemesis", "exit 0\n")
+
+
 def run(path, *args, env, ok=True):
     result = subprocess.run([SHELL, str(path), *args], env=car_env(env), text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -375,7 +381,7 @@ def test_mutation_api_and_export(temp):
     script(fake / "setprop", 'sg_write "$2" > "$FAKE_LIVE/$1"\n')
     script(fake / "stop", 'sg_write stopped > "$FAKE_LIVE/init.svc.$1"\n')
     script(fake / "start", 'sg_write running > "$FAKE_LIVE/init.svc.$1"\n')
-    script(fake / "chown", 'exit 0\n')
+    fake_ownership(fake)
     script(fake / "nemesis", 'echo "$*" >> "$FAKE_REMOUNTS"\n')
     # Toolbox mount accepts "-o bind source target".
     script(fake / "mount", '''
@@ -401,7 +407,7 @@ sg_print "bind $4 ext4 rw 0 0" > "$SG_MOUNTS_FILE"
     mounts = base / "mounts"
     mounts.write_text("")
     env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
-               FAKE_LIVE=str(live), FAKE_REMOUNTS=str(base / "remounts"),
+               FAKE_OWNERS=str(base / "owners.json"), FAKE_LIVE=str(live), FAKE_REMOUNTS=str(base / "remounts"),
                SG_DATA_ROOT=str(base / "data"), HMG_SEOGAEMO_STATE=str(state),
                HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_MODULE_DIR=str(base / "payload"),
                SG_PROPERTY_ROOT=str(base / "property"), SG_MOUNTS_FILE=str(mounts))
@@ -418,6 +424,12 @@ sg_prop_set demo ours
 sg_file_put "{put}" new
 sg_file_replace_line "{replace}" before after
 sg_file_delete "{deleted}"
+chmod 0600 "$HMG_SEOGAEMO_MODULE_DIR/bind"
+if sg_bind_mount "{bound}" bind; then exit 1; fi
+chmod 0644 "$HMG_SEOGAEMO_MODULE_DIR/bind"
+chown 1000:1000 "$HMG_SEOGAEMO_MODULE_DIR/bind"
+if sg_bind_mount "{bound}" bind; then exit 1; fi
+chown 0:0 "$HMG_SEOGAEMO_MODULE_DIR/bind"
 sg_bind_mount "{bound}" bind
 cp "{bound}.under" "{bound}"
 : > "$SG_MOUNTS_FILE"
@@ -454,15 +466,21 @@ sg_revert_all
     assert export_root.stat().st_mode & 0o777 == 0o755
     # Every exported ancestor is traversable and every file readable by shell.
     for entry in export_root.rglob("*"):
-        assert entry.stat().st_mode & (0o005 if entry.is_dir() else 0o004) == (0o005 if entry.is_dir() else 0o004)
+        assert entry.stat().st_mode & 0o777 == (0o755 if entry.is_dir() else 0o644)
     assert (exported.parents[1] / "ro.build.product").read_text().strip() == "NEEV.KOR.260902"
     usb = base / "usb0"
-    usb.mkdir()
+    usb.mkdir(mode=0o711)
+    (usb / "HMG-Seogaemo-export").mkdir(mode=0o700)
+    private_mode = state.stat().st_mode & 0o777
     mounts.write_text(f"/dev/sda1 {usb} vfat rw 0 0\n")
     env["SG_USB_DIRS"] = str(usb)
     result = run(base / "bin/hmg-seogaemo-root", "export", "usb", env=env)
     assert "state=on" in result.stdout
     assert list(usb.glob("HMG-Seogaemo-export/*/ledger/ledger.tsv"))
+    assert usb.stat().st_mode & 0o777 == 0o711
+    assert state.stat().st_mode & 0o777 == private_mode
+    for entry in [usb / "HMG-Seogaemo-export", *(usb / "HMG-Seogaemo-export").rglob("*")]:
+        assert entry.stat().st_mode & 0o777 == (0o755 if entry.is_dir() else 0o644)
 
 
 def test_service_call_api(temp):
@@ -569,7 +587,8 @@ echo detail=
     log.write_text("")
     for name in ("a", "b"):
         (state / "desired" / name).write_text("off")
-        ready = state / "modules" / name / "prop.test" / "ready"
+        # Interrupted directory-only applies must be found in reverse discovery.
+        ready = state / "modules" / name / ("dir.key" if name == "a" else "dir-order")
         ready.parent.mkdir(parents=True)
         ready.write_text("1")
     run(base / "svc/reconcile.sh", env=env)
@@ -691,6 +710,12 @@ def test_lint(temp):
     assert subprocess.run(["python3", str(lint), str(safe)], capture_output=True).returncode == 0
     script(safe, 'setprop demo value\n')
     assert subprocess.run(["python3", str(lint), str(safe)], capture_output=True).returncode != 0
+    for body in ('sg_file_put /system/etc/private payload 0600 0:0\n',
+                 'ASSET=/system/etc/hmg-seogaemo/test\nsg_file_put "$ASSET/private" payload 600 0:0\n'):
+        script(safe, body)
+        assert subprocess.run(["python3", str(lint), str(safe)], capture_output=True).returncode != 0
+    script(safe, 'sg_file_put /system/etc/private payload 0600 0:0 # payload-mode: allow -- root-only boot secret\n')
+    assert subprocess.run(["python3", str(lint), str(safe)], capture_output=True).returncode == 0
     package = temp / "nemesis/package/bin/bad.sh"
     lint = ROOT / "tools/lint-android44-shell.py"
     script(package, 'head -c 5 /tmp/file\n')
@@ -740,18 +765,172 @@ def test_system_directory_mode(temp):
     base = temp / "dir-mode"
     base.mkdir()
     runner = base / "runner"
+    fake = base / "fake"
+    fake_ownership(fake)
+    script(fake / "getprop", "echo firmware\n")
+    system = base / "system"
+    namespace = system / "etc/hmg-seogaemo"
+    (system / "etc").mkdir(parents=True)
+    for module in ("a", "b"):
+        manifest = base / "modules" / f"{module}.properties"
+        manifest.parent.mkdir(exist_ok=True)
+        manifest.write_text(f"owns_files={namespace}/{module}/recipes/audio.recipe\n")
+    payload = base / "payload"
+    payload.mkdir()
+    (payload / "recipe").write_text("patch")
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+               FAKE_OWNERS=str(base / "owners.json"), SG_TARGET_ROOT=str(base),
+               SG_DATA_ROOT=str(base / "data"), HMG_SEOGAEMO_BASE=str(base),
+               HMG_SEOGAEMO_STATE=str(base / "data/modules/a"), HMG_SEOGAEMO_MODULE_DIR=str(payload))
+    def check(body, ok=True):
+        script(runner, "set -eu\numask 077\n" + body)
+        return run(runner, env=env, ok=ok)
+    apply = f'sg_file_put "{namespace}/a/recipes/audio.recipe" recipe 0644 0:0\n'
+    check(apply + f'sg_public_readable "{namespace}/a/recipes/audio.recipe"\n')
+    for target in (namespace, namespace / "a", namespace / "a/recipes"):
+        assert target.stat().st_mode & 0o777 == 0o755
+    check(f'HMG_SEOGAEMO_STATE="{base}/data/modules/b"\nsg_file_put "{namespace}/b/recipes/audio.recipe" recipe 0644 0:0\n')
+    check("sg_revert_all\n")
+    assert namespace.is_dir() and not (namespace / "a").exists()
+    check(f'HMG_SEOGAEMO_STATE="{base}/data/modules/b"\nsg_revert_all\n')
+    assert not namespace.exists()
+    # Legacy 0700 ancestors: preserve their real baseline and repair traversal.
+    (namespace / "a/recipes").mkdir(parents=True)
+    for target in (namespace, namespace / "a", namespace / "a/recipes"):
+        target.chmod(0o700)
+    check(f'chown 1000:1001 "{namespace}" "{namespace}/a" "{namespace}/a/recipes"\n')
+    # Interrupted chown/chmod sequence recognizes only the journaled intermediate.
+    check(f'chmod() {{ [ "$2" != "{namespace}" ] || return 1; command chmod "$@"; }}\nsg_payload_dirs "{namespace}/a/recipes/audio.recipe"\n', ok=False)
+    check("sg_revert_all\n")
+    check(f'[ "$(sg_file_meta "{namespace}")" = "0700 1000 1001" ]\n')
+    check(apply)
+    # Directory drift refuses before any file restores.
+    (namespace / "a/recipes").chmod(0o711)
+    result = check("sg_revert_all\n", ok=False)
+    assert f"info.restore_conflict=dir preflight: {namespace}/a/recipes" in result.stdout
+    result = check("sg_dirs_revert\n", ok=False)
+    assert f"info.restore_conflict=dir restore: {namespace}/a/recipes" in result.stdout
+    result = check(apply, ok=False)
+    assert f"info.restore_conflict=dir apply: {namespace}/a/recipes" in result.stdout
+    assert (namespace / "a/recipes/audio.recipe").read_text() == "patch"
+    (namespace / "a/recipes").chmod(0o755)
+    # Simulate loss after metadata restoration, before the restored marker.
+    check("sg_remount_ro() { exit 77; }\nsg_dirs_revert\n", ok=False)
+    assert (namespace / "a/recipes").stat().st_mode & 0o777 == 0o700
+    check("sg_dirs_preflight\n")
+    (namespace / "a/recipes").chmod(0o711)
+    check("sg_dirs_preflight\n", ok=False)
+    (namespace / "a/recipes").chmod(0o700)
+    # A failed restored-marker write also remains resumable.
+    check('sg_write() { case "$1" in 1) return 1;; *) printf "%s" "$1";; esac; }\nsg_dirs_revert\n', ok=False)
+    check("sg_revert_all\n")
+    for target in (namespace, namespace / "a", namespace / "a/recipes"):
+        assert target.stat().st_mode & 0o777 == 0o700
+        check(f'[ "$(sg_file_meta "{target}")" = "0700 1000 1001" ]\n')
+    shutil.rmtree(namespace)
+    # A failed file copy still leaves directory-only material for rollback.
+    script(fake / "cp", '[ "$1" != "$HMG_SEOGAEMO_MODULE_DIR/recipe" ] || exit 1\n/bin/cp "$@"\n')
+    check(apply, ok=False)
+    check("sg_restore_material\n")
+    check("sg_revert_all\n")
+    check("sg_restore_material\n", ok=False)
+    check("sg_revert_all\n")  # Empty restore remains idempotent.
+    assert not namespace.exists()
+    (fake / "cp").unlink()
+    check(apply)
+    (namespace / "a/recipes/unrelated").write_text("external")
+    check("sg_revert_all\n", ok=False)
+    assert list((base / "data/payload-dirs").glob("*/ready"))
+    (namespace / "a/recipes/unrelated").unlink()
+    check("sg_revert_all\n")
+    assert not namespace.exists()
+    # Ancestor symlink substitution never follows into another tree.
+    outside = base / "outside"
+    outside.mkdir()
+    namespace.symlink_to(outside, target_is_directory=True)
+    check(apply, ok=False)
+    assert not list(outside.iterdir())
+
+
+def test_public_readable(temp):
+    base = temp / "public-bits"
+    directory = base / "parent"
+    directory.mkdir(parents=True)
+    target = directory / "recipe"
+    target.write_text("patch")
+    runner = base / "runner"
+    env = dict(os.environ, SG_TARGET_ROOT=str(base))
+    # All low permission digits: owner/group bits must never imply public access.
+    for digit in range(8):
+        target.chmod(0o660 + digit)
+        script(runner, f'sg_public_readable "{target}"\n')
+        run(runner, env=env, ok=digit >= 4)
+    target.chmod(0o664)
+    for digit in range(8):
+        directory.chmod(0o770 + digit)
+        run(runner, env=env, ok=bool(digit & 1))
+    directory.chmod(0o755)
+
+
+def test_file_metadata_guards(temp):
+    base = temp / "file-metadata"
+    fake = base / "fake"
+    fake_ownership(fake)
+    script(fake / "getprop", "echo firmware\n")
+    (base / "modules").mkdir()
+    target = base / "target"
+    target.write_text("stock")
+    payload = base / "payload"
+    payload.mkdir()
+    (payload / "new").write_text("ours")
+    (base / "modules/a.properties").write_text(f"owns_props=demo\nowns_files={target}\n")
+    backing = base / "property"
+    backing.mkdir()
+    (backing / "demo").write_bytes(b"stock backing\x00")
+    (backing / "demo").chmod(0o600)
+    script(fake / "getprop", 'if [ "$1" = demo ]; then cat "$SG_PROPERTY_ROOT/live" 2>/dev/null || :; else echo firmware; fi\n')
+    script(fake / "setprop", 'sg_write "$2" > "$SG_PROPERTY_ROOT/live"\n')
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+               FAKE_OWNERS=str(base / "owners.json"), SG_DATA_ROOT=str(base / "data"),
+               SG_PROPERTY_ROOT=str(backing),
+               HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_STATE=str(base / "data/modules/a"),
+               HMG_SEOGAEMO_MODULE_DIR=str(payload))
+    runner = base / "runner"
     script(runner, f'''
 set -eu
-umask 077
-SG_TARGET_ROOT="{base}"
-# Directories under /system are readable by the system user; state directories stay private.
-sg_mkdir_target "{base}/system/etc/hmg-seogaemo/x/recipes"
-sg_mkdir_target "{base}/state/a/b"
-case "$(ls -ldn "{base}/system/etc/hmg-seogaemo/x/recipes")" in drwxr-xr-x*) ;; *) exit 1 ;; esac
-case "$(ls -ldn "{base}/system/etc/hmg-seogaemo/x")" in drwxr-xr-x*) ;; *) exit 1 ;; esac
-case "$(ls -ldn "{base}/state/a/b")" in drwx------*) ;; *) exit 1 ;; esac
+chown 1000:1001 "$SG_PROPERTY_ROOT/demo"
+sg_prop_set demo ours
+chmod 0644 "$SG_PROPERTY_ROOT/demo"
+chown 0:0 "$SG_PROPERTY_ROOT/demo"
+sg_prop_restore demo
+[ "$(sg_file_meta "$SG_PROPERTY_ROOT/demo")" = "0600 1000 1001" ]
+sg_file_put "{target}" new 0644 0:0
+chmod 0600 "{target}"
+if sg_applied "{target}"; then exit 1; fi
+if sg_restore_preflight; then exit 1; fi
+if sg_file_restore "{target}"; then exit 1; fi
+if sg_file_put "{target}" new 0644 0:0; then exit 1; fi
+if sg_file_delete "{target}"; then exit 1; fi
+chmod 0644 "{target}"
+chown 1000:1000 "{target}"
+if sg_applied "{target}"; then exit 1; fi
+if sg_revert_all; then exit 1; fi
+chown 0:0 "{target}"
+rm "$HMG_SEOGAEMO_STATE/file.$(sg_file_key "{target}")/applied-meta"
+sg_applied "{target}"
+[ -f "$HMG_SEOGAEMO_STATE/file.$(sg_file_key "{target}")/applied-meta" ]
+sg_revert_all
+# A chown that lies must fail before replacing the live file.
+chown() {{ :; }}
+if sg_file_put "{target}" new 0644 1000:1000; then exit 1; fi
+[ "$(cat "{target}")" = stock ]
+chown() {{ return 1; }}
+if sg_file_put "{target}" new 0644 0:0; then exit 1; fi
+[ "$(cat "{target}")" = stock ]
 ''')
-    run(runner, env=dict(os.environ))
+    result = run(runner, env=env)
+    for stage in ("preflight", "restore", "apply", "delete"):
+        assert f"info.restore_conflict=file {stage}: {target}" in result.stdout
 
 
 def test_zygote_and_dex(temp):
@@ -782,7 +961,7 @@ def test_zygote_and_dex(temp):
     (live / "ro.build.product").write_text("NEEV.KOR.260902")
     fake = base / "fake"
     script(fake / "getprop", 'cat "$FAKE_LIVE/$1" 2>/dev/null || true\n')
-    script(fake / "chown", 'exit 0\n')
+    fake_ownership(fake)
     cache = target / "data/dalvik-cache/system@framework@hmg-seogaemo-wireless-hook.jar@classes.dex"
     cache.write_bytes(b"previous-cache")
     app_dir = target / "data/data/com.daudio.app.dipo/app_hmg-seogaemo-wireless-dex"
@@ -790,7 +969,7 @@ def test_zygote_and_dex(temp):
                SG_DATA_ROOT=str(base / "data/nemesis/backup/hmg-seogaemo"),
                SG_TARGET_ROOT=str(target), HMG_SEOGAEMO_STATE=str(state),
                HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_MODULE_DIR=str(payload),
-               FAKE_LIVE=str(live))
+               FAKE_OWNERS=str(base / "owners.json"), FAKE_LIVE=str(live))
     common = ROOT / "nemesis/package/lib/common.sh"
     runner = base / "run-zygote"
     script(runner, f'''
@@ -847,7 +1026,7 @@ if sg_revert_all; then exit 1; fi
 
 
 with tempfile.TemporaryDirectory() as directory:
-    root = Path(directory)
+    root = Path(directory).resolve()
     test_toolbox_md5(root)
     test_file_key_failures(root)
     test_common(root)
@@ -864,4 +1043,6 @@ with tempfile.TemporaryDirectory() as directory:
     test_zygote_and_dex(root)
     test_remount_ro_busy(root)
     test_system_directory_mode(root)
+    test_public_readable(root)
+    test_file_metadata_guards(root)
 print("shared runtime tests passed")

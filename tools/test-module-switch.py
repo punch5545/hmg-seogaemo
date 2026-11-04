@@ -128,7 +128,7 @@ public class SwitchTest {
 }'''
 }
 with tempfile.TemporaryDirectory(prefix='hmg-seogaemo-switch-') as folder:
-    temp = Path(folder)
+    temp = Path(folder).resolve()
     for name, content in SOURCES.items():
         target = temp / 'src' / name
         target.parent.mkdir(parents=True, exist_ok=True)
