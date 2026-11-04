@@ -121,9 +121,13 @@ public final class CpTurnsTest {
 
         t.maneuver(msg(0, U16, i(1), 1, U16, i(0), 5, U32, i(250)));
         t.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES)));
-        expect("maneuver update without its exit angle: DiPO resets the angle, so no turn icon (crossroad only)", "road [Main St]");
+        expect("maneuver update without its exit angle: no exact icon, so the right-turn fallback (67) keeps the stream going",
+                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
+                "list {1 70 0 [Oak Ave] [] 0.49720323 2} {2 72 0 [Pine St] [] 1.2430081 2}");
         t.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES)));
-        expect("(the update above, still without its exit angle: crossroad only)", "road [Main St]");
+        expect("(the update above, still without its exit angle: fallback again)",
+                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
+                "list {1 70 0 [Oak Ave] [] 0.49720323 2} {2 72 0 [Pine St] [] 1.2430081 2}");
         t.maneuver(maneuver(0, RIGHT, 0, 0, 90, "Main St", 250));
 
         t.routeGuidance(msg(0, U16, i(1), 7, U32, i(100), 6, U64, l(0), 5, U64, l(0)));
@@ -170,7 +174,7 @@ public final class CpTurnsTest {
         t.disconnected();
         expect("iAP2 session ended: HUD cleared", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("0.5"), 12, ENUM, i(MILES), 13, U16, i(5), 19, STR, s("Maps")));
-        expect("after the session ended: maneuvers gone, a new source isn't a change", "");
+        expect("after the session ended: maneuvers gone (HUD distance only), a new source isn't a change", "2c 2 5 0 0 0 0 0 0 0");
         c.calls.clear();
 
         t.maneuver(msg(0, U16, i(7), 1, U16, i(0), 3, ENUM, i(LEFT), 4, STR, s("Comp 7 Rd"), 8, ENUM, i(0), 9, ENUM, i(0), 11, U8, i(-60)));
@@ -235,6 +239,10 @@ public final class CpTurnsTest {
         check("still nothing: no angle (0), a roundabout at an unlisted angle, an unknown type",
                 CpTurns.icon(1, 0, 0, 0, 1) == 0 && CpTurns.icon(2, 0, 0, 0, 1) == 0 && CpTurns.icon(1, 0, 1, -75, 1) == 0
                         && CpTurns.icon(99, 0, 0, 75, 1) == 0);
+        check("fallback icon is never 0: left 70, right 67, keep left 71, keep right 66, U-turn 72/73, arrive 112, roundabout left -75 70, unknown 65",
+                CpTurns.fallbackIcon(1, 0, 0, 0) == 70 && CpTurns.fallbackIcon(2, 0, 0, 0) == 67 && CpTurns.fallbackIcon(13, 0, 0, 0) == 71
+                        && CpTurns.fallbackIcon(14, 0, 0, 0) == 66 && CpTurns.fallbackIcon(4, 0, 0, 0) == 72 && CpTurns.fallbackIcon(4, 1, 0, 0) == 73
+                        && CpTurns.fallbackIcon(12, 0, 0, 0) == 112 && CpTurns.fallbackIcon(6, 0, 1, -75) == 70 && CpTurns.fallbackIcon(99, 0, 0, 0) == 65);
         check("turns ahead for sharp/slight types: 47 -> 69, 48 -> 68, 49 -> 71, 50 -> 66",
                 CpTurns.aheadIcon(47, 0, 0, 0) == 69 && CpTurns.aheadIcon(48, 0, 0, 0) == 68 && CpTurns.aheadIcon(49, 0, 0, 0) == 71
                         && CpTurns.aheadIcon(50, 0, 0, 0) == 66 && CpTurns.aheadIcon(99, 0, 0, 0) == 64);
