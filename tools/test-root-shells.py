@@ -36,7 +36,7 @@ def main():
     # private temporary paths, including two invocations of the same module.
     suites = ("test-runtime.py", "test-line-ownership.py", "test-stock.py",
               "test-reconcile-map.py", "test-package.py", "test-entry-dispatch.py",
-              "test-map-root.py")
+              "test-map-root.py", "test-diagnostics.py")
     tasks = deque()
     for suite in suites:
         for shell in reversed(shells):

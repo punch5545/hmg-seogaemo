@@ -2,6 +2,27 @@
 # Fixed relative runtime directories; CarPlay may publish runtime/<module>/ logs.
 HMG_SEOGAEMO_DIAGNOSTIC_RUNTIME_DIRS=runtime
 
+# Best effort (toolbox has no pkill): print up to three levels of descendants of
+# $1 by scanning /proc. Used to stop a probe's grandchildren, not only its shell.
+hmg_seogaemo_diag_descendants() {
+    diag_frontier=$1; diag_found=; diag_level=0
+    while [ "$diag_level" -lt 3 ] && [ -n "$diag_frontier" ]; do
+        diag_next=
+        for diag_stat in /proc/[0-9]*/stat; do
+            diag_line=
+            { read -r diag_line < "$diag_stat"; } 2>/dev/null || continue
+            set -- ${diag_line#*) }
+            for diag_parent in $diag_frontier; do
+                [ "$2" = "$diag_parent" ] || continue
+                diag_child=${diag_stat#/proc/}
+                diag_next="$diag_next ${diag_child%/stat}"
+            done
+        done
+        diag_found="$diag_found$diag_next"; diag_frontier=$diag_next; diag_level=$((diag_level + 1))
+    done
+    echo $diag_found
+}
+
 hmg_seogaemo_diagnostics() (
     diag=$1/diagnostics
     mkdir -p "$diag" || exit 1
@@ -24,31 +45,52 @@ hmg_seogaemo_diagnostics() (
         reserve "$2" || return 0
         mkdir -p "$diag/${2%/*}" || return 1
         bytes=$(sg_file_size "$1") || return 1
+        # Block-sized reads from the regular file (a byte-at-a-time dd on a
+        # head unit is far too slow); keep the last 16 blocks = 64 KiB.
+        blocks=$(((bytes + 4095) / 4096))
         skip=0
-        if [ "$bytes" -gt 65536 ]; then
-            skip=$((bytes - 65536))
+        if [ "$blocks" -gt 16 ]; then
+            skip=$((blocks - 16))
             sg_print "truncated to last 65536 bytes: $2" >> "$diag/manifest.txt"
         fi
-        dd if="$1" bs=1 skip="$skip" count=65536 2>/dev/null | {
+        dd if="$1" bs=4096 skip="$skip" count=16 2>/dev/null | {
             # A tail can begin inside a credential line: discard that fragment.
             if [ "$skip" -gt 0 ]; then IFS= read -r fragment || :; fi
             redact
-        } | dd bs=1 count=65536 2>/dev/null > "$diag/$2"
+        } > "$diag/.stage.$$"
+        # Redaction can lengthen short lines; cap from a file, never a pipe
+        # (a short pipe read would make a block-counted dd stop early).
+        dd if="$diag/.stage.$$" bs=4096 count=16 2>/dev/null > "$diag/$2"
+        rm -f "$diag/.stage.$$"
     }
     probe() {
         name=$1; shift
-        # Bound duration and pipe output. Status alone is read-only.
+        # Bound duration. Output goes to a file, never a pipe, so a lingering
+        # grandchild cannot block this function; status alone is read-only.
+        : > "$diag/.probe.$$"
         (
-            /system/bin/sh "$base/bin/hmg-seogaemo-root" "$@" 2>&1 &
+            /system/bin/sh "$base/bin/hmg-seogaemo-root" "$@" > "$diag/.probe.$$" 2>&1 < /dev/null &
             pid=$!
-            (sleep 10; kill "$pid" 2>/dev/null) >/dev/null 2>&1 &
+            (
+                n=0
+                while [ "$n" -lt 10 ]; do
+                    sleep 1
+                    kill -0 "$pid" 2>/dev/null || exit 0
+                    n=$((n + 1))
+                done
+                kill $(hmg_seogaemo_diag_descendants "$pid") "$pid" 2>/dev/null
+            ) > /dev/null 2>&1 < /dev/null &
             guard=$!
             wait "$pid"
             code=$?
             kill "$guard" 2>/dev/null || :
             wait "$guard" 2>/dev/null || :
+            kill $(hmg_seogaemo_diag_descendants "$pid") 2>/dev/null || :
             sg_print "probe exit=$code: $name" >> "$diag/manifest.txt"
-        ) | dd bs=1 count=65536 2>/dev/null | redact | dd bs=1 count=65536 2>/dev/null > "$diag/$name"
+        )
+        dd if="$diag/.probe.$$" bs=4096 count=16 2>/dev/null | redact > "$diag/.stage.$$"
+        dd if="$diag/.stage.$$" bs=4096 count=16 2>/dev/null > "$diag/$name"
+        rm -f "$diag/.probe.$$" "$diag/.stage.$$"
     }
     for source in "$SG_DATA_ROOT"/reconcile.log* "$SG_DATA_ROOT"/watcher.log*; do
         copy_log "$source" "logs/${source##*/}" || exit 1
@@ -87,7 +129,9 @@ hmg_seogaemo_diagnostics() (
                     ls -ldn "$path" 2>&1
                 done
             done
-        ) | dd bs=1 count=8192 2>/dev/null >> "$diag/owned-paths.txt"
+        ) > "$diag/.stage.$$"
+        dd if="$diag/.stage.$$" bs=4096 count=2 2>/dev/null >> "$diag/owned-paths.txt"
+        rm -f "$diag/.stage.$$"
     done < "$base/modules.list"
     (
         IFS=' ,'
@@ -98,7 +142,9 @@ hmg_seogaemo_diagnostics() (
                 *) sg_print "$prop=$(getprop "$prop")" | redact;;
             esac
         done
-    ) | dd bs=1 count=65536 2>/dev/null > "$diag/properties.txt"
+    ) > "$diag/.stage.$$"
+    dd if="$diag/.stage.$$" bs=4096 count=16 2>/dev/null > "$diag/properties.txt"
+    rm -f "$diag/.stage.$$"
     # Fixed area, bounded depth, text logs/receipts only; never copy configs.
     for area in $HMG_SEOGAEMO_DIAGNOSTIC_RUNTIME_DIRS; do
         for source in "$SG_DATA_ROOT/$area"/* "$SG_DATA_ROOT/$area"/*/* "$SG_DATA_ROOT/$area"/*/*/* "$SG_DATA_ROOT/$area"/wireless-carplay-and-aa/apps/*/*; do
