@@ -121,18 +121,18 @@ public final class CpTurnsTest {
 
         t.maneuver(msg(0, U16, i(1), 1, U16, i(0), 5, U32, i(250)));
         t.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES)));
-        expect("maneuver update without its exit angle: no misleading arrow, the blank icon 64, but distances, trip and turns ahead still go out",
-                "road [Main St]", "tbt 64 0 0.0 0.1 0 0 2 0 0", "hud f2024046004d00610069006e002000530074", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
+        expect("maneuver update without its exit angle (Apple Maps in Korea sends none): the right-turn type alone gives the right arrow, HUD list not resent",
+                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
                 "list {1 70 0 [Oak Ave] [] 0.49720323 2} {2 72 0 [Pine St] [] 1.2430081 2}");
         t.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES)));
-        expect("(the update above, still without its exit angle: same blank icon, HUD list not resent)",
-                "road [Main St]", "tbt 64 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
+        expect("(the update above, still without its exit angle: same arrow, HUD list not resent)",
+                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
                 "list {1 70 0 [Oak Ave] [] 0.49720323 2} {2 72 0 [Pine St] [] 1.2430081 2}");
         t.maneuver(maneuver(0, RIGHT, 0, 0, 90, "Main St", 250));
 
         t.routeGuidance(msg(0, U16, i(1), 7, U32, i(100), 6, U64, l(0), 5, U64, l(0)));
-        expect("trip under 161 m with miles: feet; no arrival time (the exact icon is back, so the HUD list is resent)",
-                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "hud f2024346004d00610069006e002000530074", "2c 2 1 0 0 0 0 0 0 0", "sub 328.0 0 3 -1 -1 -1 -1 0.0 -1 0",
+        expect("trip under 161 m with miles: feet; no arrival time (same right arrow, HUD list not resent)",
+                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 328.0 0 3 -1 -1 -1 -1 0.0 -1 0",
                 "list {1 70 0 [Oak Ave] [] " + (800 / 1609f) + " 2} {2 72 0 [Pine St] [] " + (2000 / 1609f) + " 2}");
 
         t.routeGuidance(msg(0, U16, i(1), 7, U32, i(0), 6, U64, l(600)));
@@ -260,12 +260,12 @@ public final class CpTurnsTest {
             check("no refresh once guidance state is 0", c.calls.isEmpty());
         }
         check("match kinds: exact, band, angle, semantic, blank",
-                "exact".equals(CpTurns.matchKind(2, 0, 0, 90, 1)) && "band".equals(CpTurns.matchKind(2, 0, 0, 75, 1))
+                "exact".equals(CpTurns.matchKind(2, 0, 0, 90, 1)) && "semantic".equals(CpTurns.matchKind(2, 0, 0, 0, 1)) && "band".equals(CpTurns.matchKind(2, 0, 0, 75, 1))
                         && "angle".equals(CpTurns.matchKind(8, 0, 0, -75, 1)) && "semantic".equals(CpTurns.matchKind(13, 0, 0, 0, 1))
-                        && "blank".equals(CpTurns.matchKind(2, 0, 0, 0, 1)));
+                        && "blank".equals(CpTurns.matchKind(8, 0, 0, 0, 1)));
         boolean sawBlank = false, sawLane = false;
         for (String o : Dipo.observed) {
-            if (o.startsWith("icon type=2 junction=0 side=0 exit~0 => icon=64 kind=blank exit=0")) sawBlank = true;
+            if (o.startsWith("icon type=2 junction=0 side=0 exit~0 => icon=67 kind=semantic exit=0")) sawBlank = true;
             if (o.startsWith("lane n=2")) sawLane = true;
         }
         check("observations: the blank mapping and the lane sighting were recorded (" + Dipo.observed.size() + ")", sawBlank && sawLane && Dipo.flushes > 0);
@@ -288,8 +288,8 @@ public final class CpTurnsTest {
                 CpTurns.fallbackIcon(13, 0, 0, 0) == 71 && CpTurns.fallbackIcon(14, 0, 0, 0) == 66 && CpTurns.fallbackIcon(6, 0, 1, 0) == 96
                         && CpTurns.fallbackIcon(6, 1, 1, 0) == 97 && CpTurns.fallbackIcon(12, 1, 0, 0) == 112 && CpTurns.fallbackIcon(15, 0, 1, 0) == 176
                         && CpTurns.fallbackIcon(4, 0, 0, 0) == 72 && CpTurns.fallbackIcon(4, 1, 0, 0) == 73);
-        check("never a misleading arrow: left/right turn without an angle, off-ramp, unknown type, start route -> 64 (no icon)",
-                CpTurns.fallbackIcon(1, 0, 0, 0) == 64 && CpTurns.fallbackIcon(2, 0, 0, 0) == 64 && CpTurns.fallbackIcon(8, 0, 0, 0) == 64
+        check("left/right turn without an angle: the type's arrow (70/67); off-ramp, unknown type, start route -> 64 (no icon)",
+                CpTurns.fallbackIcon(1, 0, 0, 0) == 70 && CpTurns.fallbackIcon(2, 0, 0, 0) == 67 && CpTurns.fallbackIcon(8, 0, 0, 0) == 64
                         && CpTurns.fallbackIcon(99, 0, 0, 0) == 64 && CpTurns.fallbackIcon(11, 0, 0, 0) == 64);
         check("turns ahead for sharp/slight types: 47 -> 69, 48 -> 68, 49 -> 71, 50 -> 66",
                 CpTurns.aheadIcon(47, 0, 0, 0) == 69 && CpTurns.aheadIcon(48, 0, 0, 0) == 68 && CpTurns.aheadIcon(49, 0, 0, 0) == 71

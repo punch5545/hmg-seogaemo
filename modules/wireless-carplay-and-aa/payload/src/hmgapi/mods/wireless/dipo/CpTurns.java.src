@@ -595,6 +595,13 @@ final class CpTurns {
             return left ? 71 - sharpness : 66 + sharpness;
         }
         switch (type) {
+            // no exit angle (Apple Maps in Korea sends none): the turn type alone says the direction
+            case 1: return 70;    // left turn
+            case 2: return 67;    // right turn
+            case 47: return 69;   // sharp left
+            case 48: return 68;   // sharp right
+            case 49: return 71;   // slight left
+            case 50: return 66;   // slight right
             case 13: return 71;   // keep left
             case 14: return 66;   // keep right
             case 3: return 65;
