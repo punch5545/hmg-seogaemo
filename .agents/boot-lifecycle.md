@@ -58,7 +58,12 @@ stops pm and its `/proc` descendants, and restores the property on every exit
 path (normal, failure, watchdog, TERM/HUP/INT), keeping the original exit status.
 Export diagnostics read logs with 4 KiB `dd` blocks from regular files, write
 probe output to files rather than pipes, and have the 10 second probe guard stop
-the probe's descendants, so a lingering grandchild cannot stall an export.
+the probe's descendants, so a lingering grandchild cannot stall an export. Raw
+(unredacted) bytes are staged only in the private 0700
+`$SG_DATA_ROOT/diagnostics-tmp.<pid>` directory, never in the export folder; it is
+removed on EXIT/HUP/INT/TERM. Only redacted, capped files reach the export. A
+SIGKILLed export leaves its staging directory behind; the next export sweeps
+exact `diagnostics-tmp.<digits>` directories of dead pids.
 Block `skip=`/`count=` use POSIX block units; toolbox `dd` semantics are
 unverified on the car, so check one truncated log in an on-car export.
 
