@@ -339,6 +339,9 @@ def test_pending_install(folder):
         script(fake / "getprop", 'cat "$SG_DATA_ROOT/boot-property"\n')
         script(fake / "setprop", 'echo "$2" > "$SG_DATA_ROOT/boot-property"\n')
         script(fake / "sleep", '''
+# install-apk.sh's pm watchdog polls once a second through this PATH sleep when
+# the shell has no builtin; those ticks are not worker waits.
+[ "$1" != 1 ] || { /bin/sleep 0.01; exit 0; }
 echo "$1" >> "$SG_DATA_ROOT/waits"
 if [ "$PENDING_MODE" = slow ]; then
     n=$(cat "$SG_DATA_ROOT/ready-count" 2>/dev/null); [ -n "$n" ] || n=0; n=$((n + 1))
@@ -362,7 +365,8 @@ esac
 ''')
         (state / "pm-ready").touch()
         env.update(SG_BOOT_ID_FILE=str(state / "boot-id"),
-                   HMG_SEOGAEMO_APK_STAGE=str(state), PENDING_MODE="success")
+                   HMG_SEOGAEMO_APK_STAGE=str(state), PENDING_MODE="success",
+                   HMG_SEOGAEMO_PM_TIMEOUT="100000")
         return base, state, job, env
 
     def worker(base, env):
