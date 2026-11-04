@@ -114,6 +114,33 @@ Original headers remain; modified files have a `Modified by HMG-Seogaemo` marker
 
 ## On-car validation and recovery
 
+The 2026-11-04 permission repair reconciles already-applied assets before returning
+and checks world-read/search bits in status. DiPO runs as UID 1000: readable recipe
+files under a 0700 ancestor still fail registration. HMG-API
+`core/runtime/java/hmgapi/engine/LiveState.java` publishes readable recipes and
+searchable ancestors; no additional audio properties or policy edits were found
+necessary. The upstream one-attempt NativePatch behavior remains: a failed native
+write may be partial, so a full head-unit restart is required after repair.
+
+After installing and applying, inspect these exact paths with `ls -ldn`:
+
+```sh
+ls -ldn /system /system/etc /system/etc/hmg-seogaemo
+ls -ldn /system/etc/hmg-seogaemo/wireless-carplay-and-aa
+ls -ldn /system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes
+ls -ldn /system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/*.recipe
+ls -ldn /system/lib/libleafiaaac.so
+```
+
+Project directories should be 0755 UID/GID 0/0 and the five recipes/converter
+0644 UID/GID 0/0; stock ancestors must permit traversal. Then fully restart and
+test music, Siri and calls while checking native recipe logs. A readable recipe
+and loaded zygote loader cannot prove the patch matched native memory. Existing
+legacy directories have unknown creation provenance and retain their observed
+metadata as the restore baseline, even if that baseline is 0700. Newly tracked
+directories are removed only when empty and unchanged; unrelated contents block
+cleanup and retain recovery material.
+
 1. Before enabling, save a fresh Car Report and stock app_process, feature file/XML, three persistent properties plus backing-file presence, four `.odex` hashes, and any existing optimized DEX entries. Verify NEMESIS full-root ADB recovery works while Android is down.
 2. Build locally, install through NEMESIS, run `hmg-seogaemo-root wireless-carplay-and-aa precheck` then `apply`. Export/review the change ledger. Confirm the stock ADB switch is `0`, then fully restart the head unit; ignition cycling alone may not restart Android.
 3. Stream HMG-Seogaemo-Wireless, DiPO, Iap2, GPM and kernel logs. Test hotspot association/DHCP, wireless CarPlay music/Siri/calls, wireless Android Auto and a USB drive, cluster/HUD guidance, and native recipe messages. Status is `on` only if zygote maps contain the loader. Repeat after another boot and a package update.

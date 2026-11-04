@@ -65,9 +65,32 @@ put_assets() {
     done
 }
 
+assets_readable() {
+    for recipe in aa-tbt-48ee793a aa-tbt-a0bea1c4 carplay-core-wifi carplay-audio-formats carplay-utils-converter; do
+        sg_public_readable "$(path "$ASSET/recipes/$recipe.recipe")" || return 1
+    done
+    sg_public_readable "$(path /system/lib/libleafiaaac.so)"
+}
+
+repair_assets() {
+    repaired=0
+    assets_readable || repaired=1
+    for recipe in aa-tbt-48ee793a aa-tbt-a0bea1c4 carplay-core-wifi carplay-audio-formats carplay-utils-converter; do
+        sg_payload_dirs "$ASSET/recipes/$recipe.recipe" || return 1
+    done
+    put_assets || return 1
+    if [ "$repaired" -eq 1 ]; then
+        # Read by DiPO once at registration: repairs take effect after restart.
+        sg_restart_required || return 1
+    fi
+}
+
 apply() {
     compatibility || return $?
-    if sg_applied /system/bin/app_process; then status; return $?; fi
+    if sg_applied /system/bin/app_process; then
+        repair_assets || { fail 'asset repair failed; inspect change ledger'; return 1; }
+        status; return $?
+    fi
     if ! put_assets ||
        ! sg_prop_set persist.ium.support carplay ||
        ! sg_prop_set persist.sys.iap2.wifi t ||
@@ -97,6 +120,10 @@ status() {
     if ! sg_applied /system/bin/app_process; then sg_status off none 'disabled'; return 0; fi
     if [ "$(value persist.service.adb.tcp.enable)" = 1 ]; then conflict 'stock ADB switch conflicts with hotspot'; return 3; fi
     if [ "$(value persist.ium.support)" != carplay ]; then fail 'projection property drift'; return 1; fi
+    assets_readable || { fail 'projection assets unreadable; reapply and restart required'; return 1; }
+    if sg_restart_pending; then
+        sg_status pending-restart head_unit 'restart unit to register repaired native recipes'; return 0
+    fi
     # Runtime loaded in the zygote only after a full unit restart. A boot guard
     # that disabled preloading also leaves this pending instead of claiming success.
     process=$(ps 2>/dev/null | grep '[z]ygote') || process=

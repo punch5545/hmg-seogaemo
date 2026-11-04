@@ -357,7 +357,7 @@ with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
                  test_late_failure, test_detached_failure, test_missing_handoff,
                  test_shared_lines, test_reassert_restore):
-        folder = Path(directory) / test.__name__
+        folder = Path(directory).resolve() / test.__name__
         folder.mkdir()
         test(folder)
 print('stock restore, shared hook, and detached uninstall passed')

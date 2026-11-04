@@ -82,6 +82,8 @@ sg_prop_baseline() {
     sg_live=$(getprop "$1") || return 1
     sg_write "$sg_live" > "$sg_dir/live.tmp.$$" && mv "$sg_dir/live.tmp.$$" "$sg_dir/live" || return 1
     if [ -e "$SG_PROPERTY_ROOT/$1" ]; then
+        sg_path_safe "$SG_PROPERTY_ROOT/$1" || return 3
+        sg_file_meta "$SG_PROPERTY_ROOT/$1" > "$sg_dir/backing-meta" || return 1
         sg_copy "$SG_PROPERTY_ROOT/$1" "$sg_dir/backing" || return 1
         sg_exists=present
     else sg_exists=absent; fi
@@ -104,6 +106,7 @@ sg_prop_drift_allowed() {
 }
 sg_prop_restore() {
     sg_prop_name "$1" || return 2
+    sg_path_safe "$SG_PROPERTY_ROOT/$1" || return 3
     sg_check_build || return 3
     sg_dir=$HMG_SEOGAEMO_STATE/prop.$1
     [ -f "$sg_dir/ready" ] || return 1
@@ -117,7 +120,13 @@ sg_prop_restore() {
     sg_prop_write "$1" "$sg_live" || return 1
     case "$(cat "$sg_dir/existence")" in
         present) sg_copy "$sg_dir/backing" "$SG_PROPERTY_ROOT/$1" &&
-            sg_equal "$sg_dir/backing" "$SG_PROPERTY_ROOT/$1" || return 1 ;;
+            sg_equal "$sg_dir/backing" "$SG_PROPERTY_ROOT/$1" || return 1
+            if [ -f "$sg_dir/backing-meta" ]; then
+                read sg_mode sg_uid sg_gid < "$sg_dir/backing-meta" || return 1
+                chown "$sg_uid:$sg_gid" "$SG_PROPERTY_ROOT/$1" &&
+                    chmod "$sg_mode" "$SG_PROPERTY_ROOT/$1" &&
+                    [ "$(sg_file_meta "$SG_PROPERTY_ROOT/$1")" = "$(cat "$sg_dir/backing-meta")" ] || return 1
+            fi ;;
         absent) rm -f "$SG_PROPERTY_ROOT/$1" && [ ! -e "$SG_PROPERTY_ROOT/$1" ] || return 1 ;;
         *) return 1 ;;
     esac
@@ -160,6 +169,7 @@ sg_file_meta() {
     sg_print "$sg_special$sg_user$sg_group$sg_other $sg_uid $sg_gid"
 }
 sg_file_baseline() {
+    sg_path_safe "$1" || return 3
     case "$1" in /*) ;; *) return 2;; esac
     sg_bind_build || return 1
     sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
@@ -178,6 +188,7 @@ sg_file_baseline() {
         sg_write "1" > "$sg_dir/ready.tmp.$$" && mv "$sg_dir/ready.tmp.$$" "$sg_dir/ready"
 }
 sg_file_mark_applied() {
+    sg_path_safe "$1" || return 3
     case "$1" in /*) ;; *) return 2;; esac
     sg_check_build || return 3
     sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
@@ -185,6 +196,8 @@ sg_file_mark_applied() {
     if [ -e "$1" ]; then
         [ -f "$1" ] || return 1
         sg_copy "$1" "$sg_dir/applied" || return 1
+        sg_file_meta "$1" > "$sg_dir/applied-meta.tmp.$$" &&
+            mv "$sg_dir/applied-meta.tmp.$$" "$sg_dir/applied-meta" || return 1
         sg_exists=present
     else rm -f "$sg_dir/applied"; sg_exists=absent; fi
     sg_write "$sg_exists" > "$sg_dir/applied-existence.tmp.$$" &&
@@ -195,32 +208,21 @@ sg_file_restore() {
     sg_check_build || return 3
     sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
     [ -f "$sg_dir/ready" ] && [ "$(cat "$sg_dir/path")" = "$1" ] || return 1
-    sg_original=$(cat "$sg_dir/existence") || return 1
-    if [ "$sg_original" = absent ] && [ ! -e "$1" ]; then return 0; fi
-    if [ "$sg_original" = present ] && [ -f "$1" ] &&
-            sg_equal "$sg_dir/bytes" "$1"; then
-        read sg_mode sg_uid sg_gid < "$sg_dir/meta" || return 1
-        [ "$(sg_file_meta "$1")" = "$sg_mode $sg_uid $sg_gid" ] && return 0
-    fi
-    sg_applied=$(cat "$sg_dir/applied-existence" 2>/dev/null) || { sg_log "conflict: no applied marker for $1"; return 3; }
-    case "$sg_applied" in
-        absent) [ ! -e "$1" ] || { sg_log "conflict: file $1 changed"; return 3; } ;;
-        present) [ -f "$1" ] && sg_equal "$sg_dir/applied" "$1" ||
-            { sg_log "conflict: file $1 changed"; return 3; } ;;
-        *) return 3 ;;
-    esac
+    sg_file_guard "$1" || return 3
+    if sg_file_original "$1"; then return 0; fi
     case "$(cat "$sg_dir/existence")" in
         absent) rm -f "$1" && [ ! -e "$1" ] ;;
         present)
             read sg_mode sg_uid sg_gid < "$sg_dir/meta" || return 1
             sg_copy "$sg_dir/bytes" "$1" &&
-                chmod "$sg_mode" "$1" && chown "$sg_uid:$sg_gid" "$1" &&
+                chown "$sg_uid:$sg_gid" "$1" && chmod "$sg_mode" "$1" &&
                 sg_equal "$sg_dir/bytes" "$1" &&
                 [ "$(sg_file_meta "$1")" = "$sg_mode $sg_uid $sg_gid" ] ;;
         *) return 1 ;;
     esac
 }
 sg_restore_preflight() {
+    sg_dirs_preflight || return 3
     sg_line_preflight || return 3
     sg_check_build || return 3
     for sg_check in "$HMG_SEOGAEMO_STATE"/prop.*/ready; do
@@ -238,16 +240,7 @@ sg_restore_preflight() {
         [ -f "$sg_check" ] || continue
         sg_dir=${sg_check%/ready}
         sg_path=$(cat "$sg_dir/path") || return 1
-        sg_original=$(cat "$sg_dir/existence") || return 1
-        if [ "$sg_original" = absent ] && [ ! -e "$sg_path" ]; then continue; fi
-        if [ "$sg_original" = present ] && [ -f "$sg_path" ] &&
-                sg_equal "$sg_dir/bytes" "$sg_path"; then continue; fi
-        sg_applied=$(cat "$sg_dir/applied-existence" 2>/dev/null) || return 3
-        case "$sg_applied" in
-            absent) [ ! -e "$sg_path" ] || return 3 ;;
-            present) [ -f "$sg_path" ] && sg_equal "$sg_dir/applied" "$sg_path" || return 3 ;;
-            *) return 3 ;;
-        esac
+        sg_file_guard "$sg_path" || return 3
     done
 }
 sg_remount() { case "$1" in rw|ro) nemesis remount "$1";; *) return 2;; esac; }
@@ -315,17 +308,206 @@ sg_prop_set() {
     sg_ledger prop_set "$1" "$HMG_SEOGAEMO_STATE/prop.$1/live" "$HMG_SEOGAEMO_STATE/prop.$1/applied" "" || return 1
     sg_changed prop "$1"
 }
-# Directories created under /system must be searchable by the apps that read the
-# payload (DiPO runs as the system user). The module scripts run with umask 077, which
-# left them 0700 and made every recipe file under them unreadable. State directories
-# keep the private mode.
-sg_mkdir_target() {
-    case "${1#"${SG_TARGET_ROOT:-}"}" in
-        /system/*) (umask 022; mkdir -p "$1") ;;
-        *) mkdir -p "$1" ;;
+sg_path_safe() (
+    case "$1" in /*) ;; *) exit 2;; esac
+    case "$1" in *..*|*//*|*[!a-zA-Z0-9_./@+-]*) exit 2;; esac
+    check=$1
+    while [ -n "$check" ]; do
+        [ ! -L "$check" ] || exit 3
+        check=${check%/*}
+    done
+)
+sg_file_original() (
+    sg_path_safe "$1" || exit 3
+    saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || exit 1
+    case "$(cat "$saved/existence")" in
+        absent) [ ! -e "$1" ] ;;
+        present) [ -f "$1" ] && sg_equal "$saved/bytes" "$1" &&
+            [ "$(sg_file_meta "$1")" = "$(cat "$saved/meta")" ] ;;
+        *) exit 3;;
     esac
+)
+sg_file_applied() (
+    sg_path_safe "$1" || exit 3
+    saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || exit 1
+    case "$(cat "$saved/applied-existence" 2>/dev/null)" in
+        absent) [ ! -e "$1" ] ;;
+        present)
+            [ -f "$1" ] && sg_equal "$saved/applied" "$1" || exit 3
+            if [ ! -f "$saved/applied-meta" ]; then
+                # Legacy markers guarded bytes only. Backfill after byte verification.
+                sg_file_meta "$1" > "$saved/applied-meta.tmp.$$" &&
+                    mv "$saved/applied-meta.tmp.$$" "$saved/applied-meta" || exit 1
+            fi
+            [ "$(sg_file_meta "$1")" = "$(cat "$saved/applied-meta")" ] ;;
+        *) exit 3;;
+    esac
+)
+sg_file_guard() { sg_file_original "$1" || sg_file_applied "$1"; }
+
+# Directory journals and per-module references protect shared parents.
+sg_dir_guard() (
+    record=$1
+    [ "$(cat "$record/build")" = "$(getprop ro.build.product)" ] || exit 3
+    target=$(cat "$record/path") || exit 1
+    sg_path_safe "$target" || exit 3
+    if [ ! -e "$target" ]; then
+        [ "$(cat "$record/existence")" = absent ]; exit $?
+    fi
+    [ -d "$target" ] || exit 3
+    meta=$(sg_file_meta "$target") || exit 1
+    versions="applied pending intermediate"
+    if [ ! -f "$record/applied" ] || [ -f "$record/restored" ]; then versions="$versions meta"; fi
+    for version in $versions; do
+        [ ! -f "$record/$version" ] || [ "$meta" != "$(cat "$record/$version")" ] || exit 0
+    done
+    exit 3
+)
+sg_dir_ensure() (
+    target=$1
+    sg_path_safe "$target" || exit 3
+    key=$(sg_file_key "$target") || exit 1
+    record=$SG_DATA_ROOT/payload-dirs/$key
+    namespace=${SG_TARGET_ROOT:-}/system/etc/hmg-seogaemo
+    module=${HMG_SEOGAEMO_STATE##*/}
+    case "$target" in
+        "$namespace"|"$namespace/$module"|"$namespace/$module/"*) track=1 ;;
+        "$namespace/"*) exit 2 ;;
+        *) if [ -f "$record/ready" ] || [ ! -d "$target" ]; then track=1; else track=0; fi ;;
+    esac
+    [ "$track" -eq 1 ] || exit 0
+    sg_bind_build || exit 1
+    if [ ! -f "$record/ready" ]; then
+        mkdir -p "$record/refs" || exit 1
+        sg_write "$target" > "$record/path" &&
+            getprop ro.build.product > "$record/build" || exit 1
+        if [ -e "$target" ]; then
+            [ -d "$target" ] || exit 3
+            sg_file_meta "$target" > "$record/meta" || exit 1
+            sg_write present > "$record/existence" || exit 1
+        else
+            sg_write absent > "$record/existence" || exit 1
+        fi
+        sg_write 1 > "$record/ready" || exit 1
+    fi
+    [ "$(cat "$record/path")" = "$target" ] && sg_dir_guard "$record" || exit 3
+    # Publish order before the reference: a failed write cannot hide a mutation
+    # from deepest-first recovery. Reapply also repairs interrupted registration.
+    if ! grep -Fxq "$record" "$HMG_SEOGAEMO_STATE/dir-order" 2>/dev/null; then
+        sg_print "$record" >> "$HMG_SEOGAEMO_STATE/dir-order" || exit 1
+    fi
+    sg_write "$record" > "$HMG_SEOGAEMO_STATE/dir.$key" || exit 1
+    sg_write 1 > "$record/refs/$module" || exit 1
+    sg_print "0755 0 0" > "$record/pending" || exit 1
+    if [ -d "$target" ]; then
+        before=$(sg_file_meta "$target") || exit 1
+        if [ "$before" = "0755 0 0" ]; then
+            sg_copy "$record/pending" "$record/applied" &&
+                rm -f "$record/pending" "$record/intermediate" "$record/restored"
+            exit $?
+        fi
+        set -- $before
+        sg_print "$1 0 0" > "$record/intermediate" || exit 1
+    fi
+    sync || exit 1
+    (umask 022; mkdir -p "$target") && chown 0:0 "$target" && chmod 0755 "$target" &&
+        [ "$(sg_file_meta "$target")" = "0755 0 0" ] || exit 1
+    sg_copy "$record/pending" "$record/applied" || exit 1
+    rm -f "$record/pending" "$record/intermediate" "$record/restored" || exit 1
+    sg_ledger directory "$target" "$record/meta" "$record/applied" "$record/meta" || exit 1
+)
+sg_payload_dirs() (
+    [ "$#" -eq 1 ] && sg_validate owns_files "$1" && sg_whole_exclusive "$1" || exit 2
+    sg_path_safe "$1" || exit 3
+    logical=${1#"${SG_TARGET_ROOT:-}"}
+    case "$logical" in /system/*) ;; *) exit 0;; esac
+    chain=
+    parent=${1%/*}
+    while [ "$parent" != "${SG_TARGET_ROOT:-}" ] && [ -n "$parent" ]; do
+        chain="$parent $chain"
+        parent=${parent%/*}
+    done
+    sg_remount rw || exit 1
+    rc=0
+    for parent in $chain; do sg_dir_ensure "$parent" || { rc=$?; break; }; done
+    sg_remount_ro
+    exit "$rc"
+)
+sg_dirs_preflight() (
+    for ref in "$HMG_SEOGAEMO_STATE"/dir.*; do
+        [ -f "$ref" ] || continue
+        record=$(cat "$ref") || exit 1
+        [ -f "$record/ready" ] || continue
+        sg_dir_guard "$record" || exit 3
+    done
+)
+sg_dirs_revert() (
+    [ -f "$HMG_SEOGAEMO_STATE/dir-order" ] || exit 0
+    reverse=
+    while IFS= read -r record; do reverse="$record $reverse"; done < "$HMG_SEOGAEMO_STATE/dir-order"
+    for record in $reverse; do
+        [ -f "$record/ready" ] || continue
+        sg_dir_guard "$record" || exit 3
+        module=${HMG_SEOGAEMO_STATE##*/}
+        other=0
+        for ref in "$record"/refs/*; do
+            [ ! -f "$ref" ] || [ "${ref##*/}" = "$module" ] || other=1
+        done
+        if [ "$other" -eq 1 ]; then rm -f "$record/refs/$module"; continue; fi
+        target=$(cat "$record/path") || exit 1
+        sg_remount rw || exit 1
+        rc=0
+        case "$(cat "$record/existence")" in
+            absent) if [ -e "$target" ]; then rmdir "$target" || rc=3; fi ;;
+            present)
+                read mode uid gid < "$record/meta" || exit 1
+                chown "$uid:$gid" "$target" && chmod "$mode" "$target" &&
+                    [ "$(sg_file_meta "$target")" = "$(cat "$record/meta")" ] || rc=1 ;;
+            *) rc=3;;
+        esac
+        sg_remount_ro
+        [ "$rc" -eq 0 ] || exit "$rc"
+        sg_write 1 > "$record/restored" || exit 1
+        sg_ledger directory_revert "$target" "$record/applied" "$record/meta" "$record/meta" || exit 1
+        rm -rf "$record" || exit 1
+    done
+    rm -f "$HMG_SEOGAEMO_STATE"/dir.* "$HMG_SEOGAEMO_STATE/dir-order"
+)
+sg_mkdir_target() { mkdir -p "$1"; }
+sg_restart_required() {
+    sg_ready && cat "${SG_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}" > "$HMG_SEOGAEMO_STATE/assets-repaired-boot.tmp.$$" &&
+        mv "$HMG_SEOGAEMO_STATE/assets-repaired-boot.tmp.$$" "$HMG_SEOGAEMO_STATE/assets-repaired-boot"
 }
-sg_commit_file() {
+sg_restart_pending() {
+    [ -f "$HMG_SEOGAEMO_STATE/assets-repaired-boot" ] &&
+        [ "$(cat "$HMG_SEOGAEMO_STATE/assets-repaired-boot")" = "$(cat "${SG_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}")" ]
+}
+# Root access(2) bypasses DAC: inspect public read/search bits explicitly.
+sg_public_readable() (
+    target=$1
+    sg_path_safe "$target" && [ -f "$target" ] || exit 1
+    set -- $(sg_file_meta "$target")
+    [ "$((0$1 & 0004))" -ne 0 ] || exit 1
+    parent=${target%/*}
+    while [ -n "$parent" ] && [ "$parent" != "${SG_TARGET_ROOT:-}" ]; do
+        set -- $(sg_file_meta "$parent")
+        [ "$((0$1 & 0001))" -ne 0 ] || exit 1
+        parent=${parent%/*}
+    done
+)
+# Call only for dedicated export containers, never USB roots or private state.
+sg_export_public() (
+    sg_path_safe "$1" && [ -d "$1" ] || exit 3
+    chmod 0755 "$1" || exit 1
+    for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+        [ ! -L "$entry" ] || exit 3
+        [ -e "$entry" ] || continue
+        if [ -d "$entry" ]; then sg_export_public "$entry" || exit 1
+        elif [ -f "$entry" ]; then chmod 0644 "$entry" || exit 1
+        else exit 3; fi
+    done
+)
+sg_commit_file() (
     sg_target=$1; sg_input=$2; sg_mode=$3; sg_owner=$4
     sg_validate owns_files "$sg_target" || return 2
     sg_whole_exclusive "$sg_target" || return 3
@@ -339,22 +521,29 @@ sg_commit_file() {
         [ -n "$sg_owner" ] || sg_owner=$sg_old_uid:$sg_old_gid
     fi
     sg_write "$sg_mode" | grep -Eq '^0?[0-7]{3,4}$' || return 2
-    sg_write "$sg_owner" | grep -Eq '^[a-zA-Z0-9_]+:[a-zA-Z0-9_]+$' || return 2
-    case "$sg_target" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
+    # Existing module manifests use the unambiguous Android root alias.
+    [ "$sg_owner" != root:root ] || sg_owner=0:0
+    sg_write "$sg_owner" | grep -Eq '^[0-9]+:[0-9]+$' || return 2
+    if [ -f "$sg_saved/applied-existence" ]; then sg_file_guard "$sg_target" || return 3; fi
+    sg_payload_dirs "$sg_target" || return $?
+    case "${sg_target#"${SG_TARGET_ROOT:-}"}" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
+    sg_expected_mode=$sg_mode
+    [ "${#sg_expected_mode}" -eq 3 ] && sg_expected_mode=0$sg_expected_mode
     sg_tmp=$sg_target.hmg-seogaemo.$$
     sg_rc=0
     sg_mkdir_target "${sg_target%/*}" &&
         cp "$sg_input" "$sg_tmp" &&
-        chmod "$sg_mode" "$sg_tmp" &&
         { chown "${sg_owner%:*}.${sg_owner#*:}" "$sg_tmp" 2>/dev/null ||
             chown "$sg_owner" "$sg_tmp"; } &&
+        chmod "$sg_mode" "$sg_tmp" &&
+        [ "$(sg_file_meta "$sg_tmp")" = "$sg_expected_mode ${sg_owner%:*} ${sg_owner#*:}" ] &&
         mv "$sg_tmp" "$sg_target" &&
         sg_equal "$sg_input" "$sg_target" || sg_rc=1
     sg_expected_mode=$sg_mode
     [ "${#sg_expected_mode}" -eq 3 ] && sg_expected_mode=0$sg_expected_mode
     if [ "$sg_rc" -eq 0 ]; then
         set -- $(sg_file_meta "$sg_target")
-        [ "$1" = "$sg_expected_mode" ] || sg_rc=1
+        [ "$1 $2 $3" = "$sg_expected_mode ${sg_owner%:*} ${sg_owner#*:}" ] || sg_rc=1
     fi
     rm -f "$sg_tmp"
     if [ "$sg_system" -eq 1 ]; then sg_remount_ro; fi
@@ -362,7 +551,7 @@ sg_commit_file() {
     sg_file_mark_applied "$sg_target" || return 1
     sg_ledger file_put "$sg_target" "$sg_saved/bytes" "$sg_saved/applied" "$sg_saved/meta" || return 1
     sg_changed file "$sg_target"
-}
+)
 sg_file_put() {
     sg_validate owns_files "$1" && sg_payload "$2" || return 2
     sg_commit_file "$1" "$sg_source" "${3:-}" "${4:-}"
@@ -665,6 +854,7 @@ sg_file_delete() {
     sg_whole_exclusive "$1" || return 3
     sg_file_baseline "$1" || return 1
     sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
+    if [ -f "$sg_saved/applied-existence" ]; then sg_file_guard "$1" || return 3; fi
     case "$1" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
     rm -f "$1"; sg_rc=$?
     [ ! -e "$1" ] || sg_rc=1
@@ -677,6 +867,7 @@ sg_file_delete() {
 sg_bind_mount() {
     sg_validate owns_files "$1" && sg_payload "$2" || return 2
     sg_whole_exclusive "$1" || return 3
+    sg_path_safe "$sg_source" && [ "$(sg_file_meta "$sg_source")" = "0644 0 0" ] || return 3
     [ -f "$1" ] || return 1
     sg_file_baseline "$1" || return 1
     sg_bind=$HMG_SEOGAEMO_STATE/bind.$(sg_file_key "$1") || return 1
@@ -777,12 +968,7 @@ sg_applied() {
             if [ -f "$HMG_SEOGAEMO_STATE/line.$sg_key/ready" ]; then
                 sg_line_applied "$1"; return $?
             fi
-            sg_dir=$HMG_SEOGAEMO_STATE/file.$sg_key
-            case "$(cat "$sg_dir/applied-existence" 2>/dev/null)" in
-                absent) [ ! -e "$1" ] ;;
-                present) [ -f "$1" ] && sg_equal "$sg_dir/applied" "$1" ;;
-                *) return 1 ;;
-            esac ;;
+            sg_file_applied "$1" ;;
         *) sg_dir=$HMG_SEOGAEMO_STATE/prop.$1
             [ -f "$sg_dir/applied" ] && [ "$(getprop "$1")" = "$(cat "$sg_dir/applied")" ] ;;
     esac
@@ -932,7 +1118,10 @@ sg_revert_all() {
     sg_dex_finalize || return 3
     sg_restore_preflight || return 3
     sg_line_revert_all || return $?
-    [ -f "$HMG_SEOGAEMO_STATE/changes" ] || { sg_baseline_clear; return $?; }
+    [ -f "$HMG_SEOGAEMO_STATE/changes" ] || {
+        sg_dirs_revert || return $?
+        sg_baseline_clear; return $?;
+    }
     sg_reverse=
     while IFS='	' read -r sg_kind sg_target; do
         sg_reverse="$sg_kind:$sg_target $sg_reverse"
@@ -975,6 +1164,7 @@ sg_revert_all() {
         rmdir "$(cat "$HMG_SEOGAEMO_STATE/dex.app-dir")" 2>/dev/null || true
     fi
     rm -f "$HMG_SEOGAEMO_STATE/dex.cache" "$HMG_SEOGAEMO_STATE/dex.app-dir" "$HMG_SEOGAEMO_STATE/dex.dir-existed"
+    sg_dirs_revert || return $?
     sg_baseline_clear
 }
 sg_owner_present() {

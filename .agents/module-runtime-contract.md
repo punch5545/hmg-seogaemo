@@ -5,6 +5,57 @@ Status: partly superseded — the former parallel-work ownership table is histor
 Implemented interface between the shared module runtime, modules, and updater.
 The ownership table records the original parallel-work split; it no longer assigns active worktrees.
 
+## Payload metadata and directory transactions (2026-11-04)
+
+Whole-file applied markers include `applied-meta` (four octal mode digits,
+numeric UID and GID). Guards compare bytes and metadata and reject symlinks
+at the target or any ancestor. Legacy markers without metadata are backfilled
+only after their bytes verify; unknown historical metadata cannot be recovered.
+`sg_commit_file` accepts numeric owners (and normalizes `root:root` to `0:0`)
+and verifies mode/UID/GID before rename.
+Same-byte external chmod/chown is a restore conflict. Property backing baselines
+also retain metadata; legacy backing baselines retain their existing behavior.
+Bind sources must be regular, non-symlink, public 0644 root-owned files; the
+runtime refuses unsuitable sources rather than changing packaged inodes.
+
+`sg_payload_dirs <owned whole-file path>` reconciles its ancestors through the
+runtime. Existing stock ancestors outside `/system/etc/hmg-seogaemo` are checked
+for symlinks but never adjusted. Created ancestors and project namespace dirs
+are journaled before mutation, then set to 0755 root:root and verified. Module
+namespace operations are restricted to `<namespace>/<module-id>/...`; the shared
+namespace root has central baseline/applied metadata and per-module references.
+The global operation lock serializes references. Last reference out restores or
+removes the shared parent. Directory changes append ledger records. `ls -ldn`
+provides fixed mode/UID/GID fields on KitKat; the parser handles toolbox's absent
+link-count field and host listings without stat or text-processing tools.
+Payload mode lint rejects literal private `/system` file modes, including simple
+path-variable assignments, unless the call has an inline
+`# payload-mode: allow -- <specific reason>` justification.
+
+Directories use immutable existence/original metadata, a ready marker and a
+pending intended metadata record before mutation. Recovery recognizes only the
+original or intended/applied metadata; unknown metadata conflicts. Revert checks
+all directory metadata before file restoration, then restores directories deepest
+first. Created dirs are removed only if empty and still match; nonempty dirs
+conflict and retain journals/backups. A retried restore accepts already-restored
+original metadata or absent created dirs. Legacy existing dirs (including 0700
+ancestors) are conservatively pre-existing with current metadata as baseline;
+file-put provenance does not prove directory absence. Uninstall restores that
+metadata and never deletes these legacy directories. No guessed absent baseline.
+
+CarPlay apply reconciles recipes and ancestors before its already-applied return.
+Repairs record the current boot and remain pending-restart through that boot,
+because DiPO reads recipes when registering native patches. Read-only status
+checks world-read file bits and world-search ancestor bits, reports failed with
+an assets-unreadable detail, and does not claim native patch success merely from
+zygote loader presence. Boot reconcile already invokes desired apply, so it also
+migrates legacy ancestors after OTA. NativePatch keeps one attempt per process:
+a failed native write may be partial, so retrying it is unsafe; restart is required.
+
+Export publication makes only its dedicated container and descendants public:
+0755 directories and 0644 regular files. Symlinks are refused; USB mount roots and
+private runtime state are never chmod targets.
+
 ## Shared text-file line ownership (2026-11-03)
 
 `owns_files=` grants exclusive whole-file ownership. No other module may claim

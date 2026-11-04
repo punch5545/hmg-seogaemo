@@ -15,7 +15,7 @@ KEY = sys.argv[2] if len(sys.argv) > 2 else 'persist.sys.key.swrccustom'
 INITIAL = sys.argv[3] if len(sys.argv) > 3 else 'gohome'
 ACTION = 'com.seogaemo.hmg.USER_BUTTON_SHORTCUT'
 with tempfile.TemporaryDirectory() as directory:
-    base = Path(directory)
+    base = Path(directory).resolve()
     state = base / 'state' / MODULE_ID
     for name in ('lib', 'modules', 'props', 'backing', 'bin'):
         (base / name).mkdir()

@@ -51,8 +51,11 @@ if [ "$1" = export ]; then
         echo 'state=failed'; echo 'restart=none'; echo 'detail=Ledger exceeds 50 MB'; exit 1;
     }
     stamp=$(date +%Y%m%d-%H%M%S)
-    case "$export_base" in */hmg-seogaemo-export) dest=$export_base/$stamp;; *)
-        dest=$export_base/HMG-Seogaemo-export/$stamp;; esac
+    if [ "$export_mode" = adb ]; then container=$export_base
+    else container=$export_base/HMG-Seogaemo-export; fi
+    sg_path_safe "$container" || exit 1
+    dest=$container/$stamp
+    sg_path_safe "$dest" || exit 1
     mkdir -p "$dest" || exit 1
     cp -R "$SG_DATA_ROOT/ledger" "$dest/ledger" || exit 1
     mkdir -p "$dest/desired" || exit 1
@@ -65,11 +68,7 @@ if [ "$1" = export ]; then
     export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE SG_DATA_ROOT
     . "$base/lib/common.sh"
     hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
-    chmod -R 755 "$dest" || exit 1
-    # umask 077 also protects mkdir -p parents; adb must traverse this root.
-    if [ "$export_mode" = adb ]; then
-        chmod 755 "$export_base" || exit 1
-    fi
+    sg_export_public "$dest" && chmod 0755 "$container" || exit 1
     sg_print "state=on" "restart=none" "detail=$dest"
     exit 0
 fi
