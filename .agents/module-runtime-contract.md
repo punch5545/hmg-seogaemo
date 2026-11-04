@@ -41,6 +41,15 @@ The app shows "it is safe to remove the USB" (`export_usb_done`, KO "USB를 빼�
 only for `info.export_safe=usb`. The check compares sizes the kernel reports; it cannot
 prove the medium, so the instruction to the owner is still to wait for the dialog.
 
+## Dalvik cache of removed update versions (2026-11-04)
+
+`sg_legacy_dex_cleanup` (stock restore and uninstall) already removes
+`data@nemesis@backup@hmg-seogaemo@update@<anything>@<our jar suffix>@classes.dex`,
+which covers `update@versions@<v>@...`. `sg_update_dex_prune <versions dir>` runs after a
+successful OTA (`phase=healthy`) and after a failed stage removed its directory: it
+removes exactly `update@versions@<digits.dots>@<our jar suffix>@classes.dex` whose
+`versions/<v>` directory no longer exists. No ledger entry; failures never fail an update.
+
 ## Map verification input identity (2026-11-04)
 
 The verified seal retains its product, stock-file hash ID and boot ID as the

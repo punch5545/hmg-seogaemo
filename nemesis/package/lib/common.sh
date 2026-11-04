@@ -1876,6 +1876,30 @@ sg_legacy_dex_cleanup() (
         done
     done
 )
+# A staged build that is gone (failed stage, removed version directory) must not
+# keep Dalvik cache entries of its jars: remove exactly
+# update@versions@<digits.dots><our jar suffix>@classes.dex whose version directory
+# under "$1" (the update versions directory) no longer exists.
+sg_update_dex_prune() (
+    set +f
+    cache=${SG_TARGET_ROOT:-}/data/dalvik-cache
+    [ -d "$cache" ] || exit 0
+    sg_path_safe "$cache" || exit 3
+    prefix=data@nemesis@backup@hmg-seogaemo@update@versions@
+    for suffix in @core@map@hmg-seogaemo-mapper.jar@classes.dex \
+        @app@hmg-seogaemo.apk@classes.dex \
+        @modules@wireless-carplay-and-aa.d@data@hmg-seogaemo-projection-runtime.jar@classes.dex; do
+        for entry in "$cache/$prefix"*"$suffix"; do
+            [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+            name=${entry##*/}
+            case "$name" in *[!a-zA-Z0-9_.@-]*) continue;; esac
+            version=${name#"$prefix"}; version=${version%"$suffix"}
+            case "$version" in ''|*[!0-9.]*) continue;; esac
+            [ ! -e "$1/$version" ] || continue
+            rm -f "$entry" || exit 1
+        done
+    done
+)
 # The private Dalvik cache of the mapper and update verifier, and scratch caches
 # (`core/vm.status.<digits>`) that an interrupted `map status` left behind.
 sg_vm_cleanup() (

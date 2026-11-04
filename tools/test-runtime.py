@@ -1326,6 +1326,26 @@ def test_residue_cleanup(temp):
     assert (base / "outside/keep").exists()
     assert (base / "ledgerroot/ledger/ledger.tsv").read_text().count("dex_legacy_remove") == len(ours)
 
+    # An applied OTA prunes the entries of versions that were removed, and only those.
+    (base / "ledgerroot/update/versions/0.1.25").mkdir(parents=True)
+    kept = [
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.25@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@current@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.23@core@map@other.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@versions@x1@app@hmg-seogaemo.apk@classes.dex",
+        "data@nemesis@backup@other@update@versions@0.1.23@app@hmg-seogaemo.apk@classes.dex",
+    ]
+    gone = [
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.23@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.24@app@hmg-seogaemo.apk@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.24@modules@wireless-carplay-and-aa.d@data@hmg-seogaemo-projection-runtime.jar@classes.dex",
+    ]
+    for name in kept + gone:
+        (cache / name).write_text("cache")
+    check(f'sg_update_dex_prune "{base}/ledgerroot/update/versions"\n')
+    assert not any((cache / name).exists() for name in gone)
+    assert all((cache / name).exists() for name in kept)
+
     # Private VM cache of the mapper and update verifier.
     vm = base / "ledgerroot/core/vm"
     (vm / "dalvik-cache").mkdir(parents=True)
