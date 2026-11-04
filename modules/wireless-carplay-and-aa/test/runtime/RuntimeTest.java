@@ -130,8 +130,7 @@ public final class RuntimeTest {
             public boolean pokeData(long a, byte[] d) { System.arraycopy(d, 0, mem, (int) a, d.length); return true; }
             public long mapCode(long h, int n) { return 0; }
         };
-        java.io.File rf = new java.io.File(System.getProperty("user.dir"), "payload/recipes/iap2-lane-msgid.recipe");
-        if (!rf.exists()) rf = new java.io.File(args[0] + "/../../payload/recipes/iap2-lane-msgid.recipe");
+        java.io.File rf = new java.io.File(System.getProperty("recipes", "payload/recipes"), "iap2-lane-msgid.recipe");
         hmgapi.engine.MemRecipe lane = NativePatch.readOne(rf);
         check(lane.data, "lane recipe is a data recipe");
         hmgapi.engine.MemRecipe.Result lr = lane.apply(ram, 0, 0x2e334, null);

@@ -121,18 +121,18 @@ public final class CpTurnsTest {
 
         t.maneuver(msg(0, U16, i(1), 1, U16, i(0), 5, U32, i(250)));
         t.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES)));
-        expect("maneuver update without its exit angle: no exact icon, so the right-turn fallback (67) keeps the stream going",
-                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
+        expect("maneuver update without its exit angle: no misleading arrow, the blank icon 64, but distances, trip and turns ahead still go out",
+                "road [Main St]", "tbt 64 0 0.0 0.1 0 0 2 0 0", "hud f2024046004d00610069006e002000530074", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
                 "list {1 70 0 [Oak Ave] [] 0.49720323 2} {2 72 0 [Pine St] [] 1.2430081 2}");
         t.routeGuidance(msg(0, U16, i(1), 11, STR, s("0.1"), 12, ENUM, i(MILES)));
-        expect("(the update above, still without its exit angle: fallback again)",
-                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
+        expect("(the update above, still without its exit angle: same blank icon, HUD list not resent)",
+                "road [Main St]", "tbt 64 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 0.4 0 2 22 13 1 1 0.0 -1 0",
                 "list {1 70 0 [Oak Ave] [] 0.49720323 2} {2 72 0 [Pine St] [] 1.2430081 2}");
         t.maneuver(maneuver(0, RIGHT, 0, 0, 90, "Main St", 250));
 
         t.routeGuidance(msg(0, U16, i(1), 7, U32, i(100), 6, U64, l(0), 5, U64, l(0)));
-        expect("trip under 161 m with miles: feet; no arrival time",
-                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "2c 2 1 0 0 0 0 0 0 0", "sub 328.0 0 3 -1 -1 -1 -1 0.0 -1 0",
+        expect("trip under 161 m with miles: feet; no arrival time (the exact icon is back, so the HUD list is resent)",
+                "road [Main St]", "tbt 67 0 0.0 0.1 0 0 2 0 0", "hud f2024346004d00610069006e002000530074", "2c 2 1 0 0 0 0 0 0 0", "sub 328.0 0 3 -1 -1 -1 -1 0.0 -1 0",
                 "list {1 70 0 [Oak Ave] [] " + (800 / 1609f) + " 2} {2 72 0 [Pine St] [] " + (2000 / 1609f) + " 2}");
 
         t.routeGuidance(msg(0, U16, i(1), 7, U32, i(0), 6, U64, l(600)));
@@ -239,6 +239,26 @@ public final class CpTurnsTest {
         check("still nothing: no angle (0), a roundabout at an unlisted angle, an unknown type",
                 CpTurns.icon(1, 0, 0, 0, 1) == 0 && CpTurns.icon(2, 0, 0, 0, 1) == 0 && CpTurns.icon(1, 0, 1, -75, 1) == 0
                         && CpTurns.icon(99, 0, 0, 75, 1) == 0);
+        {
+            CpTurns r = new CpTurns(new android.content.Context(), c, null);
+            c.calls.clear();
+            r.maneuver(maneuver(0, RIGHT, 0, 0, 90, "Main St", 300));
+            r.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 7, U32, i(5000), 9, ENUM, i(MILES), 11, STR, s("0.2"), 12, ENUM, i(MILES), 13, U16, i(0)));
+            c.calls.clear();
+            r.refresh();
+            check("refresh right after a phone update sends nothing", c.calls.isEmpty());
+            r.lastSendAt -= 5000L;
+            r.refresh();
+            boolean again = false;
+            for (String k : c.calls) if (k.startsWith("tbt 67 0 0.0 0.2")) again = true;
+            check("refresh without fresh phone data resends the turn (" + c.calls + ")", again);
+            c.calls.clear();
+            r.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(0)));
+            c.calls.clear();
+            r.lastSendAt -= 5000L;
+            r.refresh();
+            check("no refresh once guidance state is 0", c.calls.isEmpty());
+        }
         Dipo.dev = false;
         Dipo.logs.clear();
         CpTurns quiet = new CpTurns(new android.content.Context(), new Cluster(), null);
@@ -247,10 +267,19 @@ public final class CpTurnsTest {
         for (String l : Dipo.logs) if (l.startsWith("TBT rg update") || l.startsWith("TBT turn")) verbose = true;
         check("developer toggle off: only the essential first-update line is logged (" + Dipo.logs + ")", !verbose && Dipo.logs.size() == 1);
         Dipo.dev = true;
-        check("fallback icon is never 0: left 70, right 67, keep left 71, keep right 66, U-turn 72/73, arrive 112, roundabout left -75 70, unknown 65",
-                CpTurns.fallbackIcon(1, 0, 0, 0) == 70 && CpTurns.fallbackIcon(2, 0, 0, 0) == 67 && CpTurns.fallbackIcon(13, 0, 0, 0) == 71
-                        && CpTurns.fallbackIcon(14, 0, 0, 0) == 66 && CpTurns.fallbackIcon(4, 0, 0, 0) == 72 && CpTurns.fallbackIcon(4, 1, 0, 0) == 73
-                        && CpTurns.fallbackIcon(12, 0, 0, 0) == 112 && CpTurns.fallbackIcon(6, 0, 1, -75) == 70 && CpTurns.fallbackIcon(99, 0, 0, 0) == 65);
+        check("fallback with an angle, any type: off-ramp (8) -75 slight/normal left 70, 8 at +130 sharp right 68, 8 at +10 straight 65, U-turn by angle 72/73",
+                CpTurns.fallbackIcon(8, 0, 0, -75) == 70 && CpTurns.fallbackIcon(8, 0, 0, 130) == 68 && CpTurns.fallbackIcon(8, 0, 0, 10) == 65
+                        && CpTurns.fallbackIcon(8, 0, 0, 170) == 72 && CpTurns.fallbackIcon(8, 1, 0, -170) == 73 && CpTurns.fallbackIcon(8, 0, 0, -40) == 71);
+        check("fallback roundabout exits by angle: -75 -> 105, 100 -> 99, 130 -> 100, 175 -> 102, -30 -> 107",
+                CpTurns.fallbackIcon(7, 0, 1, -75) == 105 && CpTurns.fallbackIcon(7, 0, 1, 100) == 99 && CpTurns.fallbackIcon(7, 0, 1, 130) == 100
+                        && CpTurns.fallbackIcon(7, 0, 1, 175) == 102 && CpTurns.fallbackIcon(1, 0, 1, -30) == 107);
+        check("fallback by meaning, no angle: keep left 71, keep right 66, enter roundabout 96/97, arrive 112, ferry 176, U-turn 72/73",
+                CpTurns.fallbackIcon(13, 0, 0, 0) == 71 && CpTurns.fallbackIcon(14, 0, 0, 0) == 66 && CpTurns.fallbackIcon(6, 0, 1, 0) == 96
+                        && CpTurns.fallbackIcon(6, 1, 1, 0) == 97 && CpTurns.fallbackIcon(12, 1, 0, 0) == 112 && CpTurns.fallbackIcon(15, 0, 1, 0) == 176
+                        && CpTurns.fallbackIcon(4, 0, 0, 0) == 72 && CpTurns.fallbackIcon(4, 1, 0, 0) == 73);
+        check("never a misleading arrow: left/right turn without an angle, off-ramp, unknown type, start route -> 64 (no icon)",
+                CpTurns.fallbackIcon(1, 0, 0, 0) == 64 && CpTurns.fallbackIcon(2, 0, 0, 0) == 64 && CpTurns.fallbackIcon(8, 0, 0, 0) == 64
+                        && CpTurns.fallbackIcon(99, 0, 0, 0) == 64 && CpTurns.fallbackIcon(11, 0, 0, 0) == 64);
         check("turns ahead for sharp/slight types: 47 -> 69, 48 -> 68, 49 -> 71, 50 -> 66",
                 CpTurns.aheadIcon(47, 0, 0, 0) == 69 && CpTurns.aheadIcon(48, 0, 0, 0) == 68 && CpTurns.aheadIcon(49, 0, 0, 0) == 71
                         && CpTurns.aheadIcon(50, 0, 0, 0) == 66 && CpTurns.aheadIcon(99, 0, 0, 0) == 64);

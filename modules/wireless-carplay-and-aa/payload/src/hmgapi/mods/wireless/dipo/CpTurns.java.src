@@ -72,6 +72,33 @@ final class CpTurns {
         return s == null ? -1 : s.length();
     }
 
+    /** the component whose turn-by-turn is on the cluster (null: none), when it was last sent, and the last lane frame: refresh() resends them */
+    Integer activeId;
+    long lastSendAt;
+    private byte[] lastLane;
+    private int refreshes;
+
+    /**
+     * Called about every second on the same thread: while guidance is active and the phone has
+     * said nothing for a moment, the last known state goes out again (the car's own navigation
+     * calls the cluster every 0.5-0.75 s), so the cluster and HUD don't age it out.
+     */
+    void refresh() {
+        Integer id = activeId;
+        if (id == null) return;
+        Update u = updates.get(id);
+        if (u == null || u.state == 0) {
+            activeId = null;
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastSendAt < 900L) return;
+        refreshes++;
+        if (sample("refresh", null)) d("refresh without fresh phone data: last update " + (now - rgAt) + " ms ago, last send " + (now - lastSendAt) + " ms ago, refresh #" + refreshes);
+        turn(id, u);
+        if (lastLane != null) cluster.laneInfo(lastLane);
+    }
+
     /** diagnostics: RouteGuidanceUpdates seen, and when the last one arrived (turn() runs only for these, there is no resend timer) */
     private int rgCount, firstTurnLogged;
     private long rgAt, firstRgAt;
@@ -260,6 +287,7 @@ final class CpTurns {
         StringBuilder sb = new StringBuilder();
         for (int k = 0; k < n; k++) sb.append(k == 0 ? "" : " ").append(status[k]).append(':').append(a[k]).append('/').append(b[k]).append('/').append(c[k]);
         if (sample("ln", n + "|" + sb)) d("lanes mode=" + mode + " phoneLanes=" + (lanes == null ? -1 : lanes.length) + " sent=" + n + " [" + sb + "]");
+        lastLane = f.clone();
         cluster.laneInfo(f);
     }
 
@@ -361,11 +389,13 @@ final class CpTurns {
 
     /** route guidance stopped (DiPO e/u.nS: the car's navigation took turn-by-turn back, or state 0) */
     void stop() {
+        activeId = null;
         hudBlank();
     }
 
     /** forget every component's state and maneuvers (DiPO e/u.nT) */
     void reset() {
+        activeId = null;
         for (LinkedHashMap<Integer, Maneuver> m : maneuvers.values()) {
             if (m != null) m.clear();
         }
@@ -406,6 +436,8 @@ final class CpTurns {
             stop();
             return;
         }
+        activeId = id;
+        lastSendAt = System.currentTimeMillis();
         int[] list = u.list == null ? null : u.list.clone();
         float dist = 0f;
         if (u.nextStr != null && !u.nextStr.equals("")) {
@@ -471,23 +503,58 @@ final class CpTurns {
         if (unmapped.size() < 40 && unmapped.add(k)) Dipo.log("CarPlay: no exact icon for maneuver type " + x.type + " side " + x.side + " junction " + x.junction + " exit " + x.exit + ", using " + icon);
     }
 
+    /** the cluster's "no turn icon" (the turn list's 64): distances, lanes and trip still go out */
+    static final int NO_ICON = 64;
+
     /**
-     * An icon for a maneuver the exact tables don't list, so the stream goes on: the
-     * arrow of its direction (left, right, U-turn, straight on), else straight. Never 0.
+     * An icon for a maneuver the exact tables don't list, so the stream goes on. A misleading
+     * arrow is worse than none, so: with an exit angle, the nearest direction arrow (any type);
+     * a type with a clear meaning but no angle, its own icon; else NO_ICON (never "straight"
+     * for a turn).
      */
     static int fallbackIcon(int type, int side, int junction, int exit) {
         int a = bandedTurn(type, junction, exit);
         if (a != 0) return a;
-        switch (type) {
-            case 1: case 47: case 49: case 13: return type == 47 ? 69 : type == 49 || type == 13 ? 71 : 70;
-            case 2: case 48: case 50: case 14: return type == 48 ? 68 : type == 50 || type == 14 ? 66 : 67;
-            case 4: case 18: return side == 0 ? 72 : 73;
-            case 12: case 10: return 112;
-            default:
-                if (exit < 0) return 70;
-                if (exit > 0 && junction != 0) return 67;
-                return 65;
+        if (exit != 0) {
+            if (junction != 0) return roundaboutIcon(side, exit);
+            boolean left;
+            switch (type) {
+                case 1: case 47: case 49: case 13: left = true; break;
+                case 2: case 48: case 50: case 14: left = false; break;
+                default: left = exit < 0; break;
+            }
+            int deg = Math.abs(exit);
+            if (deg > 180) deg = 360 - deg;
+            if (deg >= 157) return side == 0 ? 72 : 73;
+            if (deg <= 22 && type != 1 && type != 2) return 65;
+            int sharpness = deg <= 67 ? 0 : deg <= 112 ? 1 : 2;
+            return left ? 71 - sharpness : 66 + sharpness;
         }
+        switch (type) {
+            case 13: return 71;   // keep left
+            case 14: return 66;   // keep right
+            case 3: return 65;
+            case 4: case 18: return side == 0 ? 72 : 73;
+            case 5: case 9: return 172;
+            case 6: return side == 0 ? 96 : 97;   // enter a roundabout
+            case 10: case 12: return 112;
+            case 15: return 176;
+            default: return NO_ICON;
+        }
+    }
+
+    /** the roundabout icon with the nearest exit angle (the ones the exact tables use) */
+    static int roundaboutIcon(int side, int exit) {
+        int[] angle = { -180, -135, -120, -90, -45, -30, 0, 90, 120, 135, 180 };
+        int[] icon = { 102, 104, 104, 105, 104, 107, side == 0 ? 96 : 97, 99, 100, 100, 102 };
+        int e = exit;
+        if (e > 180) e -= 360;
+        else if (e < -180) e += 360;
+        int best = 0;
+        for (int k = 1; k < angle.length; k++) {
+            if (Math.abs(angle[k] - e) < Math.abs(angle[best] - e)) best = k;
+        }
+        return icon[best];
     }
 
     /**
@@ -667,6 +734,7 @@ final class CpTurns {
 
     /** HUD list and extras cleared (the build's sendHudBlank) */
     void hudBlank() {
+        lastLane = null;
         cluster.tbtSubInfo2C(0, 0, 0, 0, 0, 0, 0, 0, 0);
         byte[] lanes = new byte[81];
         lanes[0] = (byte) 0xF1;

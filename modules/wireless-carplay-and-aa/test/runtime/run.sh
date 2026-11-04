@@ -10,4 +10,4 @@ for name in RuntimeResult RequiredPoints Points NativePatch MethodHook; do
 done
 cp "$HERE/../../payload/src/hmgapi/engine/MemRecipe.java.src" "$T/src/hmgapi/engine/MemRecipe.java"
 javac -source 7 -target 7 -Xlint:-options -d "$T/out" $(find "$T/src" "$HERE/stubs" -name '*.java') "$HERE/RuntimeTest.java"
-java -cp "$T/out" hmgapi.hook.RuntimeTest "$T"
+java -Drecipes="$HERE/../../payload/recipes" -cp "$T/out" hmgapi.hook.RuntimeTest "$T"

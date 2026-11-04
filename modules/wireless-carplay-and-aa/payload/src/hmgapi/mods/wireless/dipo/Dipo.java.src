@@ -156,6 +156,17 @@ public final class Dipo {
             }
         });
         rg = new RgListener();
+        turnsHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    turns.refresh();
+                } catch (Throwable x) {
+                    error("CarPlay turn-by-turn refresh", x);
+                }
+                turnsHandler.postDelayed(this, 1000L);
+            }
+        }, 1000L);
         Cluster.trace = new Cluster.Trace() {
             @Override
             public void log(String m) {
