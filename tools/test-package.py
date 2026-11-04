@@ -182,15 +182,6 @@ def run():
                 assert (result.returncode == 0) == succeeds
                 assert state.read_text() == "1"
                 assert not list(temp.glob("hmg-seogaemo-install.*.apk"))
-            # A rollback installs an older versionCode: -d only when the rollback caller asks.
-            pm_script = (fake / "pm").read_text()
-            (fake / "pm").write_text('#!/bin/sh\ncase "$1" in install) case " $* " in *" -d "*) echo Success;; *) echo "Failure [INSTALL_FAILED_VERSION_DOWNGRADE]";; esac;; path) echo package:/data/app/hmg-seogaemo.apk;; esac\n')
-            state.write_text("1")
-            result = subprocess.run([SHELL, str(temp / "bin/install-apk.sh")], env=env, capture_output=True)
-            assert result.returncode == 1 and state.read_text() == "1"
-            result = subprocess.run([SHELL, str(temp / "bin/install-apk.sh")], env=dict(env, HMG_SEOGAEMO_PM_DOWNGRADE="1"), capture_output=True)
-            assert result.returncode == 0 and state.read_text() == "1", result.stderr
-            (fake / "pm").write_text(pm_script)
             # A hung pm is bounded by the watchdog; the boot property comes
             # back on the timeout path and when the installer itself is killed.
             env["FAKE_PM_RESULT"] = "hang"

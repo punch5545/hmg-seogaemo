@@ -111,13 +111,7 @@ trap 'exit 1' 1 2 3 15
 setprop sys.boot_completed 0 || exit 1
 [ "$(getprop sys.boot_completed)" = 0 ] || { echo 'Could not set sys.boot_completed' >&2; exit 1; }
 installer=$$
-# A rollback installs an older versionCode, which PackageManager refuses without -d.
-# Only the rollback callers set HMG_SEOGAEMO_PM_DOWNGRADE=1; a normal install never downgrades.
-if [ "${HMG_SEOGAEMO_PM_DOWNGRADE:-}" = 1 ]; then
-    pm install -r -d "$staged" > "$out" 2>&1 < /dev/null &
-else
-    pm install -r "$staged" > "$out" 2>&1 < /dev/null &
-fi
+pm install -r "$staged" > "$out" 2>&1 < /dev/null &
 pm_pid=$!
 (
     # Watchdog. It outlives a SIGKILLed installer on purpose: when the parent
