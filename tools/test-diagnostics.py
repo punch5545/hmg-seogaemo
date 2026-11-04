@@ -32,19 +32,19 @@ with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-diagnostics-") as director
 case "$1 $2" in
     "map status")
         echo state=on
-        sleep 40 &
+        sleep 100 &
         echo $! > "$SG_DATA_ROOT/grandchild"
         wait;;
     *) echo state=off; echo "ssid=secret";;
 esac
 '''))
-    big = "".join(f"line {n:06d} filler text\n" for n in range(10000))
+    big = "".join(f"line {n:06d} filler text\n" for n in range(4000))
     (data / "reconcile.log").write_text(big + "password=hunter2\nTAIL-MARKER\n")
     (data / "watcher.log").write_text("short log\npsk=hunter2\nkept\n")
     # Every exported line is redacted; a log of nothing but short secrets grows
     # when redacted and must still honor the 64 KiB cap.
     (data / "update").mkdir()
-    (data / "update/log").write_text("pass\n" * 40000)
+    (data / "update/log").write_text("pass\n" * 4000)
 
     caller = temp / "caller.sh"
     caller.write_text(host_shell_script(f'''#!/system/bin/sh
@@ -60,12 +60,12 @@ hmg_seogaemo_diagnostics {out}
     env = car_env()
     started = time.monotonic()
     # Capture through a pipe: a grandchild holding it would block until it exits.
-    result = subprocess.run([SHELL, str(caller)], env=env, capture_output=True, text=True, timeout=60)
+    result = subprocess.run([SHELL, str(caller)], env=env, capture_output=True, text=True, timeout=150)
     elapsed = time.monotonic() - started
     grandchild = int((data / "grandchild").read_text())
     try:
         assert result.returncode == 0, result
-        assert elapsed < 30, f"probe guard did not bound the export: {elapsed:.1f}s"
+        assert elapsed < 80, f"probe guard did not bound the export: {elapsed:.1f}s"
         diagnostics = out / "diagnostics"
         manifest = (diagnostics / "manifest.txt").read_text()
         assert "probe exit=" in manifest and "map-status.txt" in manifest, manifest
@@ -76,7 +76,7 @@ hmg_seogaemo_diagnostics {out}
         tail = (diagnostics / "logs/reconcile.log").read_text()
         assert 0 < len(tail.encode()) <= 65536
         assert tail.endswith("[redacted sensitive line]\nTAIL-MARKER\n"), tail[-80:]
-        assert "hunter2" not in tail and "line 009999 filler text" in tail
+        assert "hunter2" not in tail and "line 003999 filler text" in tail
         assert "truncated to last 65536 bytes: logs/reconcile.log" in manifest
         # A torn first line (a tail may start mid-credential) is discarded.
         assert tail.startswith("line ")

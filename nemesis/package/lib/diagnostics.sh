@@ -53,11 +53,15 @@ hmg_seogaemo_diagnostics() (
             skip=$((blocks - 16))
             sg_print "truncated to last 65536 bytes: $2" >> "$diag/manifest.txt"
         fi
-        dd if="$1" bs=4096 skip="$skip" count=16 2>/dev/null | {
+        # Stage the block read in a file so the line loop reads a seekable
+        # descriptor (buffered) instead of a pipe (one syscall per byte).
+        dd if="$1" bs=4096 skip="$skip" count=16 2>/dev/null > "$diag/.raw.$$"
+        {
             # A tail can begin inside a credential line: discard that fragment.
             if [ "$skip" -gt 0 ]; then IFS= read -r fragment || :; fi
             redact
-        } > "$diag/.stage.$$"
+        } < "$diag/.raw.$$" > "$diag/.stage.$$"
+        rm -f "$diag/.raw.$$"
         # Redaction can lengthen short lines; cap from a file, never a pipe
         # (a short pipe read would make a block-counted dd stop early).
         dd if="$diag/.stage.$$" bs=4096 count=16 2>/dev/null > "$diag/$2"
@@ -88,7 +92,9 @@ hmg_seogaemo_diagnostics() (
             kill $(hmg_seogaemo_diag_descendants "$pid") 2>/dev/null || :
             sg_print "probe exit=$code: $name" >> "$diag/manifest.txt"
         )
-        dd if="$diag/.probe.$$" bs=4096 count=16 2>/dev/null | redact > "$diag/.stage.$$"
+        dd if="$diag/.probe.$$" bs=4096 count=16 2>/dev/null > "$diag/.raw.$$"
+        redact < "$diag/.raw.$$" > "$diag/.stage.$$"
+        rm -f "$diag/.raw.$$"
         dd if="$diag/.stage.$$" bs=4096 count=16 2>/dev/null > "$diag/$name"
         rm -f "$diag/.probe.$$" "$diag/.stage.$$"
     }
