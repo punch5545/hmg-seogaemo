@@ -68,7 +68,9 @@ sg_revert_all() {
 }
 sg_service_restart() {
     [ "$1" = adbd ] || return 1
-    setprop ctl.restart "$1"
+    setprop ctl.restart "$1" || return $?
+    sg_write running > "$FAKE_ROOT/props/init.svc.adbd"
+    sg_print "0: 00000000:15B3 00000000:0000 0A" > "$FAKE_ROOT/tcp"
 }
 sg_owner_present() { [ -f "$FAKE_ROOT/owner-$1" ]; }
 sg_status() {
@@ -111,7 +113,7 @@ mkdir -p "$tmp/restricted-bin"
 for name in getprop setprop ifconfig netcfg; do
     ln -s "$tmp/bin/$name" "$tmp/restricted-bin/$name"
 done
-for name in dd cat cp rm; do
+for name in dd cat cp rm sleep; do
     ln -s "$(command -v "$name")" "$tmp/restricted-bin/$name"
 done
 ln -s "$repo/tools/testlib/fakebin/md5" "$tmp/restricted-bin/md5"
@@ -128,7 +130,12 @@ for name in awk sed tail head cut tr wc sort uniq xargs find stat readlink \
     ln -s "$tmp/bin/forbidden" "$tmp/restricted-bin/$name"
 done
 export FAKE_ROOT="$tmp" HMG_SEOGAEMO_BASE="$tmp/base" HMG_SEOGAEMO_STATE="$tmp/state"
-script="$module_dir/root/wireless-adb.sh"
+script="$tmp/wireless-adb.sh"
+python3 - "$module_dir/root/wireless-adb.sh" "$script" "$tmp" <<'PYFIXTURE'
+from pathlib import Path
+import sys
+Path(sys.argv[2]).write_text(Path(sys.argv[1]).read_text().replace('/proc/net/tcp6', sys.argv[3]+'/tcp6').replace('/proc/net/tcp', sys.argv[3]+'/tcp'))
+PYFIXTURE
 
 run() { PATH="$tmp/restricted-bin" "$car_shell" "$script" "$1" > "$tmp/output"; }
 has() { grep -q -F "$1" "$tmp/output" || { cat "$tmp/output"; exit 1; }; }
@@ -138,6 +145,9 @@ reset() {
     rm -f "$tmp/props/"* "$tmp/baseline/"* "$tmp/applied/"* "$tmp/state/"* "$tmp/interfaces/"* \
         "$tmp/owner-"* "$tmp/fail-restart" "$tmp/calls" "$tmp/netcfg"
     : > "$tmp/calls"
+    sg_print "0: 00000000:15B3 00000000:0000 0A" > "$tmp/tcp"
+    : > "$tmp/tcp6"
+    sg_write running > "$tmp/props/init.svc.adbd"
     sg_write "19" > "$tmp/props/ro.build.version.sdk"
     sg_write "NEEV.KOR.0000.V039.001.260902" > "$tmp/props/ro.build.product"
 }
@@ -229,5 +239,39 @@ run status
 has 'info.client_ip=10.0.0.23'
 has 'info.client_adb_endpoint=10.0.0.23:5555'
 [ ! -e "$tmp/forbidden-calls" ] || { cat "$tmp/forbidden-calls"; exit 1; }
+
+
+reset
+run apply
+sg_write 7777 > "$tmp/props/service.adb.tcp.port"
+if run status; then exit 1; fi
+has 'state=conflict'
+has 'overrides port 5555'
+has 'info.effective_port=7777'
+sg_write 5555 > "$tmp/props/service.adb.tcp.port"
+run status
+has 'state=on'
+sg_write stopped > "$tmp/props/init.svc.adbd"
+if run status; then exit 1; fi
+has 'state=failed'
+has 'adbd stopped'
+has 'info.adbd_state=stopped'
+run apply
+has 'state=on'
+assert_count 2
+run apply
+assert_count 2
+
+: > "$tmp/tcp"
+if run status; then exit 1; fi
+has 'info.adb_listener=absent'
+has 'not listening'
+run apply
+has 'info.adb_listener=listening'
+assert_count 3
+: > "$tmp/tcp"
+sg_print '0: 00000000000000000000000000000000:15B3 00000000:0000 0A' > "$tmp/tcp6"
+run status
+has 'info.adb_listener=listening'
 
 sg_print "wireless-adb tests passed"

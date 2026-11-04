@@ -66,6 +66,30 @@ Export publication makes only its dedicated container and descendants public:
 0755 directories and 0644 regular files. Symlinks are refused; USB mount roots and
 private runtime state are never chmod targets.
 
+## Wireless ADB and diagnostic export (2026-11-04)
+
+Wireless ADB status exposes info.effective_port (the nonempty transient
+service.adb.tcp.port overrides persist.adb.tcp.port) and info.adbd_state.
+Applied properties with another effective port report conflict; non-running
+adbd reports failed. Apply restarts the allowed adbd service when its port
+changes, it is not running, or readable /proc/net/tcp{,6} tables lack a
+local :15B3 LISTEN (0A) entry. info.adb_listener is listening/absent/unknown.
+Absent listeners report failed. After restarting, apply waits up to four
+seconds for the listener. Unreadable tables remain unknown. Both observed
+properties remain read-only; LISTEN does not establish remote reachability.
+
+Ordinary USB/adb exports add diagnostics through lib/diagnostics.sh. Collection
+is read-only except for writing its dedicated export destination. Each artifact
+is capped at 64 KiB, with a 32-log (2 MiB) budget. Status probes have separate
+64 KiB/10 second limits; owned-path metadata is capped at 8 KiB per module,
+and properties at 64 KiB. A manifest reports omissions, truncations and probe exits.
+Owned files and payload directories contribute ls -ldn metadata only, never
+contents. Only fixed log/result paths are copied; Wi-Fi configuration and
+secret-named properties are excluded/redacted. Optional runtime diagnostics
+use the fixed HMG_SEOGAEMO_DIAGNOSTIC_RUNTIME_DIRS list relative to SG_DATA_ROOT
+(initially runtime); only .log, .txt, result and module-output files qualify.
+Export publication retains 0755 directories and 0644 files.
+
 ## Shared text-file line ownership (2026-11-03)
 
 `owns_files=` grants exclusive whole-file ownership. No other module may claim

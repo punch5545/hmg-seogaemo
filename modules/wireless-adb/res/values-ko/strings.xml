@@ -10,4 +10,6 @@
     <string name="wireless_adb_security_note">기본 ADB는 키 인증을 하지 않습니다. 5555 포트에 접근할 수 있으면 누구나 연결할 수 있습니다.</string>
     <string name="wireless_adb_restore_note">끄면 기존 ADB 스위치 설정이 복원됩니다. 원래 켜져 있었다면 차량 핫스팟의 IP 할당에 문제가 생길 수 있습니다.</string>
     <string name="wireless_adb_connect_other_wifi">다른 Wi-Fi에 연결</string>
+    <string name="wireless_adb_effective_port">실제 ADB 포트</string>
+    <string name="wireless_adb_daemon_state">adbd 상태</string>
 </resources>
