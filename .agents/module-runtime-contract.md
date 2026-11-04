@@ -570,3 +570,14 @@ to the existing operation-lock wait of at most nine seconds. Timeout or signal
 cancellation terminates and reaps the actual app_process child and cleans up
 owned lock and scratch state. Confirmed full mapping scans retain their existing
 behavior. Later successful app verification is observed by the deferred worker.
+
+## Automatic intent recheck under lock (2026-11-04)
+
+After acquiring operation.lock, reconcile calls re-read current desired state and
+APK presence before journaling or executing module code. Automatic apply requires
+desired on and an installed APK. Automatic reverse revert requires desired not on
+or a missing APK. If the condition no longer holds, return success with
+state=not-implemented, restart=none, info.skipped=true, current info.desired and
+detail=Automatic module intent changed. This receipt describes skipped work, not
+observed module state. It does not rewrite desired state, invalidate stock
+receipts or invoke the module. Explicit user calls retain their confirmed intent.

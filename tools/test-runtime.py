@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from testlib import car_env, SHELL, host_shell_script, copy_shell_script
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -295,6 +296,68 @@ echo detail=
     assert (state / "desired/c").read_text() == "off"
     assert (state / "desired/a").read_text() == "off"
     assert (state / "desired/b").read_text() == "off"
+
+
+def test_automatic_intent_lock(temp):
+    for automatic, explicit, before, after in (
+            ('apply', 'revert', 'on', 'off'), ('revert', 'apply', 'off', 'on')):
+        base = temp / ('intent-' + automatic)
+        for part in ('bin', 'lib', 'modules', 'state/desired', 'fake'):
+            (base / part).mkdir(parents=True, exist_ok=True)
+        dispatcher = base / 'bin/hmg-seogaemo-root'
+        copy_shell_script(ROOT / 'nemesis/package/bin/hmg-seogaemo-root', dispatcher)
+        # A private sleep wrapper makes lock contention observable even with
+        # mksh's builtin sleep, without timing the race against the host clock.
+        dispatcher.write_text(dispatcher.read_text().replace('umask 077', '''umask 077
+sleep() { : > "$SG_DATA_ROOT/queued"; /bin/sleep 0.1; }''', 1))
+        copy_shell_script(ROOT / 'nemesis/package/lib/common.sh', base / 'lib/common.sh')
+        (base / 'modules.list').write_text('example\n')
+        (base / 'modules.graph').write_text('example\tdepends=\texcludes=\n')
+        (base / 'modules/example.properties').write_text('id=example\n')
+        (base / 'modules/example.sh').write_text('''
+echo "$1" >> "$SG_DATA_ROOT/calls"
+: > "$SG_DATA_ROOT/entered"
+while [ ! -f "$SG_DATA_ROOT/release" ]; do /bin/sleep 0.01; done
+case "$1" in apply) echo state=on;; revert) echo state=off;; esac
+echo restart=none
+''')
+        script(base / 'fake/pm', 'echo package:fixture\n')
+        state = base / 'state'
+        desired = state / 'desired/example'
+        desired.write_text(before)
+        env = car_env(dict(os.environ, SG_DATA_ROOT=str(state)))
+        env['PATH'] = str(base / 'fake') + ':' + env['PATH']
+        def wait_for(path):
+            deadline = time.monotonic() + 5
+            while not path.exists():
+                assert time.monotonic() < deadline, str(path)
+                time.sleep(0.005)
+        user = subprocess.Popen([SHELL, str(dispatcher), 'example', explicit],
+                                env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        queued = None
+        try:
+            wait_for(state / 'entered')
+            queued = subprocess.Popen([SHELL, str(dispatcher), 'example', automatic],
+                env=dict(env, HMG_SEOGAEMO_RECONCILE='1'),
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            wait_for(state / 'queued')
+            (state / 'release').touch()
+            assert user.communicate(timeout=5)[0].startswith('state=')
+            assert user.returncode == 0
+            output, error = queued.communicate(timeout=5)
+            assert queued.returncode == 0, (output, error)
+            assert 'state=not-implemented' in output and 'restart=none' in output, output
+            assert 'info.skipped=true' in output and 'info.desired=' + after in output, output
+            assert 'detail=Automatic module intent changed' in output, output
+            assert desired.read_text() == after
+            assert (state / 'calls').read_text().splitlines() == [explicit]
+            assert (state / 'journal').read_text().split()[-1] == explicit
+        finally:
+            (state / 'release').touch()
+            for child in (user, queued):
+                if child is not None and child.poll() is None:
+                    child.kill()
+                    child.communicate()
 
 
 def test_mutation_api_and_export(temp):
@@ -790,6 +853,7 @@ with tempfile.TemporaryDirectory() as directory:
     test_common(root)
     test_output_bytes(root)
     test_root(root)
+    test_automatic_intent_lock(root)
     test_mutation_api_and_export(root)
     test_service_call_api(root)
     test_reconcile(root)
