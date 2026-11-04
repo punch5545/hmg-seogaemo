@@ -53,9 +53,18 @@ prevents a pending update from resurrecting an intentionally removed app;
 absence without a request always follows the existing cleanup path.
 
 `install-apk.sh` forces `sys.boot_completed=0` around `pm install`, which now
-also happens at boot. It runs pm in the background under a 120 second guard that
-stops pm and its `/proc` descendants, and restores the property on every exit
-path (normal, failure, watchdog, TERM/HUP/INT), keeping the original exit status.
+also happens at boot. It runs pm in the background under a 120 second watchdog
+that TERMs pm and its `/proc` descendants, waits a 5 second grace period and then
+sends KILL. The property is restored on every exit path (normal, failure,
+watchdog, TERM/HUP/INT), keeping the original exit status. SIGKILL of the
+installer cannot run a trap, so the watchdog also polls the installer pid: when
+it is gone the watchdog stops pm, restores the saved property value and removes
+the staging. If the whole process group was killed, the next run first restores
+the property from the saved value (`old` file of a dead `install-apk.<pid>`
+directory) before reading it. The helper files (pm output, timeout marker, saved
+value, watchdog pid) live in the private 0700 `$SG_DATA_ROOT/install-apk.<pid>`
+directory; only the staged APK, named `hmg-seogaemo-install.<pid>.<epoch>.<random>.apk`,
+is in `/data/local/tmp` because PackageManager must read it.
 Export diagnostics read logs with 4 KiB `dd` blocks from regular files, write
 probe output to files rather than pipes, and have the 10 second probe guard stop
 the probe's descendants, so a lingering grandchild cannot stall an export. Raw
