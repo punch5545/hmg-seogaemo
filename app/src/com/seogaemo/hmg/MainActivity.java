@@ -119,9 +119,10 @@ public final class MainActivity extends Activity {
             List<RootResult> observed = new ArrayList<RootResult>();
             for (Module module : ModuleRegistry.all()) observed.add(RootClient.run(module.id(), "status"));
             final RestoreGate.Decision decision = RestoreGate.decide(stock, observed);
+            final List<RestoreGate.Step> steps = savedRestoreSteps(observed);
             runOnUiThread(new Runnable() { public void run() {
                 if (isFinishing()) { updateBusy = false; return; }
-                if (decision == RestoreGate.Decision.PROCEED) { confirmModuleRestore(); return; }
+                if (decision == RestoreGate.Decision.PROCEED) { confirmModuleRestore(steps); return; }
                 updateBusy = false;
                 if (decision == RestoreGate.Decision.PAUSED) {
                     getSharedPreferences("update", MODE_PRIVATE).edit().clear().commit();
@@ -136,9 +137,28 @@ public final class MainActivity extends Activity {
         } }, "hmg-seogaemo-restore-gate").start();
     }
 
-    private void confirmModuleRestore() {
+    /** What the saved restore will do, from the saved desired list and the statuses just read. */
+    private List<RestoreGate.Step> savedRestoreSteps(List<RootResult> observed) {
+        List<String> ids = new ArrayList<String>();
+        for (Module module : ModuleRegistry.all()) ids.add(module.id());
+        return RestoreGate.steps(getSharedPreferences("update", MODE_PRIVATE).getString("restore", ""), ids, observed);
+    }
+
+    private String restoreConfirmMessage(List<RestoreGate.Step> steps) {
+        StringBuilder message = new StringBuilder(getString(R.string.restore_confirm_message)).append("\n\n");
+        if (steps.isEmpty()) message.append(getString(R.string.restore_confirm_none));
+        for (RestoreGate.Step step : steps) {
+            message.append("\u2022 ").append(getString(step.enable ? R.string.plan_step_enable : R.string.plan_step_disable,
+                    getString(ModuleRegistry.find(step.id).nameResId()))).append('\n');
+        }
+        if (RestoreGate.touchesBootProcess(steps))
+            message.append('\n').append(getString(R.string.restore_confirm_boot_process));
+        return message.toString().trim();
+    }
+
+    private void confirmModuleRestore(List<RestoreGate.Step> steps) {
         ConfirmDialog.show(this, getString(R.string.restore_confirm_title),
-                getString(R.string.restore_confirm_message), getString(R.string.restore_confirm_action),
+                restoreConfirmMessage(steps), getString(R.string.restore_confirm_action),
                 getString(R.string.cancel), false, new ConfirmDialog.Action() {
             public void run(final ConfirmDialog dialog) {
                 dialog.showProgress();

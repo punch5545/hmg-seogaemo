@@ -59,9 +59,10 @@ on_create = activity.split("@Override public void onCreate(", 1)[1].split("priva
 assert "restoreModules()" not in on_create  # no unconfirmed restore at app start
 restore = method("confirmModuleRestore")
 assert "ConfirmDialog.show" in restore
+assert "restoreConfirmMessage(steps)" in restore  # lists modules and the boot-process warning
 assert restore.index("ConfirmDialog.show") < restore.index("restoreModules()")
 assert "RestoreGate.decide" in method("offerModuleRestore")
-assert "confirmModuleRestore()" in method("offerModuleRestore")
+assert "confirmModuleRestore(steps)" in method("offerModuleRestore")
 assert "setCanceledOnTouchOutside(false)" in dialog
 assert "confirm.setEnabled(false)" in dialog
 assert "cancel.requestFocus()" in dialog

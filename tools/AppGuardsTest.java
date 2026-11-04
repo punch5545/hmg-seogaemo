@@ -17,6 +17,7 @@ public final class AppGuardsTest {
         boundedProcess();
         restoreGate();
         resumeExpiry();
+        restoreSteps();
         System.out.println("AppGuardsTest ok");
     }
 
@@ -42,6 +43,23 @@ public final class AppGuardsTest {
         check(!ModuleResume.expired("", 0L, wall, "", 30 * hour, wall + 1 * hour), "no boot id, fresh");
         check(ModuleResume.expired(null, 0L, wall, "b2", 1L, wall + 30 * hour), "no saved boot, wall 30 h");
         check(!ModuleResume.expired("b1", 0L, 0L, "b1", 100 * hour, wall), "no stamps at all is not expiry");
+    }
+
+    private static void restoreSteps() {
+        List<String> ids = Arrays.asList("wifi-client", "wireless-carplay-and-aa", "wireless-adb");
+        List<RootResult> observed = Arrays.asList(
+                result("on", "none", 0, "desired", "on"),
+                result("off", "none", 0, "desired", "off"),
+                result("off", "none", 0));
+        List<RestoreGate.Step> steps = RestoreGate.steps("wireless-carplay-and-aa,", ids, observed);
+        check(steps.size() == 2, "one off, one on");
+        check("wifi-client".equals(steps.get(0).id) && !steps.get(0).enable, "turn-offs come first");
+        check("wireless-carplay-and-aa".equals(steps.get(1).id) && steps.get(1).enable, "saved module turns on");
+        check(RestoreGate.touchesBootProcess(steps), "CarPlay change is flagged");
+        List<RestoreGate.Step> adb = RestoreGate.steps("wifi-client,", ids, observed);
+        check(adb.isEmpty(), "already as saved needs no step");
+        check(!RestoreGate.touchesBootProcess(adb), "no CarPlay flag without a CarPlay step");
+        check(RestoreGate.steps("", ids, observed).size() == 1, "empty saved list only turns off");
     }
 
     private static RootResult result(String state, String restart, int exit, String... infoPairs) {
