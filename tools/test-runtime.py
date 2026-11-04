@@ -481,6 +481,8 @@ sg_revert_all
         "runtime/carplay/runtime.log": "psk=private-password\nsafe runtime log\n",
         "runtime/carplay/wpa_supplicant.conf": "private-config\n",
         "runtime/carplay/softap.conf": "private-config\n",
+        "runtime/wireless-carplay-and-aa/apps/com.daudio.app.dipo/p-10-20.txt": "gate.state=ready\n",
+        "runtime/wireless-carplay-and-aa/apps/com.daudio.app.dipo/p-10-20.log.1": "native EACCES\n",
     }.items():
         target = data / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -495,6 +497,8 @@ sg_revert_all
     for relative in ("logs/reconcile.log", "logs/watcher.log", "modules/test/module.log",
                      "stock/result", "stock/module-output", "uninstall/result", "uninstall/log",
                      "update/journal", "runtime/carplay/result", "runtime/carplay/runtime.log",
+                     "runtime/wireless-carplay-and-aa/apps/com.daudio.app.dipo/p-10-20.txt",
+                     "runtime/wireless-carplay-and-aa/apps/com.daudio.app.dipo/p-10-20.log.1",
                      "map-status.txt", "module-test-status.txt", "properties.txt", "owned-paths.txt"):
         assert (diagnostics / relative).is_file(), relative
     for entry in diagnostics.rglob("*"):
@@ -1059,11 +1063,14 @@ def test_zygote_and_dex(temp):
     cache = target / "data/dalvik-cache/system@framework@hmg-seogaemo-wireless-hook.jar@classes.dex"
     cache.write_bytes(b"previous-cache")
     app_dir = target / "data/data/com.daudio.app.dipo/app_hmg-seogaemo-wireless-dex"
+    boot_id = base / 'boot-id'
+    boot_id.write_text('test-boot')
     env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
                SG_DATA_ROOT=str(base / "data/nemesis/backup/hmg-seogaemo"),
                SG_TARGET_ROOT=str(target), HMG_SEOGAEMO_STATE=str(state),
                HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_MODULE_DIR=str(payload),
-               FAKE_OWNERS=str(base / "owners.json"), FAKE_LIVE=str(live))
+               FAKE_OWNERS=str(base / "owners.json"), FAKE_LIVE=str(live),
+               SG_BOOT_ID_FILE=str(boot_id))
     common = ROOT / "nemesis/package/lib/common.sh"
     runner = base / "run-zygote"
     script(runner, f'''
@@ -1105,6 +1112,116 @@ if sg_zygote_install wrapper loader jar; then exit 1; fi
 ''')
     run(runner, env=rollback_env)
     (fake / "cp").unlink()
+    # A -> B retains the first stock baseline and invalidates both dex namespaces.
+    paths[2].write_bytes(b'original-loader')
+    paths[3].write_bytes(b'original-jar')
+    paths[2].chmod(0o640)
+    paths[3].chmod(0o600)
+    install = ('set -eu\nsg_dex_cache_track /system/framework/hmg-seogaemo-wireless-hook.jar '
+               'com.daudio.app.dipo\nsg_zygote_install wrapper loader jar\n')
+    script(runner, install)
+    run(runner, env=env)
+    app_dir.mkdir(parents=True, exist_ok=True)
+    generated = app_dir / 'classes.dex'
+    cache.write_bytes(b'A-cache')
+    generated.write_bytes(b'A-app-cache')
+    for name in ('wrapper', 'loader', 'jar'):
+        (payload / name).write_bytes((name + '-B').encode())
+    deferred = run(runner, env=dict(env, HMG_SEOGAEMO_UPDATE_HEALTH='1'))
+    assert 'info.hook_upgrade=deferred until update is finalized' in deferred.stdout
+    assert paths[0].read_bytes() == b'wrapper' and paths[2].read_bytes() == b'loader'
+    assert cache.read_bytes() == b'A-cache' and generated.read_bytes() == b'A-app-cache'
+    assert not (state / 'zygote-upgrade').exists()
+    # USB postinstall uses ordinary reconcile (no health window), so advances.
+    run(runner, env=env)
+    assert [p.read_bytes() for p in paths] == [b'wrapper-B', b'stock-executable', b'loader-B', b'jar-B']
+    assert not cache.exists() and not generated.exists()
+    assert (state / 'assets-repaired-boot').exists()
+    assert 'zygote_upgrade' in ledger.read_text() and 'dex_invalidate' in ledger.read_text()
+    cache.write_bytes(b'B-cache')
+    run(runner, env=env)
+    assert cache.read_bytes() == b'B-cache'
+    # The conservative rollback policy must retain the selected package and
+    # these actual B system bytes/caches until projection is restored first.
+    updater_base = base / 'updater'
+    (updater_base / 'core').mkdir(parents=True)
+    (updater_base / 'lib').mkdir()
+    (updater_base / 'lib/common.sh').write_text(common.read_text())
+    (updater_base / 'NEMESIS.data').write_text('package-version=0.1.0\n')
+    update_state = Path(env['SG_DATA_ROOT']) / 'update'
+    update_state.mkdir()
+    (update_state / 'current').symlink_to(payload)
+    updater = updater_base / 'core/update.sh'
+    updater.write_text(host_shell_script((ROOT / 'nemesis/package/core/update.sh').read_text())
+                       .replace('state=/data/nemesis/backup/hmg-seogaemo',
+                                'state=' + env['SG_DATA_ROOT']))
+    blocked = subprocess.run([SHELL, str(updater), 'rollback'], env=car_env(env),
+                             capture_output=True, text=True)
+    assert blocked.returncode != 0 and 'rollback blocked' in blocked.stderr
+    assert (update_state / 'current').resolve() == payload.resolve()
+    assert [p.read_bytes() for p in paths] == [b'wrapper-B', b'stock-executable', b'loader-B', b'jar-B']
+    assert cache.read_bytes() == b'B-cache'
+
+    # Kill after loader/JAR commit but before wrapper commit, then resume.
+    for name in ('wrapper', 'loader', 'jar'):
+        (payload / name).write_bytes((name + '-C').encode())
+    generated.write_bytes(b'B-app-cache')
+    # First interrupt immediately after cache deletion, before its applied
+    # absence marker. Retry must finalize this now-missing path as well.
+    script(fake / 'rm', f'''
+/bin/rm "$@" || exit 1
+if [ "${{2:-}}" = "{generated}" ]; then kill -KILL "$PPID"; fi
+''')
+    run(runner, env=env, ok=False)
+    (fake / 'rm').unlink()
+    assert not cache.exists() and not generated.exists() and paths[0].read_bytes() == b'wrapper-B'
+    script(fake / 'cp', f'''
+if [ "$1" = "{state}/zygote-upgrade/$(sg_file_key "{paths[0]}")/next" ]; then
+    kill -KILL "$PPID"
+    exit 1
+fi
+exec /bin/cp "$@"
+''')
+    run(runner, env=env, ok=False)
+    assert paths[0].read_bytes() == b'wrapper-B'
+    assert paths[2].read_bytes() == b'loader-C' and paths[3].read_bytes() == b'jar-C'
+    assert (state / 'zygote-upgrade/ready').exists()
+    (fake / 'cp').unlink()
+    (payload / 'wrapper').write_bytes(b'unrelated-selected-wrapper')
+    blocked = run(runner, env=env, ok=False)
+    assert blocked.returncode == 3 and 'resume selected projection payload' in blocked.stdout
+    assert paths[0].read_bytes() == b'wrapper-B'
+    (payload / 'wrapper').write_bytes(b'wrapper-C')
+    run(runner, env=dict(env, HMG_SEOGAEMO_UPDATE_HEALTH='1',
+                         HMG_SEOGAEMO_PROJECTION_ROLLBACK_GUARD='1'))
+    assert paths[0].read_bytes() == b'wrapper-C'
+    assert not (state / 'zygote-upgrade').exists()
+    script(runner, f'set -eu\nsg_file_applied "{cache}"\nsg_file_applied "{generated}"\n')
+    run(runner, env=env)
+    script(runner, install)
+
+    # Kill after wrapper rename but before its applied marker; restore accepts
+    # only journaled bytes/metadata and returns exactly to original stock.
+    for name in ('wrapper', 'loader', 'jar'):
+        (payload / name).write_bytes((name + '-D').encode())
+    script(fake / 'mv', f'''
+/bin/mv "$@" || exit 1
+if [ "$2" = "{paths[0]}" ]; then kill -KILL "$PPID"; fi
+''')
+    run(runner, env=env, ok=False)
+    (fake / 'mv').unlink()
+    assert paths[0].read_bytes() == b'wrapper-D'
+    script(runner, 'set -eu\nsg_restore_preflight\nsg_revert_all\n')
+    run(runner, env=env)
+    assert paths[0].read_bytes() == b'stock-executable'
+    assert paths[0].stat().st_mode & 0o777 == 0o755
+    assert not paths[1].exists()
+    assert paths[2].read_bytes() == b'original-loader' and paths[2].stat().st_mode & 0o777 == 0o640
+    assert paths[3].read_bytes() == b'original-jar' and paths[3].stat().st_mode & 0o777 == 0o600
+    assert cache.read_bytes() == b'previous-cache' and not app_dir.exists()
+    assert not (state / 'zygote-upgrade').exists()
+    for name in ('wrapper', 'loader', 'jar'):
+        (payload / name).write_bytes(name.encode())
     # A drifted runtime must block the entire restore before app_process changes.
     script(runner, f'''
 set -eu
@@ -1117,6 +1234,60 @@ if sg_revert_all; then exit 1; fi
 [ "$(cat "{paths[1]}")" = stock-executable ]
 ''')
     run(runner, env=env)
+    (payload / 'wrapper').write_bytes(b'next-wrapper')
+    script(runner, 'sg_zygote_install wrapper loader jar\n')
+    result = run(runner, env=env, ok=False)
+    assert result.returncode == 3 and 'payload drift' in result.stdout
+    assert paths[0].read_bytes() == b'wrapper' and paths[2].read_bytes() == b'external'
+
+
+def test_projection_reader_vm(temp):
+    base = temp / 'projection-reader'
+    state = base / 'state/modules/wireless-carplay-and-aa'
+    payload = base / 'payload'
+    target = base / 'target'
+    for directory in (state, payload / 'data', base / 'modules', target / 'system/bin'):
+        directory.mkdir(parents=True)
+    (base / 'modules/wireless-carplay-and-aa.properties').write_text('owns_files=/system/bin/app_process\n')
+    (payload / 'data/hmg-seogaemo-projection-runtime.jar').write_bytes(b'reader')
+    process = target / 'system/bin/app_process.hmg-seogaemo-stock'
+    script(process, '''
+set -eu
+[ "$1" = /system/bin ]
+[ "$2" = com.seogaemo.hmg.runtime.HmgSeogaemoProjectionRuntime ]
+[ "$4" = "$SG_DATA_ROOT" ]
+[ "$ANDROID_DATA" = "$SG_DATA_ROOT/runtime/wireless-carplay-and-aa/vm" ]
+[ -d "$ANDROID_DATA/dalvik-cache" ]
+sg_write "$3" > "$SG_DATA_ROOT/invoked"
+''')
+    env = dict(os.environ, HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_STATE=str(state),
+               HMG_SEOGAEMO_MODULE_DIR=str(payload), SG_DATA_ROOT=str(base / 'state'),
+               SG_TARGET_ROOT=str(target))
+    runner = base / 'runner'
+    # Host UID differs from root; exercise the real path/mode/launch checks
+    # with deterministic KitKat metadata and owner mutation.
+    preamble = 'set -eu\nsg_file_meta() { echo 0700 0 0; }\nchown() { :; }\n'
+    script(runner, preamble + 'sg_projection_runtime prepare\nsg_projection_runtime status\n')
+    run(runner, env=env)
+    vm = base / 'state/runtime/wireless-carplay-and-aa/vm'
+    assert vm.stat().st_mode & 0o777 == 0o700
+    assert (vm / 'dalvik-cache').stat().st_mode & 0o777 == 0o700
+    assert (base / 'state/invoked').read_text().strip() == 'status'
+    selected = base / 'selected-current'
+    selected.symlink_to(payload, target_is_directory=True)
+    run(runner, env=dict(env, HMG_SEOGAEMO_MODULE_DIR=str(selected)))
+    assert (base / 'state/invoked').read_text().strip() == 'status'
+    script(runner, preamble + 'sg_projection_runtime clear\n')
+    run(runner, env=env)
+    assert (base / 'state/invoked').read_text().strip() == 'clear'
+    (vm / 'dalvik-cache').rmdir()
+    outside = base / 'outside'
+    outside.mkdir()
+    (vm / 'dalvik-cache').symlink_to(outside, target_is_directory=True)
+    script(runner, preamble + 'sg_projection_runtime status\n')
+    blocked = run(runner, env=env, ok=False)
+    assert blocked.returncode == 3
+    assert (base / 'state/invoked').read_text().strip() == 'clear'
 
 
 with tempfile.TemporaryDirectory() as directory:
@@ -1139,4 +1310,5 @@ with tempfile.TemporaryDirectory() as directory:
     test_system_directory_mode(root)
     test_public_readable(root)
     test_file_metadata_guards(root)
+    test_projection_reader_vm(root)
 print("shared runtime tests passed")

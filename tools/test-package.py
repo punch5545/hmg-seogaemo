@@ -247,6 +247,22 @@ esac
             env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}")
             updater_cmd = [SHELL, str(package_root / "core/update.sh")]
             for verb in ("stage", "apply", "rollback"):
+                if verb == 'apply':
+                    health = state / 'update/versions/0.1.1/svc/reconcile.sh'
+                    health.write_text('#!/bin/sh\n[ "$HMG_SEOGAEMO_UPDATE_HEALTH" = 1 ] && '
+                                      '[ "$HMG_SEOGAEMO_PROJECTION_ROLLBACK_GUARD" = 1 ]\n')
+                if verb == 'rollback':
+                    # Applied projection generations must never be paired with
+                    # an older selected package/APK, even after interruption.
+                    projection = state / 'modules/wireless-carplay-and-aa'
+                    projection.mkdir(parents=True)
+                    (projection / 'changes').write_text('file\t/system/bin/app_process\n')
+                    selected = (state / 'update/current').resolve()
+                    blocked = subprocess.run(updater_cmd + [verb], env=env, capture_output=True, text=True)
+                    assert blocked.returncode != 0 and 'disable wireless-carplay-and-aa' in blocked.stderr
+                    assert (state / 'update/current').resolve() == selected
+                    assert (state / 'update/journal').read_text().strip() == 'phase=healthy'
+                    (projection / 'changes').unlink()
                 result = subprocess.run(updater_cmd + [verb], env=env, capture_output=True, text=True)
                 assert result.returncode == 0, (verb, result.stdout, result.stderr)
             assert "package-version=" + version in (package_root / "NEMESIS.data").read_text(), (package_root / "NEMESIS.data").read_text()
@@ -257,6 +273,19 @@ esac
             assert result.returncode != 0
             assert (state / "update/current").resolve() == package_root.resolve(), (result.stdout, result.stderr, (state / "update/current").resolve(), package_root.resolve(), (state / "update/journal").read_text())
             assert (state / "update/journal").read_text().strip() == "phase=auto-rollback"
+            # Automatic health failure also retains the newly selected package
+            # while projection system files have restore material.
+            (projection / 'changes').write_text('file\t/system/bin/app_process\n')
+            result = subprocess.run(updater_cmd + ["apply"], env=env, capture_output=True, text=True)
+            assert result.returncode != 0 and 'rollback blocked' in result.stderr
+            assert (state / 'update/current').resolve() == (state / 'update/versions/0.1.1').resolve()
+            assert (state / 'update/journal').read_text().strip() == 'phase=auto-rollback'
+            blocked = subprocess.run(updater_cmd + ['rollback'], env=env, capture_output=True, text=True)
+            assert blocked.returncode != 0 and 'rollback blocked' in blocked.stderr
+            (projection / 'changes').unlink()
+            result = subprocess.run(updater_cmd + ['rollback'], env=env, capture_output=True, text=True)
+            assert result.returncode == 0, (result.stdout, result.stderr)
+            assert (state / 'update/current').resolve() == package_root.resolve()
     print("NEMESIS package tests passed")
 
 

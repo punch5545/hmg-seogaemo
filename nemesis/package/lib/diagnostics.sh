@@ -101,9 +101,9 @@ hmg_seogaemo_diagnostics() (
     ) | dd bs=1 count=65536 2>/dev/null > "$diag/properties.txt"
     # Fixed area, bounded depth, text logs/receipts only; never copy configs.
     for area in $HMG_SEOGAEMO_DIAGNOSTIC_RUNTIME_DIRS; do
-        for source in "$SG_DATA_ROOT/$area"/* "$SG_DATA_ROOT/$area"/*/* "$SG_DATA_ROOT/$area"/*/*/*; do
+        for source in "$SG_DATA_ROOT/$area"/* "$SG_DATA_ROOT/$area"/*/* "$SG_DATA_ROOT/$area"/*/*/* "$SG_DATA_ROOT/$area"/wireless-carplay-and-aa/apps/*/*; do
             case "${source##*/}" in
-                *.log|*.txt|result|module-output) copy_log "$source" "${source#"$SG_DATA_ROOT/"}" || exit 1;;
+                *.log|*.log.1|*.txt|result|module-output) copy_log "$source" "${source#"$SG_DATA_ROOT/"}" || exit 1;;
             esac
         done
     done

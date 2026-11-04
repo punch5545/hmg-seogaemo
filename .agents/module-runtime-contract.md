@@ -60,6 +60,49 @@ Desired-on modules are still reapplied on the install/update path.
 Implemented interface between the shared module runtime, modules, and updater.
 The ownership table records the original parallel-work split; it no longer assigns active worktrees.
 
+## Applied projection payload upgrades (2026-11-04)
+
+`sg_zygote_install` compares the selected wrapper, loader and JAR on every
+apply, including desired-on reconciliation after OTA and NEMESIS USB postinstall.
+An applied install may advance only from its recorded applied bytes/metadata;
+unknown drift conflicts before any payload write. The stock executable backup
+and every original file baseline remain immutable through all generations.
+A durable `zygote-upgrade` journal publishes intended bytes/metadata before
+mutation. Guards also recognize those intended states after interruption, so
+retry converges and stock restore can undo a partial upgrade. A different
+selected generation during a pending upgrade is refused; restore or resume the
+same selected payload first. The journal remains until all new applied markers
+and ledger entries are committed.
+
+Upgrade captures then invalidates tracked Dalvik caches, writes loader and JAR,
+and atomically replaces the wrapper last. It records restart-required before
+the first mutation; the old running zygote still holds its previous inodes.
+Cache deletions remain journaled until their applied-absence markers are
+committed, including paths no longer visible in cache globs after interruption.
+No zygote service restart is performed. A same-payload reapply makes no payload
+or cache writes. Projection reapply reasserts all three owned properties using
+`sg_prop_set`; status checks all three.
+
+OTA rollback (explicit, automatic and interrupted-update recovery) refuses
+before selecting another package/APK while projection restore material remains.
+Disable projection or restore stock first, then retry rollback. Failed update
+health with active projection keeps the selected package and reports blocked
+rollback, rather than mixing old package code with new system payload bytes.
+This conservative policy also covers interrupted first apply and upgrade.
+Uninstall always restores ORIGINAL stock, never the previous applied generation.
+
+The guarded fixed updater advertises `HMG_SEOGAEMO_PROJECTION_ROLLBACK_GUARD=1`
+to its health reconcile. With `HMG_SEOGAEMO_UPDATE_HEALTH=1` and no capability,
+`sg_zygote_install` keeps the applied generation and returns successful
+`info.hook_upgrade=deferred until update is finalized`; caches remain intact.
+After finalization, ordinary reapply upgrades. The new APK checks fixed module
+status `info.restore_material=absent` before dispatching rollback; missing or
+present material refuses with localized guidance after the normal confirmation.
+This protects app rollback even with an older fixed updater. USB replaces that
+updater and uses ordinary postinstall reconcile, so it does not defer. Direct
+root rollback through a pre-upgrade fixed updater cannot acquire this new guard;
+disable projection first or reinstall via USB before using that legacy command.
+
 ## Payload metadata and directory transactions (2026-11-04)
 
 Whole-file applied markers include `applied-meta` (four octal mode digits,
@@ -213,6 +256,33 @@ claiming those native capabilities. Reject symlinks, nonregular files and unexpe
 ownership; never source/eval the record as shell. These app-owned reports are
 diagnostic evidence, not a defense against a compromised OEM app. Seal validation
 still checks only `product\nhash-id\n`; additional seal lines remain compatible.
+
+The consumer uses `sg_projection_runtime prepare|status|applying|clear` in the
+package API, restricted to the projection owner. `prepare` creates the runtime
+parent and module directory as root:root 0700 before loader installation. The
+API invokes the packaged API 19 Java reader (SHA-256 through MessageDigest,
+KitKat libcore lstat for UID/type); it never executes record contents. Expected
+app UID comes from the fixed package's data directory, and proc UID, cmdline,
+record process and start ticks must agree. Only the package main process or its
+colon subprocesses qualify. Every current record is considered, so a ready
+record cannot hide another current failure. Zygote plus all five packages and
+their relevant parts/native recipes are required for `on`. Missing evidence is
+`unknown`; an apply receipt uses `pending-restart` for missing evidence so the
+dispatcher can retain enabled intent. Old loaded hashes mean `pending-restart`.
+
+Collection replaces only generated app copies, never baselines, with at most
+32 files of 64 KiB across the fixed packages; malformed, stale, aliased or
+incorrectly owned inputs are omitted. Current old-generation records remain
+exportable as restart evidence. `clear` removes the generated root module tree
+after successful revert (including an already reverted module), and removes an
+empty runtime parent. App-private originals may remain. Export probes status
+first, then includes the fixed app-copy depth and `.log.1`.
+The reader runs with `ANDROID_DATA` fixed to the module's private `vm/` tree,
+including its 0700 root-owned `dalvik-cache/`, so executing the reader never
+leaves a global Dalvik cache entry. Successful clear removes this generated
+cache along with the diagnostic copies.
+The fixed reader artifact is checked beneath the canonical selected package
+directory, allowing OTA's `update/current` package pointer.
 
 ## Shared text-file line ownership (2026-11-03)
 

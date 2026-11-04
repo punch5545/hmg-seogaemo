@@ -1,0 +1,236 @@
+package com.seogaemo.hmg.runtime;
+
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.charset.*;
+import java.lang.reflect.*;
+import java.security.MessageDigest;
+import java.util.*;
+
+/** Fixed-path root diagnostic consumer; reports never authorize system writes. */
+public final class HmgSeogaemoProjectionRuntime {
+    static final int LIMIT = 65536;
+    static final String[] PACKAGES = {"com.daudio.app.dipo", "com.tcc.iap2server",
+        "com.google.android.projection.sink", "com.mnsoft.navi", "com.android.btsettings"};
+    static final String[][] PARTS = {{"dipo"}, {"iap2"}, {"gpm_usb", "gpm_tbt"}, {"navigation"}, {"btsettings"}};
+    interface Metadata { int[] stat(File file) throws Exception; }
+    // KitKat libcore provides lstat; android.system.Os requires API21.
+    static final class KitKatMetadata implements Metadata {
+        final Object os; final Method lstat;
+        KitKatMetadata() throws Exception {
+            os = Class.forName("libcore.io.Libcore").getField("os").get(null);
+            lstat = Class.forName("libcore.io.Os").getMethod("lstat", String.class);
+        }
+        public int[] stat(File f) throws Exception {
+            Object s = lstat.invoke(os, f.getPath()); Class<?> c = s.getClass();
+            return new int[] {c.getField("st_uid").getInt(s), c.getField("st_mode").getInt(s)};
+        }
+    }
+    final File system, runtime; final Metadata metadata;
+    int copied; String boot, jarHash, loaderHash;
+    HmgSeogaemoProjectionRuntime(File system, File runtime, Metadata metadata) {
+        this.system = system; this.runtime = runtime; this.metadata = metadata;
+    }
+    File path(String path) { return new File(system, path.substring(1)); }
+    boolean safe(File f) throws IOException { return f.getAbsoluteFile().equals(f.getCanonicalFile()); }
+    boolean owned(File f, int uid, boolean directory) throws Exception {
+        if (!safe(f)) return false;
+        int[] s = metadata.stat(f);
+        return s[0] == uid && (s[1] & 0170000) == (directory ? 0040000 : 0100000);
+    }
+    byte[] bytes(File f, int limit) throws IOException {
+        if (!safe(f) || !f.isFile() || f.length() > limit) throw new IOException("unsafe/oversized file");
+        InputStream in = new FileInputStream(f);
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream(); byte[] b = new byte[4096]; int n;
+            while ((n = in.read(b, 0, Math.min(b.length, limit + 1 - out.size()))) > 0) {
+                out.write(b, 0, n);
+                if (out.size() > limit) throw new IOException("oversized input");
+            }
+            if (!safe(f)) throw new IOException("changed alias");
+            return out.toByteArray();
+        } finally { in.close(); }
+    }
+    String text(File f, int limit) throws IOException {
+        return Charset.forName("UTF-8").newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes(f, limit))).toString();
+    }
+    Map<String,String> record(File f, int uid) throws Exception {
+        if (!owned(f, uid, false)) throw new IOException("record owner/type");
+        String input = text(f, LIMIT);
+        if (!input.endsWith("\n")) throw new IOException("unterminated record");
+        Map<String,String> values = new LinkedHashMap<String,String>();
+        String[] lines = input.split("\n", -1);
+        for (int n = 0; n < lines.length - 1; n++) {
+            String line = lines[n]; int eq = line.indexOf('=');
+            if (eq <= 0 || !line.substring(0, eq).matches("[a-zA-Z0-9_.-]+")) throw new IOException("record key");
+            String value = line.substring(eq + 1);
+            if (value.length() > 8192 || values.size() >= 256) throw new IOException("record limits");
+            for (int i = 0; i < value.length(); i++) if (Character.isISOControl(value.charAt(i))) throw new IOException("record control");
+            if (values.put(line.substring(0, eq), value) != null) throw new IOException("duplicate key");
+        }
+        if (!owned(f, uid, false)) throw new IOException("changed owner");
+        return values;
+    }
+    String digest(File f) throws Exception {
+        if (!owned(f, 0, false)) throw new IOException("payload owner/type");
+        MessageDigest d = MessageDigest.getInstance("SHA-256"); InputStream in = new FileInputStream(f);
+        try { byte[] b = new byte[16384]; int n; while ((n = in.read(b)) > 0) d.update(b, 0, n); }
+        finally { in.close(); }
+        StringBuilder s = new StringBuilder();
+        for (byte b : d.digest()) { s.append("0123456789abcdef".charAt((b & 255) >> 4)); s.append("0123456789abcdef".charAt(b & 15)); }
+        return s.toString();
+    }
+    boolean identity(Map<String,String> r, File f, String pkg, int uid) throws Exception {
+        String pid = r.get("pid"), ticks = r.get("start_ticks"), process = r.get("process");
+        if (!"1".equals(r.get("format")) || !boot.equals(r.get("boot")) ||
+            pid == null || !pid.matches("[1-9][0-9]{0,9}") || ticks == null || !ticks.matches("[0-9]{1,20}") ||
+            !String.valueOf(uid).equals(r.get("uid")) || !pkg.equals(r.get("package")) ||
+            !f.getName().equals("p-" + pid + "-" + ticks + ".txt")) return false;
+        if (process == null || !(process.equals(pkg) || (!pkg.equals("zygote") && process.matches(java.util.regex.Pattern.quote(pkg) + ":[a-zA-Z0-9_.]+")))) return false;
+        File proc = path("/proc/" + pid); String stat = text(new File(proc, "stat"), 8192);
+        int end = stat.lastIndexOf(')');
+        if (end < 0 || !stat.startsWith(pid + " (")) return false;
+        String[] fields = stat.substring(end + 1).trim().split("\\s+");
+        if (fields.length <= 19 || fields[0].equals("Z") || !ticks.equals(fields[19])) return false;
+        String cmd = text(new File(proc, "cmdline"), 8192);
+        int nul = cmd.indexOf('\0'); if (nul >= 0) cmd = cmd.substring(0, nul);
+        if (!process.equals(cmd)) return false;
+        boolean found = false;
+        for (String line : text(new File(proc, "status"), 8192).split("\n")) {
+            if (!line.startsWith("Uid:")) continue;
+            String[] uids = line.substring(4).trim().split("\\s+");
+            if (uids.length != 4) return false;
+            for (String u : uids) if (!u.equals(String.valueOf(uid))) return false;
+            found = true;
+        }
+        return found && r.get("payload_jar_sha256") != null && r.get("payload_jar_sha256").matches("[0-9a-f]{64}") &&
+            r.get("payload_loader_sha256") != null && r.get("payload_loader_sha256").matches("[0-9a-f]{64}");
+    }
+    static final class Result {
+        final String state, detail;
+        Result(String s, String d) { state = s; detail = d; }
+        int rank() { return state.equals("failed") ? 3 : state.equals("pending-restart") ? 2 : state.equals("unknown") ? 1 : 0; }
+    }
+    static String get(Map<String,String> r, String k) { String v = r.get(k); return v == null ? "" : v; }
+    Result phase(Map<String,String> r, String prefix, String expected) {
+        String state = r.get(prefix + ".state");
+        if (expected.equals(state)) return new Result("on", "ready");
+        String detail = prefix + "=" + state + " " + get(r, prefix + ".reason") + " " + get(r, prefix + ".errno");
+        return new Result("failed".equals(state) || "off".equals(state) ? "failed" : "unknown", detail);
+    }
+    Result merge(Result a, Result b) { return b.rank() > a.rank() ? b : a; }
+    Result readiness(Map<String,String> r, int index) {
+        if (!jarHash.equals(r.get("payload_jar_sha256")) || !loaderHash.equals(r.get("payload_loader_sha256")))
+            return new Result("pending-restart", r.get("package") + ": loaded payload differs from installed generation");
+        Result out = phase(r, "gate", "ready");
+        if (index >= 0) {
+            for (String part : PARTS[index]) out = merge(out, phase(r, "part." + part, "loaded"));
+            String[] libs = index == 0 ? new String[] {"libCarPlayCore.so", "libCarPlayAudio.so", "libCarPlayUtils.so"} :
+                index == 2 ? new String[] {"libautoreceiver_infobank.so"} : new String[0];
+            for (String lib : libs) {
+                if (index == 2 && "stock".equals(r.get("native." + lib + ".applicability"))) continue;
+                out = merge(out, phase(r, "native." + lib, "applied"));
+            }
+            if (!get(r, "event.last_error").isEmpty()) out = merge(out, new Result("failed", "event.last_error " + r.get("event.last_error")));
+            if ("failed".equals(r.get("event.dipo_iap2_bind"))) out = merge(out, new Result("failed", "event.dipo_iap2_bind failed"));
+        }
+        return new Result(out.state, r.get("package") + ": " + out.detail);
+    }
+    File[] entries(File dir) throws IOException {
+        if (!safe(dir)) throw new IOException("directory alias");
+        File[] files = dir.listFiles();
+        if (files == null || files.length > 128) throw new IOException("directory limit");
+        Arrays.sort(files); return files;
+    }
+    void privateDir(File dir) throws Exception {
+        if (!safe(dir) || (!dir.exists() && !dir.mkdir()) || !owned(dir, 0, true)) throw new IOException("private runtime directory");
+        dir.setReadable(false, false); dir.setWritable(false, false); dir.setExecutable(false, false);
+        if (!dir.setReadable(true, true) || !dir.setWritable(true, true) || !dir.setExecutable(true, true)) throw new IOException("runtime permissions");
+    }
+    void deleteTree(File dir, int depth) throws Exception {
+        if (!dir.exists() && safe(dir)) return;
+        if (!safe(dir) || depth < 0) throw new IOException("runtime cleanup alias/depth");
+        int[] s = metadata.stat(dir);
+        if (s[0] != 0) throw new IOException("runtime cleanup owner");
+        if ((s[1] & 0170000) == 0040000) for (File child : entries(dir)) deleteTree(child, depth - 1);
+        else if ((s[1] & 0170000) != 0100000) throw new IOException("runtime cleanup type");
+        if (!dir.delete()) throw new IOException("runtime cleanup failed");
+    }
+    void copy(File source, File dest, int uid) throws Exception {
+        if (copied >= 32 || !owned(source, uid, false)) return;
+        byte[] input = bytes(source, LIMIT);
+        if (!owned(source, uid, false)) return;
+        File tmp = new File(dest.getPath() + ".tmp");
+        if (!safe(tmp) || tmp.exists() || !safe(dest)) throw new IOException("copy alias");
+        FileOutputStream out = new FileOutputStream(tmp);
+        try { out.write(input); } finally { out.close(); }
+        tmp.setReadable(false, false); tmp.setWritable(false, false);
+        if (!tmp.setReadable(true, true) || !tmp.setWritable(true, true) || !tmp.renameTo(dest)) throw new IOException("copy publish");
+        copied++;
+    }
+    Result scan(File dir, String pkg, int uid, int index, File output) throws Exception {
+        Result result = new Result("on", "ready"); boolean found = false;
+        if (!owned(dir, uid, true)) return new Result("unknown", pkg + ": runtime directory unavailable");
+        for (File f : entries(dir)) {
+            if (!f.getName().matches("p-[0-9]+-[0-9]+\\.txt")) continue;
+            try {
+                Map<String,String> r = record(f, uid);
+                if (!identity(r, f, pkg, uid)) continue;
+                found = true; result = merge(result, readiness(r, index));
+                if (output != null) {
+                    privateDir(output); copy(f, new File(output, f.getName()), uid);
+                    String stem = f.getName().substring(0, f.getName().length() - 4);
+                    for (String suffix : new String[] {".log", ".log.1"}) {
+                        File log = new File(dir, stem + suffix);
+                        try { copy(log, new File(output, log.getName()), uid); } catch (Exception ignored) { }
+                    }
+                }
+            } catch (Exception ignored) { /* Invalid diagnostics never prove readiness. */ }
+        }
+        return found ? result : new Result("unknown", pkg + ": no current runtime record");
+    }
+    Result status() throws Exception {
+        boot = text(path("/proc/sys/kernel/random/boot_id"), 128).trim();
+        jarHash = digest(path("/system/framework/hmg-seogaemo-wireless-hook.jar"));
+        loaderHash = digest(path("/system/lib/libhmg_seogaemo_wireless_hook.so"));
+        privateDir(runtime);
+        File apps = new File(runtime, "apps"); deleteTree(apps, 3); privateDir(apps);
+        Result result;
+        try { result = scan(runtime, "zygote", 0, -1, null); }
+        catch (Exception e) { result = new Result("unknown", "zygote record unavailable"); }
+        for (int i = 0; i < PACKAGES.length; i++) {
+            String pkg = PACKAGES[i]; Result next;
+            try {
+                File data = path("/data/data/" + pkg);
+                if (!safe(data) || !data.isDirectory()) throw new IOException("package directory");
+                int uid = metadata.stat(data)[0];
+                next = scan(new File(data, "app_hmg-seogaemo-wireless-runtime"), pkg, uid, i, new File(apps, pkg));
+            } catch (Exception e) { next = new Result("unknown", pkg + ": runtime unavailable"); }
+            result = merge(result, next);
+        }
+        return result;
+    }
+    static String clean(String value) {
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < value.length() && s.length() < 200; i++) {
+            char c = value.charAt(i); s.append(c >= 32 && c < 127 ? c : '?');
+        }
+        return s.toString();
+    }
+    public static void main(String[] args) {
+        if (args.length != 2 || !(args[0].equals("status") || args[0].equals("applying") || args[0].equals("clear"))) { System.exit(2); return; }
+        try {
+            File runtime = new File(args[1], "runtime/wireless-carplay-and-aa");
+            HmgSeogaemoProjectionRuntime reader = new HmgSeogaemoProjectionRuntime(new File("/"), runtime, new KitKatMetadata());
+            if (args[0].equals("clear")) { reader.deleteTree(runtime, 4); new File(args[1], "runtime").delete(); return; }
+            Result r = reader.status();
+            if (args[0].equals("applying") && r.state.equals("unknown")) r = new Result("pending-restart", r.detail);
+            System.out.println("state=" + r.state + "\nrestart=" + (r.state.equals("pending-restart") ? "head_unit" : "none") + "\ndetail=" + clean(r.detail));
+            if (r.state.equals("failed")) System.exit(1);
+        } catch (Exception e) {
+            if (args[0].equals("clear")) { System.err.println("runtime cleanup refused: " + e.getClass().getSimpleName()); System.exit(1); return; }
+            System.out.println("state=" + (args[0].equals("applying") ? "pending-restart" : "unknown") + "\nrestart=" + (args[0].equals("applying") ? "head_unit" : "none") + "\ndetail=runtime diagnostics unavailable: " + e.getClass().getSimpleName());
+        }
+    }
+}

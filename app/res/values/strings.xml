@@ -108,6 +108,7 @@
     <string name="update_available">Version %1$s is verified and ready to install.</string>
     <string name="update_install">Install update</string>
     <string name="update_rollback_confirm">Restore the previous verified build?</string>
+    <string name="update_rollback_projection_blocked">Disable wireless CarPlay and Android Auto or restore stock state before restoring the previous version. If its state cannot be checked, try again after recovery.</string>
     <string name="update_staging">Staging update…</string>
     <string name="update_applying">Applying update…</string>
     <string name="update_rolling_back">Rolling back…</string>

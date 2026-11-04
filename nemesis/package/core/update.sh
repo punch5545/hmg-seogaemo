@@ -105,7 +105,22 @@ if [ "$verb" = stage ]; then
     exit 0
 fi
 
+rollback_projection_guard() (
+    HMG_SEOGAEMO_STATE=$state/modules/wireless-carplay-and-aa
+    if sg_restore_material; then
+        echo 'rollback blocked: disable wireless-carplay-and-aa or restore stock first; selected package retained' >&2
+        return 1
+    fi
+)
+auto_rollback() {
+    echo 'phase=auto-rollback' > "$root/journal"
+    rollback_projection_guard || return 1
+    switch_to "$old"
+    /system/bin/sh "$root/current/bin/install-apk.sh" || return 1
+}
+
 if [ "$verb" = rollback ]; then
+    rollback_projection_guard || exit 1
     [ -f "$root/previous-path" ] && [ -f "$root/previous-version" ] || { echo 'no previous build' >&2; exit 1; }
     IFS= read -r old < "$root/previous-path" || :
     IFS= read -r previous_version < "$root/previous-version" || :
@@ -135,16 +150,12 @@ sg_print "$installed" > "$root/previous-version"
 echo 'phase=applying' > "$root/journal"
 sync
 switch_to "$new"
-if ! /system/bin/sh "$root/current/bin/install-apk.sh" || ! grep -Fxq "$version" "$root/current/VERSION" || ! [ -s "$root/current/modules.graph" ] || ! dumpsys package com.seogaemo.hmg | grep -Fq "versionName=$version" || ! HMG_SEOGAEMO_UPDATE_HEALTH=1 /system/bin/sh "$root/current/svc/reconcile.sh"; then
-    echo 'phase=auto-rollback' > "$root/journal"
-    switch_to "$old"
-    /system/bin/sh "$root/current/bin/install-apk.sh" || true
+if ! /system/bin/sh "$root/current/bin/install-apk.sh" || ! grep -Fxq "$version" "$root/current/VERSION" || ! [ -s "$root/current/modules.graph" ] || ! dumpsys package com.seogaemo.hmg | grep -Fq "versionName=$version" || ! HMG_SEOGAEMO_UPDATE_HEALTH=1 HMG_SEOGAEMO_PROJECTION_ROLLBACK_GUARD=1 /system/bin/sh "$root/current/svc/reconcile.sh"; then
+    auto_rollback || true
     exit 1
 fi
 if ! rewrite_descriptor "$version"; then
-    echo 'phase=auto-rollback' > "$root/journal"
-    switch_to "$old"
-    /system/bin/sh "$root/current/bin/install-apk.sh" || true
+    auto_rollback || true
     exit 1
 fi
 rm -f "$root/staged"

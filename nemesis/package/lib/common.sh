@@ -266,6 +266,7 @@ sg_baseline_clear() {
     [ -n "$HMG_SEOGAEMO_STATE" ] || return 2
     rm -rf "$HMG_SEOGAEMO_STATE"/prop.* "$HMG_SEOGAEMO_STATE"/file.* "$HMG_SEOGAEMO_STATE"/bind.*
     rm -f "$HMG_SEOGAEMO_STATE/build" "$HMG_SEOGAEMO_STATE/changes"
+    rm -rf "$HMG_SEOGAEMO_STATE/zygote-upgrade"
 }
 # Package-only mutation API. Metadata comes from the packaged, generated
 # module.properties; callers cannot nominate an arbitrary target.
@@ -350,7 +351,19 @@ sg_file_applied() (
         *) exit 3;;
     esac
 )
-sg_file_guard() { sg_file_original "$1" || sg_file_applied "$1"; }
+sg_zygote_prepared() (
+    sg_path_safe "$1" && sg_check_build || exit 3
+    journal=$HMG_SEOGAEMO_STATE/zygote-upgrade
+    [ -f "$journal/ready" ] || exit 3
+    key=$(sg_file_key "$1") || exit 1
+    if [ -f "$journal/dex.$key" ]; then
+        [ ! -e "$1" ]; exit $?
+    fi
+    [ "$(cat "$journal/$key/path" 2>/dev/null)" = "$1" ] &&
+        sg_equal "$journal/$key/next" "$1" &&
+        [ "$(sg_file_meta "$1")" = "$(cat "$journal/$key/meta")" ]
+)
+sg_file_guard() { sg_file_original "$1" || sg_file_applied "$1" || sg_zygote_prepared "$1"; }
 
 # Directory journals and per-module references protect shared parents.
 sg_dir_guard() (
@@ -1089,6 +1102,93 @@ sg_dex_finalize() {
         rm -f "$sg_dex_old"
     done
 }
+# Called only for an already-installed wrapper, under the root operation lock.
+sg_zygote_upgrade() (
+    journal=$HMG_SEOGAEMO_STATE/zygote-upgrade
+    sg_check_build && sg_applied "$sg_stock" && [ -x "$sg_stock" ] || exit 3
+    changed=0
+    for part in loader jar wrapper; do
+        case "$part" in
+            loader) target=$sg_lib; source=$sg_loader; mode=0644;;
+            jar) target=$sg_framework; source=$sg_jar; mode=0644;;
+            wrapper) target=$sg_bin; source=$sg_wrapper; mode=0755;;
+        esac
+        key=$(sg_file_key "$target") || exit 1
+        sg_applied "$target" || sg_zygote_prepared "$target" || {
+            sg_restore_conflict "projection payload drift: $target"; exit 3;
+        }
+        if [ -f "$journal/ready" ]; then
+            sg_equal "$source" "$journal/$key/next" || {
+                sg_restore_conflict 'resume selected projection payload or restore stock first'; exit 3;
+            }
+        fi
+        sg_equal "$source" "$target" || changed=1
+    done
+    [ "$changed" -ne 0 ] || [ -f "$journal/ready" ] || exit 0
+    # Old fixed updaters can auto-roll back only package/APK, not system hooks.
+    # Their health window must keep the previous installed hook generation.
+    if [ "${HMG_SEOGAEMO_UPDATE_HEALTH:-}" = 1 ] &&
+       [ "${HMG_SEOGAEMO_PROJECTION_ROLLBACK_GUARD:-}" != 1 ]; then
+        sg_print 'info.hook_upgrade=deferred until update is finalized'
+        exit 0
+    fi
+    if [ ! -f "$journal/ready" ]; then
+        prepare=$HMG_SEOGAEMO_STATE/zygote-prepare.$$
+        mkdir -p "$prepare" || exit 1
+        for part in loader jar wrapper; do
+            case "$part" in
+                loader) target=$sg_lib; source=$sg_loader; mode=0644;;
+                jar) target=$sg_framework; source=$sg_jar; mode=0644;;
+                wrapper) target=$sg_bin; source=$sg_wrapper; mode=0755;;
+            esac
+            key=$(sg_file_key "$target") || exit 1
+            mkdir -p "$prepare/$key" &&
+                sg_write "$target" > "$prepare/$key/path" &&
+                sg_copy "$source" "$prepare/$key/next" &&
+                sg_copy "$target" "$prepare/$key/previous" &&
+                sg_print "$mode 0 0" > "$prepare/$key/meta" || exit 1
+        done
+        sg_write 1 > "$prepare/ready" && sync && mv "$prepare" "$journal" && sync || exit 1
+    fi
+    sg_restart_required || exit 1
+    # The two cache namespaces are runtime-owned and may be regenerated while
+    # active. Capture them with the existing derived-cache API before deletion.
+    [ -f "$HMG_SEOGAEMO_STATE/dex.cache" ] || exit 1
+    sg_dex_finalize || exit 3
+    cache=$(cat "$HMG_SEOGAEMO_STATE/dex.cache") || exit 1
+    app_dir=$(cat "$HMG_SEOGAEMO_STATE/dex.app-dir") || exit 1
+    for target in "$cache" "$app_dir"/* "$app_dir"/.[!.]* "$app_dir"/..?*; do
+        [ -e "$target" ] || continue
+        sg_path_safe "$target" && [ -f "$target" ] || exit 3
+        key=$(sg_file_key "$target") || exit 1
+        sg_write 1 > "$journal/dex.$key" && sync || exit 1
+        rm -f "$target" || exit 1
+    done
+    # Deleted app-cache paths no longer appear in the glob on retry. Finalize
+    # every journaled absence, including a kill between deletion and marking.
+    for marker in "$journal"/dex.*; do
+        [ -f "$marker" ] || continue
+        key=${marker##*/dex.}
+        target=$(cat "$HMG_SEOGAEMO_STATE/file.$key/path") || exit 1
+        sg_path_safe "$target" && [ ! -e "$target" ] || exit 3
+        sg_file_mark_applied "$target" || exit 1
+        sg_ledger dex_invalidate "$target" "$HMG_SEOGAEMO_STATE/file.$key/bytes" /dev/null "" || exit 1
+    done
+    for part in loader jar wrapper; do
+        case "$part" in
+            loader) target=$sg_lib; mode=0644;;
+            jar) target=$sg_framework; mode=0644;;
+            wrapper) target=$sg_bin; mode=0755;;
+        esac
+        key=$(sg_file_key "$target") || exit 1
+        sg_commit_file "$target" "$journal/$key/next" "$mode" 0:0 || exit $?
+        sg_ledger zygote_upgrade "$target" "$journal/$key/previous" "$journal/$key/next" "$journal/$key/meta" || exit 1
+    done
+    # Retire atomically: a kill during recursive cleanup must not leave a
+    # half-populated active journal which a retry could mistake for prepared.
+    sync && mv "$journal" "$HMG_SEOGAEMO_STATE/zygote-retired.$$" &&
+        rm -rf "$HMG_SEOGAEMO_STATE/zygote-retired.$$"
+)
 sg_zygote_install() {
     sg_payload "$1" || return 2; sg_wrapper=$sg_source
     sg_payload "$2" || return 2; sg_loader=$sg_source
@@ -1104,10 +1204,8 @@ sg_zygote_install() {
         sg_whole_exclusive "$sg_target" || return 3
     done
     [ -f "$sg_bin" ] || return 3
-    if sg_applied "$sg_bin"; then
-        [ -f "$sg_stock" ] && [ -x "$sg_stock" ] &&
-            sg_applied "$sg_stock" && sg_applied "$sg_lib" &&
-            sg_applied "$sg_framework"
+    if sg_applied "$sg_bin" || [ -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then
+        sg_zygote_upgrade
         return $?
     fi
     [ ! -e "$sg_stock" ] || return 3
@@ -1199,6 +1297,37 @@ sg_revert_all() {
     sg_dirs_revert || return $?
     sg_baseline_clear
 }
+# Generated private diagnostics; no stock baseline or caller-selected paths.
+sg_projection_runtime() (
+    sg_validate owns_files /system/bin/app_process || exit 2
+    sg_runtime=$SG_DATA_ROOT/runtime
+    sg_projection=$sg_runtime/wireless-carplay-and-aa
+    sg_path_safe "$sg_projection" || exit 3
+    sg_mode=$1
+    case "$sg_mode" in
+        prepare|status|applying|clear) ;;
+        *) exit 2 ;;
+    esac
+    if [ "$sg_mode" = clear ] && [ ! -e "$sg_projection" ]; then exit 0; fi
+    for sg_dir in "$sg_runtime" "$sg_projection" "$sg_projection/vm" "$sg_projection/vm/dalvik-cache"; do
+        sg_path_safe "$sg_dir" || exit 3
+        if [ -e "$sg_dir" ]; then
+            [ -d "$sg_dir" ] || exit 3
+            set -- $(sg_file_meta "$sg_dir")
+            [ "$2:$3" = 0:0 ] || exit 3
+        fi
+        mkdir -p "$sg_dir" && chown 0:0 "$sg_dir" && chmod 700 "$sg_dir" || exit 1
+    done
+    [ "$sg_mode" != prepare ] || exit 0
+    # OTA dispatch enters through update/current; resolve that package pointer
+    # before applying the no-symlink guard to the fixed reader artifact.
+    sg_helper_dir=$(readlink -f "$HMG_SEOGAEMO_MODULE_DIR") || exit 1
+    sg_helper=$sg_helper_dir/data/hmg-seogaemo-projection-runtime.jar
+    sg_path_safe "$sg_helper" && [ -f "$sg_helper" ] || exit 1
+    sg_process=${SG_TARGET_ROOT:-}/system/bin/app_process
+    if [ -f "$sg_process.hmg-seogaemo-stock" ]; then sg_process=$sg_process.hmg-seogaemo-stock; fi
+    ANDROID_DATA="$sg_projection/vm" CLASSPATH="$sg_helper" "$sg_process" /system/bin com.seogaemo.hmg.runtime.HmgSeogaemoProjectionRuntime "$sg_mode" "$SG_DATA_ROOT" # android44-shell: allow -- fixed package reader via stock API19 app_process
+)
 sg_owner_present() {
     case "$1" in
         nemesis-adb-tcp) [ -d /data/nemesis/apps/adb.tcp ] || [ -d /data/nemesis/backup/adb.tcp ] ;;

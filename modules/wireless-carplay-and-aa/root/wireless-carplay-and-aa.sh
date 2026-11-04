@@ -24,7 +24,8 @@ compatibility() {
         if sg_owner_present "$owner"; then conflict "external owner: $owner"; return 3; fi
     done
     if exists /system/bin/app_process.hmgapi-stock; then conflict 'HMG-API app_process backup present'; return 3; fi
-    if exists /system/bin/app_process.hmg-seogaemo-stock && ! sg_applied /system/bin/app_process; then
+    if exists /system/bin/app_process.hmg-seogaemo-stock && ! sg_applied /system/bin/app_process &&
+       [ ! -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then
         conflict 'orphaned app_process backup'; return 3
     fi
     exists "$FEATURE" || { incompatible 'featurexml.cfg absent'; return 4; }
@@ -85,9 +86,19 @@ repair_assets() {
 
 apply() {
     compatibility || return $?
-    if sg_applied /system/bin/app_process; then
+    sg_projection_runtime prepare || { fail 'private runtime directory unavailable'; return 1; }
+    if sg_applied /system/bin/app_process || [ -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then
+        sg_dex_cache_track /system/framework/hmg-seogaemo-wireless-hook.jar com.daudio.app.dipo || return 1
+        sg_zygote_install data/app_process data/libhmg_seogaemo_wireless_hook.so data/hmg-seogaemo-wireless-hook.jar || {
+            result=$?
+            if [ "$result" -eq 3 ]; then conflict 'payload upgrade blocked by drift; inspect change ledger'; return 3; fi
+            fail 'payload upgrade incomplete; retry selected build or restore stock'; return 1
+        }
         repair_assets || { fail 'asset repair failed; inspect change ledger'; return 1; }
-        status; return $?
+        sg_prop_set persist.ium.support carplay &&
+            sg_prop_set persist.sys.iap2.wifi t &&
+            sg_prop_set persist.iap2.iden.wireless t || { fail 'property reapply failed'; return 1; }
+        status applying; return $?
     fi
     if ! put_assets ||
        ! sg_prop_set persist.ium.support carplay ||
@@ -96,48 +107,45 @@ apply() {
        ! sg_dex_cache_track /system/framework/hmg-seogaemo-wireless-hook.jar com.daudio.app.dipo ||
        ! sg_zygote_install data/app_process data/libhmg_seogaemo_wireless_hook.so data/hmg-seogaemo-wireless-hook.jar; then
         sg_revert_all || sg_log 'rollback failed; ledger and baselines retained'
+        if ! sg_restore_material; then sg_projection_runtime clear || return 1; fi
         fail 'apply failed; inspect change ledger'; return 1
     fi
     sg_status pending-restart head_unit 'restart unit to load projection features and hooks'
 }
 
 revert() {
-    if ! sg_applied /system/bin/app_process; then
+    if ! sg_applied /system/bin/app_process && [ ! -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then
         # An interrupted apply can have feature/property changes without the wrapper.
         sg_revert_all || { conflict 'partial apply restore blocked; ledger retained'; return 3; }
+        sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
         sg_status off none 'disabled'; return 0
     fi
     sg_revert_all || { conflict 'restore blocked by drift; ledger retained'; return 3; }
+    sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
     sg_print info.desired=off
     sg_status pending-restart head_unit 'restart unit to finish restoration'
 }
 
 status() {
+    if sg_restore_material; then sg_print info.restore_material=present
+    else sg_print info.restore_material=absent; fi
     if ! command -v sg_applied >/dev/null 2>&1; then
         sg_status not-implemented none 'not implemented'; return 0
     fi
+    if [ -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then
+        fail 'payload upgrade incomplete; retry selected build or restore stock'; return 1
+    fi
     if ! sg_applied /system/bin/app_process; then sg_status off none 'disabled'; return 0; fi
     if [ "$(value persist.service.adb.tcp.enable)" = 1 ]; then conflict 'stock ADB switch conflicts with hotspot'; return 3; fi
-    if [ "$(value persist.ium.support)" != carplay ]; then fail 'projection property drift'; return 1; fi
+    if [ "$(value persist.ium.support)" != carplay ] ||
+       [ "$(value persist.sys.iap2.wifi)" != t ] ||
+       [ "$(value persist.iap2.iden.wireless)" != t ]; then fail 'projection property drift'; return 1; fi
     assets_readable || { fail 'projection assets unreadable; reapply and restart required'; return 1; }
     if sg_restart_pending; then
+        runtime_result=$(sg_projection_runtime status) || { sg_print "$runtime_result"; return 1; }
         sg_status pending-restart head_unit 'restart unit to register repaired native recipes'; return 0
     fi
-    # Runtime loaded in the zygote only after a full unit restart. A boot guard
-    # that disabled preloading also leaves this pending instead of claiming success.
-    process=$(ps 2>/dev/null | grep '[z]ygote') || process=
-    pid=
-    if [ -n "$process" ]; then
-        read -r user pid rest <<EOF
-$process
-EOF
-    fi
-    if [ -n "$pid" ] &&
-       grep -q 'libhmg_seogaemo_wireless_hook.so' "$(path "/proc/$pid/maps")" 2>/dev/null; then
-        sg_status on none 'wireless projection hooks loaded'
-    else
-        sg_status pending-restart head_unit 'unit restart or hook recovery required'
-    fi
+    sg_projection_runtime "${1:-status}"
 }
 
 [ "$#" -eq 1 ] || exit 2
