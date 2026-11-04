@@ -262,11 +262,52 @@ sg_remount_ro() {
     sg_log 'warning: /system stays read-write until restart (remount ro failed)' || :
     return 0
 }
+# Leftovers of our own interrupted atomic writes (power loss at ignition off).
+# Exact names only: "<name>.hmg-seogaemo.<digits>" regular files (sg_commit_file
+# temporaries), and zygote-prepare.<digits> / zygote-retired.<digits> directories
+# directly inside the module state directory.
+sg_temp_name() {
+    case "$1" in
+        ?*.hmg-seogaemo.*)
+            sg_tn_suffix=${1##*.hmg-seogaemo.}
+            case "$sg_tn_suffix" in ''|*[!0-9]*) return 1;; esac
+            return 0 ;;
+    esac
+    return 1
+}
+# Remove temporaries of one owned file, or all of them inside a created directory.
+sg_sweep_temps() (
+    sg_path_safe "$1" || exit 3
+    if [ -d "$1" ]; then
+        for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+            [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+            sg_temp_name "${entry##*/}" || continue
+            rm -f "$entry" || exit 1
+            sg_ledger temp_sweep "$entry" "" "" "" || exit 1
+        done
+    else
+        for entry in "$1".hmg-seogaemo.*; do
+            [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+            sg_temp_name "${entry##*/}" || continue
+            rm -f "$entry" || exit 1
+            sg_ledger temp_sweep "$entry" "" "" "" || exit 1
+        done
+    fi
+)
+sg_zygote_sweep() (
+    [ -n "$HMG_SEOGAEMO_STATE" ] || exit 2
+    for entry in "$HMG_SEOGAEMO_STATE"/zygote-prepare.* "$HMG_SEOGAEMO_STATE"/zygote-retired.*; do
+        [ -d "$entry" ] && [ ! -L "$entry" ] || continue
+        case "${entry##*.}" in ''|*[!0-9]*) continue;; esac
+        rm -rf "$entry" || exit 1
+    done
+)
 sg_baseline_clear() {
     [ -n "$HMG_SEOGAEMO_STATE" ] || return 2
     rm -rf "$HMG_SEOGAEMO_STATE"/prop.* "$HMG_SEOGAEMO_STATE"/file.* "$HMG_SEOGAEMO_STATE"/bind.*
     rm -f "$HMG_SEOGAEMO_STATE/build" "$HMG_SEOGAEMO_STATE/changes"
     rm -rf "$HMG_SEOGAEMO_STATE/zygote-upgrade"
+    sg_zygote_sweep
 }
 # Package-only mutation API. Metadata comes from the packaged, generated
 # module.properties; callers cannot nominate an arbitrary target.
@@ -484,7 +525,9 @@ sg_dirs_revert() (
         sg_remount rw || exit 1
         rc=0
         case "$(cat "$record/existence")" in
-            absent) if [ -e "$target" ]; then rmdir "$target" || rc=3; fi ;;
+            absent)
+                # Only our own interrupted-write temporaries may keep a created dir alive.
+                if [ -e "$target" ]; then sg_sweep_temps "$target" && rmdir "$target" || rc=3; fi ;;
             present)
                 read mode uid gid < "$record/meta" || exit 1
                 current=$(sg_file_meta "$target") || exit 1
@@ -1105,6 +1148,7 @@ sg_dex_finalize() {
 # Called only for an already-installed wrapper, under the root operation lock.
 sg_zygote_upgrade() (
     journal=$HMG_SEOGAEMO_STATE/zygote-upgrade
+    sg_zygote_sweep || exit 1
     sg_check_build && sg_applied "$sg_stock" && [ -x "$sg_stock" ] || exit 3
     changed=0
     for part in loader jar wrapper; do
@@ -1232,6 +1276,45 @@ sg_zygote_install() {
     if [ "$sg_rc" -ne 0 ]; then sg_revert_all || sg_log 'zygote rollback blocked'; return 1; fi
     [ -f "$sg_stock" ] && [ -x "$sg_stock" ] && sg_equal "$sg_stock_saved/bytes" "$sg_stock"
 }
+# Read-only guard for the app_process swap. A module that owns the swap holds a
+# file baseline for it (or an upgrade journal); every guarded revert path then
+# applies. Without that record, nothing we wrote is recoverable, so an existing
+# stock backup, our hook files or guard state, or an app_process that is not the
+# known stock build (module.properties `known_stock.N=<product glob>:<path>:<md5>`)
+# is reported as a conflict and nothing is touched or called "already off".
+# Returns 0 when clean, owned or not applicable, 3 on a conflict.
+sg_zygote_foreign() (
+    sg_bin=${SG_TARGET_ROOT:-}/system/bin/app_process
+    sg_validate owns_files "$sg_bin" || exit 0
+    key=$(sg_file_key "$sg_bin") || exit 1
+    [ ! -f "$HMG_SEOGAEMO_STATE/file.$key/ready" ] || exit 0
+    [ ! -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ] || exit 0
+    for item in "$sg_bin.hmg-seogaemo-stock" \
+        "${SG_TARGET_ROOT:-}/system/lib/libhmg_seogaemo_wireless_hook.so" \
+        "${SG_TARGET_ROOT:-}/system/framework/hmg-seogaemo-wireless-hook.jar" \
+        "$HMG_SEOGAEMO_STATE/enable" "$HMG_SEOGAEMO_STATE/enabled" \
+        "$HMG_SEOGAEMO_STATE/starts" "$HMG_SEOGAEMO_STATE/disable"; do
+        if [ -e "$item" ] || [ -L "$item" ]; then
+            sg_restore_conflict "app_process swap without ownership record: ${item#"${SG_TARGET_ROOT:-}"}"
+            exit 3
+        fi
+    done
+    product=$(getprop ro.build.product) || exit 1
+    expected=
+    while IFS='=' read -r field value; do
+        case "$field" in known_stock.*) ;; *) continue;; esac
+        glob=${value%%:*}; rest=${value#*:}
+        [ "${rest%%:*}" = /system/bin/app_process ] || continue
+        case "$product" in $glob) expected=${rest#*:};; esac
+    done < "$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties"
+    [ -n "$expected" ] && [ -f "$sg_bin" ] || exit 0
+    actual=$(md5 "$sg_bin") || exit 1
+    set -- $actual
+    [ "${1:-}" = "$expected" ] || {
+        sg_restore_conflict 'app_process is not the known stock build and no module owns the swap'
+        exit 3
+    }
+)
 sg_restore_material() {
     for sg_material in "$HMG_SEOGAEMO_STATE"/prop.*/ready "$HMG_SEOGAEMO_STATE"/file.*/ready \
         "$HMG_SEOGAEMO_STATE"/line.*/ready "$HMG_SEOGAEMO_STATE"/bind.* \
@@ -1242,8 +1325,10 @@ sg_restore_material() {
     return 1
 }
 sg_revert_all() {
+    # An unrecorded swap is not stock, whatever the snapshots say: refuse first.
+    sg_zygote_foreign || return 3
     # Consumed snapshots are already stock; a leftover desired bit is not a baseline.
-    sg_restore_material || return 0
+    sg_restore_material || { sg_zygote_sweep; return $?; }
     sg_zygote_finalize_guard || return 3
     sg_dex_finalize || return 3
     sg_restore_preflight || return 3
@@ -1282,6 +1367,7 @@ sg_revert_all() {
                 fi
                 case "$sg_target" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
                 sg_file_restore "$sg_target"; sg_rc=$?
+                if [ "$sg_rc" -eq 0 ]; then sg_sweep_temps "$sg_target" || sg_rc=1; fi
                 if [ "$sg_system" -eq 1 ]; then sg_remount_ro; fi
                 [ "$sg_rc" -eq 0 ] || return "$sg_rc"
                 sg_ledger revert "$sg_target" "$sg_revert_before" "$sg_saved/bytes" "$sg_saved/meta" || return 1 ;;
@@ -1297,7 +1383,74 @@ sg_revert_all() {
     sg_dirs_revert || return $?
     sg_baseline_clear
 }
+# Bounded child waits. The head unit has no timeout binary: callers start the
+# child in the background, redirect its output to a file, and pass its PID here.
+# Returns the child's status, or 124 after the whole attempt was killed.
+# Children are found through toolbox ps (PID is field 2, PPID field 3).
+sg_kill_tree() {
+    sg_kt_pid=$1; sg_kt_depth=${2:-3}
+    if [ "$sg_kt_depth" -gt 0 ]; then
+        sg_kt_list=$(ps 2>/dev/null) || sg_kt_list=
+        sg_kt_kids=
+        if [ -n "$sg_kt_list" ]; then
+            while read -r sg_kt_user sg_kt_child sg_kt_parent sg_kt_rest; do
+                [ "$sg_kt_parent" = "$sg_kt_pid" ] || continue
+                case "$sg_kt_child" in ''|*[!0-9]*) continue;; esac
+                sg_kt_kids="$sg_kt_kids $sg_kt_child"
+            done <<EOF
+$sg_kt_list
+EOF
+        fi
+        for sg_kt_child in $sg_kt_kids; do sg_kill_tree "$sg_kt_child" "$((sg_kt_depth - 1))"; done
+    fi
+    kill "$sg_kt_pid" 2>/dev/null || :
+    kill -9 "$sg_kt_pid" 2>/dev/null || :
+}
+sg_bounded_wait() {
+    case "$1:$2" in ''|*[!0-9:]*|:*|*:) return 2;; esac
+    sg_bw_pid=$1; sg_bw_limit=$2; sg_bw_elapsed=0
+    while kill -0 "$sg_bw_pid" 2>/dev/null && [ "$sg_bw_elapsed" -lt "$sg_bw_limit" ]; do
+        sleep 1
+        sg_bw_elapsed=$((sg_bw_elapsed + 1))
+    done
+    if kill -0 "$sg_bw_pid" 2>/dev/null; then
+        sg_kill_tree "$sg_bw_pid" 3
+        wait "$sg_bw_pid" 2>/dev/null || :
+        return 124
+    fi
+    wait "$sg_bw_pid"
+}
+# Read-only: the boot class path root-spawned app_process needs. Prefer the
+# inherited environment, else the init environment file. Prints one validated
+# value; fails (printing nothing) when none is usable.
+sg_bootclasspath() (
+    value=${BOOTCLASSPATH:-}
+    if [ -z "$value" ] && [ -f "${SG_INIT_ENVIRON:-/init.environ.rc}" ]; then
+        while IFS= read -r line; do
+            set -- $line
+            if [ "${1:-}" = export ] && [ "${2:-}" = BOOTCLASSPATH ] && [ -n "${3:-}" ]; then value=$3; break; fi
+        done < "${SG_INIT_ENVIRON:-/init.environ.rc}"
+    fi
+    case "$value" in
+        /system/*) ;;
+        *) exit 1;;
+    esac
+    case "$value" in *[!a-zA-Z0-9_./:+@-]*) exit 1;; esac
+    sg_write "$value"
+)
+# Private Dalvik cache so our root jars never write into /data/dalvik-cache.
+sg_vm_prepare() (
+    sg_path_safe "$1" || exit 3
+    for dir in "$1" "$1/dalvik-cache"; do
+        sg_path_safe "$dir" || exit 3
+        [ ! -e "$dir" ] || [ -d "$dir" ] || exit 3
+        mkdir -p "$dir" && chmod 700 "$dir" || exit 1
+    done
+)
 # Generated private diagnostics; no stock baseline or caller-selected paths.
+# The reader is a Dalvik process spawned as root: it runs in the background with
+# output in a private file and is killed after a fixed limit, so a hung VM can
+# neither wedge the caller nor keep operation.lock. Unusable output is unknown.
 sg_projection_runtime() (
     sg_validate owns_files /system/bin/app_process || exit 2
     sg_runtime=$SG_DATA_ROOT/runtime
@@ -1319,14 +1472,204 @@ sg_projection_runtime() (
         mkdir -p "$sg_dir" && chown 0:0 "$sg_dir" && chmod 700 "$sg_dir" || exit 1
     done
     [ "$sg_mode" != prepare ] || exit 0
+    # Reader failures: status is unknown, applying stays a pending restart,
+    # clear cannot be confirmed (nonzero). Nothing here authorizes a write.
+    sg_unknown() {
+        sg_log "projection reader: $1" || :
+        case "$sg_mode" in
+            clear)
+                # The tree is root-only private state; remove it directly when
+                # the reader could not run. A reader refusal never reaches here.
+                rm -rf "$sg_projection" && [ ! -e "$sg_projection" ] || exit 1
+                rmdir "$sg_runtime" 2>/dev/null || :
+                exit 0 ;;
+            applying) sg_print state=pending-restart restart=head_unit "detail=$(sg_clean "$1")" ;;
+            *) sg_print state=unknown restart=none "detail=$(sg_clean "$1")" ;;
+        esac
+        exit 0
+    }
     # OTA dispatch enters through update/current; resolve that package pointer
     # before applying the no-symlink guard to the fixed reader artifact.
     sg_helper_dir=$(readlink -f "$HMG_SEOGAEMO_MODULE_DIR") || exit 1
     sg_helper=$sg_helper_dir/data/hmg-seogaemo-projection-runtime.jar
     sg_path_safe "$sg_helper" && [ -f "$sg_helper" ] || exit 1
+    sg_boot=$(sg_bootclasspath) || sg_unknown 'BOOTCLASSPATH unavailable'
     sg_process=${SG_TARGET_ROOT:-}/system/bin/app_process
     if [ -f "$sg_process.hmg-seogaemo-stock" ]; then sg_process=$sg_process.hmg-seogaemo-stock; fi
-    ANDROID_DATA="$sg_projection/vm" CLASSPATH="$sg_helper" "$sg_process" /system/bin com.seogaemo.hmg.runtime.HmgSeogaemoProjectionRuntime "$sg_mode" "$SG_DATA_ROOT" # android44-shell: allow -- fixed package reader via stock API19 app_process
+    sg_limit=${SG_READER_TIMEOUT:-15}
+    case "$sg_limit" in ''|*[!0-9]*|0) sg_limit=15;; esac
+    [ "$sg_limit" -le 120 ] || sg_limit=120
+    sg_out=$SG_DATA_ROOT/reader.out.$$
+    sg_err=$SG_DATA_ROOT/reader.err.$$
+    rm -f "$sg_out" "$sg_err"
+    trap 'rm -f "$sg_out" "$sg_err"' EXIT
+    trap 'exit 1' HUP INT TERM
+    (
+        ANDROID_DATA="$sg_projection/vm" BOOTCLASSPATH="$sg_boot" CLASSPATH="$sg_helper" exec "$sg_process" /system/bin com.seogaemo.hmg.runtime.HmgSeogaemoProjectionRuntime "$sg_mode" "$SG_DATA_ROOT" # android44-shell: allow -- fixed package reader via stock API19 app_process
+    ) < /dev/null > "$sg_out" 2> "$sg_err" &
+    sg_reader=$!
+    sg_bounded_wait "$sg_reader" "$sg_limit" && sg_code=0 || sg_code=$?
+    if [ "$sg_code" -eq 124 ]; then sg_unknown "reader timed out after $sg_limit seconds"; fi
+    if [ -s "$sg_err" ]; then sg_log "projection reader: $(dd if="$sg_err" bs=1 count=200 2>/dev/null)" || :; fi
+    if [ "$sg_mode" = clear ]; then
+        # 126 and above: the VM never ran the reader (missing binary, crash).
+        if [ "$sg_code" -ge 126 ]; then sg_unknown "reader failed to start (exit $sg_code)"; fi
+        exit "$sg_code"
+    fi
+    sg_state=; sg_restart=; sg_detail=; sg_lines=0
+    if [ -f "$sg_out" ] && [ ! -L "$sg_out" ]; then
+        sg_size=$(sg_file_size "$sg_out") || sg_size=99999
+    else sg_size=99999; fi
+    if [ "$sg_size" -le 2048 ]; then
+        while IFS= read -r sg_line; do
+            sg_lines=$((sg_lines + 1))
+            case "$sg_line" in
+                state=*) sg_state=${sg_line#state=};;
+                restart=*) sg_restart=${sg_line#restart=};;
+                detail=*) sg_detail=${sg_line#detail=};;
+                *) sg_lines=99;;
+            esac
+        done < "$sg_out"
+    else sg_lines=99; fi
+    case "$sg_state:$sg_restart" in
+        on:none|failed:none|unknown:none|pending-restart:head_unit|pending-restart:none) ;;
+        *) sg_lines=99 ;;
+    esac
+    if [ "$sg_lines" -ne 3 ] || { [ "$sg_code" -ne 0 ] && { [ "$sg_code" -ne 1 ] || [ "$sg_state" != failed ]; }; }; then
+        sg_unknown "reader gave no valid output (exit $sg_code)"
+    fi
+    sg_print "state=$sg_state" "restart=$sg_restart" "detail=$(sg_clean "$sg_detail")"
+    [ "$sg_state" != failed ] || exit 1
+    exit 0
+)
+# Private runtime directories that a loaded hook creates inside a system app's
+# data directory (Context.getDir, so always /data/data/<package>/app_hmg-seogaemo-<name>).
+# The module declares each exact directory in `owns_generated_dirs=`. They hold
+# only generated diagnostics: regular files with plain names, no baseline. All
+# declared directories are validated first; any symlink, subdirectory or other
+# entry is a conflict and nothing at all is removed.
+sg_generated_dirs() {
+    sg_gd_list=
+    sg_manifest=$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties
+    [ -f "$sg_manifest" ] || return 0
+    while IFS='=' read -r sg_field sg_values; do
+        [ "$sg_field" != owns_generated_dirs ] || sg_gd_list=$sg_values
+    done < "$sg_manifest"
+    sg_print "$sg_gd_list"
+}
+sg_generated_dirs_remove() (
+    list=$(sg_generated_dirs) || exit $?
+    [ -n "$list" ] || exit 0
+    old_ifs=$IFS; IFS=,
+    set -f
+    set -- $list
+    set +f
+    IFS=$old_ifs
+    for pass in check remove; do
+        for dir do
+            case "$dir" in /data/data/*/app_hmg-seogaemo-*) ;; *) exit 2;; esac
+            pkg=${dir#/data/data/}; pkg=${pkg%%/*}; leaf=${dir##*/}
+            [ "$dir" = "/data/data/$pkg/$leaf" ] || exit 2
+            case "$pkg" in ''|*[!a-zA-Z0-9._]*) exit 2;; esac
+            case "$leaf" in *[!a-zA-Z0-9_-]*) exit 2;; esac
+            target=${SG_TARGET_ROOT:-}$dir
+            sg_path_safe "$target" || { sg_restore_conflict "generated dir: $dir"; exit 3; }
+            [ -e "$target" ] || continue
+            [ -d "$target" ] || { sg_restore_conflict "generated dir: $dir"; exit 3; }
+            count=0
+            for entry in "$target"/* "$target"/.[!.]* "$target"/..?*; do
+                [ -e "$entry" ] || [ -L "$entry" ] || continue
+                count=$((count + 1))
+                name=${entry##*/}
+                case "$name" in *[!a-zA-Z0-9_.-]*) count=999;; esac
+                if [ "$count" -gt 64 ] || [ -L "$entry" ] || [ ! -f "$entry" ]; then
+                    sg_restore_conflict "generated dir content: $dir"; exit 3
+                fi
+                if [ "$pass" = remove ]; then
+                    rm -f "$entry" || exit 1
+                fi
+            done
+            if [ "$pass" = remove ]; then
+                rmdir "$target" || exit 1
+                sg_ledger generated_dir_remove "$target" "" "" "" || exit 1
+            fi
+        done
+    done
+)
+# Directories below /system/etc/hmg-seogaemo that exist without any journal, left by
+# builds before directory journaling. Derived from the module manifests' owned file
+# paths (ancestors up to the project namespace) so no list is hand-written; rmdir
+# only, so a directory that still holds anything is simply kept.
+sg_legacy_dirs_cleanup() (
+    namespace=/system/etc/hmg-seogaemo
+    dirs=
+    for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
+        [ -f "$manifest" ] || continue
+        while IFS='=' read -r field values; do
+            [ "$field" = owns_files ] || continue
+            old_ifs=$IFS; IFS=,
+            set -f
+            set -- $values
+            set +f
+            IFS=$old_ifs
+            for file do
+                case "$file" in "$namespace"/*) ;; *) continue;; esac
+                dir=${file%/*}
+                while [ "$dir" != "$namespace" ]; do
+                    case " $dirs " in *" $dir "*) ;; *) dirs="$dirs $dir";; esac
+                    dir=${dir%/*}
+                done
+            done
+        done < "$manifest"
+    done
+    dirs="$dirs $namespace"
+    rw=0
+    for pass in 1 2 3; do
+        for dir in $dirs; do
+            target=${SG_TARGET_ROOT:-}$dir
+            [ -d "$target" ] && [ ! -L "$target" ] || continue
+            sg_path_safe "$target" || continue
+            key=$(sg_file_key "$target") || exit 1
+            # A journaled directory belongs to the directory transaction.
+            [ ! -f "$SG_DATA_ROOT/payload-dirs/$key/ready" ] || continue
+            if [ "$rw" -eq 0 ]; then sg_remount rw || exit 1; rw=1; fi
+            if rmdir "$target" 2>/dev/null; then
+                sg_ledger legacy_dir_remove "$target" "" "" "" || { sg_remount_ro; exit 1; }
+            fi
+        done
+    done
+    if [ "$rw" -eq 1 ]; then sg_remount_ro; fi
+    exit 0
+)
+# Dalvik cache entries that earlier builds left in /data/dalvik-cache for our own
+# root jars (mapper, update verifier APK, projection reader). Exact derived names
+# only: <our install path with @>@classes.dex.
+sg_legacy_dex_cleanup() (
+    cache=${SG_TARGET_ROOT:-}/data/dalvik-cache
+    [ -d "$cache" ] || exit 0
+    sg_path_safe "$cache" || exit 3
+    for prefix in data@nemesis@apps@hmg-seogaemo data@nemesis@backup@hmg-seogaemo@update; do
+        for suffix in @core@map@hmg-seogaemo-mapper.jar@classes.dex \
+            @app@hmg-seogaemo.apk@classes.dex \
+            @modules@wireless-carplay-and-aa.d@data@hmg-seogaemo-projection-runtime.jar@classes.dex; do
+            for entry in "$cache/$prefix"*"$suffix"; do
+                [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+                name=${entry##*/}
+                case "$name" in *[!a-zA-Z0-9_.@-]*) continue;; esac
+                middle=${name#"$prefix"}; middle=${middle%"$suffix"}
+                case "$middle" in ''|@*) ;; *) continue;; esac
+                rm -f "$entry" || exit 1
+                sg_ledger dex_legacy_remove "$entry" "" "" "" || exit 1
+            done
+        done
+    done
+)
+# The private Dalvik cache of the mapper and update verifier.
+sg_vm_cleanup() (
+    vm=$SG_DATA_ROOT/core/vm
+    [ -e "$vm" ] || exit 0
+    sg_path_safe "$vm" && [ -d "$vm" ] || exit 3
+    rm -rf "$vm" && [ ! -e "$vm" ]
 )
 sg_owner_present() {
     case "$1" in

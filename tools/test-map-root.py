@@ -21,6 +21,8 @@ with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-map-root-") as tmp:
     (fake/"getprop").write_text("#!/bin/sh\ncase \"$1\" in ro.build.product) echo NEEV.KOR.0000.V039.001.260902;; esac\n")
     (fake/"app_process").write_text('''#!/bin/sh
 . "$HMG_SEOGAEMO_BASE/lib/common.sh"
+[ "$ANDROID_DATA" = "$SG_DATA_ROOT/core/vm" ] && [ -d "$ANDROID_DATA/dalvik-cache" ] || exit 9
+[ "$BOOTCLASSPATH" = /system/framework/core.jar ] || exit 8
 if [ "$3" = status ]; then sg_print state=off restart=none "detail=verification needed"; exit 0; fi
 [ "$3" = run ] || [ "$3" = verify ] || exit 2
 work=$6
@@ -35,7 +37,7 @@ sg_print state=on restart=none "detail=map verified"
     for f in fake.iterdir():f.chmod(0o755)
     env=dict(os.environ,PATH=str(fake)+":"+os.environ["PATH"],SG_DATA_ROOT=str(state),
              SG_EXPORT_ROOT=str(t/"export"),SG_FAKE_MAP=str(ROOT/"maps/hyundai/ioniq5/kor/260902"),
-             SG_USB_DIRS=str(t/"no-usb"))
+             SG_USB_DIRS=str(t/"no-usb"),BOOTCLASSPATH="/system/framework/core.jar")
     (t/"export").mkdir(mode=0o700)
     state.chmod(0o700)
     def public_tree(container):

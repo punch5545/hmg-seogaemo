@@ -467,11 +467,116 @@ def test_snapshot_free_recovery(folder):
     car.run(module, 'revert')
 
 
+def test_unrecorded_swap(folder):
+    """An app_process swap with no ledger/baseline refuses restore and uninstall."""
+    import hashlib
+    car = Car(folder)
+    car.enable()
+    module = 'wireless-carplay-and-aa'
+    target = folder / 'target'
+    (target / 'system/bin').mkdir(parents=True)
+    (target / 'system/lib').mkdir()
+    (target / 'system/framework').mkdir()
+    process = target / 'system/bin/app_process'
+    process.write_bytes(b'stock-executable')
+    md5 = hashlib.md5(b'stock-executable').hexdigest()
+    extras = [target / 'system/bin/app_process.hmg-seogaemo-stock',
+              target / 'system/lib/libhmg_seogaemo_wireless_hook.so',
+              target / 'system/framework/hmg-seogaemo-wireless-hook.jar']
+    (car.base / f'modules/{module}.properties').write_text(
+        'owns_files=' + ','.join(map(str, [process, *extras])) + ',/system/bin/app_process\n' +
+        f'known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:{md5}\n')
+    (car.base / f'modules/{module}.sh').write_text(host_shell_script(
+        (ROOT / f'modules/{module}/root/{module}.sh').read_text()))
+    (car.base / 'modules.list').write_text(f'{module}\na\nb\nc\n')
+    (car.base / 'modules.graph').write_text(
+        f'{module}\tdepends=\texcludes=\na\tdepends=\texcludes=\nb\tdepends=a\texcludes=\nc\tdepends=\texcludes=\n')
+    (car.state / f'desired/{module}').write_text('on')
+    car.env['SG_TARGET_ROOT'] = str(target)
+    key = module.replace('-', '_')
+
+    def refused():
+        result = car.run('stock', 'restore', ok=False)
+        assert 'state=conflict' in result.stdout and f'info.module_{key}=conflict' in result.stdout, result.stdout
+        # Preflight stops everything before the first module is reverted.
+        assert car.calls.read_text() == ''
+        for name in 'abc':
+            assert (car.state / f'desired/{name}').read_text() == 'on'
+        assert (car.state / f'desired/{module}').read_text() == 'on'
+        for direct in ('revert', 'status'):
+            outcome = car.run(module, direct, ok=False)
+            assert 'state=conflict' in outcome.stdout and 'outside the ledger' in outcome.stdout, outcome.stdout
+        car.run('package', 'uninstall', ok=False)
+        assert not (car.state / 'uninstall').exists()
+        car.hook(ok=False)
+        assert car.apk.exists()
+        return result
+
+    # Our stock backup without any record.
+    extras[0].write_bytes(b'stock-executable')
+    assert 'app_process.hmg-seogaemo-stock' in refused().stdout
+    extras[0].unlink()
+    # Hook files without any record.
+    extras[1].write_bytes(b'loader')
+    refused()
+    extras[1].unlink()
+    # An executable that is not the known stock build, with nothing recorded.
+    process.write_bytes(b'wrapper-of-unknown-origin')
+    assert 'not the known stock build' in refused().stdout
+    assert process.read_bytes() == b'wrapper-of-unknown-origin'
+    # Never fixed automatically: it stays exactly as found until the owner resolves it.
+    process.write_bytes(b'stock-executable')
+    result = car.run('stock', 'restore')
+    assert 'state=off' in result.stdout or 'state=pending-restart' in result.stdout
+    assert f'info.module_{key}=reverted' in result.stdout
+    for name in 'abc':
+        assert (car.state / f'desired/{name}').read_text() == 'off'
+
+
+def test_residue_on_restore(folder):
+    """A successful whole-package restore also clears provable residue, best effort."""
+    car = Car(folder)
+    script(car.fake / 'nemesis', 'exit 0\n')
+    target = folder / 'target'
+    namespace = target / 'system/etc/hmg-seogaemo'
+    (namespace / 'a/recipes').mkdir(parents=True)
+    generated = target / 'data/data/com.example.one/app_hmg-seogaemo-wireless-runtime'
+    generated.mkdir(parents=True)
+    (generated / 'p-1-2.txt').write_text('generated')
+    cache = target / 'data/dalvik-cache'
+    cache.mkdir(parents=True)
+    ours = cache / 'data@nemesis@apps@hmg-seogaemo@core@map@hmg-seogaemo-mapper.jar@classes.dex'
+    other = cache / 'system@framework@core.jar@classes.dex'
+    ours.write_text('cache')
+    other.write_text('cache')
+    vm = car.state / 'core/vm/dalvik-cache'
+    vm.mkdir(parents=True)
+    (vm / 'entry').write_text('cache')
+    (car.base / 'modules/a.properties').write_text(
+        'owns_props=demo.a\nwatch=boot,screen_on\n'
+        'owns_files=/system/etc/hmg-seogaemo/a/recipes/x.recipe\n'
+        'owns_generated_dirs=/data/data/com.example.one/app_hmg-seogaemo-wireless-runtime\n')
+    car.env['SG_TARGET_ROOT'] = str(target)
+    result = car.run('stock', 'restore')
+    assert 'state=off' in result.stdout or 'state=pending-restart' in result.stdout
+    assert not generated.exists() and not namespace.exists()
+    assert not ours.exists() and other.exists() and not (car.state / 'core/vm').exists()
+    ledger = (car.state / 'ledger/ledger.tsv').read_text()
+    assert 'generated_dir_remove' in ledger and 'legacy_dir_remove' in ledger
+    assert 'dex_legacy_remove' in ledger and 'stock_residue' in ledger
+    # An unexpected entry in a generated directory is a conflict, before any revert.
+    generated.mkdir(parents=True)
+    (generated / 'nested').mkdir()
+    result = car.run('stock', 'restore', ok=False)
+    assert 'state=conflict' in result.stdout and 'generated dir content' in result.stdout
+    assert (generated / 'nested').is_dir()
+
+
 with tempfile.TemporaryDirectory() as directory:
     for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
                  test_late_failure, test_detached_failure, test_missing_handoff,
                  test_shared_lines, test_file_metadata_diagnostic, test_reassert_restore, test_snapshot_free_recovery,
-                 test_damaged_selection_recovery):
+                 test_damaged_selection_recovery, test_unrecorded_swap, test_residue_on_restore):
         folder = Path(directory).resolve() / test.__name__
         folder.mkdir()
         test(folder)

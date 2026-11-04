@@ -19,6 +19,14 @@ hmg_seogaemo_stock_context() {
 hmg_seogaemo_stock_snapshots() {
     sg_restore_material
 }
+hmg_seogaemo_stock_preflight() {
+    hmg_seogaemo_stock_context "$1"
+    if hmg_seogaemo_stock_snapshots; then
+        sg_zygote_finalize_guard && sg_dex_finalize && sg_restore_preflight || return $?
+    fi
+    # An unrecorded app_process swap is never "already stock".
+    sg_zygote_foreign
+}
 hmg_seogaemo_stock_diagnostic() {
     while IFS='=' read -r stock_field stock_value; do
         if [ "$stock_field" = info.restore_conflict ]; then
@@ -51,6 +59,23 @@ hmg_seogaemo_stock_finish() {
     }
     case "$stock_state" in off|pending-restart) return 0;; conflict) return 3;; *) return 1;; esac
 }
+# After every module is restored: remove only what earlier builds provably left
+# behind (empty project directories, Dalvik cache entries of our own jars) and our
+# private VM cache. Best effort: residue is reported in the ledger, never a conflict.
+hmg_seogaemo_stock_residue() {
+    stock_residue=ok
+    (
+        HMG_SEOGAEMO_STATE=$stock
+        HMG_SEOGAEMO_BASE=$base
+        export HMG_SEOGAEMO_STATE HMG_SEOGAEMO_BASE
+        stock_failed=0
+        sg_legacy_dirs_cleanup || stock_failed=1
+        sg_legacy_dex_cleanup || stock_failed=1
+        sg_vm_cleanup || stock_failed=1
+        exit "$stock_failed"
+    ) > "$stock/residue-output" 2>&1 || stock_residue=partial
+    hmg_seogaemo_stock_ledger stock_residue "$stock_residue" || :
+}
 hmg_seogaemo_stock_restore() {
     stock_reverse=
     [ -f "$base/modules.list" ] || return 1
@@ -72,12 +97,7 @@ hmg_seogaemo_stock_restore() {
     # Preflight ALL modules before any restore; finalize only runtime-owned
     # counters/cache entries, exactly as sg_revert_all does.
     for stock_id in $stock_reverse; do
-        {
-            hmg_seogaemo_stock_context "$stock_id"
-            if hmg_seogaemo_stock_snapshots; then
-                sg_zygote_finalize_guard && sg_dex_finalize && sg_restore_preflight
-            fi
-        } > "$stock/module-output" 2>&1
+        hmg_seogaemo_stock_preflight "$stock_id" > "$stock/module-output" 2>&1
         stock_code=$?
         if [ "$stock_code" -ne 0 ]; then
             stock_state=failed
@@ -117,9 +137,11 @@ hmg_seogaemo_stock_restore() {
                 # Nothing applied: do not fail on an unavailable unused module.
                 # Reboot-only modules still report their transient effect.
                 if ! grep -Fxq 'restore=reboot' "$base/modules/$stock_id.properties"; then
+                    sg_zygote_foreign || exit $?
                     if [ "$stock_id" = wireless-carplay-and-aa ]; then
                         sg_projection_runtime clear || exit $?
                     fi
+                    sg_generated_dirs_remove || exit $?
                     sg_status off none 'Already off'; exit $?
                 fi
             fi
@@ -155,6 +177,7 @@ hmg_seogaemo_stock_restore() {
         rm -rf "$stock_recovery/$stock_id" "$stock_recovery/shared-lines"
         rmdir "$stock_recovery" 2>/dev/null || true
     done
+    hmg_seogaemo_stock_residue
     stock_state=off; stock_detail='All modules restored; HMG-Seogaemo remains installed'
     if [ "$stock_restart" = head_unit ]; then
         stock_state=pending-restart; stock_detail='All modules off; restart head unit to complete restore'

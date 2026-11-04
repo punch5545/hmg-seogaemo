@@ -950,6 +950,233 @@ def test_system_directory_mode(temp):
     assert not list(outside.iterdir())
 
 
+def test_stray_temporaries(temp):
+    """Leftovers of interrupted atomic writes never block restore; look-alikes do."""
+    base = temp / "strays"
+    base.mkdir()
+    runner = base / "runner"
+    fake = base / "fake"
+    fake_ownership(fake)
+    script(fake / "getprop", "echo firmware\n")
+    system = base / "system"
+    namespace = system / "etc/hmg-seogaemo"
+    (system / "etc").mkdir(parents=True)
+    plain = base / "plain"
+    plain.mkdir()
+    (base / "modules").mkdir()
+    (base / "modules/a.properties").write_text(
+        f"owns_files={namespace}/a/recipes/audio.recipe,{plain}/file\n")
+    payload = base / "payload"
+    payload.mkdir()
+    (payload / "recipe").write_text("patch")
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+               FAKE_OWNERS=str(base / "owners.json"), SG_TARGET_ROOT=str(base),
+               SG_DATA_ROOT=str(base / "data"), HMG_SEOGAEMO_BASE=str(base),
+               HMG_SEOGAEMO_STATE=str(base / "data/modules/a"), HMG_SEOGAEMO_MODULE_DIR=str(payload))
+
+    def check(body, ok=True):
+        script(runner, "set -eu\numask 077\n" + body)
+        return run(runner, env=env, ok=ok)
+
+    apply = (f'sg_file_put "{namespace}/a/recipes/audio.recipe" recipe 0644 0:0\n'
+             f'sg_file_put "{plain}/file" recipe 0644 0:0\n')
+    check(apply)
+    recipes = namespace / "a/recipes"
+    # Names that only look like ours, or are not regular files, still block rmdir.
+    blockers = ("x.hmg-seogaemo.12a", "x.hmg-seogaemo.", ".hmg-seogaemo.5", "x.hmg-seogaemo",
+                "x.hmg-seogaemo.5.bak", "unrelated")
+    for name in blockers:
+        (recipes / name).write_text("external")
+        result = check("sg_revert_all\n", ok=False)
+        assert result.returncode == 3, (name, result.stdout)
+        assert (recipes / name).read_text() == "external"
+        (recipes / name).unlink()
+    (recipes / "d.hmg-seogaemo.5").mkdir()
+    check("sg_revert_all\n", ok=False)
+    assert (recipes / "d.hmg-seogaemo.5").is_dir()
+    (recipes / "d.hmg-seogaemo.5").rmdir()
+    (recipes / "l.hmg-seogaemo.7").symlink_to(base / "outside")
+    check("sg_revert_all\n", ok=False)
+    assert (recipes / "l.hmg-seogaemo.7").is_symlink()
+    (recipes / "l.hmg-seogaemo.7").unlink()
+    # Our own interrupted temporaries are swept before the empty directory is removed.
+    (recipes / "audio.recipe.hmg-seogaemo.4242").write_text("partial")
+    (recipes / "other.hmg-seogaemo.7").write_text("partial")
+    check("sg_revert_all\n")
+    assert not namespace.exists()
+    assert "temp_sweep" in (base / "data/ledger/ledger.tsv").read_text()
+    # The same for a temporary beside an owned file in a directory that existed before.
+    check(apply)
+    (plain / "file.hmg-seogaemo.99").write_text("partial")
+    (plain / "file.hmg-seogaemo.99x").write_text("kept")
+    (plain / "neighbour.hmg-seogaemo.5").write_text("kept")
+    check("sg_revert_all\n")
+    assert not (plain / "file").exists() and not (plain / "file.hmg-seogaemo.99").exists()
+    assert (plain / "file.hmg-seogaemo.99x").exists() and (plain / "neighbour.hmg-seogaemo.5").exists()
+    # Leftover zygote journals: exact names inside the module state directory only.
+    state = base / "data/modules/a"
+    for name in ("zygote-prepare.4242", "zygote-retired.77"):
+        (state / name).mkdir()
+        (state / name / "f").write_text("x")
+    for name in ("zygote-prepare.12a", "zygote-prepare", "zygote-retired.", "zygote-upgrade.5"):
+        (state / name).mkdir()
+    (state / "zygote-prepare.5").symlink_to(base / "outside")
+    (base / "outside").mkdir()
+    (base / "outside/keep").write_text("x")
+    check("sg_zygote_sweep\n")
+    assert not (state / "zygote-prepare.4242").exists() and not (state / "zygote-retired.77").exists()
+    for name in ("zygote-prepare.12a", "zygote-prepare", "zygote-retired.", "zygote-upgrade.5"):
+        assert (state / name).is_dir(), name
+    assert (state / "zygote-prepare.5").is_symlink() and (base / "outside/keep").exists()
+    (state / "zygote-prepare.88").mkdir()
+    check("sg_revert_all\n")  # Even with nothing to restore.
+    assert not (state / "zygote-prepare.88").exists()
+
+
+def test_residue_cleanup(temp):
+    """Generated app dirs, journal-less project dirs and our Dalvik cache entries."""
+    base = temp / "residue"
+    base.mkdir()
+    runner = base / "runner"
+    fake = base / "fake"
+    fake_ownership(fake)
+    script(fake / "getprop", "echo firmware\n")
+    (base / "modules").mkdir()
+    namespace = base / "system/etc/hmg-seogaemo"
+    one = base / "data/data/com.example.one/app_hmg-seogaemo-wireless-runtime"
+    two = base / "data/data/com.example.two/app_hmg-seogaemo-wireless-runtime"
+    manifest = base / "modules/a.properties"
+
+    def declare(dirs):
+        manifest.write_text(
+            "owns_files=/system/etc/hmg-seogaemo/a/recipes/x.recipe,/system/etc/hmg-seogaemo/a/y,/system/lib/other.so\n"
+            f"owns_generated_dirs={dirs}\n")
+
+    logical_one = "/data/data/com.example.one/app_hmg-seogaemo-wireless-runtime"
+    logical_two = "/data/data/com.example.two/app_hmg-seogaemo-wireless-runtime"
+    declare(f"{logical_one},{logical_two}")
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+               FAKE_OWNERS=str(base / "owners.json"), SG_TARGET_ROOT=str(base),
+               SG_DATA_ROOT=str(base / "ledgerroot"), HMG_SEOGAEMO_BASE=str(base),
+               HMG_SEOGAEMO_STATE=str(base / "ledgerroot/modules/a"))
+
+    def check(body, ok=True):
+        script(runner, "set -eu\numask 077\n" + body)
+        return run(runner, env=env, ok=ok)
+
+    def populate(directory):
+        directory.mkdir(parents=True)
+        for name in ("p-1-2.txt", "p-1-2.log", "p-1-2.log.1", "p-3-4.txt.tmp"):
+            (directory / name).write_text("generated")
+
+    # Absent directories are fine; present ones are emptied and removed.
+    check("sg_generated_dirs_remove\n")
+    populate(one)
+    populate(two)
+    check("sg_generated_dirs_remove\n")
+    assert not one.exists() and not two.exists()
+    assert (base / "data/data/com.example.one").is_dir()
+    assert (base / "ledgerroot/ledger/ledger.tsv").read_text().count("generated_dir_remove") == 2
+    # Any unexpected entry refuses everything, including the clean sibling.
+    for unexpected in ("subdir", "link", "bad name", "many"):
+        populate(one)
+        populate(two)
+        if unexpected == "subdir":
+            (two / "nested").mkdir()
+        elif unexpected == "link":
+            (two / "link.txt").symlink_to(base / "outside")
+        elif unexpected == "bad name":
+            (two / "p 1.txt").write_text("x")
+        else:
+            for number in range(70):
+                (two / f"f{number}.txt").write_text("x")
+        result = check("sg_generated_dirs_remove\n", ok=False)
+        assert result.returncode == 3 and "info.restore_conflict=generated dir content" in result.stdout
+        assert (one / "p-1-2.txt").exists() and (two / "p-1-2.txt").exists()
+        shutil.rmtree(one)
+        shutil.rmtree(two)
+    # A symlinked data directory is never followed.
+    (base / "outside").mkdir()
+    (base / "outside/keep").write_text("x")
+    one.parent.mkdir(parents=True, exist_ok=True)
+    one.symlink_to(base / "outside", target_is_directory=True)
+    result = check("sg_generated_dirs_remove\n", ok=False)
+    assert result.returncode == 3 and (base / "outside/keep").exists()
+    one.unlink()
+    # Only exact project-named app directories may be declared.
+    declare("/data/data/com.example.one/not_ours")
+    populate(base / "data/data/com.example.one/not_ours")
+    result = check("sg_generated_dirs_remove\n", ok=False)
+    assert result.returncode == 2 and (base / "data/data/com.example.one/not_ours/p-1-2.txt").exists()
+    declare(f"{logical_one},{logical_two}")
+
+    # Legacy project directories: derived from owned paths, rmdir only, journals respected.
+    (namespace / "a/recipes").mkdir(parents=True)
+    (namespace / "a/recipes/foreign").write_text("kept")
+    check("sg_legacy_dirs_cleanup\n")
+    assert (namespace / "a/recipes/foreign").exists()
+    (namespace / "a/recipes/foreign").unlink()
+    (namespace.parent / "unrelated").mkdir()
+    journal = base / "ledgerroot/payload-dirs"
+    key = subprocess.run([SHELL, "-c", f'. "{ROOT / "nemesis/package/lib/common.sh"}"; sg_file_key "{namespace}"'],
+                         env=car_env(env), capture_output=True, text=True).stdout.strip()
+    (journal / key).mkdir(parents=True)
+    (journal / key / "ready").write_text("1")
+    check("sg_legacy_dirs_cleanup\n")
+    assert not (namespace / "a").exists() and namespace.is_dir()
+    assert (namespace.parent / "unrelated").is_dir()
+    shutil.rmtree(journal)
+    check("sg_legacy_dirs_cleanup\n")
+    assert not namespace.exists() and (namespace.parent / "unrelated").is_dir()
+    assert "legacy_dir_remove" in (base / "ledgerroot/ledger/ledger.tsv").read_text()
+    # A symlinked namespace is left alone.
+    (base / "elsewhere").mkdir()
+    namespace.symlink_to(base / "elsewhere", target_is_directory=True)
+    check("sg_legacy_dirs_cleanup\n")
+    assert namespace.is_symlink() and (base / "elsewhere").is_dir()
+    namespace.unlink()
+
+    # Dalvik cache entries of our own jars, by exact derived name only.
+    cache = base / "data/dalvik-cache"
+    cache.mkdir(parents=True)
+    ours = [
+        "data@nemesis@apps@hmg-seogaemo@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@apps@hmg-seogaemo@app@hmg-seogaemo.apk@classes.dex",
+        "data@nemesis@apps@hmg-seogaemo@modules@wireless-carplay-and-aa.d@data@hmg-seogaemo-projection-runtime.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@current@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@backup@hmg-seogaemo@update@versions@0.1.24@app@hmg-seogaemo.apk@classes.dex",
+    ]
+    others = [
+        "system@framework@hmg-seogaemo-wireless-hook.jar@classes.dex",
+        "data@nemesis@apps@hmg-seogaemo-evil@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@apps@hmg-seogaemo@core@map@other.jar@classes.dex",
+        "data@nemesis@apps@other@core@map@hmg-seogaemo-mapper.jar@classes.dex",
+        "data@nemesis@apps@hmg-seogaemo@core@map@hmg-seogaemo-mapper.jar@classes.dex.bak",
+        "data@app@com.seogaemo.hmg-1.apk@classes.dex",
+    ]
+    for name in ours + others:
+        (cache / name).write_text("cache")
+    (cache / "data@nemesis@apps@hmg-seogaemo@app@link.apk@classes.dex").symlink_to(base / "outside/keep")
+    check("sg_legacy_dex_cleanup\n")
+    assert not any((cache / name).exists() for name in ours)
+    assert all((cache / name).exists() for name in others)
+    assert (cache / "data@nemesis@apps@hmg-seogaemo@app@link.apk@classes.dex").is_symlink()
+    assert (base / "outside/keep").exists()
+    assert (base / "ledgerroot/ledger/ledger.tsv").read_text().count("dex_legacy_remove") == len(ours)
+
+    # Private VM cache of the mapper and update verifier.
+    vm = base / "ledgerroot/core/vm"
+    (vm / "dalvik-cache").mkdir(parents=True)
+    (vm / "dalvik-cache/entry").write_text("cache")
+    check("sg_vm_cleanup\n")
+    assert not vm.exists() and (base / "ledgerroot/core").is_dir()
+    (base / "ledgerroot/core").rmdir()
+    (base / "ledgerroot/core").symlink_to(base / "outside", target_is_directory=True)
+    (base / "outside/vm").mkdir()
+    check("sg_vm_cleanup\n", ok=False)
+    assert (base / "outside/vm").is_dir()
+
+
 def test_public_readable(temp):
     base = temp / "public-bits"
     directory = base / "parent"
@@ -1241,6 +1468,101 @@ if sg_revert_all; then exit 1; fi
     assert paths[0].read_bytes() == b'wrapper' and paths[2].read_bytes() == b'external'
 
 
+def test_zygote_foreign(temp):
+    """An app_process swap without an ownership record is a conflict, never stock."""
+    import hashlib
+    base = temp / "foreign"
+    state = base / "data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa"
+    target = base / "target"
+    payload = base / "payload"
+    manifest = base / "modules/wireless-carplay-and-aa.properties"
+    for folder in (state, target / "system/bin", target / "system/lib", target / "system/framework",
+                   payload, manifest.parent, base / "fake", base / "live"):
+        folder.mkdir(parents=True, exist_ok=True)
+    stock_md5 = hashlib.md5(b"stock-executable").hexdigest()
+    paths = [target / "system/bin/app_process",
+             target / "system/bin/app_process.hmg-seogaemo-stock",
+             target / "system/lib/libhmg_seogaemo_wireless_hook.so",
+             target / "system/framework/hmg-seogaemo-wireless-hook.jar"]
+    guards = [state / name for name in ("enable", "enabled", "starts", "disable")]
+    paths[0].write_bytes(b"stock-executable")
+    paths[0].chmod(0o755)
+    for name, data in (("wrapper", b"wrapper"), ("loader", b"loader"), ("jar", b"jar")):
+        (payload / name).write_bytes(data)
+        (payload / name).chmod(0o644)
+
+    def write_manifest(known=True, owner=True):
+        text = "owns_props=\nservices=\n"
+        if owner:
+            text += "owns_files=" + ",".join(map(str, paths + guards)) + "\n"
+        if known:
+            text += f"known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:{stock_md5}\n"
+        manifest.write_text(text)
+
+    write_manifest()
+    live = base / "live"
+    (live / "ro.build.product").write_text("NEEV.KOR.0000.V039.001.260902")
+    fake = base / "fake"
+    script(fake / "getprop", 'cat "$FAKE_LIVE/$1" 2>/dev/null || true\n')
+    fake_ownership(fake)
+    boot_id = base / "boot-id"
+    boot_id.write_text("test-boot")
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"],
+               SG_DATA_ROOT=str(base / "data/nemesis/backup/hmg-seogaemo"),
+               SG_TARGET_ROOT=str(target), HMG_SEOGAEMO_STATE=str(state),
+               HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_MODULE_DIR=str(payload),
+               FAKE_OWNERS=str(base / "owners.json"), FAKE_LIVE=str(live),
+               SG_BOOT_ID_FILE=str(boot_id))
+    runner = base / "runner"
+
+    def check(body, ok=True):
+        script(runner, "set -eu\n" + body)
+        return run(runner, env=env, ok=ok)
+
+    # Genuine stock, or no known build for this product: nothing to refuse.
+    check("sg_zygote_foreign\nsg_revert_all\n")
+    paths[0].write_bytes(b"something else")
+    (live / "ro.build.product").write_text("OTHER.KOR.0000.V039.001.260902")
+    check("sg_zygote_foreign\nsg_revert_all\n")
+    (live / "ro.build.product").write_text("NEEV.KOR.0000.V039.001.260902")
+    # An unknown executable with no owner is refused by every revert entry point.
+    for body in ("sg_zygote_foreign\n", "sg_revert_all\n"):
+        result = check(body, ok=False)
+        assert result.returncode == 3 and "info.restore_conflict=app_process is not the known stock build" in result.stdout
+    assert paths[0].read_bytes() == b"something else"
+    paths[0].write_bytes(b"stock-executable")
+    # Our files without any record: backup, hook files and guard state each count.
+    for leftover in (paths[1], paths[2], paths[3], guards[0], guards[2]):
+        leftover.write_bytes(b"x")
+        for body in ("sg_zygote_foreign\n", "sg_revert_all\n"):
+            result = check(body, ok=False)
+            assert result.returncode == 3 and "without ownership record" in result.stdout, (leftover, result)
+        assert leftover.read_bytes() == b"x" and paths[0].read_bytes() == b"stock-executable"
+        leftover.unlink()
+    # A symlink in place of our file is also foreign.
+    paths[1].symlink_to(base / "nowhere")
+    assert check("sg_zygote_foreign\n", ok=False).returncode == 3
+    paths[1].unlink()
+    # A module that does not own app_process never reports the swap.
+    write_manifest(owner=False)
+    paths[1].write_bytes(b"x")
+    check("sg_zygote_foreign\n")
+    paths[1].unlink()
+    write_manifest()
+    # Once the swap is recorded the normal guarded restore owns it, wrapper bytes included.
+    check("sg_zygote_install wrapper loader jar\nsg_zygote_foreign\n")
+    assert paths[0].read_bytes() == b"wrapper"
+    check("sg_zygote_foreign\nsg_revert_all\n")
+    assert paths[0].read_bytes() == b"stock-executable" and not paths[1].exists()
+    check("sg_zygote_foreign\n")
+    # Only an unrecorded swap (state wiped) is refused: restoring cannot proceed.
+    check("sg_zygote_install wrapper loader jar\n")
+    for entry in state.glob("file.*"):
+        shutil.rmtree(entry)
+    result = check("sg_revert_all\n", ok=False)
+    assert result.returncode == 3 and paths[0].read_bytes() == b"wrapper" and paths[1].read_bytes() == b"stock-executable"
+
+
 def test_projection_reader_vm(temp):
     base = temp / 'projection-reader'
     state = base / 'state/modules/wireless-carplay-and-aa'
@@ -1258,17 +1580,23 @@ set -eu
 [ "$4" = "$SG_DATA_ROOT" ]
 [ "$ANDROID_DATA" = "$SG_DATA_ROOT/runtime/wireless-carplay-and-aa/vm" ]
 [ -d "$ANDROID_DATA/dalvik-cache" ]
+[ "$BOOTCLASSPATH" = /system/framework/core.jar ]
 sg_write "$3" > "$SG_DATA_ROOT/invoked"
+case "$3" in
+    clear) ;;
+    *) sg_print state=on restart=none detail=ready ;;
+esac
 ''')
     env = dict(os.environ, HMG_SEOGAEMO_BASE=str(base), HMG_SEOGAEMO_STATE=str(state),
                HMG_SEOGAEMO_MODULE_DIR=str(payload), SG_DATA_ROOT=str(base / 'state'),
-               SG_TARGET_ROOT=str(target))
+               SG_TARGET_ROOT=str(target), BOOTCLASSPATH='/system/framework/core.jar')
     runner = base / 'runner'
     # Host UID differs from root; exercise the real path/mode/launch checks
     # with deterministic KitKat metadata and owner mutation.
     preamble = 'set -eu\nsg_file_meta() { echo 0700 0 0; }\nchown() { :; }\n'
     script(runner, preamble + 'sg_projection_runtime prepare\nsg_projection_runtime status\n')
-    run(runner, env=env)
+    result = run(runner, env=env)
+    assert 'state=on' in result.stdout and 'detail=ready' in result.stdout
     vm = base / 'state/runtime/wireless-carplay-and-aa/vm'
     assert vm.stat().st_mode & 0o777 == 0o700
     assert (vm / 'dalvik-cache').stat().st_mode & 0o777 == 0o700
@@ -1280,6 +1608,58 @@ sg_write "$3" > "$SG_DATA_ROOT/invoked"
     script(runner, preamble + 'sg_projection_runtime clear\n')
     run(runner, env=env)
     assert (base / 'state/invoked').read_text().strip() == 'clear'
+    # Unusable reader results never read as success: bounded, validated, unknown.
+    def reader(body, mode='status', ok=True, **extra):
+        script(process, body)
+        script(runner, preamble + f'sg_projection_runtime {mode}\n')
+        return run(runner, env=dict(env, **extra), ok=ok)
+
+    result = reader('exit 0\n')
+    assert 'state=unknown' in result.stdout and 'no valid output' in result.stdout
+    result = reader('sg_print state=on restart=none detail=a extra=1\n')
+    assert 'state=unknown' in result.stdout and 'state=on' not in result.stdout
+    result = reader('sg_print state=bogus restart=none detail=a\n')
+    assert 'state=unknown' in result.stdout
+    result = reader('sg_print state=on restart=none detail=a\nexit 7\n')
+    assert 'state=unknown' in result.stdout and 'state=on' not in result.stdout
+    result = reader('sg_print state=failed restart=none detail=broken\nexit 1\n', ok=False)
+    assert result.returncode == 1 and 'state=failed' in result.stdout and 'detail=broken' in result.stdout
+    result = reader('exit 0\n', mode='applying')
+    assert 'state=pending-restart' in result.stdout and 'restart=head_unit' in result.stdout
+    # A hung VM is killed (with its child) after the limit; the caller is not held.
+    hung = reader('sleep 60 &\nsg_write "$! $$" > "$SG_DATA_ROOT/hung-pids"\nwait\n',
+                  SG_READER_TIMEOUT='2')
+    assert 'state=unknown' in hung.stdout and 'timed out after 2 seconds' in hung.stdout
+    for pid in (base / 'state/hung-pids').read_text().split():
+        try:
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            continue
+        raise AssertionError(f'reader process {pid} survived the timeout')
+    assert not list((base / 'state').glob('reader.*'))
+    # A timeout during clear removes the root-only private tree directly.
+    (base / 'state/runtime/wireless-carplay-and-aa/leftover').write_text('x')
+    reader('sleep 60\n', mode='clear', SG_READER_TIMEOUT='2')
+    assert not (base / 'state/runtime/wireless-carplay-and-aa').exists()
+    script(runner, preamble + 'sg_projection_runtime prepare\n')
+    run(runner, env=env)
+    # No usable BOOTCLASSPATH: unknown, and the VM is never started.
+    invoked = base / 'state/invoked'
+    invoked.write_text('untouched')
+    no_boot = {key: value for key, value in env.items() if key != 'BOOTCLASSPATH'}
+    script(process, 'sg_write started > "$SG_DATA_ROOT/invoked"\n')
+    script(runner, preamble + 'sg_projection_runtime status\n')
+    result = run(runner, env=dict(no_boot, SG_INIT_ENVIRON=str(base / 'missing.rc')))
+    assert 'state=unknown' in result.stdout and 'BOOTCLASSPATH unavailable' in result.stdout
+    assert invoked.read_text() == 'untouched'
+    (base / 'init.rc').write_text('on init\n    export BOOTCLASSPATH /system/framework/core.jar:/bad;rm\n')
+    result = run(runner, env=dict(no_boot, SG_INIT_ENVIRON=str(base / 'init.rc')))
+    assert 'BOOTCLASSPATH unavailable' in result.stdout and invoked.read_text() == 'untouched'
+    (base / 'init.rc').write_text('on init\n    export PATH /sbin\n    export BOOTCLASSPATH /system/framework/core.jar\n')
+    script(process, '[ "$BOOTCLASSPATH" = /system/framework/core.jar ]\nsg_print state=on restart=none detail=derived\n')
+    result = run(runner, env=dict(no_boot, SG_INIT_ENVIRON=str(base / 'init.rc')))
+    assert 'detail=derived' in result.stdout
+    invoked.write_text('clear')
     (vm / 'dalvik-cache').rmdir()
     outside = base / 'outside'
     outside.mkdir()
@@ -1306,8 +1686,11 @@ with tempfile.TemporaryDirectory() as directory:
     test_lint(root)
     test_module_build_hook(root)
     test_zygote_and_dex(root)
+    test_zygote_foreign(root)
     test_remount_ro_busy(root)
     test_system_directory_mode(root)
+    test_stray_temporaries(root)
+    test_residue_cleanup(root)
     test_public_readable(root)
     test_file_metadata_guards(root)
     test_projection_reader_vm(root)

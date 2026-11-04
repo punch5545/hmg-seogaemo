@@ -14,6 +14,23 @@ fail() { sg_status failed none "$1"; }
 conflict() { sg_status conflict none "$1"; }
 incompatible() { sg_status incompatible none "$1"; }
 
+# An app_process swap with no ownership record is never "disabled": refuse and
+# leave everything untouched (restore stays a conflict until the owner resolves it).
+unrecorded_swap() {
+    sg_zygote_foreign && return 0
+    conflict 'app_process changed outside the ledger; restore refused, nothing modified'
+    return 3
+}
+# Generated diagnostics: our private tree, and the hook's per-app runtime directories
+# (declared as owns_generated_dirs). Apps keep writing them until the next restart.
+cleanup_runtime() {
+    sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
+    sg_generated_dirs_remove && return 0
+    case $? in
+        3) conflict 'app runtime directory holds unexpected entries; kept'; return 3 ;;
+        *) fail 'app runtime directory cleanup failed'; return 1 ;;
+    esac
+}
 compatibility() {
     map_state=$(/system/bin/sh "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state= # android44-shell: allow -- fixed dispatcher beneath the runtime-supplied package root
     sg_print "$map_state" | grep -Fxq 'state=on' ||
@@ -28,6 +45,7 @@ compatibility() {
        [ ! -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then
         conflict 'orphaned app_process backup'; return 3
     fi
+    unrecorded_swap || return 3
     exists "$FEATURE" || { incompatible 'featurexml.cfg absent'; return 4; }
     for name in com.hkmc.software.connectivity.carplay_wireless com.hkmc.software.connectivity.androidauto_wireless com.hkmc.software.wifihotspot; do
         target=/system/etc/permissions/$name.xml
@@ -115,13 +133,14 @@ apply() {
 
 revert() {
     if ! sg_applied /system/bin/app_process && [ ! -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then
+        unrecorded_swap || return 3
         # An interrupted apply can have feature/property changes without the wrapper.
         sg_revert_all || { conflict 'partial apply restore blocked; ledger retained'; return 3; }
-        sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
+        cleanup_runtime || return $?
         sg_status off none 'disabled'; return 0
     fi
     sg_revert_all || { conflict 'restore blocked by drift; ledger retained'; return 3; }
-    sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
+    cleanup_runtime || return $?
     sg_print info.desired=off
     sg_status pending-restart head_unit 'restart unit to finish restoration'
 }
@@ -135,7 +154,10 @@ status() {
     if [ -f "$HMG_SEOGAEMO_STATE/zygote-upgrade/ready" ]; then
         fail 'payload upgrade incomplete; retry selected build or restore stock'; return 1
     fi
-    if ! sg_applied /system/bin/app_process; then sg_status off none 'disabled'; return 0; fi
+    if ! sg_applied /system/bin/app_process; then
+        unrecorded_swap || return 3
+        sg_status off none 'disabled'; return 0
+    fi
     if [ "$(value persist.service.adb.tcp.enable)" = 1 ]; then conflict 'stock ADB switch conflicts with hotspot'; return 3; fi
     if [ "$(value persist.ium.support)" != carplay ] ||
        [ "$(value persist.sys.iap2.wifi)" != t ] ||
