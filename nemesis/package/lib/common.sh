@@ -37,7 +37,7 @@ sg_clean() {
         sg_char=${sg_chars%"${sg_chars#?}"}
         sg_chars=${sg_chars#?}
         case "$sg_char" in
-            [a-zA-Z0-9]|' '|'('|')'|[.,:_/+=-]) sg_output=$sg_output$sg_char ;;
+            [a-zA-Z0-9]|' '|'('|')'|';'|[.,:_/+=-]) sg_output=$sg_output$sg_char ;;
             *) sg_output=$sg_output? ;;
         esac
     done

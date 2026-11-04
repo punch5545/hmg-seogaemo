@@ -528,3 +528,9 @@ dir-order). Any such material retains the firmware, drift and metadata guards.
 A stale saved desired=on is cleared only after a successful revert receipt.
 Preflight conflicts expose the stage and target through detail output, and
 whole-package restore includes that diagnostic in its final receipt.
+
+
+### Status punctuation (2026-11-04)
+
+sg_clean preserves ASCII semicolons in human-readable status detail. Module root
+status strings are ASCII; auditing found no non-ASCII punctuation in those sources.

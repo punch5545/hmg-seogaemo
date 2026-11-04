@@ -146,6 +146,10 @@ ls() {{ sg_print '-rw-r--r-- 1000 1001 3 2024-01-02 03:04 sample'; }}
 
 
 def test_output_bytes(temp):
+    punctuation = temp / 'status-punctuation'
+    script(punctuation, "sg_status on adbd 'TCP ADB on port 5555; stock switch off'\n")
+    assert run(punctuation, env=os.environ).stdout == (
+        'state=on\nrestart=adbd\ndetail=TCP ADB on port 5555; stock switch off\n')
     base = temp / "output-bytes"
     restricted = base / "bin"
     restricted.mkdir(parents=True)
