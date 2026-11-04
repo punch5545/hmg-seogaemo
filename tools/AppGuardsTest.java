@@ -16,6 +16,7 @@ public final class AppGuardsTest {
     public static void main(String[] args) throws Exception {
         boundedProcess();
         restoreGate();
+        tbtCounters();
         resumeExpiry();
         restoreSteps();
         System.out.println("AppGuardsTest ok");
@@ -66,6 +67,14 @@ public final class AppGuardsTest {
         Map<String, String> values = new HashMap<String, String>();
         for (int i = 0; i < infoPairs.length; i += 2) values.put("info." + infoPairs[i], infoPairs[i + 1]);
         return new RootResult(state, restart, "", exit, values);
+    }
+
+    private static void tbtCounters() {
+        RootResult old = result("on", "none", 0, "desired", "on");
+        check(old.info.get("tbt_inexact") == null && old.info.get("tbt_blank") == null && old.desiredEnabled(),
+                "status output from before the tbt counters parses, the counters are absent");
+        RootResult now = result("on", "none", 0, "desired", "on", "tbt_inexact", "3", "tbt_blank", "1");
+        check("3".equals(now.info.get("tbt_inexact")) && "1".equals(now.info.get("tbt_blank")), "tbt counters read from status info");
     }
 
     private static void restoreGate() {
