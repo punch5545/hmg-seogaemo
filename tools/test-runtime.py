@@ -806,7 +806,12 @@ def test_system_directory_mode(temp):
     check(apply)
     # Directory drift refuses before any file restores.
     (namespace / "a/recipes").chmod(0o711)
-    check("sg_revert_all\n", ok=False)
+    result = check("sg_revert_all\n", ok=False)
+    assert f"info.restore_conflict=dir preflight: {namespace}/a/recipes" in result.stdout
+    result = check("sg_dirs_revert\n", ok=False)
+    assert f"info.restore_conflict=dir restore: {namespace}/a/recipes" in result.stdout
+    result = check(apply, ok=False)
+    assert f"info.restore_conflict=dir apply: {namespace}/a/recipes" in result.stdout
     assert (namespace / "a/recipes/audio.recipe").read_text() == "patch"
     (namespace / "a/recipes").chmod(0o755)
     # Simulate loss after metadata restoration, before the restored marker.
@@ -904,6 +909,8 @@ chmod 0600 "{target}"
 if sg_applied "{target}"; then exit 1; fi
 if sg_restore_preflight; then exit 1; fi
 if sg_file_restore "{target}"; then exit 1; fi
+if sg_file_put "{target}" new 0644 0:0; then exit 1; fi
+if sg_file_delete "{target}"; then exit 1; fi
 chmod 0644 "{target}"
 chown 1000:1000 "{target}"
 if sg_applied "{target}"; then exit 1; fi
@@ -921,7 +928,9 @@ chown() {{ return 1; }}
 if sg_file_put "{target}" new 0644 0:0; then exit 1; fi
 [ "$(cat "{target}")" = stock ]
 ''')
-    run(runner, env=env)
+    result = run(runner, env=env)
+    for stage in ("preflight", "restore", "apply", "delete"):
+        assert f"info.restore_conflict=file {stage}: {target}" in result.stdout
 
 
 def test_zygote_and_dex(temp):

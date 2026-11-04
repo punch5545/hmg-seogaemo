@@ -589,6 +589,11 @@ dir-order). Any such material retains the firmware, drift and metadata guards.
 A stale saved desired=on is cleared only after a successful revert receipt.
 Preflight conflicts expose the stage and target through detail output, and
 whole-package restore includes that diagnostic in its final receipt.
+File and directory metadata guard failures emit `info.restore_conflict` with
+`file preflight: <path>` or `dir preflight: <path>` during restore preflight.
+Direct restore and apply/delete guards identify their own stage in the same
+field. These diagnostics keep the conflict return code (3) and retain all
+baselines; they never authorize a mutation or weaken an existing guard.
 
 
 ### Status punctuation (2026-11-04)

@@ -208,7 +208,7 @@ sg_file_restore() {
     sg_check_build || return 3
     sg_dir=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
     [ -f "$sg_dir/ready" ] && [ "$(cat "$sg_dir/path")" = "$1" ] || return 1
-    sg_file_guard "$1" || return 3
+    sg_file_guard "$1" || { sg_restore_conflict "file restore: $1"; return 3; }
     if sg_file_original "$1"; then return 0; fi
     case "$(cat "$sg_dir/existence")" in
         absent) rm -f "$1" && [ ! -e "$1" ] ;;
@@ -247,7 +247,7 @@ sg_restore_preflight() {
         [ -f "$sg_check" ] || continue
         sg_dir=${sg_check%/ready}
         sg_path=$(cat "$sg_dir/path") || return 1
-        sg_file_guard "$sg_path" || return 3
+        sg_file_guard "$sg_path" || { sg_restore_conflict "file preflight: $sg_path"; return 3; }
     done
 }
 sg_remount() { case "$1" in rw|ro) nemesis remount "$1";; *) return 2;; esac; }
@@ -372,7 +372,7 @@ sg_dir_guard() (
 )
 sg_dir_ensure() (
     target=$1
-    sg_path_safe "$target" || exit 3
+    sg_path_safe "$target" || { sg_restore_conflict "dir apply: $target"; exit 3; }
     key=$(sg_file_key "$target") || exit 1
     record=$SG_DATA_ROOT/payload-dirs/$key
     namespace=${SG_TARGET_ROOT:-}/system/etc/hmg-seogaemo
@@ -397,7 +397,9 @@ sg_dir_ensure() (
         fi
         sg_write 1 > "$record/ready" || exit 1
     fi
-    [ "$(cat "$record/path")" = "$target" ] && sg_dir_guard "$record" || exit 3
+    [ "$(cat "$record/path")" = "$target" ] && sg_dir_guard "$record" || {
+        sg_restore_conflict "dir apply: $target"; exit 3;
+    }
     # Publish order before the reference: a failed write cannot hide a mutation
     # from deepest-first recovery. Reapply also repairs interrupted registration.
     if ! grep -Fxq "$record" "$HMG_SEOGAEMO_STATE/dir-order" 2>/dev/null; then
@@ -445,7 +447,9 @@ sg_dirs_preflight() (
         [ -f "$ref" ] || continue
         record=$(cat "$ref") || exit 1
         [ -f "$record/ready" ] || continue
-        sg_dir_guard "$record" || exit 3
+        sg_dir_guard "$record" || {
+            sg_restore_conflict "dir preflight: $(cat "$record/path")"; exit 3;
+        }
     done
 )
 sg_dirs_revert() (
@@ -454,7 +458,9 @@ sg_dirs_revert() (
     while IFS= read -r record; do reverse="$record $reverse"; done < "$HMG_SEOGAEMO_STATE/dir-order"
     for record in $reverse; do
         [ -f "$record/ready" ] || continue
-        sg_dir_guard "$record" || exit 3
+        sg_dir_guard "$record" || {
+            sg_restore_conflict "dir restore: $(cat "$record/path")"; exit 3;
+        }
         module=${HMG_SEOGAEMO_STATE##*/}
         other=0
         for ref in "$record"/refs/*; do
@@ -535,7 +541,9 @@ sg_commit_file() (
     # Existing module manifests use the unambiguous Android root alias.
     [ "$sg_owner" != root:root ] || sg_owner=0:0
     sg_write "$sg_owner" | grep -Eq '^[0-9]+:[0-9]+$' || return 2
-    if [ -f "$sg_saved/applied-existence" ]; then sg_file_guard "$sg_target" || return 3; fi
+    if [ -f "$sg_saved/applied-existence" ]; then
+        sg_file_guard "$sg_target" || { sg_restore_conflict "file apply: $sg_target"; return 3; }
+    fi
     sg_payload_dirs "$sg_target" || return $?
     case "${sg_target#"${SG_TARGET_ROOT:-}"}" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
     sg_expected_mode=$sg_mode
@@ -865,7 +873,9 @@ sg_file_delete() {
     sg_whole_exclusive "$1" || return 3
     sg_file_baseline "$1" || return 1
     sg_saved=$HMG_SEOGAEMO_STATE/file.$(sg_file_key "$1") || return 1
-    if [ -f "$sg_saved/applied-existence" ]; then sg_file_guard "$1" || return 3; fi
+    if [ -f "$sg_saved/applied-existence" ]; then
+        sg_file_guard "$1" || { sg_restore_conflict "file delete: $1"; return 3; }
+    fi
     case "$1" in /system/*) sg_remount rw || return 1; sg_system=1;; *) sg_system=0;; esac
     rm -f "$1"; sg_rc=$?
     [ ! -e "$1" ] || sg_rc=1
