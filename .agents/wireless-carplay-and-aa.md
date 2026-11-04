@@ -89,6 +89,17 @@ The package API must baseline each owned path before writing it, record applied 
 | `persist.ium.support`, `persist.sys.iap2.wifi`, `persist.iap2.iden.wireless` plus `/data/property/` backing files | Set `carplay`, `t`, `t`; restore live and backing state, including absent vs empty. |
 | Potential `/data/dalvik-cache/system@framework@hmg-seogaemo-wireless-hook.jar@classes.dex` and `/data/data/com.daudio.app.dipo/app_hmg-seogaemo-wireless-dex/` | Android may generate optimized DEX. Package API must track and remove only this module's generated entries and restore any pre-existing bytes. Dalvik can regenerate cleanly after stock restoration. |
 
+Not part of the firmware transaction but removed at revert through the package API
+(`owns_generated_dirs`): the hook's own `app_hmg-seogaemo-wireless-runtime` diagnostic
+directory in each of `com.daudio.app.dipo`, `com.tcc.iap2server`,
+`com.google.android.projection.sink`, `com.mnsoft.navi` and `com.android.btsettings`.
+Running apps rewrite them until the next restart. If the app_process swap has no
+ownership record (stock backup, hook files or guard state present, or an `app_process`
+other than the declared stock MD5 `33f798115689d1859e8d2159dc88e7dc` seen on this car),
+status, revert, whole-package restore and uninstall report a conflict and change nothing
+(`sg_zygote_foreign`). Projection status uses a root Dalvik reader bounded to 15 seconds;
+a timeout, a missing boot class path or malformed output reports `unknown`.
+
 No stock app APK/odex, manufacturer native library file, `build.prop`, Wi-Fi client state, ADB property, firewall rule, or service is changed. Android user data created during phone sessions is outside this firmware transaction.
 
 ## Shared API integration
