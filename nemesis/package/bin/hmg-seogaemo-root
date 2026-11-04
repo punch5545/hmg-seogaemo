@@ -219,6 +219,11 @@ if [ "$code" -eq 0 ] && [ "$2" = apply ]; then
     sg_reapply_binds >> "$result" 2>&1 || code=1
 fi
 dd if="$result" bs=1 count=4096 2>/dev/null
+if [ "$code" -ne 0 ]; then
+    while IFS='=' read -r field value; do
+        [ "$field" != info.restore_conflict ] || sg_print "detail=$value"
+    done < "$result"
+fi
 if [ "$code" -eq 0 ]; then
     case "$2" in
         apply) grep -q '^state=on$' "$result" ||

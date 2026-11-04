@@ -17,13 +17,14 @@ hmg_seogaemo_stock_context() {
     unset SG_SKIP_CONSENT_FRAMEWORK SG_BOOT_ID_FILE HMG_SEOGAEMO_SERVICE_BIN
 }
 hmg_seogaemo_stock_snapshots() {
-    for stock_item in "$HMG_SEOGAEMO_STATE"/prop.*/ready "$HMG_SEOGAEMO_STATE"/file.*/ready \
-        "$HMG_SEOGAEMO_STATE"/line.*/ready \
-        "$HMG_SEOGAEMO_STATE"/bind.* "$HMG_SEOGAEMO_STATE"/changes \
-        "$HMG_SEOGAEMO_STATE"/dex.cache; do
-        [ ! -f "$stock_item" ] || return 0
-    done
-    return 1
+    sg_restore_material
+}
+hmg_seogaemo_stock_diagnostic() {
+    while IFS='=' read -r stock_field stock_value; do
+        if [ "$stock_field" = info.restore_conflict ]; then
+            stock_detail="$stock_id $stock_value; backups retained; watch paused"
+        fi
+    done < "$stock/module-output"
 }
 hmg_seogaemo_stock_receipt() {
     {
@@ -83,6 +84,7 @@ hmg_seogaemo_stock_restore() {
             [ "$stock_code" -ne 3 ] || stock_state=conflict
             sg_write "$stock_state" > "$stock/outcome.$stock_id"
             stock_detail="$stock_id preflight blocked; backups retained; watch paused"
+            hmg_seogaemo_stock_diagnostic
             hmg_seogaemo_stock_finish; return $?
         fi
     done
@@ -142,6 +144,7 @@ hmg_seogaemo_stock_restore() {
             if [ "$stock_code" -eq 3 ] || grep -Fxq state=conflict "$stock/module-output"; then stock_state=conflict; fi
             sg_write "$stock_state" > "$stock/outcome.$stock_id"
             stock_detail="$stock_id restore blocked; backups retained; watch paused"
+            hmg_seogaemo_stock_diagnostic
             hmg_seogaemo_stock_finish; return $?
         fi
         sg_write reverted > "$stock/outcome.$stock_id" || return 1

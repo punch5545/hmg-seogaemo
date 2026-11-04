@@ -98,7 +98,7 @@ module ID syntax and watch events before selecting an OTA payload. If current is
 a symlink to a readable dispatcher, exec that dispatcher with the same argv;
 compare canonical directories to prevent self/alias loops. Both copies validate.
 Broken or missing selection falls back to the installed package. Service and
-lifecycle/launch entry points use the same canonical guard. Reconcile retains its
+preuninstall/launch entry points use the same canonical guard; USB postinstall is excluded. Reconcile retains its
 pre-delegation interrupted-update rollback. The authenticated updater itself
 remains the fixed NEMESIS-tree implementation/trust anchor; selected dispatchers
 route update verbs to that fixed core, not downloaded updater copies.
@@ -517,3 +517,14 @@ Restore preflight and property restore accept external drift only for explicitly
 owned reassert_props. They still fail on product mismatch and retain backups on
 failure. Restore ledger before bytes for these properties describe the observed
 live drifted value, while the immutable baseline remains the first-apply value.
+
+
+### Empty restore and diagnostics (2026-11-04)
+
+A module with no restore material is already stock: sg_revert_all succeeds without
+requiring a build marker. Restore material includes property/file/line ready
+markers, bind records, changes, dex.cache, directory references (dir.* and
+dir-order). Any such material retains the firmware, drift and metadata guards.
+A stale saved desired=on is cleared only after a successful revert receipt.
+Preflight conflicts expose the stage and target through detail output, and
+whole-package restore includes that diagnostic in its final receipt.
