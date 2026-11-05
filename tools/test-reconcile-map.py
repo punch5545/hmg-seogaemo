@@ -6,7 +6,6 @@ import shutil
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 import time
 
 from testlib import SHELL, car_env, copy_shell_script, run_tests

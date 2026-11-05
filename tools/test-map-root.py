@@ -2,7 +2,6 @@
 """Exercise fixed map verbs and package-owned publish/export with fake app_process."""
 from pathlib import Path
 import os
-import shutil
 import subprocess
 import tempfile
 from testlib import car_env, SHELL, copy_shell_script

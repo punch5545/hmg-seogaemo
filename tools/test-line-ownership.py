@@ -6,7 +6,6 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
-import tempfile
 from testlib import car_env, SHELL, copy_shell_script, run_tests
 
 ROOT = Path(__file__).resolve().parents[1]

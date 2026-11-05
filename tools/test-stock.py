@@ -5,7 +5,6 @@ from pathlib import Path
 import shutil
 import signal
 import subprocess
-import tempfile
 import time
 from testlib import car_env, SHELL, host_shell_tree, host_shell_script, run_tests
 
