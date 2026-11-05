@@ -225,8 +225,8 @@ card (for example the connected network name).
   everything above, then publishes `/data/nemesis/backup/hmg-seogaemo/installed/<id>/`
   atomically. Installed is not enabled. Installing over an enabled module is refused.
 - `hmg-seogaemo-root module usb-import`: no arguments. The app cannot read head-unit USB
-  mounts, so root copies the top-level `*.hsm` files of each mounted USB drive (the same
-  fixed drive list as `export usb`) into `/data/data/com.seogaemo.hmg/files/hsm-usb/`
+  mounts, so root copies the `*.hsm` files in the `HSM/` folder of each mounted USB drive
+  (the same fixed drive list as `export usb`; files elsewhere on the drive are ignored) into `/data/data/com.seogaemo.hmg/files/hsm-usb/`
   (dir 0755, files 0644, previous copies removed first). Names must match
   `[A-Za-z0-9._-]{1,80}` and not start with `.`; symlinks, empty files and files over 10 MiB
   are skipped; at most 20 files. Prints `info.count=<n>`. It changes no stock file or

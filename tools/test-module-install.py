@@ -292,7 +292,7 @@ def test_usb_import(car):
     usb, unmounted, app = car.base.parent / "usb0", car.base.parent / "usb1", car.base.parent / "app-files"
     dest = app / "hsm-usb"
     for path in (usb, unmounted):
-        path.mkdir()
+        (path / "HSM").mkdir(parents=True)
     mounts = car.base.parent / "mounts"
     mounts.write_text(f"/dev/block/sda1 {usb} vfat rw 0 0\n")
     car.env.update(SG_USB_DIRS=f"{usb} {unmounted}", SG_MOUNTS_FILE=str(mounts), SG_HSM_USB_INBOX=str(dest))
@@ -300,22 +300,24 @@ def test_usb_import(car):
     app.mkdir()
     dest.mkdir()
     (dest / "stale.hsm").write_text("old")
-    (usb / "theme-1.0.hsm").write_bytes(b"PK-theme")
-    (usb / "UPPER.HSM").write_bytes(b"PK-upper")
-    (usb / "bad name.hsm").write_bytes(b"PK")
-    (usb / ".hidden.hsm").write_bytes(b"PK")
-    (usb / "empty.hsm").write_bytes(b"")
-    (usb / "notes.txt").write_text("x")
-    (usb / "link.hsm").symlink_to(usb / "theme-1.0.hsm")
-    (unmounted / "other.hsm").write_bytes(b"PK-other")
+    folder = usb / "HSM"
+    (usb / "top-level.hsm").write_bytes(b"PK-top")
+    (folder / "theme-1.0.hsm").write_bytes(b"PK-theme")
+    (folder / "UPPER.HSM").write_bytes(b"PK-upper")
+    (folder / "bad name.hsm").write_bytes(b"PK")
+    (folder / ".hidden.hsm").write_bytes(b"PK")
+    (folder / "empty.hsm").write_bytes(b"")
+    (folder / "notes.txt").write_text("x")
+    (folder / "link.hsm").symlink_to(folder / "theme-1.0.hsm")
+    (unmounted / "HSM" / "other.hsm").write_bytes(b"PK-other")
     out = car.root("module", "usb-import")
     assert "state=on" in out and "info.count=2" in out, out
     assert sorted(path.name for path in dest.iterdir()) == ["UPPER.hsm", "theme-1.0.hsm"]
     assert (dest / "theme-1.0.hsm").read_bytes() == b"PK-theme"
     assert oct(dest.stat().st_mode & 0o777) == "0o755"
     assert oct((dest / "theme-1.0.hsm").stat().st_mode & 0o777) == "0o644"
-    (usb / "theme-1.0.hsm").unlink()
-    (usb / "UPPER.HSM").unlink()
+    (folder / "theme-1.0.hsm").unlink()
+    (folder / "UPPER.HSM").unlink()
     assert "info.count=0" in car.root("module", "usb-import")
     assert list(dest.iterdir()) == []
     car.root("module", "usb-import", "x", code=2)

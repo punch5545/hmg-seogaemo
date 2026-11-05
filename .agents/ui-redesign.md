@@ -101,7 +101,7 @@ Known gaps: installed-module setting rows show the last value the app set (cache
 because `status` does not report settings; built-in `INFO` items (ports, addresses, daemon state)
 are not 옵션 rows: they appear only in the developer-only 진단 정보 dialog as `label: value` lines
 above the raw status output (ledger and logs still go through Support → USB export). The app cannot read
-USB mounts, so opening Add first runs `module usb-import` (root copies USB packages into `files/hsm-usb/`,
+USB mounts, so opening Add first runs `module usb-import` (root copies the USB `HSM/` folder packages into `files/hsm-usb/`,
 no confirm because it changes no stock state) and lists that directory with the name, icon, summary and
 version read from each package; install and remove show `StepProgressDialog` and a result dialog.
 Screenshots use the android-21 arm64 AVD `hmg_1920x720`, the only image on the build machine.

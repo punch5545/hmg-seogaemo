@@ -78,7 +78,7 @@ mi_list() {
     sg_status on none 'Module list'
 }
 
-# Copies top-level USB packages into the app-readable inbox; the app cannot read USB mounts.
+# Copies USB packages from <drive>/HSM/ into the app-readable inbox; the app cannot read USB mounts.
 mi_usb_import() {
     mi_dest=${SG_HSM_USB_INBOX:-/data/data/com.seogaemo.hmg/files/hsm-usb}
     mi_app=${mi_dest%/*}
@@ -91,7 +91,7 @@ mi_usb_import() {
     mi_n=0
     for mi_drive in ${SG_USB_DIRS:-/storage/usb0 /storage/usb1 /storage/usb2 /mnt/media_rw/usb0 /mnt/media_rw/usb1 /mnt/media_rw/usb2}; do
         grep -q " $mi_drive " "${SG_MOUNTS_FILE:-/proc/mounts}" 2>/dev/null || continue
-        for mi_file in "$mi_drive"/*.hsm "$mi_drive"/*.HSM; do
+        for mi_file in "$mi_drive"/HSM/*.hsm "$mi_drive"/HSM/*.HSM "$mi_drive"/hsm/*.hsm "$mi_drive"/hsm/*.HSM; do
             [ -f "$mi_file" ] && [ ! -L "$mi_file" ] || continue
             mi_name=${mi_file##*/}
             mi_name=${mi_name%.*}

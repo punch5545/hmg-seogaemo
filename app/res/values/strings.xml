@@ -64,7 +64,7 @@
     <string name="reset_restart_button">Restart</string>
     <string name="add_title">Add</string>
     <string name="add_scanning">Looking for module files…</string>
-    <string name="add_empty">No modules to add. Put a module file on a USB drive and open this screen again.</string>
+    <string name="add_empty">No modules to add. Put a module file in the HSM folder of a USB drive and open this screen again.</string>
     <string name="add_hint">After installing, turn it on from Modules.</string>
     <string name="add_file">File</string>
     <string name="add_install">Install</string>

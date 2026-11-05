@@ -64,7 +64,7 @@
     <string name="reset_restart_button">재시작</string>
     <string name="add_title">추가</string>
     <string name="add_scanning">모듈 파일 찾는 중…</string>
-    <string name="add_empty">추가할 수 있는 모듈이 없습니다. USB에 모듈 파일을 넣고 이 화면을 다시 여세요.</string>
+    <string name="add_empty">추가할 수 있는 모듈이 없습니다. USB의 HSM 폴더에 모듈 파일을 넣고 이 화면을 다시 여세요.</string>
     <string name="add_hint">설치한 뒤 모듈 탭에서 켤 수 있습니다.</string>
     <string name="add_file">파일</string>
     <string name="add_install">설치</string>
