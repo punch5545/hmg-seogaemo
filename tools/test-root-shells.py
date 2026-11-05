@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Run isolated root/module suites with sh/mksh parallelism (one worker per CPU by default).
+"""Run isolated root/module suites with sh/mksh parallelism.
 
-Each suite owns temporary fixtures and only reads the completed package. Keep
-tests within a suite sequential, especially the runtime lock/deadline tests.
+Workers default to CPUs-1 (one CPU stays for the other make test chain), so total
+load never exceeds the CPU count. Each suite, and each sharded test function of a
+suite (see testlib.run_tests), runs in its own process with private temporary
+fixtures and only reads the completed package; the lock/deadline tests use
+fake sleeps and file handshakes rather than wall-clock races between tests.
 Set HMG_SEOGAEMO_TEST_JOBS=1 (or --jobs 1) for serial diagnosis.
 """
 import argparse
@@ -24,7 +27,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--aapt", required=True)
     parser.add_argument("--jobs", type=int,
-                        default=int(os.environ.get("HMG_SEOGAEMO_TEST_JOBS") or os.cpu_count() or 2))
+                        default=int(os.environ.get("HMG_SEOGAEMO_TEST_JOBS") or max(1, (os.cpu_count() or 2) - 1)))
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")

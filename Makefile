@@ -64,8 +64,8 @@ verify-dist:
 	python3 tools/package.py verify --aapt $(BT)/aapt
 
 TEST_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
-TESTS := test-root-shells test-module-install test-maps test-python test-java
-.PHONY: test-all $(TESTS)
+TESTS := test-root-shells test-other
+.PHONY: test-all test-other test-module-install test-maps test-python test-java $(TESTS)
 
 test: export PATH := $(CURDIR)/tools/testlib/fakebin:$(PATH)
 test:
@@ -73,6 +73,10 @@ test:
 	$(MAKE) $(if $(findstring output-sync,$(.FEATURES)),-O) -j$(TEST_JOBS) test-all
 
 test-all: $(TESTS)
+
+# Two branches in parallel: the sharded root suites (CPUs-1 workers) and everything else (one chain).
+test-other:
+	$(MAKE) -j1 test-module-install test-maps test-python test-java
 
 test-root-shells:
 	python3 tools/test-root-shells.py --aapt $(BT)/aapt
@@ -99,6 +103,7 @@ test-python:
 	python3 tools/test-hsm.py
 	python3 tools/test-hsm-cli.py
 	python3 tools/test-update.py
+	python3 tools/test-module-switch.py
 
 # Each Java test compiles only the app classes it needs, against Java 7 source/target.
 JAVAC7 := javac -encoding UTF-8 -source 7 -target 7
