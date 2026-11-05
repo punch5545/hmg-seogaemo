@@ -4,7 +4,8 @@
 
 Project-owned names use `hmg-seogaemo` for paths and artifacts, `hmg_seogaemo`
 for snake-case identifiers, `HMG_SEOGAEMO` for environment variables and constants,
-`HmgSeogaemo` for Java class prefixes, and `HMG-Seogaemo` for display and log text.
+`HmgSeogaemo` for Java class prefixes, and `HMG-Seogaemo` for display and log text
+(exception: the app header title reads `HMG Seogaemo`, owner choice).
 The Java package `com.seogaemo.hmg` and the GitHub repository
 `seogaemo/hmg-seogaemo` retain their owner-chosen names. The existing `sg_*`
 shell functions and internal variables remain the module runtime API prefix;
@@ -97,7 +98,7 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 
 | Path | What |
 |---|---|
-| `app/` | APK `com.seogaemo.hmg`: `ui/` (Home `HomeView` pager, `ui/settings` page components), `module/` (registry, `ModuleManager`, `RootClient`, contract types), `core/update/` (OTA) |
+| `app/` | APK `com.seogaemo.hmg`: `ui/` (Features/Car/Settings tab screens: `FeaturesView`, `FeatureCard`, `LineIcon`, `OptionsList`, `ConfirmDialog`, `StepProgressDialog`, `Theme`; `ui/settings` page components), `module/` (registry, `ModuleManager`, `RootClient`, contract types), `core/update/` (OTA) |
 | `modules/<id>/` | one module = one dir: `module.properties`, `src/` (`com.seogaemo.hmg.modules.*`), `res/` (`<snake_id>_*` strings), `root/<id>.sh`, optional `payload/`, `build/build.sh`, `test/run.sh` |
 | `nemesis/package/` | NEMESIS package `hmg-seogaemo`: `NEMESIS.data`, `bin/` (`hmg-seogaemo-root`, `open.sh`, `install-apk.sh`), `lib/common.sh`, `core/update.sh`, `scripts/` (stable hook wrappers), `svc/reconcile.sh` (boot-only), `svc/watcher.sh` (boot/screen_on watch dispatch, never apply/revert) |
 | `nemesis/usb/` | USB wrapper descriptor (`packages/hmg-seogaemo.zip`) |
