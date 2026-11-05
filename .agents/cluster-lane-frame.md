@@ -97,7 +97,7 @@ Service-side `NaviCluster.updateLaneInfo(null)` calls `sendClearTP()` and clears
 
 ## 5. Our arrow codes and open question
 No named new-frame lane arrow enum or status unpacker exists in the inspected `com.hkmc.cluster` classes. Our `CpTurns.laneIcon()`: 0 none/unused, 1 straight, 2 slight right, 3 right, 4 sharp right, 5 U-turn either side, 6 sharp left, 7 left, 8 slight left (H our code; stock value space for simple lanes is 1..8, see [cluster-lane-arrows.md](cluster-lane-arrows.md)).
-- Car-verified: status is two bits per arrow slot, least-significant slot first (`0x15` three normal arrows); `1`/`2` draws only slot 0. See [cluster-lane-arrows.md](cluster-lane-arrows.md). `11` and the fourth group remain untested.
+- Car-verified: status is two bits per arrow slot, least-significant slot first (`0x15` three normal arrows); `1`/`2` draws only slot 0; `11` is grey (inactive), `00` blank. See [cluster-lane-arrows.md](cluster-lane-arrows.md). The fourth group remains untested.
 
 ## 6. Stock engine lane log (input side only)
 The stock engine (`com.mnsoft.navi`, `Navi: [NEngRG][P][Lane]`) logs each lane set before it becomes the frame. The log shows producer **input**, not the 81-byte output (`updateLaneInfo` logs only `[B@...`). Format: `[Lane] rd:<m> [lane:<t> level:<l> vari:<v> over:<o> skip:<s> (dir:<d> idx:<i> valid:<vv>)...]... RHD:<r>`.
@@ -112,8 +112,6 @@ Reference: `modules/wireless-carplay-and-aa/payload/src/hmgapi/mods/wireless/dip
 | Finding | Confidence / recommendation |
 | --- | --- |
 | Builder emits exactly 81 bytes, count at `01`, marks at `03+i`, arrows at `13+3i`; `0B..12` and `2B..50` zero. | H builder. Preserve as baseline capture; stock compatibility unproven. |
-| `laneOne` collapses any route-angle list to `along=true`, one mark for the entire lane; loses per-arrow recommendation. | Car-verified defect (2026-11-05): only slot 0 is drawn and lit. Fix: per-slot two-bit status (recommended arrow = the highlight angle) and component glyph pairs from cluster-lane-arrows.md. |
-| `dim3` sends 3 and `dim0` sends 0 as experimental lane marks. | H code; visual meanings U. Not established stock dimming states; gate any default change on capture evidence. |
 | Metadata trailer always zero. | H omission; U whether zero means unknown/absent/impossible/disabled. |
 | Eight-lane and three-arrow caps discard input; both U-turn directions share code 5. | H code; no evidence these violate the stock format. Verify capacity and direction enum first. |
 | Blank frame is `F1` plus 80 zeros. | H code; does not invoke `sendClearTP`; keep a separate test for real cluster clearing. Null via the public API is a no-op, so not a replacement. |

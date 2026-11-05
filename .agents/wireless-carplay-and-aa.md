@@ -178,19 +178,22 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
   while p18 is true and state is nonzero (the maneuver-count/state show gate also applies).
   No fallback to another index or 0x5202 linked lane is used. Missing current entries and hidden
   lanes blank the old frame; state 0, stop, disconnect and source changes clear the cache.
-  Existing angle/status modes produce the 81-byte 0xF1 frame; auto highlights preferred lanes
-  when supplied, and highlight 1000 means none. Invalid angles produce no arrow. A lane's angles
+  The decoded lanes produce the 81-byte 0xF1 frame; highlight 1000 means none. Invalid angles
+  produce no arrow. A lane's angles
   become distinct direction classes (the `laneIcon` thresholds); one class keeps the plain 1..8
   glyph, two or three use the car-verified component glyph pair/triple from `CpTurns.LaneGlyphs`
   ([cluster-lane-arrows.md](cluster-lane-arrows.md)), whatever order the phone lists the angles.
   A set not in the table is retried with slight/sharp turns snapped to plain left/right; if it
-  still does not match (or has more than 3 directions) only the recommended arrow is drawn as a
-  single glyph, else the first. The status byte is 2 bits per slot (`01` plain, `10` recommended,
-  `00` not drawn), following the arrow each slot shows: `10` only on the arrow whose angle
-  equals the lane's highlight; with no valid highlight a preferred lane lights all its arrows
-  (U-turn + left, route left: arrows `0a 0e`, status `0x09`). The lane modes pick which lanes are lit
-  and the value of the others (dim0/dim3 repeat their `00`/`11` on each slot). While a frame with
-  lanes shows, `NavigationCluster.updateRemainDis(dist, unit, tenths, 0)` carries the distance to
+  still does not match (or has more than 3 directions) only the highlighted arrow is drawn as a
+  single glyph, else the first. The status byte is 2 bits per slot (`00` blank, `01` white, `10`
+  blue, `11` grey), following the arrow each slot shows, and mirrors CarPlay per lane from its
+  LaneStatus and highlight angle: status 0 every arrow grey; status 1 the highlighted arrows white
+  and the rest grey; status 2 the highlighted arrows blue and the rest grey; with no valid
+  highlight (1000, or no angle matches) every arrow takes the lane's colour. Blue only comes from
+  phone status 2 (NAVER usually sends none, so nothing is blue). A lane with no usable angle sets
+  slot 0 only. U-turn + left, status 1, highlight -90: arrows `0a 0e`, status `0x07` (status 2:
+  `0x0b`; status 0: `0x0f`). The old `lanes` setting modes (`off`/`rec`/`dim0`/`dim3`) were
+  removed. While a frame with lanes shows, `NavigationCluster.updateRemainDis(dist, unit, tenths, 0)` carries the distance to
   the next maneuver (the turn's distance and unit; feet and yards as metres; resent every 2 s,
   `65535, 15, 15, 0` when lanes go away; no toll-gate flag). The trailer bytes 0x43..0x50 stay
   zero. Not yet seen on the car with this build. Refresh resends
@@ -405,7 +408,7 @@ owned by the app UID.
 Icon key `type=<n> junction=<n> side=<n> exit~<deg rounded to 15>` (plus `state=<n>` for type 12),
 detail `icon=<n> kind=exact|band|angle|semantic|blank exit=<exact deg>`, sample
 `<instruction>[ -> <road after>]`. Lane key `n=<lanes> [s<status> a[angles] h[highlight]]...`,
-detail `mode= sent= marks= frame=<all 81 bytes sent, hex> laneIndex= laneCount= distNext= nextStr=`.
+detail `sent= marks= frame=<all 81 bytes sent, hex> laneIndex= laneCount= distNext= nextStr=`.
 The files are not pruned with the per-process `p-*` stems and are not copied by `status` (too
 large for the per-status gather). The exporter (`lib/diagnostics.sh`) copies the fixed names
 directly from DiPO's directory into `diagnostics/tbt/`, whole up to 1 MiB + 64 KiB each, outside the

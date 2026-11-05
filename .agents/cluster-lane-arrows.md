@@ -52,7 +52,7 @@ Each cell is `p=0 / p=1 / p=2..8` where a single value repeats for all nine `p` 
 | 8 | 35 | 35 | 36 |
 
 ## Per-lane status byte (0x03+k), car-verified
-**2 bits per arrow slot**, slot 0 in bits 0-1, slot 1 in bits 2-3, slot 2 in bits 4-5. `01` = arrow drawn normal, `10` = arrow drawn recommended (blue), `00` = slot not drawn. Examples: one normal arrow `0x01`; two normal `0x05`; second arrow recommended `0x09`; three normal `0x15`. A slot whose bits are `00` is not drawn even when its arrow byte is set: sending `0x01`/`0x02` with two arrows draws only slot 0 (the 2026-11-05 CarPlay bug: U-turn+left lane showed only the U-turn, lit blue). Car-verified by direct frame injection, owner reading cluster/HUD. `11` not tested.
+**2 bits per arrow slot**, slot 0 in bits 0-1, slot 1 in bits 2-3, slot 2 in bits 4-5. `00` = slot not drawn (blank), `01` = normal (white), `10` = recommended (blue), `11` = inactive (grey). Slots mix freely: `0x0d` is a white straight + grey left, `0x07` a grey straight + white left. Other examples: one normal arrow `0x01`; two normal `0x05`; second arrow recommended `0x09`; three normal `0x15`. A slot whose bits are `00` is not drawn even when its arrow byte is set: sending `0x01`/`0x02` with two arrows draws only slot 0 (the 2026-11-05 CarPlay bug: U-turn+left lane showed only the U-turn, lit blue). Car-verified by direct frame injection, owner reading cluster/HUD.
 
 ## Car-verified glyphs and multi-arrow pairs (2026-11-05)
 Method: `tmp/lane-probe/` (throwaway, gitignored) runs a dex via root `app_process` that calls `com.hkmc.cluster.NavigationCluster(null).updateLaneInfo(byte[81])`; the owner read the cluster while CarPlay guidance was active but its lane data absent (our module only rewrites the frame when CarPlay lane data changes; with route guidance off the cluster draws no lanes). Arrows in a lane are overlaid; each multi-arrow lane needs the matching **component** glyphs, not the single-lane glyphs 1..8 (5+7 overlaid look wrong).
@@ -82,5 +82,5 @@ Owner-approved pairs (slot order as listed, status `0x05`/`0x15` normal):
 Rejected (look wrong): 5+7, 10+12, 10+13, 10+18, 14+18, 12+18, 26+24, 26+20, 9+14, 9+15, 22+27 (prefer 9+11), 28+24 (prefer 31+32), 28+32 (reads as staggered left-then-right), 28+29+22, 28+30+22, 29+22+23, 13+22+19, 15+22+21, 22+23+24, 26+28+22, 26+28+24, 31+22+32. More than three arrows cannot be encoded (three slots per lane).
 
 ## Still needs the car / phone
-- Which picture IDs 23-33 and 38-57 draw alone; whether `11` status means anything.
+- Which picture IDs 23-33 and 38-57 draw alone.
 - The full raw `dir` -> normalized `d` map is in `tmp/navi-re/enum-*.thumb.txt`; label it against the `[Lane] dir:N idx:M` drive logs ([cluster-lane-frame.md](cluster-lane-frame.md) section 6).
