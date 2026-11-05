@@ -37,8 +37,8 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 - onebin `neev_kr`, Android 4.4.2 (API 19, Dalvik), Telechips, display 1920x720 hdpi (density 1.5).
 - Owner-verified: HMG-API's car map + wireless mod gave a working hotspot + wireless CarPlay on this
   car; the stock firmware has no Wi-Fi client menu.
-- Car-verified: wireless CarPlay music, Siri and calls/mic; boot reconcile and readiness status;
-  324/324 original map points reflect (2026-11-03).
+- Car-verified: wireless CarPlay music, Siri and calls/mic; `wifi-client` STA (adb over a router);
+  user-button shortcut; boot reconcile and readiness status; 324/324 original map points reflect (2026-11-03).
 
 ## Hard rules
 
@@ -183,8 +183,8 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 ## Known gaps / risks (unverified on a car)
 
 - The 18 v1.0.1 map additions have exact-stock host evidence and still need on-car reflection.
-  Wireless Android Auto, cluster/HUD lane rendering, `wifi-client` STA and user-button
-  delivery have no car evidence. Other feature claims require their own evidence.
+  Wireless Android Auto and cluster/HUD lane rendering have no car evidence; user-button
+  reassertion after restart is unverified. Other feature claims require their own evidence.
 - `wireless-carplay-and-aa` replaces `/system/bin/app_process` (boot guard disables it after 3
   quick restarts). Keep an adb recovery path ready.
 - `wifi-client` STA vs the CarPlay AP on one radio: treated as mutually exclusive; concurrency is
