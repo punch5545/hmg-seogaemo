@@ -136,3 +136,28 @@ This raises confidence in the third-party layout from U toward plausible, but th
 bit-to-lane order, endianness and which pair is which are still unverified. Do not hardcode
 the claim: confirm it against captured stock `source=car-nav` 81-byte frames (added in the
 lane-decoder work) matched to the real on-road lanes before populating these bytes for CarPlay.
+
+## Owner drive 2026-11-04: stock navigation engine lane fields (input side only)
+
+From the live log (`tmp/car-sessions/2026-11-04-tbt/live/logcat-mac.log`), the stock engine
+(`com.mnsoft.navi`, `Navi: [NEngRG][P][Lane]`) logs each lane set *before* it becomes the
+81-byte frame. No 81-byte output is in this log (`updateLaneInfo` logged only `[B@...`), and
+there is no parallel CarPlay 0x5204 to cross-map (dev mode off on the first drive; the lane
+recipe crashed iap2server on the second), so this is the producer's **input**, not a verified
+byte mapping. Format: `[Lane] rd:<m> [lane:<t> level:<l> vari:<v> over:<o> skip:<s> (dir:<d> idx:<i> valid:<vv>)...]... RHD:<r>`.
+
+Observed, with hypotheses (confidence **M**, from position/context only):
+- `rd` = distance to the lane point in metres (counts down). `RHD` = right-hand-drive flag (0 here).
+- Per lane, repeated `dir`/`idx`/`valid` triples = the arrows drawn in that lane; `over` tracks the
+  group (1 = one arrow, 2/3 = multi-arrow lanes). `(dir,idx)` pairs seen: (0,1) dominant in through
+  lanes = **straight**; (1,2), (3,3), (6,5), (6,10), (9,7), (9,14), (11,8), (0,16)+(3,18). `idx`
+  (1..18) looks like an arrow-sprite index incl. combinations; `dir` a direction class. Exact
+  mapping to our `laneIcon` 0..8 is **unproven**.
+- `vari:1` marks the lane that leads along the route (the highlighted/recommended lane); it sits on
+  the turn lane in these samples.
+- A 12-lane toll-plaza set (`rd:294`) shows `lane:2 valid:2` lanes interleaved with `skip:1` lanes:
+  **`lane:<type>` is the lane category** (0 normal, 2 a special/ETC/hi-pass/bus type the owner saw
+  coloured on cluster+HUD) and **`skip:1` = closed/unusable**. This is the engine-side origin of the
+  trailer bitmasks (`0x43..0x50`); it confirms those bytes carry hi-pass/bus/toll/closed state, but
+  not their byte offsets or bit order. Capture the stock 81-byte `source=car-nav` frames (now
+  recorded) at the same toll plaza to pin the encoding.
