@@ -179,7 +179,9 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
   No fallback to another index or 0x5202 linked lane is used. Missing current entries and hidden
   lanes blank the old frame; state 0, stop, disconnect and source changes clear the cache.
   Existing angle/status modes produce the 81-byte 0xF1 frame; auto highlights preferred lanes
-  when supplied, and highlight 1000 means none. Invalid angles produce no arrow. Refresh resends
+  when supplied, and highlight 1000 means none. Invalid angles produce no arrow. Known defect (car,
+  2026-11-05): multi-arrow lanes get single glyphs and a per-lane status, so only slot 0 is drawn;
+  fix tracked in backlog ("CarPlay lanes"). Refresh resends
   the last frame. tbt-lanes records contain raw numeric lane fields, description byte count,
   current index/count and all 81 frame bytes. Developer mode logs entries and index matches.
   0x5204 has no distance; route updates supply it.
@@ -224,7 +226,8 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
   Check with `dexdump` that no new `hmgapi/mods` class has a `hmgapi/hook` superclass/interface other than `MethodHook`.
 - **HUD list resend.** `CpTurns.refresh` resends the unchanged 0xF2 HUD list every 2 s (`HUD_RESEND_MS`),
   independent of phone updates, because the HUD distance (`update_tbt_sub_info_2c`) goes out every push while
-  the list is sent only on change with no delivery signal; `hudBlank` clears it.
+  the list is sent only on change with no delivery signal; `hudBlank` clears it. Car-verified at 0.1.28
+  (2026-11-05): HUD arrow and road text no longer froze during a NAVER Map drive.
 
 ## Runtime contract details
 

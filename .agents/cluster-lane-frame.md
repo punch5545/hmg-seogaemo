@@ -1,4 +1,4 @@
-Status: current — NEEV KOR lane transport and firmware-confirmed `stTPLaneInfo` layout. Physical rendering is still unverified.
+Status: current — NEEV KOR lane transport, firmware-confirmed `stTPLaneInfo` layout; status bits, trailer bits and lane distance car-verified 2026-11-05.
 
 # Cluster lane frame (81-byte `stTPLaneInfo`)
 
@@ -24,6 +24,14 @@ JSON keys read (exact strings): `lane`, `info`, `totalLaneNumber`, `condition`, 
 | `0x4d` | 2 | **hipassLaneNumber** (하이패스 차선번호) | `strh [r4,#0x4d]`, key `hipassLaneNumber` H |
 | `0x4f` | 2 | **nonHipass** (하이패스 아님/일반 톨) | `strh [r4,#0x4f]`, key `nonHipass` H |
 
+- **Car-verified trailer meanings (2026-11-05, direct frame injection via `tmp/lane-probe/`, owner reading the cluster):** bit k = lane k (lane 0 leftmost).
+  - `busPriority` 0x47: bus-only lane marking.
+  - `hipass` 0x4b: hi-pass toll lane. Lane status `02` = active (go here); `01` = hi-pass but "do not use" (greyed).
+  - `hipassLaneNumber` 0x4d: adds a lane-number label to that hi-pass lane (lane index 1 showed "2", index 2 showed "3").
+  - `nonHipass` 0x4f: ordinary toll lane, three grey chevrons; stayed grey with status `02` too.
+  - `skip` 0x49: "…" marker (collapses lanes when there are many).
+  - `overpass` 0x43 / `underpass` 0x45: overpass / underpass marking.
+  - HUD quirk: when toll/bus bits are set, the HUD draws lanes without bits as active hi-pass lanes; the cluster draws them normally. Projection must keep the trailer zero (CarPlay 0x5204 has no toll/bus/overpass data).
 - The third-party `nav_mapping.py` trailer order does not apply to this firmware. There is no `possibility` u16; `individualDirection` is a JSON key but not one of the seven trailer words (applied elsewhere).
 - Per-lane status byte semantics (2 bits per arrow, internal 0/1/3/2 -> wire 0/1/2/3) and arrow image IDs: [cluster-lane-arrows.md](cluster-lane-arrows.md).
 - Owner observation (2026-11-05, stock navigation, no phone projection): cluster and HUD showed bus-only lanes, hi-pass (ETC) lanes, non-hi-pass toll lanes and recommended-lane highlighting. The 81-byte frame is the only lane payload to the cluster, so the trailer bitmasks and per-arrow recommendation are in use.
@@ -32,6 +40,10 @@ JSON keys read (exact strings): `lane`, `info`, `totalLaneNumber`, `condition`, 
 ### For our CpTurns lane builder
 - Status (`0x03+k`) and arrow (`0x13+3k`) layout is consistent with the loop region. Builder fills `0x01` count, `0x02` pockets, status and arrows.
 - CarPlay's 0x5204 carries no hi-pass/bus/toll/closed information, so `0x43..0x4f` stay 0 for projection (only stock navigation sets them). Do not fill all bits or set masks without decoded evidence.
+
+## 1b. Lane remaining distance (car-verified 2026-11-05)
+The empty box right of the lane strip shows the distance to the lane point. It is **`NavigationCluster.updateRemainDis(int remained_distance, int scale_unit, int under_decimal, int nv_display_TG)`** (ClusterService logs those names): unit 0 m, 1 km, 2 mi (same codes as TBT units); `under_decimal` = tenths (`1,1,2,0` showed 1.2 km; `150,0,0,0` 150 m). `nv_display_TG=1` replaces the TBT turn icon with a **toll-gate picture**; send 0 otherwise. Clearing with `65535,15,15,0` (the invalid pattern stock uses for other distances) is unverified. Stock navigation never called it in the 2026-11-04/05 logs. CarPlay offers no toll flag (ManeuverType 0..53 has none; NAVER sends toll gates as type 3 with text like `북용인톨게이트`).
+`updateNaviWarnDist` is **not** the lane distance: stock uses it for speed-camera distance (counts down by 10 m and is reset to 65535 at `CRGCameraList` camera-end events); a 3-arg call showed nothing next to the lanes.
 
 ## 2. Evidence paths (smali line convention)
 Physical file lines (not embedded `.line` numbers). Paths relative to `tmp/car-sessions/2026-11-04-devdump/analysis/api-inventory/smali/`:
@@ -85,7 +97,7 @@ Service-side `NaviCluster.updateLaneInfo(null)` calls `sendClearTP()` and clears
 
 ## 5. Our arrow codes and open question
 No named new-frame lane arrow enum or status unpacker exists in the inspected `com.hkmc.cluster` classes. Our `CpTurns.laneIcon()`: 0 none/unused, 1 straight, 2 slight right, 3 right, 4 sharp right, 5 U-turn either side, 6 sharp left, 7 left, 8 slight left (H our code; stock value space for simple lanes is 1..8, see [cluster-lane-arrows.md](cluster-lane-arrows.md)).
-- Open (third-party claim; consistent with the 2-bit-per-arrow packing in cluster-lane-arrows.md): three occupied arrow slots need separate two-bit statuses. If groups are least-significant-slot first, three normal arrows would be `0x15` and three recommended `0x2A`; current `1`/`2` populates only slot 0. Group order, slot association, `0`/`3` meaning and the fourth group are unknown. U.
+- Car-verified: status is two bits per arrow slot, least-significant slot first (`0x15` three normal arrows); `1`/`2` draws only slot 0. See [cluster-lane-arrows.md](cluster-lane-arrows.md). `11` and the fourth group remain untested.
 
 ## 6. Stock engine lane log (input side only)
 The stock engine (`com.mnsoft.navi`, `Navi: [NEngRG][P][Lane]`) logs each lane set before it becomes the frame. The log shows producer **input**, not the 81-byte output (`updateLaneInfo` logs only `[B@...`). Format: `[Lane] rd:<m> [lane:<t> level:<l> vari:<v> over:<o> skip:<s> (dir:<d> idx:<i> valid:<vv>)...]... RHD:<r>`.
@@ -100,7 +112,7 @@ Reference: `modules/wireless-carplay-and-aa/payload/src/hmgapi/mods/wireless/dip
 | Finding | Confidence / recommendation |
 | --- | --- |
 | Builder emits exactly 81 bytes, count at `01`, marks at `03+i`, arrows at `13+3i`; `0B..12` and `2B..50` zero. | H builder. Preserve as baseline capture; stock compatibility unproven. |
-| `laneOne` collapses any route-angle list to `along=true`, one mark for the entire lane; loses per-arrow recommendation. | H information loss. If stock status is per-slot (cluster-lane-arrows.md), this is the concrete encoding defect: retain each mapped angle's recommendation and pack status by verified slot. No speculative shifts. |
+| `laneOne` collapses any route-angle list to `along=true`, one mark for the entire lane; loses per-arrow recommendation. | Car-verified defect (2026-11-05): only slot 0 is drawn and lit. Fix: per-slot two-bit status (recommended arrow = the highlight angle) and component glyph pairs from cluster-lane-arrows.md. |
 | `dim3` sends 3 and `dim0` sends 0 as experimental lane marks. | H code; visual meanings U. Not established stock dimming states; gate any default change on capture evidence. |
 | Metadata trailer always zero. | H omission; U whether zero means unknown/absent/impossible/disabled. |
 | Eight-lane and three-arrow caps discard input; both U-turn directions share code 5. | H code; no evidence these violate the stock format. Verify capacity and direction enum first. |
