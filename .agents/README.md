@@ -25,6 +25,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [research-car-mapping.md](research-car-mapping.md) | Implemented plus historical research | KOR evidence, core mapper design, and remaining on-car validation. |
 | [catalogue-v101.md](catalogue-v101.md) | Current | KOR evidence for 18 v1.0.1 additions, honest coverage, and verification-cache migration. |
 | [cluster-lane-frame.md](cluster-lane-frame.md) | Current | 81-byte stTPLaneInfo cluster lane frame, firmware-confirmed trailer bitmasks (hi-pass/bus/toll/overpass). |
+| [cluster-tbt-icons.md](cluster-tbt-icons.md) | Current | Firmware TBT turn-icon codes (65/66-73/ramps/roundabout/arrive/ferry) and distance-unit codes. |
 | [cluster-lane-arrows.md](cluster-lane-arrows.md) | Current | Firmware lane arrow image-ID tables (dir index → arrow byte) and status byte semantics. |
 | [navi-lib-index.md](navi-lib-index.md) | Current | Mechanical index of the stock navigation engine libExSLNavi.so (binary not committed). |
 | [carplay-tbt-external-research.md](carplay-tbt-external-research.md) | Current | Third-party research on iAP2 route guidance and Hyundai cluster/HUD TBT (with `carplay-tbt-external/`). |
