@@ -172,7 +172,7 @@ Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe mat
   to the TBT handler. Link/control messages may be split or coalesced; link/header checksums,
   TLV lengths, scalar widths, eight lanes and sixteen signed angles per lane are checked.
   Invalid messages are ignored with one essential error line per 30 seconds. Description bytes
-  are counted only. Wire references: carplay-tbt-external/iap2-lane-guidance.md; this is our own
+  are counted only. Wire references: carplay-tbt-external/iap2-protocol.md; this is our own
   implementation, with no third-party source copied.
   CpTurns retains the last sixteen entries keyed by component and LaneGuidanceIndex, since
   lane windows arrive before the route update. Only the current 0x5201 p16 entry is displayed

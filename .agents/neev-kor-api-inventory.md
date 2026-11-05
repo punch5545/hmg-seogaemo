@@ -2,15 +2,14 @@ Status: current — offline firmware reference, reviewed 2026-11-04. On-car veri
 
 # NEEV KOR vehicle and vendor API inventory
 
-This reference covers the owner's Hyundai Ioniq 5 KOR head unit, `NEEV.KOR.0000.V039.001.260902`, onebin `neev_kr`, Android 4.4.2 / API 19. It inventories existing APIs for future modules. API existence does not prove working vehicle support, unprivileged Binder access, correct units or reversible writes. No car commands were executed, and no catalogue points or maps were changed.
+Owner's Hyundai Ioniq 5 KOR head unit, `NEEV.KOR.0000.V039.001.260902`, onebin `neev_kr`, Android 4.4.2 / API 19. Inventory of existing APIs for future modules. API existence does not prove working vehicle support, unprivileged Binder access, correct units or reversible writes. No car commands were executed; no catalogue points or maps changed.
 
-The full private inventory is at `tmp/car-sessions/2026-11-04-devdump/analysis/api-inventory/` in the main checkout. Its 17 domain JSON files, plus `platform-other.json`, contain exact declarations, fields/constants, Binder transactions, attributed property/Settings/intent/provider callsites, manifests, init blocks and exported JNI symbols. It includes readable domain indexes, raw smali and two implementation reviews. Keep that directory out of git: its source dump contains personal data. This document contains stock API names, generic keys and sanitized findings only.
+Full private inventory: `tmp/car-sessions/2026-11-04-devdump/analysis/api-inventory/` in the main checkout (keep out of git: the source dump has personal data). It has 17 domain JSON files plus `platform-other.json` (unmatched declarations): exact declarations, fields/constants, Binder transactions, attributed property/Settings/intent/provider callsites, manifests, init blocks, exported JNI symbols, readable domain indexes, raw smali, two implementation reviews. This doc holds stock API names, generic keys and sanitized findings only.
 
 ## Evidence and coverage
 
-Inputs are the 2026-11-04 devdump's framework/app odex, available APK/JAR DEX, native libraries, rootfs init files and existing Binder analysis. The 2026-11-03 baseline distinguishes original stock `app_process` from the modified one. HMG-API and factory82 were installed at dump time; `hmgapi-hook.jar`, NEMESIS APK and replaced `app_process` are excluded as stock API evidence. Runtime observations can reflect those mods. Upstream references supplied naming context only; no upstream code was copied.
-
-Baksmali 2.5.2 disassembled all 125 odex and three stock archives with embedded DEX: `HKMC_RadioGE.apk`, `IpodUsbdeviceManager.apk` and `com.broadcom.bt.jar`. Exact declarations, constants and explicit invokes are evidence; quick virtual/field offsets remain unresolved. A targeted deodex attempt failed on vendor field/vtable layouts, so its output is excluded. Absence of explicit callers is not proof of no runtime caller. The supplied raw DEX parser was run with `python3 -I` for Stub/signature checks. Available manifests were read with host `aapt dump xmltree`. Native inspection covers exported JNI symbols and Java native declarations; dynamic `RegisterNatives` tables and native semantics remain gaps.
+- Inputs: 2026-11-04 devdump framework/app odex, available APK/JAR DEX, native libs, rootfs init files, existing Binder analysis. The 2026-11-03 baseline distinguishes stock `app_process` from the modified one. HMG-API and factory82 were installed at dump time: `hmgapi-hook.jar`, NEMESIS APK and the replaced `app_process` are excluded as stock evidence; runtime observations can reflect those mods. Upstream references gave naming context only; no upstream code copied.
+- Baksmali 2.5.2 disassembled all 125 odex and three stock archives with embedded DEX (`HKMC_RadioGE.apk`, `IpodUsbdeviceManager.apk`, `com.broadcom.bt.jar`). Exact declarations, constants and explicit invokes are evidence; quick virtual/field offsets are unresolved. A targeted deodex attempt failed on vendor field/vtable layouts and its output is excluded. Absence of explicit callers does not prove no runtime caller. Raw DEX parser run with `python3 -I` for Stub/signature checks; manifests read with host `aapt dump xmltree`. Native inspection covers exported JNI symbols and Java native declarations; dynamic `RegisterNatives` tables and native semantics are gaps.
 
 | Indexed evidence | Count |
 | --- | ---: |
@@ -25,7 +24,7 @@ Baksmali 2.5.2 disassembled all 125 odex and three stock archives with embedded 
 | Init service, trigger and import blocks | 262 |
 | Available APK manifests / missing APKs with odex | 76 / 12 |
 
-Counts include platform/bundled libraries and repeated declarations across artifacts. Domain assignment overlaps by package/class/artifact names; do not sum per-domain totals. `platform-other.json` preserves unmatched declarations. The 108 services come from the captured ServiceManager list; bound iAP2/Bluetooth profile interfaces are additional interfaces, not invented global service names. String tracking is a lower bound: it does not fully resolve branches, argument positions, quick calls or constructed keys. Literal presence alone does not establish a usable exported action or provider.
+Counts include platform/bundled libraries and repeated declarations; domain assignment overlaps by package/class/artifact names, so do not sum per-domain totals. The 108 services come from the captured ServiceManager list; bound iAP2/Bluetooth profile interfaces are additional interfaces, not global service names. String tracking is a lower bound (branches, argument positions, quick calls, constructed keys unresolved). A literal alone does not establish a usable exported action or provider.
 
 ## Risk and signature notation
 
@@ -34,9 +33,9 @@ Counts include platform/bundled libraries and repeated declarations across artif
 - **W**: vehicle, UI, subscription, protocol, network or persistent state change. Unreviewed operations default to W.
 - **D**: dangerous reset/shutdown/secure boot/factory/update, raw diagnostic or loss-of-control/recovery operations.
 
-Vehicle controls below are W (vehicle-affecting); reset/security/boot/low-level control paths are D. A return value or a name starting with `get` does not establish RO. Reading a field is RO; changing it is W/D according to its use. Observing a callback is RO; invoking or rewriting it is W. Local automatic risk labels are conservative triage and remain provisional, never a root execution allowlist. Future modules need API 19/Java 7, mapped/verified targets, fixed validated root verbs, package API ownership/ledger, confirmation and exact restoration under the runtime contract.
+Vehicle controls are W; reset/security/boot/low-level control paths are D. A `get` name or return value does not establish RO. Reading a field is RO, changing it W/D by use; observing a callback is RO, invoking or rewriting it W. Risk labels are conservative triage, never a root execution allowlist. Future modules need API 19/Java 7, mapped/verified targets, fixed validated root verbs, package API ownership/ledger, confirmation and exact restoration ([module-runtime-contract.md](module-runtime-contract.md)).
 
-Methods use exact DEX descriptors: `I` int, `Z` Boolean, `F` float, `J` long, `D` double, `V` void, `[` array, `Lpkg/Class;` reference. Append a method to its declaring class. Transaction numbers are decimal and specific to this firmware. Evidence shorthand `automotive` means `system/framework/automotive.odex`; `automotive-service` means its server implementation odex. App evidence means `system/app/<name>.odex` unless an archive is named.
+Methods use exact DEX descriptors (`I` int, `Z` Boolean, `F` float, `J` long, `D` double, `V` void, `[` array, `Lpkg/Class;` reference), appended to the declaring class. Transaction numbers are decimal and firmware-specific. `automotive` = `system/framework/automotive.odex`; `automotive-service` = its server odex; app evidence = `system/app/<name>.odex` unless an archive is named.
 
 ## Useful entry points by domain
 
@@ -208,7 +207,7 @@ The distinct vehicle actuator interface `com.hkmc.vr.IVRService` (`automotive`) 
 
 ## Cross-cutting keys, intents, providers, init and JNI
 
-The private JSON retains exact caller class/method, artifact, evidence line and string registers. The examples below are useful search anchors; RO applies to observing/reading, while sending commands, assigning keys or modifying providers is W/D.
+The private JSON keeps exact caller class/method, artifact, evidence line and string registers. These rows are search anchors; RO = observing/reading, sending commands/assigning keys/modifying providers = W/D.
 
 | Kind / exact identifier | Stock reader, writer or consumer | Risk / confidence |
 | --- | --- | --- |
@@ -246,9 +245,9 @@ The private JSON retains exact caller class/method, artifact, evidence line and 
 
 ## Candidate hookpoints
 
-These are proposals only, checked absent the 325-point catalogue in this branch. Existing generic HEV status, receiver/sensor init, launcher list insertion, key interception and TBT output points are reused rather than relabelled new. No candidates were added to `core/hookpoints` or maps.
+Proposals only, checked absent from the 325-point catalogue in this branch; nothing added to `core/hookpoints` or maps. Existing generic HEV status, receiver/sensor init, launcher list insertion, key interception and TBT output points are reused.
 
-The table uses requested terms **kind / of / find**: these translate to catalogue `type / owner / match`. All rows are `method`. `of` is an existing stable class ID or a proposed class anchor listed below. **find** gives the exact stock method descriptor on that owner; translate descriptor types into `parameters`/`returns` with the exact `name`, plus member static/native flags after reflection review. Exact stock names are valid firmware evidence, not proof of portability. New class anchors use `type:class, match:{name:<exact class>}`; obfuscated DiPO additionally needs structural evidence before catalogue inclusion. Evidence names locate the defining odex; implementation evidence is separately noted.
+**kind / of / find** = catalogue `type / owner / match`. All rows are `method`. `of` is an existing stable class ID or a proposed class anchor below; **find** is the exact stock method descriptor (translate into `parameters`/`returns` plus static/native flags after reflection review). Exact stock names are firmware evidence, not proof of portability. New class anchors use `type:class, match:{name:<exact class>}`; obfuscated DiPO needs structural evidence before inclusion. Evidence names locate the defining odex; implementation evidence is noted separately.
 
 | Proposed stable ID | kind | of | find: exact name + descriptor | Risk | Evidence |
 | --- | --- | --- | --- | --- | --- |
@@ -286,7 +285,7 @@ Proposed additional class anchors (not catalogue additions); the existing ModeKe
 | `framework.mode_service` | `com.hkmc.mode.IModeManager` |
 | `framework.bluetooth_a2dp` | `android.bluetooth.IBluetoothA2dp` |
 
-DiPO parser evidence includes route/destination/current-road/distance/ETA/maneuver/lane model handling and method `a(ILjava/lang/Object;)V`. A portable find rule must combine method shape with verified class strings/call relationships after reliable deodex; no untested structural rule is presented as ready. Stable IDs here are proposals, and a module may need additional Stub/asInterface, model, validity or listener points before use.
+DiPO parser evidence: route/destination/current-road/distance/ETA/maneuver/lane model handling and method `a(ILjava/lang/Object;)V`. A portable find rule must combine method shape with verified class strings/call relationships after reliable deodex; no structural rule is ready. IDs are proposals; a module may need extra Stub/asInterface, model, validity or listener points.
 
 ## Feature ideas and API dependencies
 
@@ -308,15 +307,15 @@ DiPO parser evidence includes route/destination/current-road/distance/ETA/maneuv
 
 ## Missing files and research gaps
 
-The 12 skipped large APKs are `HKMC_Climate`, `HKMC_EngineerMode`, `HKMC_NatureSound`, `HKMC_RearCamera`, `HKMC_Sports`, `HKMC_TAppEV3`, `HKMC_VehicleSetting`, `HKMC_VoiceHandler`, `Launcher_WP3`, `RightScreenHome`, `SoundSettings` and `WelcomeGoodbye`. Their odex is available, so declarations are indexed. Missing manifests/resources prevent confirming exported activities/services/receivers, permissions/shared UID, intent filters/provider authorities, layouts/menu IDs, feature overlays and localized choices. Do not guess resource IDs from Java strings.
+12 skipped large APKs (odex available, declarations indexed): `HKMC_Climate`, `HKMC_EngineerMode`, `HKMC_NatureSound`, `HKMC_RearCamera`, `HKMC_Sports`, `HKMC_TAppEV3`, `HKMC_VehicleSetting`, `HKMC_VoiceHandler`, `Launcher_WP3`, `RightScreenHome`, `SoundSettings`, `WelcomeGoodbye`. Missing manifests/resources block confirming exported components, permissions/shared UID, intent filters/provider authorities, layouts/menu IDs, feature overlays and localized choices; do not guess resource IDs from Java strings.
 
-Other gaps: concrete runtime CAN/server selection, getter permissions, error/unsupported/saved states, telemetry freshness, native dynamic registration/packet units, full quick-call dataflow, provider schemas/security and projection phone acceptance. Native symbols alone do not prove safe semantics. APK/JAR embedded DEX is included where present, so the old odex-only 497-Stub count is superseded by 516; this still is not a claim to have recovered every firmware API.
+Other gaps: runtime CAN/server selection, getter permissions, error/unsupported/saved states, telemetry freshness, native dynamic registration/packet units, quick-call dataflow, provider schemas/security, projection phone acceptance. Native symbols alone do not prove safe semantics. Embedded DEX is included, so the old odex-only 497-Stub count is superseded by 516; not every firmware API is claimed recovered.
 
 ## On-car verification to-do
 
-**Deferred; none of these commands has been executed for this task.** At a later owner-approved session, park safely and keep power stable. Use ordinary read permissions; denied Binder or file access is a finding, not a reason to bypass permissions. Commands below run `adb` on the host and only toolbox-compatible reads on the unit. They do not copy a root helper, register listeners, request fresh CAN packets, toggle properties, send broadcasts or alter stock state.
+**Deferred; none executed.** Owner-approved session only: park safely, stable power, ordinary read permissions (denied Binder/file access is a finding, not a reason to bypass). Commands run `adb` on the host and only toolbox-compatible reads on the unit: no root helper copy, listener registration, fresh CAN request, property toggle, broadcast or stock-state change.
 
-Confirm firmware and selected generic values (avoid full `getprop`/settings/provider/device dumps that can disclose identifiers):
+Confirm firmware and selected generic values (no full `getprop`/settings/provider/device dumps; they can disclose identifiers):
 
 ```sh
 adb shell getprop ro.build.product
@@ -330,7 +329,7 @@ adb shell getprop init.svc.wpa_supplicant
 adb shell getprop init.svc.p2p_supplicant
 ```
 
-These exact getter transactions have reviewed cached/read-oriented bodies. Run once, inspect exceptions and compare with stock UI; do not poll blindly. No getter argument below is a hardware write selector:
+Getters with reviewed cached/read-oriented bodies. Run once, inspect exceptions, compare with stock UI; do not poll. No argument below is a hardware write selector:
 
 ```sh
 adb shell service call com.hkmc.micom.hev 3 i32 25
@@ -361,26 +360,17 @@ adb shell service call tm_hscan_service 84
 adb shell service call tm_hscan_service 221
 ```
 
-Code lookup: HEV3 is `getHEVStatus(I)I` with constants above; HEV28 is `getChargingInfoGen4()[I`. System33/36/37/38/83/93/97/98 are speed/gear-P/parking-brake/EPB/boot/rheostat/cluster-brightness/tail. Power1 is `getPowerStatus()I`; regulation1/2 are A/B status; voice1 is `getVRStatus()I`; Wi-Fi14/30 are STA/AP state; HSCAN74/75/84/221 are float SOC, long minutes, cable state and V2L remaining time. HSCAN values may be saved; do not infer live freshness. Binder replies include an exception header and encoded values/arrays; typed offline decoding is required for float/long and invalid states. A successful reply does not establish units or accuracy. Getters can log/cache internally; no vehicle actuation was visible in the reviewed bodies.
+Code lookup: HEV3 `getHEVStatus(I)I` (constants above); HEV28 `getChargingInfoGen4()[I`. System33/36/37/38/83/93/97/98 = speed / gear-P / parking-brake / EPB / boot / rheostat / cluster-brightness / tail. Power1 `getPowerStatus()I`; regulation1/2 = A/B status; voice1 `getVRStatus()I`; Wi-Fi14/30 = STA/AP state; HSCAN74/75/84/221 = float SOC, long minutes, cable state, V2L remaining time. HSCAN values may be saved: do not infer live freshness. Binder replies carry an exception header plus encoded values/arrays; decode typed offline (float/long, invalid states). A successful reply establishes neither units nor accuracy. Getters can log/cache internally; no actuation seen in the reviewed bodies.
 
-Do **not** send callback16 to `com.hkmc.micom.cluster`; it is a listener-interface transaction. No shell command here invokes requestBatteryInfo109, profile getUserId4, factory hideConsent82, iAP2 send8, setters, scans, shutdown/reset or secure-boot operations. Passive battery/profile/DATC callback verification needs a separately reviewed API19 observer/hook with lifecycle cleanup; registration itself is W. Observe stock production first. Establish concrete backend and compare measurements without changing vehicle controls to force a test.
+Do **not** send callback16 to `com.hkmc.micom.cluster` (listener-interface transaction). No command here invokes requestBatteryInfo109, profile getUserId4, factory hideConsent82, iAP2 send8, setters, scans, shutdown/reset or secure-boot. Passive battery/profile/DATC callback verification needs a separately reviewed API19 observer/hook with lifecycle cleanup (registration itself is W). Observe stock production first; establish the concrete backend and compare measurements without changing vehicle controls.
 
-Pull the missing APKs later with these host commands. The destination directory is created on the host; `adb pull` only reads the head unit. Keep the resulting files local and out of git. If unreadable, record the denial and plan a separate reviewed collection step.
+Pull the 12 missing APKs later (host-side `adb pull` only reads the unit; keep files local, out of git; if unreadable, record the denial and plan a separate reviewed step):
 
 ```sh
 mkdir -p tmp/car-sessions/2026-11-04-devdump/missing-apks
-adb pull /system/app/HKMC_Climate.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/HKMC_EngineerMode.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/HKMC_NatureSound.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/HKMC_RearCamera.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/HKMC_Sports.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/HKMC_TAppEV3.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/HKMC_VehicleSetting.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/HKMC_VoiceHandler.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/Launcher_WP3.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/RightScreenHome.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/SoundSettings.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
-adb pull /system/app/WelcomeGoodbye.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
+for n in HKMC_Climate HKMC_EngineerMode HKMC_NatureSound HKMC_RearCamera HKMC_Sports HKMC_TAppEV3 HKMC_VehicleSetting HKMC_VoiceHandler Launcher_WP3 RightScreenHome SoundSettings WelcomeGoodbye; do
+  adb pull /system/app/$n.apk tmp/car-sessions/2026-11-04-devdump/missing-apks/
+done
 ```
 
 After collection, inspect manifests/resources on the host, resolve authority/exportedness/permissions, revisit obfuscated matchers, and validate each proposed module's required hooks and restoration design. On-car implementation or control testing remains separate from this inventory.
