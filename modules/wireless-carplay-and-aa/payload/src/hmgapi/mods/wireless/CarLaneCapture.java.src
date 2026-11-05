@@ -1,0 +1,40 @@
+// HMG-Seogaemo stock-navigation lane observations. SPDX-License-Identifier: AGPL-3.0-or-later
+package hmgapi.mods.wireless;
+
+import hmgapi.hook.ModContext;
+import hmgapi.hook.Observations;
+import hmgapi.hook.Points;
+
+/** One instance in com.mnsoft.navi; Observations uses that process's RuntimeResult directory. */
+final class CarLaneCapture {
+    private final ModContext mod;
+    private final Observations records = new Observations("tbt-lanes", 512, 4);
+    private String lastFrame, lastLogged;
+    private long checkedAt;
+
+    CarLaneCapture(ModContext mod) { this.mod = mod; }
+
+    /** Full stock frame, including unknown 0x43-0x50 bitmasks; never modifies the bytes. */
+    synchronized void record(byte[] frame) {
+        if (frame == null || frame.length != 81 || (frame[0] & 255) != 0xf1) return;
+        StringBuilder b = new StringBuilder(162);
+        for (byte v : frame) b.append(Character.forDigit((v >> 4) & 15, 16)).append(Character.forDigit(v & 15, 16));
+        String hex = b.toString();
+        if (!hex.equals(lastFrame)) {
+            lastFrame = hex;
+            records.note("source=car-nav frame=" + hex, "frame=" + hex);
+        }
+        records.flush(false);
+        long now = System.currentTimeMillis();
+        if (!hex.equals(lastLogged) && (checkedAt == 0 || now - checkedAt >= 3000L)) {
+            checkedAt = now;
+            try {
+                Object dev = Points.call(null, "framework.system_properties.get_int", null, "persist.hmg_seogaemo.dev", 0);
+                if (dev instanceof Integer && ((Integer) dev) != 0) {
+                    mod.log("TBT source=car-nav frame=" + hex);
+                    lastLogged = hex;
+                }
+            } catch (Throwable ignored) { }
+        }
+    }
+}

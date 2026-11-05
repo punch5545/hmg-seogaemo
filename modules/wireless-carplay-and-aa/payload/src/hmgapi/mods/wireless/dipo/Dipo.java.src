@@ -285,7 +285,7 @@ public final class Dipo {
                 public void run() {
                     if (what == RG_UPDATE) turns.routeGuidance(msg);
                     else if (what == RG_MANEUVER) turns.maneuver(msg);
-                    else turns.lanes(msg);
+                    // Stock lane unmarshalling is unsafe; Bridge decodes raw 0x5204 instead.
                 }
             });
         }

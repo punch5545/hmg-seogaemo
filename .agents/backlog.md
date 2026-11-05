@@ -25,15 +25,6 @@ Background and fixed causes: `carplay-tbt-learnings.md`, external research
 (observation records, developer toggle `persist.hmg_seogaemo.dev`, Dalvik cross-dex rule),
 runtime contract section "Turn-by-turn observation records and `tbt-reset`".
 
-- [ ] **Lane guidance via our own 0x5204 decoder.** The stock table registers
-  LaneGuidanceInformation under 0x5202; routing 0x5204 to the stock parser
-  (recipe `iap2-lane-msgid`, now disabled in `Wireless.java.src` `iap2()`) crashed
-  `com.tcc.iap2server` (SIGSEGV in `libIap2Acc.so`
-  `iAP2NativeMsg2Parcel::convertSubGroup`). Decode the raw 0x5204 in
-  `dipo/Bridge.java.src` `onCpIapIn` (control-session id is already parsed there) and
-  feed `CpTurns.lanes()` (81-byte 0xF1 frame, recommended-lane highlight, lane distance).
-  Decide whether to keep shipping the unused recipe file or drop it from
-  `owns_files`/`put_assets`.
 - [ ] **Maneuver → icon table from field data.** NAVER Map (via CarPlay) sends no exit
   angle; type-based arrows now cover 1/2/47–50. Review the recorded combinations and
   instruction texts (`tbt-icons.txt`/journal in exports) and refine: type 0 with
