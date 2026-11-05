@@ -1,9 +1,11 @@
 <resources>
     <string name="wireless_carplay_and_aa_name">Wireless CarPlay and Android Auto</string>
-    <string name="wireless_carplay_and_aa_description">Use the car hotspot for wireless phone projection. Requires a head-unit restart.</string>
+    <string name="wireless_carplay_and_aa_description">Use CarPlay or Android Auto without a cable.</string>
     <string name="wireless_carplay_and_aa_tbt_inexact">Turn icons not matched exactly</string>
     <string name="wireless_carplay_and_aa_tbt_blank">Turn icons left blank</string>
     <string name="wireless_carplay_and_aa_tbt_reset">Reset turn icon records</string>
     <string name="wireless_carplay_and_aa_tbt_reset_confirm">Delete all collected turn icon, instruction text and lane records? Only these record files are removed; nothing else on the car changes. Deleted records cannot be recovered.</string>
     <string name="wireless_carplay_and_aa_tbt_reset_done">Turn icon records reset.</string>
+    <string name="wireless_carplay_and_aa_on_result">Wireless CarPlay and Android Auto start after a head-unit restart.</string>
+    <string name="wireless_carplay_and_aa_off_result">Stock phone projection returns after a head-unit restart.</string>
 </resources>

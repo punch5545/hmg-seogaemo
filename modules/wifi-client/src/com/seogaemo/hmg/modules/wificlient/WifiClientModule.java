@@ -13,6 +13,7 @@ public final class WifiClientModule extends RootBackedModule {
     public String id() { return "wifi-client"; }
     public int nameResId() { return R.string.wifi_client_name; }
     public int descriptionResId() { return R.string.wifi_client_description; }
+    public String icon() { return "wifi"; }
     public String settingsCategory() { return "wireless"; }
     public boolean hasHomeAction() { return false; }
     public boolean requiresRoot() { return true; }

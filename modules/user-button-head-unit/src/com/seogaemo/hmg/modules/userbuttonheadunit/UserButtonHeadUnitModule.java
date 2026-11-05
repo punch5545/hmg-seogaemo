@@ -12,6 +12,7 @@ public final class UserButtonHeadUnitModule extends RootBackedModule {
     public String id() { return "user-button-head-unit"; }
     public int nameResId() { return R.string.user_button_head_unit_name; }
     public int descriptionResId() { return R.string.user_button_head_unit_description; }
+    public String icon() { return "display"; }
     public String settingsCategory() { return "general"; }
     public boolean hasHomeAction() { return false; }
     public boolean requiresRoot() { return true; }

@@ -11,9 +11,36 @@ import java.util.List;
 
 /** Orders built-in operations; the root dispatcher checks the same relations. */
 public final class ModuleManager {
+    public interface StepListener {
+        void started(int index, ModulePlan.Step step);
+        void finished(int index, ModulePlan.Step step, RootResult result);
+    }
+
+    /** A related module whose status is transiently unreadable (adbd restart) is re-read this often. */
+    static final int STATUS_ATTEMPTS = 4;
+    static final long STATUS_RETRY_MS = 1500L;
+
     private final Context context;
     public ModuleManager() { this(null); }
     public ModuleManager(Context context) { this.context = context; }
+
+    private static boolean readable(RootResult status) {
+        return status.exitCode == 0 && ("off".equals(status.state) ||
+                "on".equals(status.state) || "pending-restart".equals(status.state));
+    }
+
+    private static RootResult readStatus(String id, boolean related) {
+        RootResult status = RootClient.run(id, "status");
+        for (int attempt = 1; related && attempt < STATUS_ATTEMPTS && !readable(status); attempt++) {
+            boolean settled = ("conflict".equals(status.state) && status.exitCode == 3) ||
+                    ("incompatible".equals(status.state) && status.exitCode == 4) ||
+                    "not-implemented".equals(status.state);
+            if (settled) break;
+            try { Thread.sleep(STATUS_RETRY_MS); } catch (InterruptedException interrupted) { break; }
+            status = RootClient.run(id, "status");
+        }
+        return status;
+    }
 
     public ModulePlan plan(String id, boolean enable) {
         // Installed packages take part in ordering and exclusions even before screens show them.
@@ -30,15 +57,13 @@ public final class ModuleManager {
         Set<String> on = new HashSet<String>();
         Set<String> desired = new HashSet<String>();
         for (String candidate : order) {
-            RootResult status = RootClient.run(candidate, "status");
+            boolean linked = related.contains(candidate);
+            RootResult status = readStatus(candidate, linked);
             if (status.desiredEnabled()) desired.add(candidate);
-            if (status.exitCode != 0 || !("off".equals(status.state) ||
-                    "on".equals(status.state) || "pending-restart".equals(status.state))) {
-                // An unrelated module blocked by its own conflict cannot change this plan.
-                boolean blocked = ("conflict".equals(status.state) && status.exitCode == 3) ||
-                        ("incompatible".equals(status.state) && status.exitCode == 4) ||
-                        "not-implemented".equals(status.state);
-                if (blocked && !related.contains(candidate)) continue;
+            if (!readable(status)) {
+                // Only modules linked by depends/excludes take part in this plan, so an unrelated
+                // module whose state is blocked or momentarily unreadable cannot change it.
+                if (!linked) continue;
                 throw new IllegalStateException("Could not read " + candidate + " state: " + status.detail);
             }
             if ("on".equals(status.state) ||
@@ -48,13 +73,18 @@ public final class ModuleManager {
         return ModulePlanner.plan(id, enable, order, dependencies, exclusions, on, desired);
     }
 
-    public RootResult execute(ModulePlan plan) {
+    public RootResult execute(ModulePlan plan) { return execute(plan, null); }
+
+    public RootResult execute(ModulePlan plan, StepListener listener) {
         RootResult last = new RootResult("off", "none", "", 0, null);
         String restart = "none";
         List<RootResult.StepOutcome> outcomes = new ArrayList<RootResult.StepOutcome>();
-        for (ModulePlan.Step step : plan.steps) {
+        for (int i = 0; i < plan.steps.size(); i++) {
+            ModulePlan.Step step = plan.steps.get(i);
+            if (listener != null) listener.started(i, step);
             last = RootClient.run(step.id, step.enable ? "apply" : "revert");
             outcomes.add(new RootResult.StepOutcome(step.id, step.enable, last));
+            if (listener != null) listener.finished(i, step, last);
             if ("head_unit".equals(last.restart) ||
                     ("adbd".equals(last.restart) && "none".equals(restart))) restart = last.restart;
             if (last.exitCode != 0 || "not-implemented".equals(last.state)) break;
@@ -70,6 +100,10 @@ public final class ModuleManager {
     }
 
     public RootResult requestEnable(String id, String resumeIntent, ModulePlan plan) {
+        return requestEnable(id, resumeIntent, plan, null);
+    }
+
+    public RootResult requestEnable(String id, String resumeIntent, ModulePlan plan, StepListener listener) {
         ModuleRegistry.depends(id);
         if (context != null) {
             SharedPreferences prefs = context.getSharedPreferences("module_resume", Context.MODE_PRIVATE);
@@ -79,7 +113,7 @@ public final class ModuleManager {
         }
         RootResult result;
         try {
-            result = plan.steps.isEmpty() ? RootClient.run(id, "status") : execute(plan);
+            result = plan.steps.isEmpty() ? RootClient.run(id, "status") : execute(plan, listener);
         }
         catch (IllegalStateException error) {
             result = new RootResult("failed", "none", error.getMessage(), 1, null);

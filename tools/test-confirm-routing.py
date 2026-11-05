@@ -33,7 +33,7 @@ assert "ConfirmDialog.show" in method("confirmCheckUpdate")
 assert "confirmCheckUpdate()" in method("showUpdate")
 assert "ConfirmDialog.show" in method("confirmInstall")
 assert "ConfirmDialog.show" in method("confirmRollback")
-assert "ConfirmDialog.show" in method("showSettings")  # USB export
+assert "ConfirmDialog.show" in method("showSupport")  # USB export
 assert "confirmTbtReset()" in method("dispatchModuleAction")
 assert "ConfirmDialog.show" in method("confirmTbtReset")
 assert method("confirmTbtReset").index("ConfirmDialog.show") < method("confirmTbtReset").index("RootClient.tbtReset()")
@@ -57,8 +57,8 @@ assert 'result.exitCode != 0 && result.detail.length() > 0' in stock_result
 assert '.append(result.detail)' in stock_result
 reboot = method("confirmReboot")
 assert "confirmReboot(R.string.device_reboot_confirm)" in method("showStock")
-assert "confirmReboot(R.string.module_restart_confirm)" in method("addModule")
-assert "RootClient.rebootDevice()" not in method("addModule")
+assert "confirmReboot(R.string.module_restart_confirm)" in method("restartNow")  # restart bar
+assert "RootClient.rebootDevice()" not in method("restartNow")
 assert "RootClient.rebootDevice()" not in method("showStock")
 assert "getString(R.string.cancel), true, new ConfirmDialog.Action()" in reboot
 assert reboot.index("ConfirmDialog.show") < reboot.index("RootClient.rebootDevice()")

@@ -14,6 +14,7 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [stock-restore.md](stock-restore.md) | Current | Whole-package stock restore, detached uninstall, recovery and on-car checks. |
 | [android44-shell-audit.md](android44-shell-audit.md) | Current | Pinned KitKat toolbox/mksh evidence, compatibility fixes, lint boundaries and waivers. |
 | [ui-guidelines.md](ui-guidelines.md) | Partly superseded | Display tokens and touch measurements; emulator capture commands are historical. |
+| [ui-redesign.md](ui-redesign.md) | Current | Approved app redesign: Features/Car/Settings tabs, card and detail behaviour, module-provided UI. |
 | [display-size-support.md](display-size-support.md) | Partly superseded | Upstream display research and the current single-panel decision. |
 | [ota-implementation.md](ota-implementation.md) | Current | Signed GitHub Releases OTA, trust roots, transaction, and validation gaps. |
 | [wifi-client.md](wifi-client.md) | Current | Implemented Wi-Fi client file edits, status, tests, and on-car checklist. |
@@ -38,6 +39,6 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 
 The target is Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (package glob `NEEV.KOR.*.260902`), onebin `neev_kr`, Android 4.4.2. Installation is NEMESIS plus HMG-Seogaemo only. Off-car tests do not establish physical-car behavior.
 
-Home now collects `Module.homeTiles()` from enabled modules and keeps Settings first. The current three modules provide no Home tiles, so Settings is the only card.
+The app opens on the Features tab (`ui-redesign.md`); `Module.homeTiles()` remains in the contract, but no screen reads it.
 
 Core mapping uses `core/hookpoints/`, `core/map/`, and `maps/`. The operational workflow is `docs/mapping-new-firmware.md`; `UPSTREAM.md` pins HMG-API reference paths and `tools/upstream-diff.sh` reports later changes. Settings → Car mapping is the core status, mapping, and PR export page.

@@ -32,7 +32,7 @@ public final class ConfirmDialog extends Dialog {
     private long shownAt;
     private boolean tapGuard = true; // Off for read-only results: their one button only closes.
 
-    private ConfirmDialog(final Activity activity, String title, CharSequence message,
+    private ConfirmDialog(final Activity activity, String title, CharSequence message, View content,
             String confirmLabel, String cancelLabel, boolean destructive,
             final Action onConfirm, final Runnable onCancel) {
         super(activity, android.R.style.Theme_Holo_Dialog);
@@ -52,11 +52,14 @@ public final class ConfirmDialog extends Dialog {
         TextView heading = label(activity, title, 26, WHITE, true);
         panel.addView(heading, new LinearLayout.LayoutParams(-1, -2));
 
-        if (message != null && message.length() > 0) {
+        if (content != null || (message != null && message.length() > 0)) {
             ScrollView scroll = new ScrollView(activity);
-            TextView body = label(activity, message, 20, WHITE, false);
-            body.setLineSpacing(dp(activity, SettingsUi.XS), 1f);
-            scroll.addView(body);
+            if (content != null) scroll.addView(content);
+            else {
+                TextView body = label(activity, message, 20, WHITE, false);
+                body.setLineSpacing(dp(activity, SettingsUi.XS), 1f);
+                scroll.addView(body);
+            }
             LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(-1, -2);
             bodyParams.topMargin = dp(activity, SettingsUi.MD);
             panel.addView(scroll, bodyParams);
@@ -113,15 +116,23 @@ public final class ConfirmDialog extends Dialog {
     public static ConfirmDialog show(Activity activity, String title, CharSequence message,
             String confirmLabel, String cancelLabel, boolean destructive,
             Action onConfirm, Runnable onCancel) {
-        return show(activity, title, message, confirmLabel, cancelLabel, destructive, true,
+        return show(activity, title, message, null, confirmLabel, cancelLabel, destructive, true,
                 onConfirm, onCancel);
     }
 
-    private static ConfirmDialog show(Activity activity, String title, CharSequence message,
+    /** Same surface with a caller-built body (plan summary, choice list, number stepper). */
+    public static ConfirmDialog showView(Activity activity, String title, View content,
+            String confirmLabel, String cancelLabel, boolean destructive,
+            Action onConfirm, Runnable onCancel) {
+        return show(activity, title, null, content, confirmLabel, cancelLabel, destructive, true,
+                onConfirm, onCancel);
+    }
+
+    private static ConfirmDialog show(Activity activity, String title, CharSequence message, View content,
             String confirmLabel, String cancelLabel, boolean destructive, boolean tapGuard,
             Action onConfirm, Runnable onCancel) {
         if (activity.isFinishing()) return null; // Callers ignore the result.
-        ConfirmDialog dialog = new ConfirmDialog(activity, title, message, confirmLabel,
+        ConfirmDialog dialog = new ConfirmDialog(activity, title, message, content, confirmLabel,
                 cancelLabel, destructive, onConfirm, onCancel);
         dialog.tapGuard = tapGuard;
         dialog.show();
@@ -151,7 +162,7 @@ public final class ConfirmDialog extends Dialog {
             String closeLabel) {
         if (activity.isFinishing()) return null;
         // Close does nothing destructive, so it is never delayed by the confirm tap guard.
-        ConfirmDialog dialog = show(activity, title, message, closeLabel, closeLabel, false, false,
+        ConfirmDialog dialog = show(activity, title, message, null, closeLabel, closeLabel, false, false,
                 new Action() { public void run(ConfirmDialog dialog) { dialog.dismiss(); } }, null);
         dialog.cancel.setVisibility(View.GONE);
         dialog.confirm.requestFocus();
@@ -164,7 +175,7 @@ public final class ConfirmDialog extends Dialog {
             int color, boolean medium) {
         TextView text = new TextView(activity);
         text.setText(value);
-        text.setTextSize(sp);
+        text.setTextSize(sp * Theme.TEXT_SCALE);
         text.setTextColor(color);
         text.setTypeface(Typeface.create(medium ? "sans-serif-medium" : "sans-serif", Typeface.NORMAL));
         text.setGravity(Gravity.CENTER_VERTICAL);

@@ -24,6 +24,8 @@ public interface Module {
     String id();
     int nameResId();
     int descriptionResId();
+    /** App-drawn line icon name from the contract set (box, wifi, phone, terminal, car, gear, ...). */
+    String icon();
     String settingsCategory();
     boolean hasHomeAction();
     boolean requiresRoot();

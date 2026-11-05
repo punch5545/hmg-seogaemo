@@ -14,6 +14,7 @@ public final class WirelessAdbModule extends RootBackedModule {
     public String id() { return "wireless-adb"; }
     public int nameResId() { return R.string.wireless_adb_name; }
     public int descriptionResId() { return R.string.wireless_adb_description; }
+    public String icon() { return "terminal"; }
     public String settingsCategory() { return "wireless"; }
     public boolean hasHomeAction() { return false; }
     public boolean requiresRoot() { return true; }
