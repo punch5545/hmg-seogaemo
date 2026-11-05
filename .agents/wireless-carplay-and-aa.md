@@ -203,3 +203,9 @@ Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe mat
   `NoClassDefFoundError`), which took down DiPO's whole part (`part.dipo=failed`, no wireless CarPlay). Do not add callback
   interfaces in `hmgapi.hook` for mods to implement; use static fields/flags or existing types (`MethodHook`, `Runnable`).
   Check with `dexdump` that no new `hmgapi/mods` class has a `hmgapi/hook` superclass/interface other than `MethodHook`.
+- **HUD list resend (2026-11-05, owner report).** With route guidance started right at CarPlay connect,
+  the HUD later froze its arrow and road text while its distance kept counting down and the cluster
+  stayed correct; restarting the route fixed it. The 0xF2 HUD list was only sent on change and cached
+  as sent with no delivery signal, while the HUD distance (`update_tbt_sub_info_2c`) goes out every push.
+  `CpTurns.refresh` now resends the unchanged 0xF2 frame every 2 s (`HUD_RESEND_MS`), independent of
+  phone updates; `hudBlank` clears it. The exact trigger (missed frame vs HUD restart) is unproven.

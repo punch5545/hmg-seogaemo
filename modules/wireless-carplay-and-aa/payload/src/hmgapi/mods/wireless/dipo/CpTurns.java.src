@@ -48,6 +48,15 @@ final class CpTurns {
     /** last HUD list sent (type, next, road), so an unchanged one isn't resent */
     int hudType, hudNext;
     String hudRoad;
+    /**
+     * The last HUD list frame and when it went out. The HUD (a separate unit) can miss a frame or
+     * lose its state while the cluster keeps working; on the car its arrow and road then froze while
+     * the HUD distance (sent every push) kept counting down, until the route was restarted. So the
+     * unchanged frame is resent every HUD_RESEND_MS from refresh(), independent of phone updates.
+     */
+    byte[] lastHud;
+    long hudAt;
+    static final long HUD_RESEND_MS = 2000L;
     /** the last lane log line, so an unchanged one isn't logged again */
 
     /** diagnostics: per kind, how many were seen and the last "change key" logged */
@@ -93,6 +102,12 @@ final class CpTurns {
             return;
         }
         long now = System.currentTimeMillis();
+        byte[] hud = lastHud;
+        if (hud != null && now - hudAt >= HUD_RESEND_MS) {
+            if (sample("hud-resend", null)) d("HUD list resent unchanged (" + (now - hudAt) + " ms since the last one)");
+            cluster.turnListNew(hud);
+            hudAt = now;
+        }
         if (now - lastSendAt < 900L) return;
         refreshes++;
         if (sample("refresh", null)) d("refresh without fresh phone data: last update " + (now - rgAt) + " ms ago, last send " + (now - lastSendAt) + " ms ago, refresh #" + refreshes);
@@ -781,6 +796,8 @@ final class CpTurns {
         System.arraycopy(r, 0, f, 5, n);
         Dipo.log("CarPlay: hud list type " + type + " next " + next);
         cluster.turnListNew(f);
+        lastHud = f;
+        hudAt = System.currentTimeMillis();
         hudType = type;
         hudNext = next;
         hudRoad = road;
@@ -813,6 +830,7 @@ final class CpTurns {
         hudType = -1;
         hudNext = 0;
         hudRoad = null;
+        lastHud = null;
         byte[] empty = { (byte) 0xF2 };
         cluster.turnListNew(empty);
         cluster.turnListNew(empty);

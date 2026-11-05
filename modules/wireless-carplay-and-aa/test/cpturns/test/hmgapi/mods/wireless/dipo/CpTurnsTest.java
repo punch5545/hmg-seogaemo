@@ -247,6 +247,13 @@ public final class CpTurnsTest {
             c.calls.clear();
             r.refresh();
             check("refresh right after a phone update sends nothing", c.calls.isEmpty());
+            r.hudAt -= CpTurns.HUD_RESEND_MS + 1000L;
+            r.refresh();
+            check("HUD list resent unchanged after 2 s even while phone updates keep coming (" + c.calls + ")",
+                    c.calls.size() == 1 && c.calls.get(0).startsWith("hud f2"));
+            c.calls.clear();
+            r.refresh();
+            check("not again right away", c.calls.isEmpty());
             r.lastSendAt -= 5000L;
             r.refresh();
             boolean again = false;
@@ -256,8 +263,9 @@ public final class CpTurnsTest {
             r.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(0)));
             c.calls.clear();
             r.lastSendAt -= 5000L;
+            r.hudAt -= 5000L;
             r.refresh();
-            check("no refresh once guidance state is 0", c.calls.isEmpty());
+            check("no refresh (and no HUD resend) once guidance state is 0", c.calls.isEmpty() && r.lastHud == null);
         }
         check("match kinds: exact, band, angle, semantic, blank",
                 "exact".equals(CpTurns.matchKind(2, 0, 0, 90, 1)) && "semantic".equals(CpTurns.matchKind(2, 0, 0, 0, 1)) && "band".equals(CpTurns.matchKind(2, 0, 0, 75, 1))
