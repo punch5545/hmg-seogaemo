@@ -55,6 +55,11 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
 - [ ] **Trip distance vs next-turn distance.** `updateTBTSubInfo` carries remaining
   trip distance (km, 0.1 steps); confirm on the cluster/HUD which field shows the
   next-turn distance and that units switch correctly under 1 km.
+- [ ] **Pull the decrypted stock navigation engine from the car (read-only).** `libExSLNavi.so`
+  (and other native libs of `com.mnsoft.navi`, e.g. under `/data/app-lib/`) are missing from the
+  2026-11-04 dump; the official update backup (V031/V036) only has `enc_libExSLNavi.so` (encrypted).
+  With the car's decrypted copy we can see how the navigation's lane fields (`dir`, `idx`, `valid`)
+  become the 81-byte 0xF1 frame. Locate with `ls`/`find`-free toolbox commands, `adb pull`, no writes.
 - [ ] Guard test: no new `hmgapi/mods` class may extend/implement a `hmgapi/hook` type
   other than `MethodHook` (dexdump check in the module test).
 
