@@ -27,6 +27,7 @@ public final class Cluster {
     }
     public void turnListNew(byte[] f) { rec("hud " + hex(f)); }
     public void laneInfo(byte[] f) { rec("lanes " + hex(f)); }
+    public void remainDis(int a, int b, int c, int d) { rec("remain " + a + " " + b + " " + c + " " + d); }
     public void destinationName(int type, String name) { rec("dest " + type + " [" + name + "]"); }
     public void crossroadName(String name) { rec("road [" + name + "]"); }
     public static final class Turn {
