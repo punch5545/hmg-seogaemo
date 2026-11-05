@@ -30,5 +30,13 @@ rm -rf "$state/app-install" || exit 1
 # The stock restore receipt and its pause marker belong to this installation: a
 # later install must not inherit a paused watcher. uninstall/ (result, exit code, log)
 # and the ledger are kept.
+# USB report recording: stop its log stream and drop its state; reports already on a USB drive stay.
+if [ -f "$state/recorder/logcat.pid" ]; then
+    read -r recorder_pid < "$state/recorder/logcat.pid" || :
+    case "$recorder_pid" in ''|*[!0-9]*) ;; *)
+        ! grep -q logcat "/proc/$recorder_pid/cmdline" 2>/dev/null || kill "$recorder_pid" 2>/dev/null || : ;;
+    esac
+fi
+rm -rf "$state/recorder"
 rm -rf "$state/desired" "$state/modules" "$state/journal" "$state/reconcile.log" \
     "$state/stock" "$state/restart-cleanup"

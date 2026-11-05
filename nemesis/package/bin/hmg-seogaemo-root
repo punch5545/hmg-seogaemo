@@ -14,6 +14,8 @@ case "$1" in
     package) [ "$#:$2" = 2:uninstall ] || refuse 2 failed 'Invalid command' ;;
     export) case "$#:$2" in 2:usb|2:adb) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     map) case "$#:$2" in 2:status|2:run|2:verify|2:export) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+    recorder) case "$#:$2" in 2:status|2:enable|2:disable|2:tick) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+    preflight) [ "$#:$2" = 2:run ] || refuse 2 failed 'Invalid command' ;;
     update) case "$#:$2" in 2:stage|2:apply|2:rollback|2:status) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     module)
         case "$#:$2" in
@@ -147,6 +149,11 @@ if [ "$1" = map ]; then
     case "$2" in status|run|verify|export) ;; *) refuse 2 failed 'Invalid command';; esac
     export SG_DATA_ROOT
     exec /system/bin/sh "$base/core/hmg-seogaemo-map.sh" "$2"
+fi
+if [ "$1" = recorder ] || [ "$1" = preflight ]; then
+    # Read-only reports (fixed verbs, no arguments): see .agents/reports-recorder.md.
+    export SG_DATA_ROOT
+    exec /system/bin/sh "$base/core/recorder.sh" "$1" "$2"
 fi
 if [ "$1" = module ]; then
     export SG_DATA_ROOT

@@ -12,6 +12,8 @@ public final class RootClient {
     static final long READ_TIMEOUT_MS = 30000L;
     static final long STOCK_STATUS_TIMEOUT_MS = 30000L;
     static final long STOCK_TIMEOUT_MS = 180000L;
+    /** Each module precheck may run a bounded map status (up to 15 s). */
+    static final long PREFLIGHT_TIMEOUT_MS = 120000L;
 
     private RootClient() { }
 
@@ -81,6 +83,17 @@ public final class RootClient {
 
     public static RootResult rebootDevice() {
         return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root device reboot", READ_TIMEOUT_MS);
+    }
+
+    /** USB report recording (HSM-REPORTS); fixed verbs only. The watcher, not the app, runs the periodic tick. */
+    public static RootResult recorder(String verb) {
+        if (!("status".equals(verb) || "enable".equals(verb) || "disable".equals(verb))) return failure("invalid recorder verb");
+        return invoke(ROOT + "recorder " + verb, "status".equals(verb) ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS);
+    }
+
+    /** Read-only car check: the constraints that limit this unit, one info.check_NN line each. */
+    public static RootResult preflight() {
+        return invoke(ROOT + "preflight run", PREFLIGHT_TIMEOUT_MS);
     }
 
     public static RootResult exportUsb() {

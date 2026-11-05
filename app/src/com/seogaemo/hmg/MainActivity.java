@@ -1722,6 +1722,9 @@ public final class MainActivity extends Activity {
                 }, null);
             }
         });
+        com.seogaemo.hmg.ui.settings.ReportsSection.add(this, content, new Runnable() {
+            public void run() { showSettings(); }
+        });
         TextView about = text(getString(R.string.support_about, getString(R.string.app_name), installedVersion(),
                 getString(R.string.value_gen5w)), 18, MUTED, sans);
         about.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.LG), dp(SettingsUi.PAGE), dp(SettingsUi.LG));

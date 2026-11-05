@@ -132,6 +132,11 @@ while :; do
             [ "$current_display" = unknown ] || last_display=$current_display
         fi
     fi
+    if [ -f "$state/recorder/enabled" ]; then
+        # USB report recording: detached and locked, so a slow USB drive never delays watch events.
+        ( /system/bin/sh "$root" recorder tick >> "$log" 2>&1 < /dev/null & )
+        [ "$interval" -le 15 ] || interval=15
+    fi
     polls=$((polls + 1))
     [ "${HMG_SEOGAEMO_WATCH_MAX_POLLS:-0}" -eq 0 ] ||
         [ "$polls" -lt "$HMG_SEOGAEMO_WATCH_MAX_POLLS" ] || exit 0

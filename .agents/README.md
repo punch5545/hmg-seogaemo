@@ -15,6 +15,7 @@ Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (p
 | [module-architecture.md](module-architecture.md) | Module contract, state/privilege/recovery, source layout, build-time module list. |
 | [module-runtime-contract.md](module-runtime-contract.md) | Root/Java interface: mutation API, status block, ledger, export, line ownership, payload/dir transactions, restore guarantees, shell tools. |
 | [module-runtime-implementation.md](module-runtime-implementation.md) | Runtime and host-test implementation findings (shell parity). |
+| [reports-recorder.md](reports-recorder.md) | USB report recording (HSM-REPORTS), the car check, redaction and cadence. |
 | [boot-lifecycle.md](boot-lifecycle.md) | NEMESIS service semantics, reconcile/watch retries, deferred APK install, map-verify deferral, QuickBoot limits. |
 | [stock-restore.md](stock-restore.md) | Whole-package restore, detached uninstall, restart verb, recovery incidents, on-car checks. |
 | [installable-modules.md](installable-modules.md) | `.hsm` module packages (API 1), restricted scripts, resource conflicts, core hook host, design rationale. |

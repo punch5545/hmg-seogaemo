@@ -429,6 +429,8 @@ Export publication retains 0755 directories and 0644 files.
 ## Core car mapping
 
 `hmg-seogaemo-root map status|run|verify|export` accepts exactly these fixed verbs.
+`hmg-seogaemo-root recorder status|enable|disable|tick` and `preflight run` are further fixed verbs (no
+arguments); see [reports-recorder.md](reports-recorder.md).
 `status` hashes the catalogue's stock files and compares product, onebin, Android version,
 and every stock MD5 with bundled or generated `car.json`; it is read-only.
 `run` scans the full catalogue in a separate root `app_process` and reflects over the
