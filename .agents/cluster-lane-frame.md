@@ -161,3 +161,48 @@ Observed, with hypotheses (confidence **M**, from position/context only):
   trailer bitmasks (`0x43..0x50`); it confirms those bytes carry hi-pass/bus/toll/closed state, but
   not their byte offsets or bit order. Capture the stock 81-byte `source=car-nav` frames (now
   recorded) at the same toll plaza to pin the encoding.
+
+## FIRMWARE-CONFIRMED: 81-byte stTPLaneInfo layout (2026-11-05)
+
+Source: decrypted stock navigation engine `libExSLNavi.so` (buildID c9fc6b0b…, ARM32 Thumb-2,
+exported C++ symbols intact). Function `NaviDrivingAssistManager::ParserLaneInfoJson(stTPLaneInfo&, std::string)`
+at vaddr `0x16056b8` parses the lane JSON into the struct; `stTPLaneInfo::init` (`0x15ffdaa`) zeroes
+bytes `0x00..0x50`, so the struct is **81 bytes** (0x51). The `.so` is NOT in the repo; see the
+index in [navi-lib-index.md](navi-lib-index.md) / `tmp/navi-re/`. Confidence **H** (direct bytecode).
+
+The lane data reaches the engine as JSON. Keys read by the parser (exact strings from the binary):
+`lane`, `info`, `totalLaneNumber`, `condition`, `skip`, `busPriority`, `hipass`, `nonHipass`,
+`hipassLaneNumber`, `remainDistance`, `remainDistanceUnit`, `individualDirection`, `overpass`,
+`underpass`, `leftPocket`, `rightPocket`. Each trailer field is a JSON array of lane indices that
+the parser OR-s into a little-endian u16 bitmask (bit per lane).
+
+| Offset | Size | Field (firmware key) | Evidence |
+| --- | ---: | --- | --- |
+| `0x00` | 1 | `0xF1` subtype (set by the sender, not this parser) | our builder; **M** |
+| `0x01` | 1 | `totalLaneNumber` (lane count, clamped) | `strb [r4,#1]` @`0x160576e`, key@`0x1605750` **H** |
+| `0x02` | 1 | pocket lanes (`leftPocket`/`rightPocket` packed) | `strb [r4,#2]`, keys@`0x1605cbc`/`0x1605dac` **H** |
+| `0x03..0x12` | 16 | per-lane status, one byte per lane (loop) | written via per-lane pointer (not `[r4,#imm]`); matches our `[3+k]` **M** |
+| `0x13..0x42` | 48 | per-lane arrows (loop) | our builder `[19+3k]`; parser loop **M** |
+| `0x43` | 2 | **overpass** (고가차도) u16 LE bitmask | `strh [r4,#0x43]`, key `overpass` **H** |
+| `0x45` | 2 | **underpass** (지하차도) | `strh [r4,#0x45]`, key `underpass` **H** |
+| `0x47` | 2 | **busPriority** (버스전용차로) | `strh [r4,#0x47]`, key `busPriority` **H** |
+| `0x49` | 2 | **skip** (닫힌/통과 불가 차선) | `strh [r4,#0x49]`, key `skip` **H** |
+| `0x4b` | 2 | **hipass** (하이패스) | `strh [r4,#0x4b]`, key `hipass` **H** |
+| `0x4d` | 2 | **hipassLaneNumber** (하이패스 차선번호) | `strh [r4,#0x4d]`, key `hipassLaneNumber` **H** |
+| `0x4f` | 2 | **nonHipass** (하이패스 아님/일반 톨) | `strh [r4,#0x4f]`, key `nonHipass` **H** |
+
+**This refutes the third-party `nav_mapping.py` trailer order.** That file claimed
+0x47=hipass, 0x49=busPriority, 0x4b=nonHipass, 0x4d=individualDirection, 0x4f=possibility. The
+firmware instead stores overpass/underpass/busPriority/skip/hipass/hipassLaneNumber/nonHipass at
+0x43/0x45/0x47/0x49/0x4b/0x4d/0x4f. There is no `possibility` u16; `individualDirection` is a key
+but is not one of these seven trailer words (it is applied elsewhere). The owner-observed hi-pass,
+bus-only and toll lanes on the cluster/HUD are exactly these bitmasks.
+
+### For our CpTurns lane builder
+- The per-lane status (`0x03+k`) and arrow (`0x13+3k`) layout our builder uses is consistent with
+  the loop region; confirm the exact status/arrow code values against captured stock `source=car-nav`
+  frames (now recorded) — the arrow code enum still comes from `ConvertGuidance::getLaneItemImageID`
+  (`0x20b48b0`), not yet decoded here.
+- To show hi-pass / bus-only / toll / closed lanes for CarPlay we must populate `0x43..0x4f`, but
+  CarPlay's 0x5204 does not carry them, so those stay 0 for projection (only the stock navigation
+  sets them). `0x01` count, `0x02` pocket, status and arrows are what we can fill from CarPlay.

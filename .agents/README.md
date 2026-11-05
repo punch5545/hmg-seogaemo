@@ -24,6 +24,8 @@ Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`,
 | [neev-kor-api-inventory.md](neev-kor-api-inventory.md) | Current | Offline NEEV KOR vehicle/vendor API inventory, exact signatures, risk classes, candidate hooks and deferred on-car checks. |
 | [research-car-mapping.md](research-car-mapping.md) | Implemented plus historical research | KOR evidence, core mapper design, and remaining on-car validation. |
 | [catalogue-v101.md](catalogue-v101.md) | Current | KOR evidence for 18 v1.0.1 additions, honest coverage, and verification-cache migration. |
+| [cluster-lane-frame.md](cluster-lane-frame.md) | Current | 81-byte stTPLaneInfo cluster lane frame, firmware-confirmed trailer bitmasks (hi-pass/bus/toll/overpass). |
+| [navi-lib-index.md](navi-lib-index.md) | Current | Mechanical index of the stock navigation engine libExSLNavi.so (binary not committed). |
 | [carplay-tbt-external-research.md](carplay-tbt-external-research.md) | Current | Third-party research on iAP2 route guidance and Hyundai cluster/HUD TBT (with `carplay-tbt-external/`). |
 | [carplay-tbt-learnings.md](carplay-tbt-learnings.md) | Current | CarPlay turn-by-turn fixes ported from HMG-API, open problems, Wi-Fi client/AP findings. |
 | [research-nemesis-packaging.md](research-nemesis-packaging.md) | Partly superseded | NEMESIS source research and current package layout; older proposal marked historical. |
