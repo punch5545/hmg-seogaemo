@@ -1,4 +1,4 @@
-Status: current — external research on CarPlay route guidance and Hyundai/Kia cluster/HUD TBT, collected 2026-11-05 (round 1; round 2 pending).
+Status: current — external research on CarPlay route guidance and Hyundai/Kia cluster/HUD TBT, collected 2026-11-05 (rounds 1 and 2).
 
 # External research: CarPlay route guidance → cluster/HUD
 
@@ -16,6 +16,10 @@ Do not copy third-party code into the repo (see AGENTS.md licensing); cite path 
 | [hkmc-sources.md](carplay-tbt-external/hkmc-sources.md) | Annotated bibliography for the Hyundai/Kia side |
 | [hkmc-cluster-tbt.md](carplay-tbt-external/hkmc-cluster-tbt.md) | Cluster icon codes, 0xF2 HUD list, 0xF1 lane frame, distance/unit, keep-alive notes |
 | [hkmc-extras.md](carplay-tbt-external/hkmc-extras.md) | Virtual driving sound and battery preconditioning notes |
+| [round2-mib2q-deep-dive.md](carplay-tbt-external/round2-mib2q-deep-dive.md) | luka-dev / kamgurgul / LIVI: icon mapping, angle sentinels, lanes → cluster arrows, cadence, omitted fields, 0x5200 retry |
+| [round2-other-oems.md](carplay-tbt-external/round2-other-oems.md) | carlink (GM/AAOS), MHI2/MIB2 variants, Touareg CN: icon tables, lane rendering, units |
+| [round2-korean-apps.md](carplay-tbt-external/round2-korean-apps.md) | TMAP / NAVER Map / KakaoNavi community evidence (thin) |
+| [round2-sources.md](carplay-tbt-external/round2-sources.md) | Round 2 bibliography |
 
 ## Key findings (round 1)
 
@@ -43,3 +47,20 @@ Do not copy third-party code into the repo (see AGENTS.md licensing); cite path 
 - **Extras:** manual preconditioning has no stock menu on MY2023 Ioniq 5 (triggered by nav route to a
   DC charger); HMG-API has a start sequence with temperature gates. Simulated drive sounds exist on
   N models; no source for the standard Ioniq 5.
+
+## Key findings (round 2)
+
+- **Omitted fields are normal.** Third-party apps (e.g. Sygic) omit JunctionType and ExitAngle.
+  kamgurgul removed luka-dev's junction gate for exactly this (issue #9): a left turn without
+  JunctionType must still get its arrow. Same lesson as our NAVER fix; do not reintroduce a gate.
+- **Deltas:** messages carry only changed TLVs; keep previous values per key (luka-dev applies
+  present keys as deltas). Missing exit angle → treat as unknown (they use 1000), lane angle 1000 →
+  lane without direction.
+- **0x5200 start retry:** luka-dev re-sends StartRouteGuidanceUpdates every 2 s ×5, then every 30 s,
+  until the first 0x5201, injected through the stock send path on one worker thread; iAP2 identify
+  start (0x1D00) resets it. No other keep-alive on the iAP2 side.
+- **Korean apps:** still no field-level evidence for TMAP/NAVER/Kakao; one user report says NAVER
+  feeds the HUD only lane/road-direction on a BMW. Our own observation records are the best source.
+- **Hyundai/Kia:** no owner report of factory CarPlay TBT on the cluster; Apple lists HMG as working
+  toward CarPlay Ultra (unverified timing).
+
