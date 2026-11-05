@@ -14,6 +14,8 @@ public final class InstalledModule {
     public final String source;
     public final String restart;
     public final boolean rebootRestore;
+    /** App-drawn icon name from the fixed set in the contract; "box" when undeclared. */
+    public final String icon;
     public final String[] depends;
     public final String[] excludes;
     public final String[] uses;
@@ -27,6 +29,8 @@ public final class InstalledModule {
         source = value(info, "source");
         restart = value(info, "restart");
         rebootRestore = "reboot".equals(info.get("restore"));
+        String declaredIcon = info.get("icon");
+        icon = declaredIcon == null || declaredIcon.length() == 0 ? "box" : declaredIcon;
         depends = csv(info.get("depends"));
         excludes = csv(info.get("excludes"));
         uses = csv(info.get("uses"));

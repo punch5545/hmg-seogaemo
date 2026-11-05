@@ -101,6 +101,7 @@ extraction directory.
 | `hookpoints` | member name of a text file of stable IDs | maps to `hookpoints.required` |
 | `setting.N` | `key:type:default` | types `toggle`, `choice(a|b|...)`, `number(min..max)` |
 | `raw_shell` | `1` | see Restricted scripts |
+| `icon` | one of `box`, `wifi`, `phone`, `terminal`, `car`, `gear`, `display`, `speaker`, `camera`, `map`, `power`, `key`, `skip`, `button`, `link`, `bolt` | app-drawn line icon on the Features card and detail panel; default `box`. Modules cannot ship images |
 
 Unknown keys refuse install. Ownership keys (`owns_*`, `services`, `service_calls`,
 `reassert_props`, `owns_generated_dirs`, `restore`, `watch`, `excludes`) are never written
@@ -193,7 +194,11 @@ compiled against `out/hook-sdk/hmg-seogaemo-hook-api.jar` without bundling it (b
 - Setting change while on: `<id> set KEY VALUE` saves the validated value, then reverts the
   module and applies it again, so nothing from the previous value or branch survives.
   While off it only saves the value.
-- Button: run `apply.sh` with `action_is NAME` true, after the confirm.
+- Button: `hmg-seogaemo-root <id> action <name>` (`[a-z0-9_]{1,40}`, installed modules only,
+  name must be a `button name=` in `ui.txt`, module must be desired on) runs `apply.sh` again
+  with `action_is NAME` true under the operation lock, after the confirm (`confirm=@s`, else the
+  label). Targets it touches get baselines and ledger entries like any apply; a failure reports
+  `failed` and keeps backups (no rollback of the running module); revert restores everything.
 - Status: `on` when every touched target is `sg_applied`; existing restart markers give
   `pending-restart`; `status.sh` adds `info.*` and may report `fail`.
 
@@ -205,6 +210,12 @@ One block per line: `status`; `toggle setting=K label=@s`; `choice setting=K lab
 `open screen=wifi_settings`. Unknown blocks refuse install. State-changing blocks go
 through `ui.ConfirmDialog`. No Java from modules in API 1.
 
+The app draws every block with its own fixed row components, so all modules share one look.
+The detail screen's left panel and the Features card already show the module state, so
+the app ignores `status` (still accepted for compatibility). `status.sh` may print
+`info note ...`; that value is the one-line note under the module name on its Features
+card (for example the connected network name).
+
 ### Root verbs and storage
 
 - `hmg-seogaemo-root module install <sha256>`: 64 lowercase hex only. Root reads
@@ -213,13 +224,21 @@ through `ui.ConfirmDialog`. No Java from modules in API 1.
   to `/data/nemesis/backup/hmg-seogaemo/staging/`, verifies the hash, extracts, validates
   everything above, then publishes `/data/nemesis/backup/hmg-seogaemo/installed/<id>/`
   atomically. Installed is not enabled. Installing over an enabled module is refused.
+- `hmg-seogaemo-root module usb-import`: no arguments. The app cannot read head-unit USB
+  mounts, so root copies the top-level `*.hsm` files of each mounted USB drive (the same
+  fixed drive list as `export usb`) into `/data/data/com.seogaemo.hmg/files/hsm-usb/`
+  (dir 0755, files 0644, previous copies removed first). Names must match
+  `[A-Za-z0-9._-]{1,80}` and not start with `.`; symlinks, empty files and files over 10 MiB
+  are skipped; at most 20 files. Prints `info.count=<n>`. It changes no stock file or
+  property and writes no ledger entry, so the app runs it when the Add screen opens
+  without a confirmation; the confirmed step is `module install`.
 - `hmg-seogaemo-root module remove <id>`: installed modules only; reverts first, fails
   closed on conflict, then deletes the directory.
 - `hmg-seogaemo-root module list`: one `info.module_<snake_id>=<id>,<version>,<source>,<n>` line
   per module (`builtin`, `direct`, later `registry`); `<n>` is the 1-based catalog position.
 - `hmg-seogaemo-root module describe <id> <locale>`: installed modules only, because the app
   cannot read the root-only installed directory. Prints `info.version|source|restart|depends|
-  excludes|uses|restore`, `info.setting_<N>=<declaration>`, `info.ui_<N>=<block line>`, then
+  excludes|uses|restore|icon`, `info.setting_<N>=<declaration>`, `info.ui_<N>=<block line>`, then
   `info.str_<key>=<value>` for `en` followed by `<locale>` (later lines win). Install caps keep
   it inside the app's 8 KiB root output: each strings file 2048 bytes and 64 entries (key
   `[a-z0-9_]{1,40}`, value 200 characters), `ui.txt` 1024 bytes, 32 blocks, 200 characters.

@@ -224,6 +224,22 @@ hm_watch() {
     hm_status
 }
 
+hm_action() {
+    hm_declared=0
+    if [ -f "$pkg/ui.txt" ]; then
+        while read -r hm_line; do
+            case "$hm_line " in "button "*) ;; *) continue ;; esac
+            case " $hm_line " in *" name=$1 "*) hm_declared=1 ;; esac
+        done < "$pkg/ui.txt"
+    fi
+    [ "$hm_declared" -eq 1 ] || { sg_status failed none 'Unknown button'; return $?; }
+    hm_gate || return $?
+    HSM_ACTION=$1
+    export HSM_ACTION
+    hsm_walk "$pkg/apply.sh" apply run || { sg_status failed none 'Button action failed; backup retained'; return $?; }
+    hm_status
+}
+
 [ -f "$manifest" ] && [ -d "$pkg" ] || { sg_status failed none 'Module package missing'; exit $?; }
 [ "$#" -ge 1 ] || exit 2
 case "$1:$#" in
@@ -231,6 +247,7 @@ case "$1:$#" in
     precheck:1) hm_check && hm_status ;;
     apply:1) hm_apply ;;
     revert:1) hm_revert ;;
+    action:2) hm_action "$2" ;;
     watch:2) case "$2" in boot|screen_on) hm_watch ;; *) exit 2 ;; esac ;;
     *) exit 2 ;;
 esac

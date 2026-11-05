@@ -25,12 +25,12 @@ ROOT_CMD = "/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root"
 EXTRACTOR = ROOT / "core/hsm/src/com/seogaemo/hmg/core/hsm/HmgSeogaemoHsmExtract.java"
 
 SKELETON = {
-    "module.properties": "id={id}\nversion=0.1.0\napi=1\ncars=NEEV.KOR.*.260902\nrestart=none\n"
+    "module.properties": "id={id}\nversion=0.1.0\napi=1\ncars=NEEV.KOR.*.260902\nrestart=none\nicon=box\n"
                          "setting.1=enabled_value:choice(low|high):low\n",
     "apply.sh": "# Not a shell: one verb per line plus if/elif/else/fi. Turning the module off\n"
                 "# undoes every recorded write.\nset_prop persist.sys.{snake}.level {{setting:enabled_value}}\n",
-    "status.sh": "info level setting enabled_value\n",
-    "ui.txt": "status\nchoice setting=enabled_value label=@level\ninfo @how_it_works\n",
+    "status.sh": "info note setting enabled_value\n",
+    "ui.txt": "choice setting=enabled_value label=@level\ninfo @how_it_works\n",
     "strings/en.txt": "name={id}\nsummary=Describe what this module does\nlevel=Level\n"
                       "how_it_works=Turning the module off restores the original value.\n",
     "strings/ko.txt": "summary=이 모듈이 하는 일을 적으세요\nlevel=단계\n"

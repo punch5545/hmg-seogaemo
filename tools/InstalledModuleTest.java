@@ -40,7 +40,7 @@ public class InstalledModuleTest {
 
     public static void main(String[] args) {
         InstalledModule sample = InstalledModule.parse("sample", describe(
-                "info.version=1.0.0", "info.source=direct", "info.restart=head_unit", "info.restore=exact",
+                "info.version=1.0.0", "info.source=direct", "info.restart=head_unit", "info.restore=exact", "info.icon=wifi",
                 "info.depends=", "info.excludes=wifi-client", "info.uses=wifi.radio:ap,audio.out",
                 "info.setting_1=audio:toggle:off", "info.setting_2=mode:choice(fast|safe):safe",
                 "info.setting_10=level:number(1..5):3", "info.setting_3=bad:choice(a|b):c",
@@ -59,6 +59,8 @@ public class InstalledModuleTest {
         check(sample.uiBlocks.equals(Arrays.asList("status", "toggle setting=audio label=@audio", "info @how")), "ui order " + sample.uiBlocks);
         check(sample.name().equals("샘플") && sample.text("@audio").equals("Audio") && sample.summary().equals("summary"), "strings");
 
+        check(sample.icon.equals("wifi"), "icon");
+        check(InstalledModule.parse("plain", describe("info.version=0.1.0")).icon.equals("box"), "default icon");
         check(InstalledModule.parse("sample", new RootResult("failed", "none", "x", 1, null)) == null, "failure accepted");
         check(InstalledModule.parse("Bad_Id", describe("info.version=1.0.0")) == null, "bad id accepted");
         check(InstalledModule.parse("sample", describe("info.source=direct")) == null, "missing version accepted");
