@@ -101,15 +101,26 @@ public final class Wireless extends ModEntry {
     /**
      * In the car navigation app, while a phone guides (Android Auto or CarPlay): its own
      * turn-by-turn calls to the cluster and HUD are skipped, so they don't fight the
-     * phone's. Its speed limit, cameras, traps, warning distances, lanes and driver-assist
+     * phone's. Its speed limit, cameras, traps, warning distances and driver-assist
      * data still go through (phones carry none of that). Framework calls only: no app names.
      */
     private void navigation(final ModContext mod, final LoadedApp app) {
         if (!mod.settingBoolean("tbt", true)) return;
+        final CarLaneCapture carLanes = new CarLaneCapture(mod);
         MethodHook skip = new MethodHook() {
             @Override
             protected void beforeHookedMethod(Param p) {
-                if (Car.phoneGuiding(app.context)) p.setResult(null);
+                if (Car.phoneGuiding(app.context)) { p.setResult(null); return; }
+                String method = p.method.getName();
+                if ("updateLaneInfo".equals(method) || "updateTPLaneInfo".equals(method)) {
+                    try {
+                        for (Object arg : p.args) if (arg instanceof byte[]) {
+                            byte[] frame = (byte[]) arg;
+                            if (frame.length != 81 || (frame[0] & 255) != 0xf1) continue;
+                            carLanes.record(frame);
+                        }
+                    } catch (Throwable ignored) { /* observation never changes stock delivery */ }
+                }
             }
         };
         for (String m : NAVI_TBT) mod.hook(null, "framework.navigation_cluster." + m, skip);

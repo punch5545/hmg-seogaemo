@@ -250,8 +250,35 @@ final class Bridge {
                     if (sPendingIn.size() < MAX_PENDING) sPendingIn.add(b);
                 }
             }
+            decodeLanes(b);
         } catch (Throwable t) {
             error("onCpIapIn", t);
+        }
+    }
+
+    private static final CpLaneDecoder laneDecoder = new CpLaneDecoder();
+    private static long laneErrorAt;
+
+    private static void decodeLanes(byte[] data) {
+        try {
+            final CpLaneDecoder.Info[] lanes = laneDecoder.feed(data, data.length);
+            int errors = laneDecoder.takeErrors();
+            long now = System.currentTimeMillis();
+            if (errors > 0 && (laneErrorAt == 0 || now - laneErrorAt >= 30000L)) {
+                laneErrorAt = now;
+                log("0x5204 decode errors=" + errors + " (one log/30s)");
+            }
+            if (lanes.length > 0 && Dipo.turnsHandler != null) Dipo.post(new Runnable() {
+                @Override public void run() {
+                    if (Dipo.turns != null) for (CpLaneDecoder.Info lane : lanes) Dipo.turns.rawLanes(lane);
+                }
+            });
+        } catch (Throwable t) {
+            long now = System.currentTimeMillis();
+            if (laneErrorAt == 0 || now - laneErrorAt >= 30000L) {
+                laneErrorAt = now;
+                log("0x5204 decode failed: " + t.getClass().getSimpleName());
+            }
         }
     }
 
@@ -283,6 +310,10 @@ final class Bridge {
         try {
             log("CarPlay session finalized type=" + type + " cpClient=" + sCpClient);
             boolean client = sCpClient, wireless = sCpWireless;
+            laneDecoder.reset();
+            if (Dipo.turnsHandler != null) Dipo.post(new Runnable() {
+                @Override public void run() { if (Dipo.turns != null) Dipo.turns.disconnected(); }
+            });
             sCpWireless = false;
             sCpClient = false;
             sCpConnected = false;

@@ -264,6 +264,65 @@ final class CpTurns {
                 + " linkedLane=" + x.linkedLane + " descLen=" + len(x.description) + " afterRoadLen=" + len(x.afterRoad) + " stored=" + (maneuvers.get(id) == null ? 0 : maneuvers.get(id).size()));
     }
 
+    /** Last 16 lane windows across components; 0x5204 normally precedes 0x5201. */
+    final LinkedHashMap<Long, CpLaneDecoder.Info> laneInfos = new LinkedHashMap<Long, CpLaneDecoder.Info>();
+
+    private static long laneKey(int component, int index) {
+        return ((long) component << 32) | (index & 0xffffffffL);
+    }
+
+    void rawLanes(CpLaneDecoder.Info info) {
+        long key = laneKey(info.component, info.index);
+        laneInfos.remove(key);
+        laneInfos.put(key, info);
+        while (laneInfos.size() > 16) laneInfos.remove(laneInfos.keySet().iterator().next());
+        d("decoded lanes " + info.summary());
+        Update u = updates.get(info.component);
+        if (activeId != null && activeId == info.component && u != null) selectLanes(info.component, u);
+    }
+
+    private void selectLanes(int component, Update u) {
+        boolean showing = u.lanesShown && !(u.count == 0 && u.state <= 0) && u.state != 0;
+        CpLaneDecoder.Info info = showing ? laneInfos.get(laneKey(component, u.laneIndex)) : null;
+        if (sample("lane-match", component + "|" + u.laneIndex + "|" + showing + "|" + (info != null)))
+            d("lane match comp=" + component + " index=" + u.laneIndex + " showing=" + showing + " found=" + (info != null));
+        if (info == null) {
+            if (lastLane != null) {
+                byte[] blank = new byte[81]; blank[0] = (byte) 0xf1;
+                cluster.laneInfo(blank);
+                lastLane = null;
+            }
+            return;
+        }
+        String mode = Dipo.laneMode();
+        if ("auto".equals(mode)) {
+            mode = "off";
+            for (CpLaneDecoder.Lane l : info.lanes) if (l.status == 2) mode = "rec";
+        }
+        byte[] f = new byte[81]; f[0] = (byte) 0xf1; f[1] = (byte) info.lanes.length;
+        for (int k = 0; k < info.lanes.length; k++) {
+            CpLaneDecoder.Lane l = info.lanes[k];
+            int[] one = laneValues(l.status, l.angles, l.highlight >= -180 && l.highlight <= 180, mode);
+            f[3 + k] = (byte) one[0];
+            for (int j = 0; j < 3; j++) f[19 + 3 * k + j] = (byte) one[1 + j];
+        }
+        StringBuilder hex = new StringBuilder();
+        for (byte b : f) hex.append(Character.forDigit((b >> 4) & 15, 16)).append(Character.forDigit(b & 15, 16));
+        String detail = "mode=" + mode + " laneIndex=" + u.laneIndex + " laneCount=" + u.laneCount + " frame=" + hex;
+        String observation = info.summary() + "|" + detail;
+        if (!observation.equals(lastLaneObs)) {
+            lastLaneObs = observation;
+            // Observations fields are capped at 400 chars: one lane per key preserves all 16 angles.
+            String prefix = "source=CarPlay comp=" + info.component + " index=" + info.index
+                    + " descBytes=" + info.descriptionLength + " n=" + info.lanes.length;
+            if (info.lanes.length == 0) Dipo.observe(true, prefix, detail, null);
+            for (CpLaneDecoder.Lane lane : info.lanes) Dipo.observe(true, prefix + " lane=" + lane.index
+                    + " status=" + lane.status + " angles=" + arr(lane.angles) + " h" + lane.highlight, detail, null);
+        }
+        if (!java.util.Arrays.equals(lastLane, f)) cluster.laneInfo(f);
+        lastLane = f;
+    }
+
     /** LaneGuidance (the build's applyLanes): up to 8 lanes as the cluster's 0xF1 frame */
     void lanes(Iap2NotiMsg msg) {
         Iap2NotiMsg.Iap2ObjGroup g = msg == null ? null : msg.getItemGroup();
@@ -364,8 +423,14 @@ final class CpTurns {
                 highlight = v;
             }
         }
+        boolean along = false;
+        if (highlight != null) for (int h : highlight) if (h >= -180 && h <= 180) along = true;
+        return laneValues(status, angles, along, mode);
+    }
+
+    private static int[] laneValues(int status, int[] angles, boolean along, String mode) {
+        int[] r = new int[4];
         boolean preferred = status == 2;
-        boolean along = highlight != null && highlight.length > 0;
         if ("rec".equals(mode)) r[0] = preferred ? 2 : 1;
         else if ("dim0".equals(mode)) r[0] = preferred ? 2 : along ? 1 : 0;
         else if ("dim3".equals(mode)) r[0] = preferred ? 2 : along ? 1 : 3;
@@ -373,6 +438,7 @@ final class CpTurns {
         if (angles != null) {
             int n = 0;
             for (int k = 0; k < angles.length && n < 3; k++) {
+                if (angles[k] < -180 || angles[k] > 180) continue;
                 int icon = laneIcon(angles[k]);
                 if (icon != 0) r[1 + n++] = icon;
             }
@@ -407,6 +473,7 @@ final class CpTurns {
 
     /** route guidance stopped (DiPO e/u.nS: the car's navigation took turn-by-turn back, or state 0) */
     void stop() {
+        laneInfos.clear();
         activeId = null;
         hudBlank();
         Dipo.flushObservations(true);
@@ -414,6 +481,8 @@ final class CpTurns {
 
     /** forget every component's state and maneuvers (DiPO e/u.nT) */
     void reset() {
+        laneInfos.clear();
+        lastLane = null;
         activeId = null;
         for (LinkedHashMap<Integer, Maneuver> m : maneuvers.values()) {
             if (m != null) m.clear();
@@ -456,6 +525,7 @@ final class CpTurns {
             return;
         }
         activeId = id;
+        selectLanes(id, u);
         lastSendAt = System.currentTimeMillis();
         int[] list = u.list == null ? null : u.list.clone();
         float dist = 0f;

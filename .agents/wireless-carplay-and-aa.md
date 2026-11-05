@@ -167,16 +167,36 @@ Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe mat
 
 ## CarPlay turn-by-turn: lane fix, fallback icons, developer toggle
 
-- **Lane guidance (`iap2-lane-msgid.recipe`).** Stock `libiap2session.so` (md5 `fc7cb675b46a44bd893a1edc054c5e71`, NEEV KOR) registers
-  `LaneGuidanceInformation` under msgId 0x5202 (copy of the maneuver's id) in its control-message table, and the lookup is first-match,
-  so a real 0x5204 only logs `iAP2ControlSessionHandleMsg msgType=0x5204`. The recipe (a `data` recipe: offsets are virtual
-  addresses in `.data`, file offset + 0x1000, written through `/proc/self/mem` so page protection is untouched) changes the u32 at
-  vaddr `0x31c80` (file `0x30c80`) from `02 52 00 00` to `04 52 00 00`, after verifying the msgIds of the two rows before it
-  (0x5201 at `0x31c50`, 0x5202 at `0x31c68`). Pointer words are never verified (they are relocated at load). Applied in the iap2server
-  process (`Wireless.iap2`, setting `tbt`); state is `native.libiap2session.so.state` in the runtime result and does not gate readiness.
-  The lane parameter tables (`iAP2LaneGuidanceInformationList` 0x34b78, `iAP2LaneInformationGroupList` 0x349e0) match what
-  `CpTurns.lanes()` reads: item 2 is the lane group array, per lane item 1 status, 2 angles, 3 highlighted angles. 0x5204 carries no distance;
-  the maneuver distance comes from RouteGuidanceUpdate.
+- **Lane guidance (our own raw 0x5204 decoder).** Bridge forwards CarPlay-channel bytes unchanged,
+  then feeds the bounded, Android-free CpLaneDecoder and posts decoded data through Dipo.post
+  to the TBT handler. Link/control messages may be split or coalesced; link/header checksums,
+  TLV lengths, scalar widths, eight lanes and sixteen signed angles per lane are checked.
+  Invalid messages are ignored with one essential error line per 30 seconds. Description bytes
+  are counted only. Wire references: carplay-tbt-external/iap2-lane-guidance.md; this is our own
+  implementation, with no third-party source copied.
+  CpTurns retains the last sixteen entries keyed by component and LaneGuidanceIndex, since
+  lane windows arrive before the route update. Only the current 0x5201 p16 entry is displayed
+  while p18 is true and state is nonzero (the maneuver-count/state show gate also applies).
+  No fallback to another index or 0x5202 linked lane is used. Missing current entries and hidden
+  lanes blank the old frame; state 0, stop, disconnect and source changes clear the cache.
+  Existing angle/status modes produce the 81-byte 0xF1 frame; auto highlights preferred lanes
+  when supplied, and highlight 1000 means none. Invalid angles produce no arrow. Refresh resends
+  the last frame. tbt-lanes records contain raw numeric lane fields, description byte count,
+  current index/count and all 81 frame bytes. Developer mode logs entries and index matches.
+  0x5204 has no distance; route updates supply it.
+  **Keep the stock parser disabled:** redirecting 0x5204 to libiap2session's lane handler crashed
+  libIap2Acc.so in convertSubGroup on the car. The unused iap2-lane-msgid.recipe remains
+  packaged/owned for compatibility with existing baselines; Wireless.iap2 never applies it.
+  No mods class implements a hook interface; the Dalvik cross-dex rule below still applies.
+  Physical cluster/HUD rendering, per-app ordering and source transitions need on-car checks.
+  Stock navigation's existing NAVI_TBT hook now captures allowed 81-byte 0xF1 calls to
+  updateLaneInfo/updateTPLaneInfo without changing arguments or delivery. CarLaneCapture uses
+  Observations directly in com.mnsoft.navi's own runtime directory, with bounded tbt-lanes
+  records keyed source=car-nav and the full frame hex (including 0x43-0x50 bitmasks). Identical
+  consecutive frames are deduplicated; developer logs are deduplicated and limited to one
+  per three seconds. Suppressed calls are never captured. Compare these ground-truth records
+  before changing encoding: CpTurns.laneIcon is the single angle-to-stock-arrow mapping
+  function. Current HMG-API-derived arrows/statuses are not proven identical to stock bytes.
 - **No silent skips.** `CpTurns.turn()` used icon 0 to stop everything (no turn, HUD, trip). An unmapped maneuver now uses
   `fallbackIcon` (direction arrow, else straight) and logs `no exact icon for maneuver type ...` once per combination. A missing maneuver
   still sends HUD distance and trip, and asks the phone to resend (Stop then Start), at most once in 30 s.

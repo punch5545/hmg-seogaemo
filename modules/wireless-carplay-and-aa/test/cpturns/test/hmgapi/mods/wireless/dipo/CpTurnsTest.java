@@ -107,7 +107,7 @@ public final class CpTurnsTest {
         l1.add(1, U16, i(1)).add(2, U16, i(0));
         l2.add(2, U16, i(90, 45)).add(3, U16, i(90));
         lanes.getItemGroup().add(0, U16, i(1)).add(2, GROUPS, new Iap2NotiMsg.Iap2ObjGroup[] { l1, l2 });
-        t.lanes(lanes);
+        new CpTurns(new android.content.Context(), c, null).lanes(lanes);
         StringBuilder z = new StringBuilder();
         for (int k = 0; k < 14; k++) z.append("00");
         expect("lanes: straight; right + slight right highlighted", "lanes f102000102" + z + "0100000302");
