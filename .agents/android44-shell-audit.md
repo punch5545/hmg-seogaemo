@@ -10,11 +10,7 @@ identical binaries or that its services return identical output.
 
 ## Evidence
 
-Read-only shallow tag clones were fetched into the new audit directory
-`/private/tmp/aosp-442-shell/`. None of the fetched sources were built or executed.
-For each repository below, the fetch command was
-`git clone --depth 1 --branch android-4.4.2_r1 <repository> <directory>`.
-The JSON provenance contains the exact repository URLs and immutable source URLs.
+Shallow tag clones into `/private/tmp/aosp-442-shell/` (`git clone --depth 1 --branch android-4.4.2_r1 <repository> <directory>`); nothing was built or executed. The JSON provenance holds the exact repository and immutable source URLs.
 
 | Directory | Repository under `https://android.googlesource.com/` | Commit |
 | --- | --- | --- |
@@ -25,9 +21,7 @@ The JSON provenance contains the exact repository URLs and immutable source URLs
 | `base` | `platform/frameworks/base` | `feef9887e8f8eb6f64fc1b4552c02efb5755cdc1` |
 | `wpa_supplicant_8` | `platform/external/wpa_supplicant_8` | `f62167e88c0c1b9621f2984f1a59ae7d41cf4c88` |
 
-Primary evidence is `core/toolbox/Android.mk` (`TOOLS`, `ALL_TOOLS`) and each
-tool's option parser. `cp` and `grep` are explicitly appended to `ALL_TOOLS`.
-External Android commands were checked in `core/netcfg`, `core/logcat`,
+Primary evidence: `core/toolbox/Android.mk` (`TOOLS`, `ALL_TOOLS`; `cp` and `grep` appended explicitly) and each tool's option parser. External Android commands were checked in `core/netcfg`, `core/logcat`,
 `native/cmds/{service,dumpsys}`, `base/cmds/{pm,am,settings,app_process}`, and
 `wpa_supplicant_8/wpa_supplicant/wpa_cli.c`. NEMESIS `remount rw|ro` was checked
 against `https://github.com/xwtk/hmg_nemesis` commit
@@ -66,41 +60,17 @@ builtins and features is `mksh/Android.mk`, `src/funcs.c`, `src/main.c`,
 
 ## Enforcement and boundaries
 
-`make test` runs regression cases for `tools/lint-android44-shell.py`, then the
-profile lint, then the separate module mutation lint. The profile lint checks all
-14 current source scripts (four module roots, dispatcher, install/open, mapping,
-update, library, install/uninstall hooks and two services), plus shell members
-of the built package and OTA ZIPs. This includes export/recovery logic in the
-dispatcher. Scripts are recognized by `.sh` suffix or shell shebang, including
-extensionless entry points. Package/OTA inspection catches generated hooks and
-accidentally shipped host scripts. The USB wrapper embeds the inspected package.
+`make test` runs lint regression cases (`tools/lint-android44-shell.py`), then the profile lint, then the separate module mutation lint. The profile lint checks all 14 source scripts (four module roots, dispatcher, install/open, mapping, update, library, install/uninstall hooks, two services; includes export/recovery logic) plus shell members of the built package and OTA ZIPs (generated hooks, accidentally shipped host scripts). Scripts are recognized by `.sh` suffix or shell shebang, including extensionless entry points. The USB wrapper embeds the inspected package.
 
-The JSON's exact `host_only_scripts` entries exclude host generator/upstream
-tools and three payload build helpers. Build/test directories outside payload
-are host-only; payload subdirectories are still inspected. Package tests assert
-that host helpers are absent while all other payload bytes are retained.
+The JSON `host_only_scripts` entries exclude host generator/upstream tools and three payload build helpers (previously shipped on-car despite needing host tools; excluded from package and OTA, payload source/license files kept). Build/test dirs outside payload are host-only; payload subdirectories are still inspected. Package tests assert helpers are absent and all other payload bytes retained.
 
-The lexer checks command positions, absolute binary paths, combined short flags,
-flag argument arity, reviewed subcommands, `dd` operand names, date formats, and
-selected unsupported shell features. It recursively checks command substitutions
-(including defaults), literal `sh -c` / `sh -ec` and trap strings. Quoted
-here-documents are data; expansions in unquoted bodies are checked. Unknown or
-dynamic executable positions fail closed. `eval` and opaque backticks fail.
+The lexer checks command positions, absolute binary paths, combined short flags, flag arity, reviewed subcommands, `dd` operand names, date formats and selected unsupported shell features. It recurses into command substitutions (including defaults), literal `sh -c` / `sh -ec` and trap strings. Quoted here-documents are data; expansions in unquoted bodies are checked. Unknown or dynamic executable positions fail closed; `eval` and opaque backticks fail.
 
-This is a practical source gate for this repository's style, not a full shell
-parser or dataflow proof. It recognizes project function names across the source
-inventory; dynamic arguments, sourced paths, function call arguments, variable
-values and command-specific output are not resolved. A dynamic argument could
-become an option at runtime. Keep option spelling literal and validate variable
-operands in runtime code. The profile is a reviewed subset: accepting a flag does
-not prove all possible argument values, operand counts or semantic combinations.
-Review unfamiliar shell syntax against the pinned sources before extending it.
+Limits: a practical source gate for this repo's style, not a full parser or dataflow proof. Dynamic arguments, sourced paths, function-call arguments, variable values and command output are not resolved, so a dynamic argument could become an option at runtime: keep option spelling literal and validate variable operands in runtime code. The profile is a reviewed subset; accepting a flag does not prove all argument values, operand counts or combinations. Check unfamiliar syntax against the pinned sources before extending it.
 
 ## Explicit waivers
 
-Only these four production lines carry
-`# android44-shell: allow -- <specific reason>`. A waiver suppresses diagnostics
-on that physical line and is printed by the lint; archive copies repeat it.
+Only these four production lines carry `# android44-shell: allow -- <specific reason>`; it suppresses diagnostics on that physical line and the lint prints it (archive copies repeat it).
 
 | Location | Reason |
 | --- | --- |
@@ -111,28 +81,6 @@ on that physical line and is printed by the lint; archive copies repeat it.
 
 ## Validation and remaining device checks
 
-Regression tests cover unsupported commands/options, combined flags, nested
-substitutions, shell features, waivers and source inventory. Runtime regression
-tests cover MD5 error/malformed/empty output, exact-byte restore and a Binder
-child that ignores TERM. Both `/bin/sh` and local mksh R59c exercise the runtime;
-R59c is supplemental evidence only, because the production baseline is R43.
-Completed successfully on 2026-11-03:
+Regression tests cover unsupported commands/options, combined flags, nested substitutions, shell features, waivers, source inventory, MD5 error/malformed/empty output, exact-byte restore and a Binder child that ignores TERM. Runtime runs under `/bin/sh` and local mksh R59c (supplemental only; production is R43). Passed 2026-11-03: `make clean`, `make test`, `make package` with `tmp/mksh-test-bin` on PATH (mapping, package, runtime and all four module suites under both shells); `make verify-dist`; lint (14 source scripts, 26 package/OTA members, exactly four source waivers repeated in archives); `git diff --check`. The APK used the throwaway debug key (v1 JAR at API 19); no release keys, so no signed OTA manifest, and `verify-dist` reports that debug-build condition.
 
-- With `tmp/mksh-test-bin` prepended to PATH: `make clean`, `make test`, then
-  `make package`. The runner confirmed `/bin/sh` and mksh R59c runs of mapping,
-  package, runtime and all four module suites.
-- `make verify-dist`: distribution asset list, hashes and version passed.
-- Final `python3 tools/test-android44-shell.py` and
-  `python3 tools/lint-android44-shell.py`: passed, 14 source scripts and 26
-  package/OTA members; exactly four source waivers, repeated in the archives.
-- `git diff --check`: passed.
-
-The APK uses a throwaway debug key, verified with v1 JAR signing at API 19.
-Release signing keys were not supplied, so no signed OTA manifest was generated;
-distribution verification explicitly reports this debug-build condition.
-
-Still requires on-car confirmation: actual vendor binary presence/version and
-PATH, `/proc/self/fd/0` readability in the root shell pipeline, service/dumpsys/
-netcfg/ifconfig/wpa_cli output formats and service names, mount/remount and
-ownership behavior, and a physical install/apply/revert with byte-exact original
-restoration. Static AOSP evidence and host fakes do not establish those outcomes.
+Still requires on-car confirmation: vendor binary presence/version and PATH, `/proc/self/fd/0` readability in the root shell pipeline, service/dumpsys/netcfg/ifconfig/wpa_cli output formats and service names, mount/remount and ownership behavior, and a physical install/apply/revert with byte-exact original restore. Static AOSP evidence and host fakes do not establish these.
