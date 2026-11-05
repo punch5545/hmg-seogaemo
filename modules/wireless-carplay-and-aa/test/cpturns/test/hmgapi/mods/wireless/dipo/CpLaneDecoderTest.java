@@ -94,14 +94,13 @@ public final class CpLaneDecoderTest {
         catch(IllegalArgumentException expected) { }
         check("lane and angle bounds enforced",true);
         Cluster c = new Cluster(); CpTurns t = new CpTurns(new android.content.Context(),c,null);
-        Dipo.laneMode="auto";
         t.rawLanes(info); check("preloaded lane emits nothing",c.calls.isEmpty());
         t.routeGuidance(update(1,8,true)); check("different current index emits no lanes",lastLane(c)==null);
         c.calls.clear(); t.routeGuidance(update(1,7,true));
-        check("matching current index maps F1 status and arrow bytes",lastLane(c).startsWith("lanes f1020001090000000000000000000000000000070000" + "1012"));
+        check("matching current index maps F1 status and arrow bytes",lastLane(c).startsWith("lanes f102000" + "30b0000000000000000000000000000070000" + "1012"));
         java.lang.reflect.Field last = CpTurns.class.getDeclaredField("lastLane"); last.setAccessible(true);
         byte[] expected = new byte[81]; expected[0]=(byte)0xf1; expected[1]=2;
-        expected[3]=1; expected[4]=9; expected[19]=7; expected[22]=16; expected[23]=18;
+        expected[3]=3; expected[4]=0x0b; expected[19]=7; expected[22]=16; expected[23]=18;
         check("all 81 frame bytes match",Arrays.equals(expected,(byte[])last.get(t)));
         check("observation includes raw summary and full 81-byte frame",Dipo.observed.get(Dipo.observed.size()-1).contains("frame=f102") && Dipo.observed.get(Dipo.observed.size()-2).contains("h1000"));
         c.calls.clear(); t.lastSendAt=0; t.refresh(); check("refresh resends lanes",lastLane(c)!=null);
@@ -122,7 +121,6 @@ public final class CpLaneDecoderTest {
         c.calls.clear(); t.routeGuidance(update(1,7,true));
         check("other component cannot satisfy current lane",lastLane(c)==null);
         t.rawLanes(info); t.routeGuidance(update(1,7,true));
-        Dipo.laneMode="off";
         t.rawLanes(new CpLaneDecoder.Info(1,7,new CpLaneDecoder.Lane[]{
                 new CpLaneDecoder.Lane(0,1,new int[]{1000,0},1000)},0));
         byte[] sentinel=(byte[])last.get(t);

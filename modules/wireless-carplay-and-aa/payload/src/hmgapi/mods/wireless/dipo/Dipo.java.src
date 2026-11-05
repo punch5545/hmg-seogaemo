@@ -107,12 +107,6 @@ public final class Dipo {
         return devOn;
     }
 
-    /** setting "lanes" (auto, off, rec, dim0, dim3): how CarPlay lanes are marked, read at each lane update so a change applies at once */
-    static String laneMode() {
-        return mod == null ? "auto" : mod.settingString("lanes", "auto");
-    }
-
-
     static void error(String m, Throwable t) {
         mod.error(m, t);
     }
