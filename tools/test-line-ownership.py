@@ -7,7 +7,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
-from testlib import car_env, SHELL, copy_shell_script
+from testlib import car_env, SHELL, copy_shell_script, run_tests
 
 ROOT = Path(__file__).resolve().parents[1]
 COMMON = ROOT / 'nemesis/package/lib/common.sh'
@@ -241,12 +241,4 @@ def lifecycle(root):
     # preuninstall delegates to core/stock.sh; see tools/test-stock.py.
 
 
-with tempfile.TemporaryDirectory() as directory:
-    root = Path(directory)
-    sharing(root)
-    conflicts(root)
-    recovery(root)
-    literals(root)
-    audit_records(root)
-    lifecycle(root)
-print('line ownership tests passed')
+run_tests([sharing, conflicts, recovery, literals, audit_records, lifecycle], 'line ownership tests passed')

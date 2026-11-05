@@ -7,7 +7,7 @@ import signal
 import subprocess
 import tempfile
 import time
-from testlib import car_env, SHELL, host_shell_tree, host_shell_script
+from testlib import car_env, SHELL, host_shell_tree, host_shell_script, run_tests
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -713,13 +713,22 @@ def test_wireless_adb_restore(folder):
     assert_fully_restored(car, 'wireless-adb')
 
 
-with tempfile.TemporaryDirectory() as directory:
-    for test in (test_restore, test_conflict, test_failure_and_hook, test_detached,
-                 test_late_failure, test_detached_failure, test_missing_handoff,
-                 test_shared_lines, test_file_metadata_diagnostic, test_reassert_restore, test_snapshot_free_recovery,
-                 test_damaged_selection_recovery, test_unrecorded_swap, test_stale_wrapper_guard,
-                 test_residue_on_restore, test_noglob_module_restore, test_wireless_adb_restore):
-        folder = Path(directory).resolve() / test.__name__
-        folder.mkdir()
-        test(folder)
-print('stock restore, shared hook, and detached uninstall passed')
+run_tests([
+    test_restore,
+    test_conflict,
+    test_failure_and_hook,
+    test_detached,
+    test_late_failure,
+    test_detached_failure,
+    test_missing_handoff,
+    test_shared_lines,
+    test_file_metadata_diagnostic,
+    test_reassert_restore,
+    test_snapshot_free_recovery,
+    test_damaged_selection_recovery,
+    test_unrecorded_swap,
+    test_stale_wrapper_guard,
+    test_residue_on_restore,
+    test_noglob_module_restore,
+    test_wireless_adb_restore,
+], 'stock restore, shared hook, and detached uninstall passed')
