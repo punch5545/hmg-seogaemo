@@ -2,6 +2,8 @@ Status: current — index of the agent notes, reorganized 2026-11-05.
 
 # Agent notes
 
+`archive/` is not part of the reading order; do not read it unless explicitly asked.
+
 Reading order: `module-architecture.md` → `module-runtime-contract.md` → `ui-guidelines.md` → `ota-implementation.md`, then the docs for the area you change. Each fact lives in one doc; others link to it. Off-car tests do not establish physical-car behavior.
 
 Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (package glob `NEEV.KOR.*.260902`), onebin `neev_kr`, Android 4.4.2; NEMESIS + HMG-Seogaemo only.
@@ -16,7 +18,7 @@ Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (p
 | [boot-lifecycle.md](boot-lifecycle.md) | NEMESIS service semantics, reconcile/watch retries, deferred APK install, map-verify deferral, QuickBoot limits. |
 | [stock-restore.md](stock-restore.md) | Whole-package restore, detached uninstall, restart verb, recovery incidents, on-car checks. |
 | [installable-modules.md](installable-modules.md) | `.hsm` module packages (API 1), restricted scripts, resource conflicts, core hook host, design rationale. |
-| [car-mapping.md](car-mapping.md) | Core mapper, KOR map evidence, v1.0.1 additions, seal migration, upstream mapping research. |
+| [car-mapping.md](car-mapping.md) | Core mapper, KOR map evidence, v1.0.1 additions, verification seal. |
 | [ota-implementation.md](ota-implementation.md) | Signed GitHub Releases OTA, decisions, TLS roots, dispatch/rollback guards. |
 | [research-nemesis-packaging.md](research-nemesis-packaging.md) | NEMESIS package facts, implemented package, USB/update route, extraction-mode audit. |
 | [android44-shell-audit.md](android44-shell-audit.md) | Pinned KitKat toolbox/mksh evidence, lint boundaries, waivers. |
@@ -28,8 +30,8 @@ Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (p
 
 | Doc | Content |
 | --- | --- |
-| [wifi-client.md](wifi-client.md) | Implemented design, capability gate, upstream STA/AP research, checklist. |
-| [wireless-adb.md](wireless-adb.md) | Implemented ADB properties, upstream facts, restart-symptom analysis, checklist. |
+| [wifi-client.md](wifi-client.md) | Implemented design, capability gate, checklist. |
+| [wireless-adb.md](wireless-adb.md) | Implemented ADB properties, upstream facts, restart rule, checklist. |
 | [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) | AGPL projection port, hook points, change inventory, TBT behavior, zygote/runtime-record details. |
 | [user-button-shortcut.md](user-button-shortcut.md) | Steering/head-unit shortcuts, reassertion, KOR evidence. |
 | [skip-consent-screen.md](skip-consent-screen.md) | Factory82 provenance, watcher behavior, checklist. |

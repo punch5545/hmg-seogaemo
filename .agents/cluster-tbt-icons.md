@@ -1,4 +1,4 @@
-Status: current — offline NEEV KOR stock TBT icon and distance audit, 2026-11-05; phone maneuver translation and physical cluster rendering remain unverified.
+Status: current — offline NEEV KOR stock TBT icon and distance audit; phone maneuver translation and physical cluster rendering remain unverified.
 
 # Stock cluster TBT icons and distance encoding
 
@@ -143,9 +143,9 @@ These HU smali files are under `tmp/car-sessions/2026-11-04-devdump/analysis/api
 
 Consequently **1.2 km** is `updateTBTSubInfo(1.2f, ..., unit=1, ...)`, or one SubInfo2C group **(1, 2, 1)**, whose serialized bytes are `12 00 01`. It is not whole=12 with an implied global tenths scale. For 350 m the group is `(0,0,350)` → `00 01 5e`. H for encoding. Fractional nibble width does not make values 10–15 ordinary decimal digits.
 
-## Comparison with our hook and phone-side boundary
+## Gap table: our hook versus stock, and phone-side boundary
 
-References: `modules/wireless-carplay-and-aa/payload/src/hmgapi/hook/Cluster.java.src` and `modules/wireless-carplay-and-aa/payload/src/hmgapi/mods/wireless/dipo/CpTurns.java.src`. No implementation was changed during this audit.
+References: `modules/wireless-carplay-and-aa/payload/src/hmgapi/hook/Cluster.java.src` and `modules/wireless-carplay-and-aa/payload/src/hmgapi/mods/wireless/dipo/CpTurns.java.src`.
 
 | Current claim / behavior | Verdict | Confidence / boundary |
 | --- | --- | --- |
@@ -176,7 +176,7 @@ Each row below is consecutive raw bytes from the binary, not disassembly. Halfwo
 | `0x2b10fc6` | Main RG86 | `5b 01` → `0x2b111d0` | H |
 | `0x2b10fe8` | Main RG103 | `23 01` → `0x2b11160` | H |
 
-Reproduce with `/opt/homebrew/opt/llvm/bin/llvm-objdump -d --triple=thumbv7 --start-address=0x2b10f0c --stop-address=0x2b11200 libExSLNavi.so`; read bytes with Python `struct.unpack_from('<H', binary, base+2*index)`. Reuse `tbt-main.asm`, `tbt-cluster-convert.asm`, `tbt-hud.asm(.annotated)`, `tbt-frame-main.asm`, `tbt-sendturn.asm`, `tbt-fork.asm`, and `tbt-distance/{convert-and-tp,subinfo,format-dispatch}.asm`. Original annotated PC-literal results were checked against the binary; resource IDs returned by HUD conversion are deliberately not substituted for the cluster codes.
+Reproduce with `/opt/homebrew/opt/llvm/bin/llvm-objdump -d --triple=thumbv7 --start-address=0x2b10f0c --stop-address=0x2b11200 libExSLNavi.so`; read bytes with Python `struct.unpack_from('<H', binary, base+2*index)`. Reuse `tbt-main.asm`, `tbt-cluster-convert.asm`, `tbt-hud.asm(.annotated)`, `tbt-frame-main.asm`, `tbt-sendturn.asm`, `tbt-fork.asm`, and `tbt-distance/{convert-and-tp,subinfo,format-dispatch}.asm`. Resource IDs returned by HUD conversion are not cluster codes.
 
 ## To do in our code
 - Try the HU's own none handling instead of `CpTurns.NO_ICON=64` (may be why 64 rendered as "loading"; Gen5W falls back to 8).

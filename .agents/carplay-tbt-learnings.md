@@ -1,10 +1,10 @@
-Status: current - field notes ported from the HMG-API wireless mod work (2026-11-03). Nothing here is verified on a car unless it says so.
+Status: current - field notes ported from the HMG-API wireless mod work. Nothing here is verified on a car unless it says so.
 
 # CarPlay turn-by-turn and Wi-Fi: what we learned
 
 ## Code that came over
 `payload/src/hmgapi/mods/wireless/dipo/CpTurns.java.src` and `Dipo.java.src` (AGPL, adapted from HMG-API; marked in the file header). Host test: `modules/wireless-carplay-and-aa/test/cpturns/run.sh` (39 cases, part of the module test).
-- **Icons:** the exact table returned 0 for many iAP2 maneuver types and `turn()` then skipped the whole update (distance, HUD, trip). Now a banded fallback by angle and side picks the nearest confirmed basic arrow; sharp/slight keep their meaning; left-hand traffic handled. Only cluster bytes confirmed in the HMG-API cluster notes are sent: basic 0x41-0x49, highway exit 0x51/0x52, 0xac-0xae, roundabouts, arrival 0x70-0x72, ferry 0xb0. Unused: via-point arrival 0x73-0x75, highway ramp straight 0x56. Firmware cross-check: [cluster-tbt-icons.md](cluster-tbt-icons.md).
+- **Icons:** the exact table returned 0 for many iAP2 maneuver types and `turn()` then skipped the whole update (distance, HUD, trip). A banded fallback by angle and side picks the nearest confirmed basic arrow; sharp/slight keep their meaning; left-hand traffic handled. Only cluster bytes confirmed in the HMG-API cluster notes are sent: basic 0x41-0x49, highway exit 0x51/0x52, 0xac-0xae, roundabouts, arrival 0x70-0x72, ferry 0xb0. Unused: via-point arrival 0x73-0x75, highway ramp straight 0x56. Firmware cross-check: [cluster-tbt-icons.md](cluster-tbt-icons.md).
 - **Lanes:** modes `auto` (default), `off`, `rec`, `dim0`, `dim3` (`Dipo.laneMode()`, fixed to `auto` here). Phone lane status 2 = preferred lane, item 3 = lanes usable for the route. Owner saw several lanes highlighted; auto should show only the preferred lane (verify with Naver). Frame: [cluster-lane-frame.md](cluster-lane-frame.md).
 - **HUD distance:** km/mi rounds to one decimal (cap 4095); decimal commas parse; null items and empty arrays guarded; `Dipo.post()` logs any Throwable.
 - **Trace:** `Dipo.trace()` (fixed on) logs numbers only (route guidance, maneuver, lane, `turn skip ... no icon for maneuver ... type X side Y junction Z exit E`), no road/destination names, to logcat tag `HMG-Seogaemo-Wireless`. HMG-API also copied it to a USB folder with a root service (not ported, below).

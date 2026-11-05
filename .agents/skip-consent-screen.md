@@ -1,4 +1,4 @@
-Status: implemented off-car, 2026-11-03. Owner reports `local.hkmc.factory82` worked on their NEEV KOR 260902 car; HMG-Seogaemo's implementation still needs a car test.
+Status: implemented off-car. Owner reports `local.hkmc.factory82` worked on their NEEV KOR 260902 car; HMG-Seogaemo's implementation still needs a car test.
 
 # Startup consent screen
 
@@ -6,8 +6,8 @@ The module skips the driver-safety notice at startup; the driver remains respons
 
 ## Reference package
 
-- NEMESIS Manager source defines the Store index `https://portal.xwtk.cloud/nemesis/v1/store/catalog` and descriptors `/store/packages/<id>` (`tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/Portal.java`). On 2026-11-03 the host did not resolve, so no Store descriptor or ZIP was inspected; listing, current artifact and ZIP contents are unverified.
-- Likely package: `local.hkmc.factory82`, author `armandodollia`, release 4.2.1, MIT ([repo](https://github.com/armandodollia/nemesis-package-builds), [release](https://github.com/armandodollia/nemesis-package-builds/releases/tag/v4.2.1)); 4.2.1 changes metadata/build only, service stays v4.2. Source descriptor earlier exposed `types=application,service`, a diagnostic shell app, a restarting `apply` service and a preuninstall script; the exact 4.2.1 descriptor and preuninstall script were not accessible.
+- NEMESIS Manager source defines the Store index `https://portal.xwtk.cloud/nemesis/v1/store/catalog` and descriptors `/store/packages/<id>` (`tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/Portal.java`). The host did not resolve when checked (2026-11-03), so no Store descriptor or ZIP was inspected; listing, current artifact and ZIP contents are unverified.
+- Likely package: `local.hkmc.factory82`, author `armandodollia`, release 4.2.1, MIT ([repo](https://github.com/armandodollia/nemesis-package-builds), [release](https://github.com/armandodollia/nemesis-package-builds/releases/tag/v4.2.1)); 4.2.1 changes metadata/build only, service stays v4.2. Source descriptor exposes `types=application,service`, a diagnostic shell app, a restarting `apply` service and a preuninstall script; the exact 4.2.1 descriptor and preuninstall script were not accessible.
 - Readable [service source](https://raw.githubusercontent.com/armandodollia/nemesis-package-builds/main/packages/hkmc-factory82/svc/watch.sh): polls for startup, screen wake, QuickBoot marker loss and a long resume gap; waits for factory Binder registration and boot readiness; issues `service call com.hkmc.factory 82` with one limited retry for a boot-incomplete exception. Diagnostics in `/data/nemesis/state/local.hkmc.factory82/`, session marker `/data/local/tmp/hkmc.factory82.session`; the diagnostic app exports to USB. No property change, feature XML edit, settings DB key, stock APK patch or stock-file replacement in the readable source (not an audit of the release artifact).
 - The package README says only an earlier v4 build was seen dismissing the screen (2022 Kia EV6); 4.2.1 was simulated, not vehicle-tested. Binder transaction 82 is undocumented, a zero Parcel is not proof of dismissal, and uninstall stops future calls without establishing reversal of any persistent effect.
 

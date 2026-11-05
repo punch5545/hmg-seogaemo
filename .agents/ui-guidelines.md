@@ -1,4 +1,4 @@
-Status: current — display tokens, touch measurements, API 19 constraints and the single-panel decision. Emulator capture recipe dropped (see Screenshots).
+Status: current — display tokens, touch measurements, API 19 constraints and the single-panel decision.
 
 # Gen5W UI guidelines
 
@@ -62,9 +62,9 @@ Paths relative to repo root; dp unless marked sp.
 - Logo (header, launcher): proportions from `tmp/brand/logo-source.png`, two `#101016` squares on white, no VectorDrawable.
 - Car mapping: core category after General; status/product/source/count rows use 75dp row geometry; 60dp Map this car and Export map for PR actions use `ConfirmDialog` and a background `RootClient.map` call. App starts a read-only status check on launch and verifies a matching map once per boot on a worker. Without NEMESIS the page shows a neutral unavailable state. A successful mapping result directs the owner to export the PR-ready `maps/...` folder.
 
-### Settings geometry (2026-11-03 polish audit)
+### Settings geometry
 
-Audit (Korean, 1920×720) found compressed text, ad-hoc 30/28dp insets, monospace Korean/`HMG-Seogaemo` values, 96dp status pills, visible `failed · IOException`, and long notes wrapping in fixed 60dp rows. Resulting rules, implemented in `SettingsUi`:
+Rules (checked in Korean at 1920×720), implemented in `SettingsUi`:
 
 - 8/12/16/24/32dp spacing scale; cards 8dp, controls 6dp; touch targets at least 48dp.
 - Status pills 144×54dp, 16dp inner horizontal padding, 16dp gap after card copy; width fits `Unavailable` (EN) and the KO strings.
@@ -91,4 +91,4 @@ Rule and scope are in AGENTS.md. Implementation: `com.seogaemo.hmg.ui.ConfirmDia
 
 ## Screenshots
 
-AVD and README rules are in AGENTS.md. PNGs come from the Android 28 arm64 AVD at 1920×720/240 dpi (no API 19 image or car). The old adb tap-coordinate capture recipe was dropped: its coordinates predate the current Settings layout (sidebar: General, Modules, Logs, About, then module pages); inspect the layout before scripting taps. Capture with `adb exec-out screencap -p`.
+AVD and README rules are in AGENTS.md. PNGs come from the Android 28 arm64 AVD at 1920×720/240 dpi (no API 19 image or car). Sidebar order: General, Modules, Logs, About, then module pages; inspect the layout before scripting taps. Capture with `adb exec-out screencap -p`.

@@ -54,21 +54,9 @@ Upstream facts kept for reference:
 - Stock adbd has no key authentication: anyone able to reach the TCP port may connect. Owner accepts this; no key-authorizing daemon planned. USB ADB (`persist.sys.usb.config`) is out of scope (it can disrupt wired phone projection and USB drives; needs its own design).
 - Do not infer success from property readback alone.
 
-## Restart symptom (2026-11-04)
+## Restart rule
 
-Owner: TCP ADB unavailable after restart until off/on. Firmware dump `tmp/car-sessions/2026-11-04-devdump/runtime/root`:
-- `rootfs_init.daudio.rc.txt:342–354`: only the stock enable=1 trigger runs `set_adb_ip`, starts async `set_adb_port`
-  (`service.adb.tcp.port=5555`), then stops/starts adbd. Our enable=0 avoids this; persistent port changes have no init
-  trigger to restart a running daemon.
-- `rootfs_init.usb.rc.txt:13–32,268–270`: USB boot config sets `none` (stops adbd) then the desired config (starts adbd);
-  `init.rc:488` defines adbd disabled. No inspected init rule resets either TCP port.
-- `runtime/cmd/getprop.txt:75,140,147,250,418`: adbd running, persistent port 5555, enable=0, USB config `adb`, no transient port.
-
-Likely cause: adbd picks its port at process start while the old apply compared only before/after property strings; at boot
-both can be 5555 with a running process lacking TCP transport, so reapply skipped the restart. Off/on changes the effective
-property and forces one. Not proven: vendor reset or startup ordering (needs stock adbd trace plus pre-toggle export). No
-Wi-Fi-up wait is needed for an INADDR_ANY listener. Test models props=5555, adbd running without LISTEN → failed → apply
-restarts → healthy LISTEN (also IPv6).
+adbd picks its TCP port at process start, and no inspected init rule resets it, so equal property strings do not prove a TCP listener. Apply and reapply therefore restart adbd when the listener is absent, even when properties already read 5555 (vendor reset or startup ordering is not proven). No Wi-Fi-up wait is needed for an INADDR_ANY listener. The test models props=5555, adbd running without LISTEN, so status reports failed, apply restarts, and LISTEN becomes healthy (also IPv6).
 
 ## Tests
 

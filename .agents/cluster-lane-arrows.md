@@ -1,11 +1,11 @@
-Status: current — lane arrow image-ID tables extracted from the stock navigation engine, 2026-11-05.
+Status: current — lane arrow image-ID tables extracted from the stock navigation engine.
 
 # Lane arrow image IDs (ConvertGuidance::getLaneItemImageID)
 
 Source: decrypted `libExSLNavi.so` (not in the repo; [navi-lib-index.md](navi-lib-index.md)). `ConvertGuidance::getLaneItemImageID` (`0x20b48b0`) and `getLaneItemImageIDConnect` (`0x20b4da8`) map a lane's direction to the arrow image byte in the 81-byte frame (per-lane arrows at `0x13+3k`, [cluster-lane-frame.md](cluster-lane-frame.md)). Confidence **H** (direct table bytes). All tables live at base `0x3f1a514`.
 
 Lookup inputs:
-- `d` = **normalized direction index 0..8** from `convertDirectionToDirectionIndex` (`0x20b49c0`), NOT the raw engine `dir` in `[Lane] dir:N` logs. (An earlier note read `12..20 -> 37`: that was an out-of-bounds spill into the next table.)
+- `d` = **normalized direction index 0..8** from `convertDirectionToDirectionIndex` (`0x20b49c0`), NOT the raw engine `dir` in `[Lane] dir:N` logs.
 - `eRgLaneOverlapType` selects the family: 1 simple (single arrow), 2/3/4 multi-arrow overlaps (types 2-4 use 9-byte-stride structures with recommend/connect variants).
 - `N` = count of active (non-zero valid) arrows in the lane; `N>2` vs `N<=2` picks a sub-table.
 - `B` = flag set by `setLaneItemImageID` when the lowest angle code is `<=2` (straight group).
@@ -56,4 +56,4 @@ Each cell is `p=0 / p=1 / p=2..8` where a single value repeats for all nine `p` 
 
 ## Still needs the car / phone
 - Which picture each image ID (1..57) draws on this cluster: verify against captured stock `source=car-nav` frames. Single-arrow 1..8 almost certainly match; composite IDs (9..57) appear only for multi-arrow lanes we would rarely synthesize from CarPlay.
-- The full raw `dir` -> normalized `d` map is in `tmp/navi-re/enum-*.thumb.txt`; label it against the `[Lane] dir:N idx:M` drive logs ([cluster-lane-frame.md](cluster-lane-frame.md) section 6; pairs seen: (dir0,idx1), (dir1,idx2), (dir3,idx3), (dir6,idx5), (dir9,idx7), (dir11,idx8)).
+- The full raw `dir` -> normalized `d` map is in `tmp/navi-re/enum-*.thumb.txt`; label it against the `[Lane] dir:N idx:M` drive logs ([cluster-lane-frame.md](cluster-lane-frame.md) section 6).

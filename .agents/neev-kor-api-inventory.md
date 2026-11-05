@@ -161,7 +161,7 @@ Embedded `com.broadcom.bt.jar!/classes.dex` supplies `com.broadcom.bt.hfdevice.I
 
 `android.net.wifi.IWifiManager.getWifiEnabledState()I` tx14 and `getWifiApEnabledState()I` tx30 on `wifi` (`framework.odex`) are reviewed state reads (RO). `getWifiApMode()I` tx104 is RO*. `setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)V` tx29 and `setWifiEnabledForPersist(ZZ)Z` tx49 are W; `resetWifiApConfiguration()V` tx98 is D/config reset. `getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;` tx31 can disclose credentials; omit from shared output.
 
-Stock `HKMC_WifiSettings` writes `tcc.wifi.display` / `tcc.wifi.display.command` and Settings static-IP keys (attribution below). The owner previously verified hotspot + wireless CarPlay with HMG-API on this car; that does not establish HMG-Seogaemo behavior or STA/AP concurrency. The one-radio exclusion remains.
+Stock `HKMC_WifiSettings` writes `tcc.wifi.display` / `tcc.wifi.display.command` and Settings static-IP keys (attribution below). The owner verified hotspot + wireless CarPlay with HMG-API on this car; that does not establish HMG-Seogaemo behavior or STA/AP concurrency. The one-radio exclusion remains.
 
 ### USB / storage
 
@@ -309,7 +309,7 @@ DiPO parser evidence: route/destination/current-road/distance/ETA/maneuver/lane 
 
 12 skipped large APKs (odex available, declarations indexed): `HKMC_Climate`, `HKMC_EngineerMode`, `HKMC_NatureSound`, `HKMC_RearCamera`, `HKMC_Sports`, `HKMC_TAppEV3`, `HKMC_VehicleSetting`, `HKMC_VoiceHandler`, `Launcher_WP3`, `RightScreenHome`, `SoundSettings`, `WelcomeGoodbye`. Missing manifests/resources block confirming exported components, permissions/shared UID, intent filters/provider authorities, layouts/menu IDs, feature overlays and localized choices; do not guess resource IDs from Java strings.
 
-Other gaps: runtime CAN/server selection, getter permissions, error/unsupported/saved states, telemetry freshness, native dynamic registration/packet units, quick-call dataflow, provider schemas/security, projection phone acceptance. Native symbols alone do not prove safe semantics. Embedded DEX is included, so the old odex-only 497-Stub count is superseded by 516; not every firmware API is claimed recovered.
+Other gaps: runtime CAN/server selection, getter permissions, error/unsupported/saved states, telemetry freshness, native dynamic registration/packet units, quick-call dataflow, provider schemas/security, projection phone acceptance. Native symbols alone do not prove safe semantics. Embedded DEX is included (516 Stubs); not every firmware API is claimed recovered.
 
 ## On-car verification to-do
 

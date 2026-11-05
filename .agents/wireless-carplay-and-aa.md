@@ -1,8 +1,8 @@
-Status: current — implemented AGPL port; physical-car boot and projection remain unverified.
+Status: current — implemented AGPL port. Wireless CarPlay with music, Siri and calls is verified working on the car (since 0.1.25, 2026-11-04). Items below that are not stated as verified (wireless Android Auto, cluster/HUD rendering, boot-guard recovery) still need on-car evidence.
 
 # Wireless CarPlay and Android Auto: NEEV.KOR.260902 port
 
-Review date: 2026-11-03. Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902`, onebin `neev_kr` (`ro.mobis.onebindir`), Android 4.4.2. Owner confirms HMG-API 1.0.0-beta.5 with its mapping and wireless mod worked on this car (hotspot and wireless CarPlay). The pre-install Car Report at `tmp/car-reports/car-report-neev-kor-260902-20261102-2115.json` has 324 mapped points, 12 by reference, one unrelated ThemeSettings point missing. Its `map.status=none` and `wifi_chip=false` are pre-install observations, not a negation of the owner's working test.
+Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902`, onebin `neev_kr` (`ro.mobis.onebindir`), Android 4.4.2. Owner confirms HMG-API 1.0.0-beta.5 with its mapping and wireless mod worked on this car (hotspot and wireless CarPlay). The pre-install Car Report at `tmp/car-reports/car-report-neev-kor-260902-20261102-2115.json` has 324 mapped points, 12 by reference, one unrelated ThemeSettings point missing. Its `map.status=none` and `wifi_chip=false` are pre-install observations, not a negation of the owner's working test.
 
 ## Dependencies and port choice
 
@@ -11,16 +11,16 @@ Review date: 2026-11-03. Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR
 | `feature_flags` generates CarPlay/AA wireless permission XMLs and comments their removal lines; `patches.json` comments the hotspot removal line. | `sg_file_put` only for absent XMLs and `sg_file_replace_line` for exact active lines. Missing removal lines are no-ops, as in the upstream engine; duplicate lines are refused. An existing XML must declare the expected feature. We also add hotspot XML if absent on this KOR build. |
 | `persist.ium.support=carplay`; bridge `persist.sys.iap2.wifi=t`, `persist.iap2.iden.wireless=t`. | Same values via `sg_prop_set`; ledger restores live values and `/data/property` existence/content. |
 | `Wireless`, `AaTurns`, `dipo/{Dipo,Bridge,CpTurns}` Java hooks DiPO, iAP2, GPM, navigation, USB startService, BtSettings. | Copied with fixed upstream default settings. Korean BtSettings menu hook is a no-op; upstream changes only US/CAN. |
-| Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | Wrapper, loader and hook JAR remain under this module; the core now selects and publishes the verified map. `sg_zygote_install` runs through the shared package API. |
+| Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | Wrapper, loader and hook JAR remain under this module; the core selects and publishes the verified map. `sg_zygote_install` runs through the shared package API. |
 | Native `MemRecipe` on `libautoreceiver_infobank.so`, `libCarPlayCore.so`, `libCarPlayAudio.so`, `libCarPlayUtils.so`. | Same 5 recipes applied **in memory** after exact byte-region verification. Stock libraries stay untouched. No `lpatch` binary or rebuilt OEM APK/odex. KOR CarPlayCore hash `ef49c09b7ab5eb72298f9973443b66b3` is listed as Wi-Fi native; Utils hash `e85385d70194efe82cc8a6d0f66f5115` as converter native. Other builds may reject recipes. |
 | `libleafiaaac.so` for AAC/Opus. | Rebuilt from upstream `leafiaaac.c` with local clang/lld and installed through the package API. No manufacturer binary is bundled. |
 | Generic settings UI, HMG-API `hmgapid`, mod engine, APK patch transaction, network keeper. | Dropped. The upstream mod declares no network rule; this car's pre-install firewall report is permissive. No Wi-Fi client property or feature is requested. |
 
-The `hmgapi.*` Java namespaces remain internally to preserve the mod's app-part class loading; they resolve only to bundled classes, never to installed HMG-API. `modules/wireless-carplay-and-aa/build/build.sh` calls the packaged `payload/build.sh`, which builds ARM objects with clang/lld and API 19 DEX with `javac`/`d8`. The NEMESIS ZIP includes the latter script and all corresponding hook source. The shared Makefile now calls it before packaging and invokes `test/run.sh` in `make test`. The NEMESIS ZIP includes the rebuilt payload bytes; the hook JAR uses a fixed ZIP timestamp so repeat builds are byte-identical. Payload Java source is stored as `.java.src` so the shared APK compile does not accidentally include vendor stubs or hook classes; the module build copies it to temporary `.java` files before compilation. `payload/build.sh`, `payload/native/build.sh`, and `payload/native/syslib-stubs.sh` are host-only build scripts; no payload shell script runs on the car. The on-car root script uses toolbox `md5` and mksh `read` for hash and process parsing.
+The `hmgapi.*` Java namespaces remain internally to preserve the mod's app-part class loading; they resolve only to bundled classes, never to installed HMG-API. `modules/wireless-carplay-and-aa/build/build.sh` calls the packaged `payload/build.sh`, which builds ARM objects with clang/lld and API 19 DEX with `javac`/`d8`. The NEMESIS ZIP includes the latter script and all corresponding hook source. The shared Makefile calls it before packaging and invokes `test/run.sh` in `make test`. The NEMESIS ZIP includes the rebuilt payload bytes; the hook JAR uses a fixed ZIP timestamp so repeat builds are byte-identical. Payload Java source is stored as `.java.src` so the shared APK compile does not accidentally include vendor stubs or hook classes; the module build copies it to temporary `.java` files before compilation. `payload/build.sh`, `payload/native/build.sh`, and `payload/native/syslib-stubs.sh` are host-only build scripts; no payload shell script runs on the car. The on-car root script uses toolbox `md5` and mksh `read` for hash and process parsing.
 
 ## Exact car map and firmware guards
 
-The map is now `maps/hyundai/ioniq5/kor/260902/{map.json,car.json}` in the core package. It contains 324 resolved point names and all 18 stock-file MD5s reported for this car. The module declares 120 point IDs, including owner classes and supporting fields, in `hookpoints.required`. Root precheck requires `map status` to report a verified core map. The zygote loader reads the package API's active pointer under `/data/nemesis/backup/hmg-seogaemo/car-maps/`, checks the exact product, onebin, Android version, boot verification seal, and all map stock MD5s, then loads the published verified entries. The private payload map and `/system` map install were removed. The report has no whole-file hash for `app_process`, `featurexml.cfg`, or native libraries. Native recipes still verify their own byte regions. HMG-API's Dalvik offsets were proven on US EV6; on-car KOR validation remains necessary.
+The map is `maps/hyundai/ioniq5/kor/260902/{map.json,car.json}` in the core package. It contains 324 resolved point names and all 18 stock-file MD5s reported for this car. The module declares 120 point IDs, including owner classes and supporting fields, in `hookpoints.required`. Root precheck requires `map status` to report a verified core map. The zygote loader reads the package API's active pointer under `/data/nemesis/backup/hmg-seogaemo/car-maps/`, checks the exact product, onebin, Android version, boot verification seal, and all map stock MD5s, then loads the published verified entries. The module has no private payload map and installs no map into `/system`. The report has no whole-file hash for `app_process`, `featurexml.cfg`, or native libraries. Native recipes still verify their own byte regions. HMG-API's Dalvik offsets were proven on US EV6; on-car KOR validation remains necessary.
 
 Declared hook points and their exact resolved members on this car:
 
@@ -129,12 +129,11 @@ Original headers remain; modified files have a `Modified by HMG-Seogaemo` marker
 
 ## On-car validation and recovery
 
-The 2026-11-04 permission repair reconciles already-applied assets before returning
-and checks world-read/search bits in status. DiPO runs as UID 1000: readable recipe
-files under a 0700 ancestor still fail registration. HMG-API
+Apply reconciles already-applied assets before returning
+and status checks world-read/search bits. DiPO runs as UID 1000: readable recipe
+files under a 0700 ancestor fail registration. HMG-API
 `core/runtime/java/hmgapi/engine/LiveState.java` publishes readable recipes and
-searchable ancestors; no additional audio properties or policy edits were found
-necessary. The upstream one-attempt NativePatch behavior remains: a failed native
+searchable ancestors; no additional audio properties or policy edits are needed. The upstream one-attempt NativePatch behavior remains: a failed native
 write may be partial, so a full head-unit restart is required after repair.
 
 After installing and applying, inspect these exact paths with `ls -ldn`:
@@ -162,7 +161,7 @@ cleanup and retain recovery material.
 4. Revert through `hmg-seogaemo-root wireless-carplay-and-aa revert`, export ledger, fully restart, compare every baseline byte/absence/property, and test stock wired projection. Uninstall NEMESIS package only after restore succeeds. Fake-root drift test must refuse before any partial restore.
 5. On boot failure, after three unsuccessful zygote starts the wrapper should stop preloading and still exec stock. ADB/NEMESIS root can call the root dispatcher to revert, inspect/export ledger, then restart. If dispatcher is unavailable, use a saved ledger and stock executable through NEMESIS full-root recovery; never restore an older firmware's `app_process` over a newer one. The runtime owner must provide and test the exact emergency recovery command before release.
 
-Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe matches, working wireless sessions, or head-unit boot recovery. The shared API and off-car gates pass; do not release before on-car validation passes.
+Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches, wireless sessions or head-unit boot recovery; the on-car checks in this section stay required for each new payload.
 
 
 ## CarPlay turn-by-turn: lane fix, fallback icons, developer toggle
@@ -184,12 +183,12 @@ Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe mat
   the last frame. tbt-lanes records contain raw numeric lane fields, description byte count,
   current index/count and all 81 frame bytes. Developer mode logs entries and index matches.
   0x5204 has no distance; route updates supply it.
-  **Keep the stock parser disabled:** redirecting 0x5204 to libiap2session's lane handler crashed
-  libIap2Acc.so in convertSubGroup on the car. The unused iap2-lane-msgid.recipe remains
+  **Keep the stock parser disabled** (redirecting 0x5204 to libiap2session's lane handler crashes
+  libIap2Acc.so in convertSubGroup). The unused iap2-lane-msgid.recipe remains
   packaged/owned for compatibility with existing baselines; Wireless.iap2 never applies it.
   No mods class implements a hook interface; the Dalvik cross-dex rule below still applies.
   Physical cluster/HUD rendering, per-app ordering and source transitions need on-car checks.
-  Stock navigation's existing NAVI_TBT hook now captures allowed 81-byte 0xF1 calls to
+  Stock navigation's existing NAVI_TBT hook captures allowed 81-byte 0xF1 calls to
   updateLaneInfo/updateTPLaneInfo without changing arguments or delivery. CarLaneCapture uses
   Observations directly in com.mnsoft.navi's own runtime directory, with bounded tbt-lanes
   records keyed source=car-nav and the full frame hex (including 0x43-0x50 bitmasks). Identical
@@ -197,7 +196,7 @@ Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe mat
   per three seconds. Suppressed calls are never captured. Compare these ground-truth records
   before changing encoding: CpTurns.laneIcon is the single angle-to-stock-arrow mapping
   function. Current HMG-API-derived arrows/statuses are not proven identical to stock bytes.
-- **No silent skips.** `CpTurns.turn()` used icon 0 to stop everything (no turn, HUD, trip). An unmapped maneuver now uses
+- **No silent skips.** An unmapped maneuver uses
   `fallbackIcon` (direction arrow, else straight) and logs `no exact icon for maneuver type ...` once per combination. A missing maneuver
   still sends HUD distance and trip, and asks the phone to resend (Stop then Start), at most once in 30 s.
 - **Developer toggle.** Verbose TBT / iAP2 logs (`TBT ...`, `bridge: iAP2 in ...`, `TBT cluster ...` traces) follow the property
@@ -208,7 +207,7 @@ Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe mat
       adb shell /data/local/tmp/nemesis-d root -c 'setprop persist.hmg_seogaemo.dev 0'   # off
       adb shell getprop persist.hmg_seogaemo.dev
       adb logcat -s HMG-Seogaemo-Wireless:*
-- `Wireless.NAVI_TBT` now also skips the car navigation's `update_lane_info` while a phone guides (its free-drive writes would overwrite our lane frames).
+- `Wireless.NAVI_TBT` also skips the car navigation's `update_lane_info` while a phone guides (its free-drive writes would overwrite our lane frames).
 - **Observation records.** `tbt-icons.*` / `tbt-lanes.*` (summary + about 10 MiB of append-only journals, with the phone's instruction texts; kept permanently so the icon table keeps improving) in DiPO's runtime directory, format and the `tbt-reset` verb in
   "Turn-by-turn observation records and `tbt-reset`" below. The module page shows `info.tbt_inexact` / `info.tbt_blank`
   and a confirmed reset. Match kinds: `exact` (table), `band` (types 1/2/47-50 by angle), `angle` (any other type by angle,
@@ -217,22 +216,19 @@ Off-car build/fake-root tests cannot prove KOR Dalvik offsets, native recipe mat
   evidence for it: the car's own navigation calls `updateTBTSubInfo` every 0.5-0.75 s, and no keep-alive or handshake call is documented
   in the API inventory (`updateAlive` exists but phone guidance deliberately never claims the cluster).
 
-- **Dalvik cross-dex rule (learned on the car, 2026-11-04).** The hook classes (`hmgapi.hook.*`) are loaded in the zygote from the
+- **Dalvik cross-dex rule.** The hook classes (`hmgapi.hook.*`) are loaded in the zygote from the
   boot-time jar, while each app's mods are loaded from its own dex copy. A mods class that *implements a new hook-package interface*
   is pre-verified against the copy in its own dex and then fails to link at runtime ("Class resolved by unexpected DEX" →
-  `NoClassDefFoundError`), which took down DiPO's whole part (`part.dipo=failed`, no wireless CarPlay). Do not add callback
+  `NoClassDefFoundError`), which takes down the whole DiPO part (`part.dipo=failed`, no wireless CarPlay; seen on the car 2026-11-04). Do not add callback
   interfaces in `hmgapi.hook` for mods to implement; use static fields/flags or existing types (`MethodHook`, `Runnable`).
   Check with `dexdump` that no new `hmgapi/mods` class has a `hmgapi/hook` superclass/interface other than `MethodHook`.
-- **HUD list resend (2026-11-05, owner report).** With route guidance started right at CarPlay connect,
-  the HUD later froze its arrow and road text while its distance kept counting down and the cluster
-  stayed correct; restarting the route fixed it. The 0xF2 HUD list was only sent on change and cached
-  as sent with no delivery signal, while the HUD distance (`update_tbt_sub_info_2c`) goes out every push.
-  `CpTurns.refresh` now resends the unchanged 0xF2 frame every 2 s (`HUD_RESEND_MS`), independent of
-  phone updates; `hudBlank` clears it. The exact trigger (missed frame vs HUD restart) is unproven.
+- **HUD list resend.** `CpTurns.refresh` resends the unchanged 0xF2 HUD list every 2 s (`HUD_RESEND_MS`),
+  independent of phone updates, because the HUD distance (`update_tbt_sub_info_2c`) goes out every push while
+  the list is sent only on change with no delivery signal; `hudBlank` clears it.
 
 ## Runtime contract details
 
-### Zygote payload upgrades (2026-11-04)
+### Zygote payload upgrades
 
 `sg_zygote_install` compares the selected wrapper, loader and JAR on every
 apply, including desired-on reconciliation after OTA and NEMESIS USB postinstall.
@@ -257,7 +253,7 @@ or cache writes. Projection reapply reasserts all three owned properties using
 
 (OTA rollback and update-health interaction: [ota-implementation.md](ota-implementation.md), "Entry dispatch and damaged-payload recovery". Uninstall always restores ORIGINAL stock, never the previous applied generation.)
 
-### Unrecorded `app_process` swap (2026-11-04)
+### Unrecorded `app_process` swap
 
 `sg_zygote_foreign` is a read-only guard for a module that owns
 `/system/bin/app_process`. The swap counts as owned when the module holds a file
@@ -297,7 +293,7 @@ the saved copy) before retrying. The wireless module declares
 (the stock build seen on the Ioniq 5 KOR car before and after HMG-API/this module).
 The apply-path orphaned-backup check remains.
 
-### Runtime results and diagnostics (2026-11-04)
+### Runtime results and diagnostics
 
 The hook publishes diagnostics independently of loader mapping. Zygote (UID 0)
 uses `/data/nemesis/backup/hmg-seogaemo/runtime/wireless-carplay-and-aa/`.
@@ -366,7 +362,7 @@ ownership; never source/eval the record as shell. These app-owned reports are
 diagnostic evidence, not a defense against a compromised OEM app. Seal validation
 still checks only `product\nhash-id\n`; additional seal lines remain compatible.
 
-#### Turn-by-turn observation records and `tbt-reset` (2026-11-04)
+#### Turn-by-turn observation records and `tbt-reset`
 
 DiPO keeps two always-on, bounded turn-by-turn records in its app-private runtime directory,
 `/data/data/com.daudio.app.dipo/app_hmg-seogaemo-wireless-runtime/`: `tbt-icons.*` (which icon

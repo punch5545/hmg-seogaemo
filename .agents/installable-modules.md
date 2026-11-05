@@ -1,4 +1,4 @@
-Status: **current**. Normative for installable module packages, API 1 (agreed 2026-11-04). Sections marked
+Status: **current**. Normative for installable module packages, API 1. Sections marked
 *Design (not implemented)* are proposal only. Reuses the package API, ledger, guarded restore and boot
 reconcile of `module-runtime-contract.md`.
 
@@ -12,8 +12,7 @@ reconcile of `module-runtime-contract.md`.
 - Built-in modules are compiled into the APK: `tools/gen-modules.sh` generates the registry from
   `modules/*/module.properties`, each module's UI is a Java class implementing `module/Module.java`, strings
   are Android resources. Adding/removing one needs an APK build, release and reinstall. Owner chose
-  runtime-installable modules (option B, 2026-11-04). The registry platform is deferred (owner, 2026-11-04);
-  modularization comes first.
+  runtime-installable modules; the registry platform is deferred and modularization comes first.
 - No JSON: the head unit has only toolbox and mksh, so every file is key=value or a script the root side reads
   directly; nothing is compiled on the host.
 
@@ -21,7 +20,7 @@ reconcile of `module-runtime-contract.md`.
 
 Implemented: root runtime (P1: `lib/hsm.sh`, `core/hsm-module.sh`, `core/module.sh`, `core/hsm/`), app data
 layer (P2, no screens), `tools/hsm` (P5), core hook host (P3, host-tested only, see Core hook host).
-Not yet: module screens and install UX (P6), conversion of built-ins (P4), `hsm test`, `hsm logs`, CarPlay
+Not implemented: module screens and install UX (P6), conversion of built-ins (P4), `hsm test`, `hsm logs`, CarPlay
 migration to the core host, the registry/store. `raw_shell` and `app_data_dir` are still refused.
 
 ## Package
@@ -76,8 +75,8 @@ Unknown keys refuse install. Ownership keys (`owns_*`, `services`, `service_call
 
 ## Restricted scripts
 
-`apply.sh`, `check.sh` and `status.sh` look like shell but are never run by a shell (owner decision
-2026-11-04). A root-side mksh interpreter reads them line by line. A line is blank, a comment (`#` first),
+`apply.sh`, `check.sh` and `status.sh` look like shell but are never run by a shell (owner decision).
+A root-side mksh interpreter reads them line by line. A line is blank, a comment (`#` first),
 `if CHECK`, `elif CHECK`, `else`, `fi`, `then` (also accepted as `; then` after a check), or one verb. A CHECK
 is one check, optionally prefixed by `not`; combine by nesting (depth 8). At most 512 lines. Tokens split on
 spaces; `"..."` quotes a token with only `\"` and `\\` escapes. No variable expansion; the whole token
@@ -148,7 +147,7 @@ present. Enable additionally refuses shared owned properties and `uses` clashes 
 refusal names the blocking module in plain language and offers to turn it off through the normal plan and
 confirm.
 
-Layers (owner decision 2026-11-04):
+Layers (owner decision):
 1. Automatic from the touched list; nothing to write.
 2. `uses=<resource>:<mode>,...`. `wireless-carplay-and-aa` declares `wifi.radio:ap`, `wifi-client` declares
    `wifi.radio:sta`, and neither names the other.
@@ -235,7 +234,7 @@ the core map; several modules can hook apps without each replacing `app_process`
 (bundled `hmgapi.hook` classes fail to link on Dalvik). Processes match the process name or package. The
 wrapper is derived from HMG-API (AGPL-3.0): keep headers and provenance in `UPSTREAM.md`.
 
-Implemented 2026-11-05 as a separate path (CarPlay unchanged and mutually exclusive); see `core/hook/`. Host
+Implemented as a separate path (CarPlay unchanged and mutually exclusive); see `core/hook/`. Host
 tests cover install, shared wrapper, release after the last module and stock restore. The CarPlay migration
 is not done.
 
@@ -259,7 +258,7 @@ where a missing ID disables that part and never crashes the app; the bounded per
 `runtime/<id>/p-<pid>-<start_ticks>.txt` (already used by `wireless-carplay-and-aa`) generalised so `status`
 reports every hooking module.
 
-What was single-module before P3 (survey 2026-11-04): `payload/native/zygote.c` (`HOOKDIR` is the CarPlay
+The CarPlay path remains single-module: `payload/native/zygote.c` (`HOOKDIR` is the CarPlay
 module state directory; boot guard files `enable`, `enabled`, `starts`, `disable` live there);
 `payload/native/loader.c` (one fixed `JAR` `/system/framework/hmg-seogaemo-wireless-hook.jar`);
 `payload/src/hmgapi/hook/HmgApi.java.src` (one `ENTRY = new Wireless()`, gate on the CarPlay `enabled` file,
@@ -349,7 +348,7 @@ tiles (`Module.homeTiles`) are dropped: no module uses them and the Home redesig
 - Update flow (design): install the new version beside the old one, revert the old one if its touched list
   changed, then switch. An unchanged touched list keeps the baseline.
 
-## Install sources and trust (owner decisions 2026-11-04)
+## Install sources and trust (owner decisions)
 
 Design, not implemented (P6). Sources: USB (`hmg-seogaemo/modules/*.hsm` on the stick root; the app lists
 them); adb (`hsm push` copies to staging and calls the fixed install verb); store (registry index fetched
@@ -374,16 +373,16 @@ on the root side.
 
 ## Developer and AI tooling
 
-Done 2026-11-04 (P5): `tools/hsm new|validate|pack|push`. `validate` installs into a throwaway copy of the
+Done (P5): `tools/hsm new|validate|pack|push`. `validate` installs into a throwaway copy of the
 real root runtime (same interpreter and HSM-E errors) against this repository's built-ins and prints the
-generated ownership; `tools/test-hsm-cli.py` covers it. Design target for the host CLI (Python, alongside
-`tools/`):
+generated ownership; `tools/test-hsm-cli.py` covers it. Host CLI design (Python, alongside
+`tools/`); `new`, `validate`, `pack` and `push` exist, the rest is design:
 - `hsm new <id>` writes a working module, an `AGENTS.md` for AI assistants, and a test; one example module
   per complexity level, so an AI assistant can write a valid module from a description.
 - `hsm validate` checks properties, verbs, product globs, shell lint, strings and touched-list collisions
   with machine-readable errors (`HSM-E012 apply.sh:4: set_prop target persist.sys.x is owned by wifi-client`).
 - `hsm pack`, `hsm push --adb <ip>`.
-- Not yet: `hsm test` (apply, status, revert and exact-restore check against fakebin and the stock file
+- Design, not implemented: `hsm test` (apply, status, revert and exact-restore check against fakebin and the stock file
   snapshot from `maps/`, once per branch setting combination; on host only safe for property-only modules
   because file verbs write absolute `/system` paths), `hsm logs <id>`.
 - In-app developer page (developer mode only), per module: raw status, last root call stdout and exit code,

@@ -2,7 +2,7 @@ Status: current — implemented off-car; physical KOR button delivery untested.
 
 # User button shortcuts
 
-Owner chose the no-hook alternative on 2026-11-04: default OFF, no hooks, no map requirements, no new root verbs. Two independent modules (no dependency or exclusion; either or both may be on) share one fixed receiver/action. Stock settings lists get no new entry. Two modules fit the fixed `<id> apply|revert|status|precheck` channel without per-button root arguments, settings persistence or runtime APIs.
+Owner-chosen no-hook design: default OFF, no hooks, no map requirements, no new root verbs. Two independent modules (no dependency or exclusion; either or both may be on) share one fixed receiver/action. Stock settings lists get no new entry. Two modules fit the fixed `<id> apply|revert|status|precheck` channel without per-button root arguments, settings persistence or runtime APIs.
 
 | Module ID | Physical button | Sole owned property | Stock baseline (KOR) |
 | --- | --- | --- | --- |
@@ -42,7 +42,7 @@ Owner saw stock reset the steering assignment after a head-unit restart and chos
 
 ## Tests
 
-Real package API with fake properties: repeat apply, read-only status, warning emission, exact live/backing restore, absent-backing restore, firmware mismatch, drift reassertion, pending read-only status, drifted revert restoring the original, orphan action, missing-baseline watch, failed write. The shared lifecycle suite runs per module and checks both can be on, disabling one preserves the other, reasserting one leaves the other. Runtime tests keep the boot ID and an always-Awake display while drifting a property, then check fixed screen_on dispatch, no matching-value writes, no dispatch when OFF/paused/no snapshot. Stock-restore tests: declared drift permits original restore and uninstall, unrelated drift still blocks global preflight. Receiver tests compile production source against stubs (null/other action rejected, fixed target/flags, launch failure, manifest action). Builds against Android 19. Passed under /bin/sh and mksh R59c plus full `make test` on 2026-11-04 (built from origin/main `eb67343`, VERSION 0.1.20); no car writes.
+Real package API with fake properties: repeat apply, read-only status, warning emission, exact live/backing restore, absent-backing restore, firmware mismatch, drift reassertion, pending read-only status, drifted revert restoring the original, orphan action, missing-baseline watch, failed write. The shared lifecycle suite runs per module and checks both can be on, disabling one preserves the other, reasserting one leaves the other. Runtime tests keep the boot ID and an always-Awake display while drifting a property, then check fixed screen_on dispatch, no matching-value writes, no dispatch when OFF/paused/no snapshot. Stock-restore tests: declared drift permits original restore and uninstall, unrelated drift still blocks global preflight. Receiver tests compile production source against stubs (null/other action rejected, fixed target/flags, launch failure, manifest action). Builds against Android 19. Runs under /bin/sh and mksh R59c; no car writes.
 
 ## On-car checks
 

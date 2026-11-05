@@ -1,20 +1,8 @@
-Status: current — normative interface between the shared module runtime, modules, the app and the updater. Sections carry the date they were agreed (2026-11-03/04).
+Status: current — normative interface between the shared module runtime, modules, the app and the updater.
 
 # Module runtime contract
 
 Topic docs hold the rest: installable modules → [installable-modules.md](installable-modules.md); boot, watch, deferred APK install, map-verification retries → [boot-lifecycle.md](boot-lifecycle.md); stock restore, uninstall, restart verb → [stock-restore.md](stock-restore.md); OTA dispatch and rollback guards → [ota-implementation.md](ota-implementation.md); projection runtime records, zygote upgrades, `app_process` guards → [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md); packaged-executable invocation → [research-nemesis-packaging.md](research-nemesis-packaging.md); shell tool profile → [android44-shell-audit.md](android44-shell-audit.md).
-
-## Ownership of work areas
-
-| Area | Owner worktree |
-|---|---|
-| `app/src/com/seogaemo/hmg/module/` (RootClient, ModuleManager, RootBackedModule), `nemesis/package/lib/common.sh`, `hmg-seogaemo-root` dependency/exclusion enforcement, payload packaging in `Makefile`, generic module rows in Settings UI | module runtime |
-| `modules/wifi-client/**` | wifi-client |
-| `modules/wireless-adb/**` | wireless-adb |
-| `modules/wireless-carplay-and-aa/**` | wireless-carplay-and-aa |
-| `app/src/com/seogaemo/hmg/core/update/**`, `nemesis/package/core/update.sh`, the `update` verb in `hmg-seogaemo-root`, `.github/workflows/release.yml` OTA parts | updater |
-
-Module worktrees touch only their own `modules/<id>/` directory (plus their own `.agents/<id>.md` notes). Anything outside needs a note in the final report instead of an edit.
 
 ## Root side: module invocation, mutation API, status
 
@@ -68,15 +56,13 @@ Never route binary files or property backing files through shell variables: copy
 Internal (not for modules): baseline capture, applied-copy marking, remount, ledger writes.
 
 `/system` returns to read-only through `sg_remount_ro`, which treats a failed `remount ro` as a warning in
-the module log, never as a failed change. On the Ioniq 5 (2026-11-04) replacing the running `app_process`
-or removing a loaded JAR leaves the old file open, so `remount ro` fails with EBUSY until the next restart.
-Failing the change there left the wrapper written but not ledgered, and the rollback failed the same way,
-which blocked `revert`, `stock restore` and the next `apply` (`orphaned app_process backup`).
+the module log, never as a failed change: replacing the running `app_process` or removing a loaded JAR leaves
+the old file open, so `remount ro` fails with EBUSY until the next restart, and failing the change would leave
+a written but unledgered file that blocks revert, stock restore and the next apply.
 
-Directories created under `/system` for a payload file (`sg_mkdir_target`) are mode 0755. The module scripts run
-with umask 077, which left `/system/etc/hmg-seogaemo/<module>/recipes` at 0700 on the Ioniq 5 (2026-11-04): the hook
-runs as the system user inside DiPO, got EACCES on every recipe, and the native audio patch (AAC/Opus over Wi-Fi) was
-never applied, so the phone did not offer CarPlay as an audio output. State directories keep the private mode.
+Directories created under `/system` for a payload file (`sg_mkdir_target`) are mode 0755 even though module
+scripts run with umask 077: hooks run as the system user inside DiPO and need to read and traverse them.
+State directories keep the private mode.
 
 `watch=boot,screen_on` may declare only these fixed events. The package's single `watcher` service (never apply/revert) invokes `root/<id>.sh watch <event>` only while the module's desired state is on, under the root operation lock, and never passes arbitrary event names or arguments. Details and retry budgets: [boot-lifecycle.md](boot-lifecycle.md).
 
@@ -137,15 +123,13 @@ Exit codes: `0` ok, `1` failed, `3` conflict, `4` incompatible, `2` usage.
 Module tests (`modules/<id>/test/*.sh`, run by `make test`) use a fake `common.sh` and fake
 `getprop`/`setprop`/file roots under a temp dir; they never touch the host system.
 
-Status strings are ASCII; `sg_clean` preserves ASCII semicolons in detail text (it once dropped them; all module root text was audited as ASCII).
+Status strings are ASCII; `sg_clean` preserves ASCII semicolons in detail text.
 
-## Module shells keep globbing on (2026-11-04)
+## Module shells keep globbing on
 
 A module script must not run with noglob (`set -f`, `set -o noglob`, or `f` in a
-`set -efu` flag cluster). On v0.1.25 `wireless-adb.sh` used `set -efu`, so
-`sg_baseline_clear` (`rm -rf "$STATE"/prop.* ...`) matched nothing: the module
-reported `state=off` but its restore material stayed, the restore failed in the
-fresh-shell re-check, and dispatch stayed paused. Rules:
+`set -efu` flag cluster): library cleanups such as `sg_baseline_clear` rely on globs,
+and noglob makes them silently match nothing. Rules:
 
 - `tools/lint-module-root.py` rejects any `set -f`, `-f` in a `set` flag cluster and
   `noglob` in `modules/*/root/*.sh`. The only accepted form is a one-statement word
@@ -158,7 +142,7 @@ fresh-shell re-check, and dispatch stayed paused. Rules:
 - `sg_changed` appends a `kind<TAB>target` line to `changes` only when the exact
   line is not already there, so repeated applies do not grow the file.
 
-## Shared text-file line ownership (2026-11-03)
+## Shared text-file line ownership
 
 `owns_files=` grants exclusive whole-file ownership. No other module may claim
 that path through either `owns_files` or `owns_lines`, even with exclusions.
@@ -220,7 +204,7 @@ Wi-Fi client and wireless projection claim different `featurexml.cfg` lines. The
 mutual exclusion remains because STA and AP share a radio; file safety is
 independent of that exclusion.
 
-Ownership:
+## Ownership of work areas
 
 | Area | Owner worktree |
 |---|---|
@@ -233,7 +217,7 @@ Ownership:
 Module worktrees touch only their own `modules/<id>/` directory (plus their own `.agents/<id>.md`
 notes). Anything outside needs a note in the final report instead of an edit.
 
-## Reasserted user-button properties (2026-11-04)
+## Reasserted user-button properties
 
 Owner-approved `reassert_props=<csv>` explicitly permits reasserting and restoring
 listed properties despite external value drift. Each entry must be a valid,
@@ -269,7 +253,7 @@ owned reassert_props. They still fail on product mismatch and retain backups on
 failure. Restore ledger before bytes for these properties describe the observed
 live drifted value, while the immutable baseline remains the first-apply value.
 
-## Empty restore and diagnostics (2026-11-04)
+## Empty restore and diagnostics
 
 A module with no restore material is already stock: sg_revert_all succeeds without
 requiring a build marker. Restore material includes property/file/line ready
@@ -284,16 +268,16 @@ Direct restore and apply/delete guards identify their own stage in the same
 field. These diagnostics keep the conflict return code (3) and retain all
 baselines; they never authorize a mutation or weaken an existing guard.
 
-## Payload metadata and directory transactions (2026-11-04)
+## Payload metadata and directory transactions
 
 Whole-file applied markers include `applied-meta` (four octal mode digits,
 numeric UID and GID). Guards compare bytes and metadata and reject symlinks
-at the target or any ancestor. Legacy markers without metadata are backfilled
-only after their bytes verify; unknown historical metadata cannot be recovered.
+at the target or any ancestor. A marker without metadata is backfilled
+only after its bytes verify.
 `sg_commit_file` accepts numeric owners (and normalizes `root:root` to `0:0`)
 and verifies mode/UID/GID before rename.
 Same-byte external chmod/chown is a restore conflict. Property backing baselines
-also retain metadata; legacy backing baselines retain their existing behavior.
+also retain metadata.
 Bind sources must be regular, non-symlink, public 0644 root-owned files; the
 runtime refuses unsuitable sources rather than changing packaged inodes.
 
@@ -322,10 +306,11 @@ the runtime durably publishes `restore-pending` (original metadata) and
 `restore-intermediate` (current mode with original UID/GID). Guards accept those
 known states after interruption; unknown metadata still conflicts. Reapply clears
 restore intent only after its applied metadata is verified.
-Legacy existing dirs (including 0700
+Existing dirs without a directory journal (including 0700
 ancestors) are conservatively pre-existing with current metadata as baseline;
-file-put provenance does not prove directory absence. Uninstall restores that
-metadata and never deletes these legacy directories. No guessed absent baseline.
+file-put provenance does not prove directory absence. Restore returns that
+metadata and does not delete them, except the empty project-namespace directories removed by
+`sg_legacy_dirs_cleanup` (Uninstall residue). No guessed absent baseline.
 
 CarPlay apply reconciles recipes and ancestors before its already-applied return.
 When assets are initially unreadable, repairs record the current boot before
@@ -338,18 +323,18 @@ digits directly (leading-zero arithmetic differs between POSIX shells and
 Android mksh). It reports failed with an assets-unreadable detail and does not
 claim native patch success merely from
 zygote loader presence. Boot reconcile already invokes desired apply, so it also
-migrates legacy ancestors after OTA. NativePatch keeps one attempt per process:
+repairs ancestors after OTA. NativePatch keeps one attempt per process:
 a failed native write may be partial, so retrying it is unsafe; restart is required.
 
 Export publication makes only its dedicated container and descendants public:
 0755 directories and 0644 regular files. Symlinks are refused; USB mount roots and
 private runtime state are never chmod targets.
 
-## Interrupted-write leftovers (2026-11-04)
+## Interrupted-write leftovers
 
 Power loss during an atomic write leaves `<name>.hmg-seogaemo.<digits>` next to
-the target (`sg_commit_file`), which used to keep a created directory non-empty
-and fail its `rmdir` (rc 3) forever. Restore now removes, with a ledger row
+the target (`sg_commit_file`), which would keep a created directory non-empty
+and fail its `rmdir` (rc 3). Restore removes, with a ledger row
 (`temp_sweep`): (1) in a directory the journal created (absence baseline) before its
 `rmdir`, every regular, non-symlink entry whose name is exactly `<name>.hmg-seogaemo.`
 plus digits; (2) after an owned file is restored, the same temporaries of that exact
@@ -359,7 +344,7 @@ directly inside the module state directory are removed by `sg_zygote_sweep` (at 
 of a payload upgrade, at the end of baseline clearing, and by `sg_revert_all` when there
 is nothing to restore).
 
-## Uninstall residue (2026-11-04)
+## Uninstall residue
 
 Three kinds of generated or legacy leftovers are removed through the package API,
 never by a module directly and never with a caller-supplied path:
@@ -391,15 +376,14 @@ never by a module directly and never with a caller-supplied path:
   effort, ledger row `stock_residue` ok/partial, never a conflict): `sg_legacy_dirs_cleanup`
   (`rmdir` only, in passes, of the directories between each owned path under
   `/system/etc/hmg-seogaemo` and the namespace, skipping any directory with a directory
-  journal; builds before 0.1.23 created them unjournaled, and this supersedes "never deletes
-  legacy directories" for empty project-namespace directories at whole-package restore),
+  journal; this removes empty project-namespace directories at whole-package restore),
   `sg_legacy_dex_cleanup` (regular files in `/data/dalvik-cache` named
   `data@nemesis@apps@hmg-seogaemo` or `data@nemesis@backup@hmg-seogaemo@update` plus an
   optional `@...` middle plus `@core@map@hmg-seogaemo-mapper.jar`,
   `@app@hmg-seogaemo.apk` or the projection reader jar path, ending `@classes.dex`) and
   `sg_vm_cleanup` (the private `core/vm` cache and `core/vm.status.<digits>` scratch caches). Each removal is a ledger row.
 
-## Dalvik cache of removed update versions (2026-11-04)
+## Dalvik cache of removed update versions
 
 `sg_legacy_dex_cleanup` (stock restore and uninstall) already removes
 `data@nemesis@backup@hmg-seogaemo@update@<anything>@<our jar suffix>@classes.dex`,
@@ -408,10 +392,10 @@ successful OTA (`phase=healthy`) and after a failed stage removed its directory:
 removes exactly `update@versions@<digits.dots>@<our jar suffix>@classes.dex` whose
 `versions/<v>` directory no longer exists. No ledger entry; failures never fail an update.
 
-## Export flush and verification (2026-11-04)
+## Export flush and verification
 
-The head unit mounts USB sticks write-back. A directory entry can reach the stick
-while its data has not, so a stick pulled right after "success" held 0-byte files.
+The head unit mounts USB sticks write-back: a directory entry can reach the stick
+before its data does.
 `hmg-seogaemo-root export usb|adb` and `map export` therefore finish with
 `sg_export_seal <dest> <usb|adb> [key...]` after the last write and the public chmod:
 
@@ -428,7 +412,7 @@ The app shows "it is safe to remove the USB" (`export_usb_done`, KO "USB를 빼�
 only for `info.export_safe=usb`. The check compares sizes the kernel reports; it cannot
 prove the medium, so the instruction to the owner is still to wait for the dialog.
 
-## Diagnostic export (2026-11-04)
+## Diagnostic export
 
 Ordinary USB/adb exports add diagnostics through lib/diagnostics.sh. Collection
 is read-only except for writing its dedicated export destination. Each artifact
@@ -442,7 +426,7 @@ use the fixed HMG_SEOGAEMO_DIAGNOSTIC_RUNTIME_DIRS list relative to SG_DATA_ROOT
 (initially runtime); only .log, .txt, result and module-output files qualify.
 Export publication retains 0755 directories and 0644 files.
 
-## Core car mapping (2026-11-03)
+## Core car mapping
 
 `hmg-seogaemo-root map status|run|verify|export` accepts exactly these fixed verbs.
 `status` hashes the catalogue's stock files and compares product, onebin, Android version,
@@ -465,15 +449,14 @@ The boot ID is included in the map ID and verification seal, so a new boot needs
 reflection verification again.
 The zygote hook gate (`HmgApi.zygoteInit`) checks only the first two lines of the `verified` seal
 (product, stock hash ID), not the boot ID: the zygote starts about two seconds after boot while this
-boot's verification finishes one to three minutes later, so a boot-bound gate left the Java hooks off on
-every cold boot (the native library still loaded, so `status` read "hooks loaded"). Every stock file is
+boot's verification finishes one to three minutes later. Every stock file is
 still compared with the MD5s in `car.json` before the map is used. Module `hookpoints.required` IDs must all survive
 resolution and reflection before publish. `map.json` exposes only verified points.
 Generated maps and the ledger are package-local state retained for export until
 package removal; module revert never removes them. The app invokes map commands
 through `RootClient.map` on a worker thread, with fixed arguments and bounded output.
 
-### Verification seal identity (2026-11-04)
+### Verification seal identity
 
 The verified seal retains its product, stock-file hash ID and boot ID as the
 first three lines, then appends an MD5 identity of the selected map/car bytes and export layout,
@@ -487,7 +470,7 @@ The stock hash ID is unchanged. Zygote still accepts the first two seal lines
 and checks exact identity and stock MD5s independently, allowing a previously
 verified projection map to load before boot reconciliation completes. Optional
 new points do not expand any module's required set.
-Map IDs include the complete published car metadata and layout; optional reflection failures prune `by_reference` too; generated verification preserves export layout, binds the filtered published result and selects the active generated map before historical directories. Real-JVM fixtures cover these paths, static/reference signatures, required failure, stock mismatch and boot changes. Upstream-mapping research and the 18 v1.0.1 additions: [car-mapping.md](car-mapping.md).
+Map IDs include the complete published car metadata and layout; optional reflection failures prune `by_reference` too; generated verification preserves export layout, binds the filtered published result and selects the active generated map before historical directories. Real-JVM fixtures cover these paths, static/reference signatures, required failure, stock mismatch and boot changes. The 18 v1.0.1 additions: [car-mapping.md](car-mapping.md).
 
 ## Java side
 - `RootClient.run(String moduleId, String verb)` → `RootResult` (state, restart, detail, exit code).
@@ -556,9 +539,9 @@ Pane/precheck decisions per module live in [wifi-client.md](wifi-client.md) and 
 - Baselines are bound to `ro.build.product`; a different firmware build invalidates them (conflict).
 - Uninstall aborts (non-zero preuninstall) rather than leaving a half-restored system.
 
-## Names and paths (2026-11-03)
+## Names and paths
 
-Application ID and Java base package `com.seogaemo.hmg`; built-in modules `com.seogaemo.hmg.modules.*`; NEMESIS package ID `hmg-seogaemo`; root dispatcher `hmg-seogaemo-root`; installed under `/data/nemesis/apps/hmg-seogaemo`, state under `/data/nemesis/backup/hmg-seogaemo`; USB wrapper contains `packages/hmg-seogaemo.zip`. Root environment: `HMG_SEOGAEMO_BASE`, `HMG_SEOGAEMO_STATE`, `HMG_SEOGAEMO_MODULE_DIR`; the `sg_*` prefix is the stable runtime API. Package and OTA APK entry `app/hmg-seogaemo.apk`; wireless assets `/system/etc/hmg-seogaemo/`, `/system/bin/app_process.hmg-seogaemo-stock`, `/system/lib/libhmg_seogaemo_wireless_hook.so`, `/system/framework/hmg-seogaemo-wireless-hook.jar`; derived Dalvik cache names follow the JAR and the `app_hmg-seogaemo-wireless-dex` directory. These were changes to planned initial paths; no build had been deployed, so there is no migration from earlier names.
+Application ID and Java base package `com.seogaemo.hmg`; built-in modules `com.seogaemo.hmg.modules.*`; NEMESIS package ID `hmg-seogaemo`; root dispatcher `hmg-seogaemo-root`; installed under `/data/nemesis/apps/hmg-seogaemo`, state under `/data/nemesis/backup/hmg-seogaemo`; USB wrapper contains `packages/hmg-seogaemo.zip`. Root environment: `HMG_SEOGAEMO_BASE`, `HMG_SEOGAEMO_STATE`, `HMG_SEOGAEMO_MODULE_DIR`; the `sg_*` prefix is the stable runtime API. Package and OTA APK entry `app/hmg-seogaemo.apk`; wireless assets `/system/etc/hmg-seogaemo/`, `/system/bin/app_process.hmg-seogaemo-stock`, `/system/lib/libhmg_seogaemo_wireless_hook.so`, `/system/framework/hmg-seogaemo-wireless-hook.jar`; derived Dalvik cache names follow the JAR and the `app_hmg-seogaemo-wireless-dex` directory.
 
 Example export: `adb shell /data/local/tmp/nemesis-d root -c '/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.
 

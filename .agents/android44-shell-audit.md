@@ -1,4 +1,4 @@
-Status: current — source audit of local main on 2026-11-03.
+Status: current — source audit against AOSP `android-4.4.2_r1`.
 
 # Android 4.4.2 shell compatibility audit
 
@@ -37,16 +37,16 @@ builtins and features is `mksh/Android.mk`, `src/funcs.c`, `src/main.c`,
 
 | Command or feature | Source result | Fix or retained use |
 | --- | --- | --- |
-| `mv -f` | Unsupported; `mv.c` treats `-f` as a filename | Removed every production `-f`; plain `mv` uses replacing rename |
+| `mv -f` | Unsupported; `mv.c` treats `-f` as a filename | No production `-f`; plain `mv` uses replacing rename |
 | `md5` without a filename | Unsupported; no implicit stdin | Hash path bytes with `md5 /proc/self/fd/0`; validate successful 32-character lowercase digest and propagate failures before constructing backup paths |
-| `md5 <file>` output | `<hex>  <path>` | Preserve filename-based checks; corrected fake command to match missing-argument failure |
+| `md5 <file>` output | `<hex>  <path>` | Keep filename-based checks; the fake command matches the missing-argument failure |
 | `cp`, `cp -Rf` | BSD cp exists, parser `HLNPRfailprv` | Retained; no BusyBox dependency |
 | `grep -E/-F/-q/-x/-c/-e`, `-Fxq` | BSD grep supports these and combined short flags | Retained |
 | `grep -P`, `-J`, decompression long options | `-P` falls through to usage; Android compiles out compressed reads | Excluded despite spellings appearing in the parser |
 | `ls -ln`, `ls -ldn` | Supported; toolbox long output omits host link count | Existing metadata/size parsers already handle toolbox and host layouts |
 | `cmp -s` | Unsupported; parser `bln:` | Production already uses plain `cmp` with output redirected; lint rejects `-s` |
 | `date +%s`, `+%Y%m%d-%H%M%S` | Toolbox accepts format strings; bionic strftime implements `%s` | Retained reviewed formats |
-| `readlink -f` | Supported; parser `nfqs`, canonicalization uses realpath | Corrected old contract prohibition; no production use |
+| `readlink -f` | Supported; parser `nfqs`, canonicalization uses realpath | Allowed by the contract; no production use |
 | `timeout`, `which`, `seq`, `xargs`, `basename`, `dirname` | Absent from toolbox and shell builtins | Rejected; none needed by production |
 | `printf`, text utilities and archive tools prohibited by contract | Absent from baseline command set | Rejected; host-only helpers excluded from on-car inventory |
 | `cat`, `sleep` | mksh builtins shadow toolbox; `HAVE_SELECT=1` enables sleep | Builtin cat only `-u`; project limits sleep to integer seconds. Absolute binaries have separate option specs |
@@ -55,14 +55,14 @@ builtins and features is `mksh/Android.mk`, `src/funcs.c`, `src/main.c`,
 | `echo` under invocation as sh | Initial `-n` recognized; otherwise literal POSIX behavior | Exact-byte runtime output uses `print -r --` / `print -rn --` |
 | `set -o pipefail` | Absent from R43 flags despite availability in newer local mksh | Reject named options, including combined/attached and `+o` forms |
 | Bash process substitution, regex `=~`, case conversion, associative arrays, `&>` | Not supported by R43 | Reject known unsupported forms; no production dependency |
-| Binder timeout | Existing `sleep` + `kill -0` polling needs no external timeout | Added KILL before wait so a TERM-ignoring process cannot hang the deadline |
-| Payload host build scripts | Previously shipped with on-car payload despite using host tools | Exclude three exact build helper paths from package and OTA; preserve payload source/license files |
+| Binder timeout | Existing `sleep` + `kill -0` polling needs no external timeout | KILL is sent before wait so a TERM-ignoring process cannot hang the deadline |
+| Payload host build scripts | Use host tools, so they must not ship on-car | Exclude three exact build helper paths from package and OTA; preserve payload source/license files |
 
 ## Enforcement and boundaries
 
 `make test` runs lint regression cases (`tools/lint-android44-shell.py`), then the profile lint, then the separate module mutation lint. The profile lint checks all 14 source scripts (four module roots, dispatcher, install/open, mapping, update, library, install/uninstall hooks, two services; includes export/recovery logic) plus shell members of the built package and OTA ZIPs (generated hooks, accidentally shipped host scripts). Scripts are recognized by `.sh` suffix or shell shebang, including extensionless entry points. The USB wrapper embeds the inspected package.
 
-The JSON `host_only_scripts` entries exclude host generator/upstream tools and three payload build helpers (previously shipped on-car despite needing host tools; excluded from package and OTA, payload source/license files kept). Build/test dirs outside payload are host-only; payload subdirectories are still inspected. Package tests assert helpers are absent and all other payload bytes retained.
+The JSON `host_only_scripts` entries exclude host generator/upstream tools and three payload build helpers (need host tools; excluded from package and OTA, payload source/license files kept). Build/test dirs outside payload are host-only; payload subdirectories are still inspected. Package tests assert helpers are absent and all other payload bytes retained.
 
 The lexer checks command positions, absolute binary paths, combined short flags, flag arity, reviewed subcommands, `dd` operand names, date formats and selected unsupported shell features. It recurses into command substitutions (including defaults), literal `sh -c` / `sh -ec` and trap strings. Quoted here-documents are data; expansions in unquoted bodies are checked. Unknown or dynamic executable positions fail closed; `eval` and opaque backticks fail.
 
@@ -81,6 +81,6 @@ Only these four production lines carry `# android44-shell: allow -- <specific re
 
 ## Validation and remaining device checks
 
-Regression tests cover unsupported commands/options, combined flags, nested substitutions, shell features, waivers, source inventory, MD5 error/malformed/empty output, exact-byte restore and a Binder child that ignores TERM. Runtime runs under `/bin/sh` and local mksh R59c (supplemental only; production is R43). Passed 2026-11-03: `make clean`, `make test`, `make package` with `tmp/mksh-test-bin` on PATH (mapping, package, runtime and all four module suites under both shells); `make verify-dist`; lint (14 source scripts, 26 package/OTA members, exactly four source waivers repeated in archives); `git diff --check`. The APK used the throwaway debug key (v1 JAR at API 19); no release keys, so no signed OTA manifest, and `verify-dist` reports that debug-build condition.
+Regression tests cover unsupported commands/options, combined flags, nested substitutions, shell features, waivers, source inventory, MD5 error/malformed/empty output, exact-byte restore and a Binder child that ignores TERM. Runtime runs under `/bin/sh` and local mksh R59c (supplemental only; production is R43). The APK from local builds uses the throwaway debug key (v1 JAR at API 19), so `verify-dist` reports the debug-build condition without a signed OTA manifest.
 
 Still requires on-car confirmation: vendor binary presence/version and PATH, `/proc/self/fd/0` readability in the root shell pipeline, service/dumpsys/netcfg/ifconfig/wpa_cli output formats and service names, mount/remount and ownership behavior, and a physical install/apply/revert with byte-exact original restore. Static AOSP evidence and host fakes do not establish these.

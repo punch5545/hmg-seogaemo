@@ -1,4 +1,4 @@
-Status: current — NEEV KOR lane transport audit (2026-11-05) plus firmware-confirmed `stTPLaneInfo` layout (2026-11-05). Physical rendering is still unverified.
+Status: current — NEEV KOR lane transport and firmware-confirmed `stTPLaneInfo` layout. Physical rendering is still unverified.
 
 # Cluster lane frame (81-byte `stTPLaneInfo`)
 
@@ -24,7 +24,7 @@ JSON keys read (exact strings): `lane`, `info`, `totalLaneNumber`, `condition`, 
 | `0x4d` | 2 | **hipassLaneNumber** (하이패스 차선번호) | `strh [r4,#0x4d]`, key `hipassLaneNumber` H |
 | `0x4f` | 2 | **nonHipass** (하이패스 아님/일반 톨) | `strh [r4,#0x4f]`, key `nonHipass` H |
 
-- **This refutes the third-party `nav_mapping.py` trailer order** (0x47=hipass, 0x49=busPriority, 0x4b=nonHipass, 0x4d=individualDirection, 0x4f=possibility). There is no `possibility` u16; `individualDirection` is a JSON key but not one of the seven trailer words (applied elsewhere). The earlier "claimed" 7-pair trailer (overpass, underpass, hipass, busPriority, nonHipass, individualDirection, possibility at 0x43..0x50) is superseded.
+- The third-party `nav_mapping.py` trailer order does not apply to this firmware. There is no `possibility` u16; `individualDirection` is a JSON key but not one of the seven trailer words (applied elsewhere).
 - Per-lane status byte semantics (2 bits per arrow, internal 0/1/3/2 -> wire 0/1/2/3) and arrow image IDs: [cluster-lane-arrows.md](cluster-lane-arrows.md).
 - Owner observation (2026-11-05, stock navigation, no phone projection): cluster and HUD showed bus-only lanes, hi-pass (ETC) lanes, non-hi-pass toll lanes and recommended-lane highlighting. The 81-byte frame is the only lane payload to the cluster, so the trailer bitmasks and per-arrow recommendation are in use.
 - Still to confirm: exact status/arrow code values against captured stock `source=car-nav` 81-byte frames (recorded by the lane-decoder work), matched to real on-road lanes and to the engine `[Lane]` logs (section 6).
@@ -83,18 +83,16 @@ Service-side `NaviCluster.updateLaneInfo(null)` calls `sendClearTP()` and clears
 - Old service serializer makes **24 bytes**: `17 F1 (count<<4) (left<<4|right) <8 direction> <8 recommended> <possible> <overpass> <underpass> <bus>` (CS:16389). `NaviCluster.updateTPLaneInfo(byte[])` copies it to the quick field for `mTPLaneInfoData` and schedules message `0x0F` (NV:20096), **but `sendTPLaneInfo()` immediately returns** (NV:10878): no active sender on this firmware. H copy/message/no-op, M quick field.
 - The log banner `0x4F(0xF1)` is shared by both paths (MSG:13059) and is not evidence that old byte positions describe the new array; old `recommendedDirectionInfo` does not prove the new status scheme.
 
-## 5. Our arrow codes and hypotheses (superseded where firmware is known)
+## 5. Our arrow codes and open question
 No named new-frame lane arrow enum or status unpacker exists in the inspected `com.hkmc.cluster` classes. Our `CpTurns.laneIcon()`: 0 none/unused, 1 straight, 2 slight right, 3 right, 4 sharp right, 5 U-turn either side, 6 sharp left, 7 left, 8 slight left (H our code; stock value space for simple lanes is 1..8, see [cluster-lane-arrows.md](cluster-lane-arrows.md)).
-- Hypothesis (third-party claim; consistent with the 2-bit-per-arrow packing in cluster-lane-arrows.md): three occupied arrow slots need separate two-bit statuses. If groups are least-significant-slot first, three normal arrows would be `0x15` and three recommended `0x2A`; current `1`/`2` populates only slot 0. Group order, slot association, `0`/`3` meaning and the fourth group are unknown. U.
+- Open (third-party claim; consistent with the 2-bit-per-arrow packing in cluster-lane-arrows.md): three occupied arrow slots need separate two-bit statuses. If groups are least-significant-slot first, three normal arrows would be `0x15` and three recommended `0x2A`; current `1`/`2` populates only slot 0. Group order, slot association, `0`/`3` meaning and the fourth group are unknown. U.
 
-## 6. Stock engine lane log (owner drive 2026-11-04, input side only)
-From `tmp/car-sessions/2026-11-04-tbt/live/logcat-mac.log`: stock engine (`com.mnsoft.navi`, `Navi: [NEngRG][P][Lane]`) logs each lane set before it becomes the frame. No 81-byte output in this log (`updateLaneInfo` logged only `[B@...`), and no parallel CarPlay 0x5204 (dev mode off on the first drive; the lane recipe crashed iap2server on the second): producer **input**, not a verified byte mapping. Format: `[Lane] rd:<m> [lane:<t> level:<l> vari:<v> over:<o> skip:<s> (dir:<d> idx:<i> valid:<vv>)...]... RHD:<r>`.
-Observed hypotheses (M, position/context only):
-- `rd` = distance to lane point in metres (counts down); `RHD` = right-hand-drive flag (0 here).
-- Per lane, repeated `dir`/`idx`/`valid` triples = arrows drawn in that lane; `over` tracks the group (1 = one arrow, 2/3 = multi-arrow). `(dir,idx)` pairs seen: (0,1) dominant in through lanes = straight; (1,2), (3,3), (6,5), (6,10), (9,7), (9,14), (11,8), (0,16)+(3,18). `idx` (1..18) looks like an arrow-sprite index incl. combinations; `dir` a direction class. Mapping to `laneIcon` 0..8 unproven. `dir:9` must not be treated as arrow code 9.
-- `vari:1` marks the lane leading along the route (highlighted/recommended); on the turn lane in these samples.
-- A 12-lane toll-plaza set (`rd:294`) shows `lane:2 valid:2` lanes interleaved with `skip:1`: **`lane:<type>` is the lane category** (0 normal, 2 special/ETC/hi-pass/bus, coloured on cluster+HUD) and **`skip:1` = closed/unusable**. Engine-side origin of the trailer bitmasks; confirms hi-pass/bus/toll/closed state (offsets now known from section 1). Capture stock `source=car-nav` frames at the same plaza to pin bit order.
-- Supplied native log `rd:216 [lane:0 level:0 vari:1 over:1 skip:0 dir:9 idx:7 valid:1]` has no matching field-to-byte construction in the smali. Native lane model flags, ordering and filtering remain U.
+## 6. Stock engine lane log (input side only)
+The stock engine (`com.mnsoft.navi`, `Navi: [NEngRG][P][Lane]`) logs each lane set before it becomes the frame. The log shows producer **input**, not the 81-byte output (`updateLaneInfo` logs only `[B@...`). Format: `[Lane] rd:<m> [lane:<t> level:<l> vari:<v> over:<o> skip:<s> (dir:<d> idx:<i> valid:<vv>)...]... RHD:<r>`.
+- `rd` = distance to lane point in metres (counts down); `RHD` = right-hand-drive flag. Per lane, repeated `dir`/`idx`/`valid` triples are the arrows drawn in that lane; `over` tracks the group (1 = one arrow, 2/3 = multi-arrow). `idx` (1..18) looks like an arrow-sprite index incl. combinations; `dir` a direction class. Mapping to `laneIcon` 0..8 unproven; `dir:9` must not be treated as arrow code 9. M.
+- `vari:1` marks the lane leading along the route (highlighted/recommended). M.
+- `lane:<type>` is the lane category (0 normal, 2 special/ETC/hi-pass/bus, coloured on cluster+HUD) and `skip:1` = closed/unusable: the engine-side origin of the trailer bitmasks (offsets in section 1). Capture stock `source=car-nav` frames at a toll plaza to pin bit order. M.
+- Native lane model flags, ordering and filtering remain U.
 
 ## 7. CpTurns comparison and recommended changes
 Reference: `modules/wireless-carplay-and-aa/payload/src/hmgapi/mods/wireless/dipo/CpTurns.java.src` (`lanes`:268; frame:294; `laneOne`:351; `laneIcon`:384; blank frame:827).

@@ -1,4 +1,4 @@
-Status: current — implemented off-car, 2026-11-04; on-car checks at the end.
+Status: current — implemented off-car; on-car checks at the end.
 
 # Boot lifecycle
 

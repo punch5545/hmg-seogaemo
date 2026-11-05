@@ -6,7 +6,7 @@ Target: NEMESIS 1.16.4+ and HMG-Seogaemo on Android 4.4.2; HMG-API absent. Citat
 `tmp/hmg_nemesis/...` unless noted. "Direct OTA" still uses the NEMESIS root command channel for privilege; it bypasses
 only the NEMESIS package installer.
 
-## Owner decisions (2026-11-03)
+## Owner decisions
 
 - Telematics modem must **not** be used for updates: only `wifi-client` (or USB stick fallback).
 - CarPlay interruption and extra reboots during an update are accepted.
@@ -108,7 +108,7 @@ Observations, not pins. `app/res/raw/update_roots.pem` (also in the signed OTA Z
 | OU=GlobalSign Root CA - R6, O=GlobalSign, CN=GlobalSign | Dec 10 00:00:00 2034 GMT | `2C:AB:EA:FE:37:D0:6C:A2:2A:BA:73:91:C0:03:3D:25:98:29:52:C4:53:64:73:49:76:3A:3A:B5:AD:6C:CF:69` |
 | OU=GlobalSign Root CA - R3, O=GlobalSign, CN=GlobalSign | Mar 18 10:00:00 2029 GMT | `CB:B5:22:D7:B7:F1:27:AD:6A:01:13:86:5B:DF:1C:D4:10:2E:7D:07:59:AF:63:5A:7C:F4:72:0D:C9:63:C5:3B` |
 
-## Entry dispatch and damaged-payload recovery (2026-11-04)
+## Entry dispatch and damaged-payload recovery
 
 - The installed dispatcher validates exact argument counts, fixed core verb pairs, module ID syntax and watch events before
   selecting an OTA payload. If `current` is a symlink to a readable dispatcher it execs that dispatcher with the same argv;

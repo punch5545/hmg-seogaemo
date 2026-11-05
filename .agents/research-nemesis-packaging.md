@@ -1,8 +1,8 @@
-Status: current — NEMESIS packaging research, implemented package layout, USB/update behavior, extraction-mode audit.
+Status: current — NEMESIS packaging facts, implemented package layout, USB/update behavior, extraction-mode audit.
 
 # NEMESIS packaging for HMG-Seogaemo
 
-Paths and line references below are relative to `tmp/`. Describes NEMESIS 1.16.4 source/docs; the implemented package is untested on a head unit.
+Paths and line references below are relative to `tmp/`. Describes NEMESIS 1.16.4 source/docs.
 
 ## Verified facts
 
@@ -38,17 +38,17 @@ USB: unzip a delivery archive to the stick root as `NEMESIS.data` (`[nemesis] ve
 
 Store: submit the **package zip** through xwtk.Portal with an HTTPS repository URL; account approval reserves its id, and updates use the same id with a higher dotted `package-version`. Manager checks HTTPS and SHA-256 for downloads; `nemesis_roots.pem` holds HTTPS trust roots, **not** a package-signing key. The zip's own descriptor controls actual install. No separate cryptographic zip signature is described in the local package/Store flow. `hmg_nemesis/07-Submit-a-Package.md:11-56`; `hmg_nemesis/06-Cloud-Store-API.md:11-31,138-146`; `hmg_nemesis/04-Packages.md:9-11`.
 
-HMG-API's `tools/mkinstallers.sh` builds `hmgapi-<v>-nemesis-package.zip` directly from descriptor/scripts/bin/payload, then `hmgapi-<v>-nemesis.zip` as a USB wrapper containing root descriptor and `packages/hmgapi.zip`; it also makes separate adb/combined USB distributions. Its old `preuninstall` detects a staged update and skips removing the live HMG-API installation, while real uninstall restores it. NEMESIS updates stop services, run old uninstall hooks/APK removal, remove old tree, then install the new tree; a failed removal keeps the old package unless forced. `HMG-API/tools/mkinstallers.sh:1-13,42-66,68-90`; `HMG-API/install/nemesis/scripts/preuninstall.sh:1-22`; `hmg_nemesis/Sources/native/pkg.c:851-890`.
+HMG-API's `tools/mkinstallers.sh` builds `hmgapi-<v>-nemesis-package.zip` directly from descriptor/scripts/bin/payload, then `hmgapi-<v>-nemesis.zip` as a USB wrapper containing root descriptor and `packages/hmgapi.zip`; it also makes separate adb/combined USB distributions. Its `preuninstall` detects a staged update and skips removing the live HMG-API installation, while real uninstall restores it. NEMESIS updates stop services, run old uninstall hooks/APK removal, remove old tree, then install the new tree; a failed removal keeps the old package unless forced. `HMG-API/tools/mkinstallers.sh:1-13,42-66,68-90`; `HMG-API/install/nemesis/scripts/preuninstall.sh:1-22`; `hmg_nemesis/Sources/native/pkg.c:851-890`.
 
 Target **NEMESIS 1.16.4 or newer** for the current path validation and service fixes; descriptor 1.1 debuted in 1.16, dependency/conflict behavior improved in 1.16.3. Known field issues: a stale watchdog pidfile may prevent daemon startup; `/system` remount should use `nemesis remount rw|ro` (toolbox remount fails); the unit lacks `tail`; shell scripts need KitKat toolbox-compatible commands. `hmg_nemesis/README.md:82-115`; `HMG-API/CLAUDE.md:50-58`; `hmg_nemesis/04-Packages.md:182`.
 
-### USB reinstall and update route (2026-11-04 car session)
+### USB reinstall and update route
 
-- NEMESIS 1.16.1/1.16.2 `usb.c:do_install` runs a standalone uninstall then install for USB reinstalls while Android is up; the hook cannot tell that from an intentional removal and no replacement is staged. Never infer an update from stale staging files or USB presence. 1.16.3 (`dc08358`) and 1.16.4 use `install --update`: `pkg.c` stages `/data/local/tmp/nemesis/stage/hmg-seogaemo/` before the old hook, and `util.c:run_script` forks and execs sh with the install process as parent; the existing guard preserves state on that route.
+- Never infer an update from stale staging files or USB presence. NEMESIS 1.16.3+ (including 1.16.4) uses `install --update`: `pkg.c` stages `/data/local/tmp/nemesis/stage/hmg-seogaemo/` before the old hook, and `util.c:run_script` forks and execs sh with the install process as parent; the existing guard preserves state on that route.
 - The USB wrapper uses confirmed `type=execute` and a fixed script calling `nemesis install --update` for fresh installs and replacements (cwd = stick root). `type=update` is reserved for NEMESIS core ZIPs. Real uninstall keeps guarded stock restore and APK removal; works when updating an older installed hook. No upstream code copied.
 - Old installed stable dispatchers need one fixed NEMESIS USB package refresh. New stable entries delegate to the selected OTA logic, but USB postinstall always uses its fresh tree. Successful APK install (or Android down) retires stale OTA selection/rollback pointers and journal, keeping version directories, baselines, ledger. Failed APK install preserves selection. Host fixtures cover both Android-up outcomes.
 
-## Implemented package (off-car verified; no head-unit install yet)
+## Implemented package
 
 `make package` builds `hmg-seogaemo-<v>-nemesis-package.zip`,
 `hmg-seogaemo-<v>-nemesis-usb.zip`, `hmg-seogaemo-<v>-ota.zip`, and an APK asset. A signed release also has a manifest, signature, and `SHA256SUMS`. The USB archive contains root
@@ -57,13 +57,13 @@ Target **NEMESIS 1.16.4 or newer** for the current path validation and service f
 `models=neev_kr`, a root shell app entry, and a root one-shot service.
 NEMESIS classifies an OS mismatch plus model match as partial, so
 `postinstall.sh` checks the same `ro.build.product` glob before installing
-the APK. The package includes implemented module scripts, metadata, the shared mutation API,
-and boot reconciliation; all remain untested on the physical head unit. A real uninstall removes the APK; an update
+the APK. The package includes module scripts, metadata, the shared mutation API,
+and boot reconciliation. A real uninstall removes the APK; an update
 with a valid staged HMG-Seogaemo descriptor retains it and its app data.
 When Android is down, postinstall leaves the APK in the package and Manager
-Launch installs it once Android is up. This path has not been tested on a car.
+Launch installs it once Android is up. The Android-down path is untested on a car.
 
-## Design decisions (from the earlier proposal)
+## Package design rules
 
 - Build is top-level `make package` (see AGENTS.md); mirrors HMG-API's assembly (`HMG-API/tools/mkinstallers.sh:42-58`); validate with `nemesis pkg-info` before car tests.
 - `[app.0] kind=sh,path=bin/open.sh,uid=root` without `package`/`component` preserves app data across NEMESIS package updates (a `kind=apk` entry makes NEMESIS `pm uninstall` the app); follows HMG-API's open/install pattern (`HMG-API/install/nemesis/README.md:37-43`).
@@ -71,9 +71,9 @@ Launch installs it once Android is up. This path has not been tested on a car.
 - `preuninstall`: distinguish staged update from real removal; on real removal restore exact snapshots, uninstall the APK, delete backups only after successful restoration (`install/nemesis/scripts/preuninstall.sh:1-22`; `adb-tcp/scripts/preun.sh:5-13`). `/system` edits need stock checks and `nemesis remount`.
 - A `[service.0]` long-running helper only for genuine long-running work; toggles call `nemesis root -c` on demand.
 
-## Verified on-car extraction modes and execution audit (2026-11-03)
+## Extraction modes and execution audit
 
-Owner report: real Ioniq 5 KOR, v0.1.4 installed with `nemesis install <package.zip>`.
+Verified on the real Ioniq 5 KOR (2026-11-03, v0.1.4 installed with `nemesis install <package.zip>`).
 NEMESIS ignores ZIP Unix modes: installed `scripts/*` and `svc/*` are 0755;
 all other package files are 0644. `bin/nemesis-client` is 0755 only because
 postinstall explicitly creates/chmods it. HMG-API shows the same extraction
@@ -123,6 +123,4 @@ OTA transaction tests exercise staged ordinary files, health checks and rollback
 Java command-string checks cover every root operation. Host fixtures translate
 only `/system/bin/sh` to the selected host shell because macOS has no device
 interpreter; POSIX sh and, when installed, mksh suites exercise the translated
-private copies. Validation for this fix: `make test` passed with POSIX sh; mksh
-was not installed on the host. Android 4.4 profile lint also passed on source
-and packaged scripts.
+private copies.
