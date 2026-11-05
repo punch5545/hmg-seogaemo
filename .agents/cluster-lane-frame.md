@@ -30,7 +30,7 @@ JSON keys read (exact strings): `lane`, `info`, `totalLaneNumber`, `condition`, 
   - `hipassLaneNumber` 0x4d: adds a lane-number label to that hi-pass lane (lane index 1 showed "2", index 2 showed "3").
   - `nonHipass` 0x4f: ordinary toll lane, three grey chevrons; stayed grey with status `02` too.
   - `skip` 0x49: "…" marker (collapses lanes when there are many).
-  - `overpass` 0x43 / `underpass` 0x45: overpass / underpass marking.
+  - `overpass` 0x43 / `underpass` 0x45: overpass / underpass marking; also verified alone (no toll bits), where the HUD draws the other lanes normally.
   - HUD quirk: when toll/bus bits are set, the HUD draws lanes without bits as active hi-pass lanes; the cluster draws them normally. Projection must keep the trailer zero (CarPlay 0x5204 has no toll/bus/overpass data).
 - The third-party `nav_mapping.py` trailer order does not apply to this firmware. There is no `possibility` u16; `individualDirection` is a JSON key but not one of the seven trailer words (applied elsewhere).
 - Per-lane status byte semantics (2 bits per arrow, internal 0/1/3/2 -> wire 0/1/2/3) and arrow image IDs: [cluster-lane-arrows.md](cluster-lane-arrows.md).
