@@ -206,3 +206,19 @@ bus-only and toll lanes on the cluster/HUD are exactly these bitmasks.
 - To show hi-pass / bus-only / toll / closed lanes for CarPlay we must populate `0x43..0x4f`, but
   CarPlay's 0x5204 does not carry them, so those stay 0 for projection (only the stock navigation
   sets them). `0x01` count, `0x02` pocket, status and arrows are what we can fill from CarPlay.
+
+## Lane arrow image IDs (ConvertGuidance::getLaneItemImageID, partial)
+
+`ConvertGuidance::getLaneItemImageID(dir, x, y, eRgLaneOverlapType&, recommend)` at `0x20b48b0`
+maps a lane direction code to the arrow image byte written into the frame, via per-overlap-type
+tables (branch on `eRgLaneOverlapType` 1/2/3/4; types 2–4 index 9-byte-stride structures with
+recommend/connect variants). Confirmed, **H**:
+- **Simple lane (overlapType 1):** `imageID[dir]` table at `0x3f1a514+0xac` =
+  `dir 0→1, 1→2, 2→3, 3→4, 4→5, 5→6, 6→7, 7→8, 8→34(0x22), 9/10/11→0, 12..20→37(0x25), ≥21→255`.
+  So simple-lane arrow IDs occupy **1..8** — the same range our `CpTurns.laneIcon` emits. Our
+  builder writes its 1..8 codes directly as the arrow byte, so the value space matches; the exact
+  picture each ID draws is a cluster resource, to be confirmed against captured `source=car-nav`
+  frames plus the engine's `[Lane] dir:_ idx:_` logs (yesterday's drive shows pairs like
+  (dir0,idx1),(dir1,idx2),(dir3,idx3),(dir6,idx5),(dir9,idx7),(dir11,idx8)).
+- The multi-arrow overlap tables (types 2/3/4), the full `dir` code enumeration, and
+  `getLaneItemImageIDConnect` are not yet fully dumped (handed to a follow-up extraction).
