@@ -32,8 +32,13 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
   Third-party reference (reference only, do not copy):
   owner upload `nav_mapping.py` (HKMC `Navigation$DisplayType`, 81-byte lane struct
   incl. bitmasks at 0x43–0x50).
-- [ ] **No-icon value.** Icon 64 renders as a "loading" indicator on the cluster and
-  blank on the HUD; find a better "no symbol" value or keep the last arrow.
+- [ ] **Refine TBT icons from the firmware (ramps/roundabout), verify on car.** The none-icon is now 8
+  (Gen5W fallback, was 64/Gen3 — see .agents/cluster-tbt-icons.md); confirm the glyph on the car.
+  Firmware also shows highway entry/exit use 160–165 (not only 81/82/86) and roundabout has a main
+  family (96/97/99/100/102/104/105/107) plus an alternate-side family (192/193/195/196/198/200/201/203).
+  Extending `exactIcon`/ramp/roundabout needs the driving-side/alt-side selector (phone-side), so verify
+  against captured stock frames and drive logs before changing.
+
 - [ ] **Retire HU-side captures once firmware mapping is verified.** The cluster lane frame (81 bytes),
   arrow codes and TBT icon/unit codes are being confirmed from the stock engine libExSLNavi.so
   (.agents/cluster-lane-frame.md, cluster-lane-arrows.md, cluster-tbt-icons.md). These are HU-side and

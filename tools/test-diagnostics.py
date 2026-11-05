@@ -91,7 +91,10 @@ hmg_seogaemo_diagnostics {out}
             assert not alive(grandchild), "probe grandchild survived the guard"
     finally:
         if alive(grandchild):
-            os.kill(grandchild, 9)
+            try:
+                os.kill(grandchild, 9)
+            except ProcessLookupError:
+                pass
 
     # A killed export must never leave raw (unredacted) bytes in the export
     # folder: raw content is staged in a private directory under the state tree.
@@ -143,12 +146,18 @@ esac
         target.mkdir()
         process = start_hung_export(target)
         assert_only_redacted(target, True)   # in flight: raw bytes only in the private stage
-        os.killpg(process.pid, sig)
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
+            pass
         process.communicate(timeout=60)
         for pid_file in data.glob("grandchild-hang"):
             pid = int(pid_file.read_text())
             if alive(pid):
-                os.kill(pid, 9)
+                try:
+                    os.kill(pid, 9)
+                except ProcessLookupError:
+                    pass
             pid_file.unlink()
         assert_only_redacted(target, not cleaned)  # TERM trap removes it; KILL cannot
     # The next run sweeps the stale staging directory left by SIGKILL, but

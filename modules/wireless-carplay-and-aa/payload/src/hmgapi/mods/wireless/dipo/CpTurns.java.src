@@ -652,8 +652,14 @@ final class CpTurns {
         Dipo.observe(true, key.toString(), detail, null);
     }
 
-    /** the cluster's "no turn icon" (the turn list's 64): distances, lanes and trip still go out */
-    static final int NO_ICON = 64;
+    /**
+     * The cluster's "no turn icon" for an unmappable maneuver: distances, lanes and trip still go out.
+     * Firmware (Gen5W libExSLNavi RGIconIDToClusterDispType) falls back to 8, not the legacy Gen3
+     * default 64 — and 64 rendered as a spinning "loading" glyph on this car. 8 is below the HUD
+     * list gate (>=64) so no bogus arrow enters the HUD. See .agents/cluster-tbt-icons.md.
+     * (Firmware-indicated; confirm the exact glyph on the car.)
+     */
+    static final int NO_ICON = 8;
 
     /**
      * An icon for a maneuver the exact tables don't list, so the stream goes on. A misleading

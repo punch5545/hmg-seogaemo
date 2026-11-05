@@ -296,9 +296,9 @@ public final class CpTurnsTest {
                 CpTurns.fallbackIcon(13, 0, 0, 0) == 71 && CpTurns.fallbackIcon(14, 0, 0, 0) == 66 && CpTurns.fallbackIcon(6, 0, 1, 0) == 96
                         && CpTurns.fallbackIcon(6, 1, 1, 0) == 97 && CpTurns.fallbackIcon(12, 1, 0, 0) == 112 && CpTurns.fallbackIcon(15, 0, 1, 0) == 176
                         && CpTurns.fallbackIcon(4, 0, 0, 0) == 72 && CpTurns.fallbackIcon(4, 1, 0, 0) == 73);
-        check("left/right turn without an angle: the type's arrow (70/67); off-ramp, unknown type, start route -> 64 (no icon)",
-                CpTurns.fallbackIcon(1, 0, 0, 0) == 70 && CpTurns.fallbackIcon(2, 0, 0, 0) == 67 && CpTurns.fallbackIcon(8, 0, 0, 0) == 64
-                        && CpTurns.fallbackIcon(99, 0, 0, 0) == 64 && CpTurns.fallbackIcon(11, 0, 0, 0) == 64);
+        check("left/right turn without an angle: the type's arrow (70/67); off-ramp, unknown type, start route -> 8 (no icon)",
+                CpTurns.fallbackIcon(1, 0, 0, 0) == 70 && CpTurns.fallbackIcon(2, 0, 0, 0) == 67 && CpTurns.fallbackIcon(8, 0, 0, 0) == CpTurns.NO_ICON
+                        && CpTurns.fallbackIcon(99, 0, 0, 0) == CpTurns.NO_ICON && CpTurns.fallbackIcon(11, 0, 0, 0) == CpTurns.NO_ICON);
         check("turns ahead for sharp/slight types: 47 -> 69, 48 -> 68, 49 -> 71, 50 -> 66",
                 CpTurns.aheadIcon(47, 0, 0, 0) == 69 && CpTurns.aheadIcon(48, 0, 0, 0) == 68 && CpTurns.aheadIcon(49, 0, 0, 0) == 71
                         && CpTurns.aheadIcon(50, 0, 0, 0) == 66 && CpTurns.aheadIcon(99, 0, 0, 0) == 64);
