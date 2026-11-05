@@ -34,6 +34,14 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
   incl. bitmasks at 0x43–0x50).
 - [ ] **No-icon value.** Icon 64 renders as a "loading" indicator on the cluster and
   blank on the HUD; find a better "no symbol" value or keep the last arrow.
+- [ ] **Retire HU-side captures once firmware mapping is verified.** The cluster lane frame (81 bytes),
+  arrow codes and TBT icon/unit codes are being confirmed from the stock engine libExSLNavi.so
+  (.agents/cluster-lane-frame.md, cluster-lane-arrows.md, cluster-tbt-icons.md). These are HU-side and
+  no longer need to be *reverse-engineered* from observations. Plan: (1) on the next drive, verify the
+  firmware values against captured stock `source=car-nav` 81-byte frames matched to real on-road lanes;
+  (2) once verified, stop the always-on stock `source=car-nav` lane capture (CarLaneCapture) or make it
+  dev-mode-only. Keep the iAP2/phone-side records (`tbt-icons`, CarPlay `tbt-lanes`): what NAVER/Apple
+  actually send is not in HU firmware and still needs field data to fill the maneuver/lane tables.
 - [ ] **Map app in observation keys.** Record the route-guidance SourceName (NAVER,
   Apple Maps, Kakao, …) with each observation; apps differ (angles, types).
 - [ ] **Status "unknown" with a second DiPO record.** `HmgSeogaemoProjectionRuntime`
