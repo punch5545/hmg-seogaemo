@@ -126,19 +126,20 @@ hmg_seogaemo_diagnostics() (
     probe map-status.txt map status
     props='ro.build.product ro.build.version.release ro.build.version.sdk ro.product.device ro.product.model ro.product.board ro.build.fingerprint sys.boot_completed service.adb.tcp.port init.svc.adbd init.svc.hostapd'
     : > "$diag/owned-paths.txt"
-    while IFS= read -r id; do
+    for id in $(sg_module_list "$base"); do
         case "$id" in ''|*[!a-z0-9-]*|-*|*--*|*-) continue;; esac
         probe "module-$id-status.txt" "$id" status
         copy_log "$SG_DATA_ROOT/modules/$id/module.log" "modules/$id/module.log" || exit 1
-        paths=$base/modules/$id.d
-        if [ -f "$base/modules/$id.properties" ]; then
+        paths=$(sg_module_dir "$base" "$id")
+        manifest=$(sg_module_props "$base" "$id")
+        if [ -f "$manifest" ]; then
             while IFS='=' read -r key value; do
                 case "$key" in
                     owns_props) props="$props $value";;
                     owns_files) paths="$paths $value";;
                     owns_lines.*) paths="$paths ${value%%:*}";;
                 esac
-            done < "$base/modules/$id.properties"
+            done < "$manifest"
         fi
         (
             IFS=' ,'
@@ -155,7 +156,7 @@ hmg_seogaemo_diagnostics() (
         ) > "$stage/stage"
         dd if="$stage/stage" bs=4096 count=2 2>/dev/null >> "$diag/owned-paths.txt"
         rm -f "$stage/stage"
-    done < "$base/modules.list"
+    done
     (
         IFS=' ,'
         for prop in $props; do

@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""HMG-Seogaemo module developer tool: new, validate, pack, push.
+
+validate installs the package into a throwaway copy of the real root runtime (same
+interpreter, same checks, same HSM-E errors as the head unit), against the built-in
+modules of this repository, then prints what the module would own.
+"""
+import argparse
+import hashlib
+import io
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import zipfile
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+from testlib import car_env, host_shell_tree, SHELL  # noqa: E402
+
+PRODUCT = "NEEV.KOR.0000.V039.001.260902"
+ROOT_CMD = "/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root"
+EXTRACTOR = ROOT / "core/hsm/src/com/seogaemo/hmg/core/hsm/HmgSeogaemoHsmExtract.java"
+
+SKELETON = {
+    "module.properties": "id={id}\nversion=0.1.0\napi=1\ncars=NEEV.KOR.*.260902\nrestart=none\n"
+                         "setting.1=enabled_value:choice(low|high):low\n",
+    "apply.sh": "# Not a shell: one verb per line plus if/elif/else/fi. Turning the module off\n"
+                "# undoes every recorded write.\nset_prop persist.sys.{snake}.level {{setting:enabled_value}}\n",
+    "status.sh": "info level setting enabled_value\n",
+    "ui.txt": "status\nchoice setting=enabled_value label=@level\ninfo @how_it_works\n",
+    "strings/en.txt": "name={id}\nsummary=Describe what this module does\nlevel=Level\n"
+                      "how_it_works=Turning the module off restores the original value.\n",
+    "strings/ko.txt": "summary=이 모듈이 하는 일을 적으세요\nlevel=단계\n"
+                      "how_it_works=모듈을 끄면 원래 값으로 돌아갑니다.\n",
+}
+
+
+def fail(message):
+    print(f"hsm: {message}", file=sys.stderr)
+    return 1
+
+
+def field(module_dir, name):
+    for line in (module_dir / "module.properties").read_text().splitlines():
+        if line.startswith(name + "="):
+            return line.split("=", 1)[1]
+    return ""
+
+
+def pack_bytes(module_dir):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(module_dir.rglob("*")):
+            if path.is_file() and path.name != ".gitkeep":
+                info = zipfile.ZipInfo(path.relative_to(module_dir).as_posix(), (1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                archive.writestr(info, path.read_bytes())
+    return buffer.getvalue()
+
+
+def script(path, body):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\n" + body)
+    path.chmod(0o755)
+
+
+class Sandbox:
+    """A throwaway head unit: real package scripts, fake properties, host JVM extractor."""
+
+    def __init__(self, temp, product):
+        self.temp = temp
+        self.base = temp / "package"
+        shutil.copytree(ROOT / "nemesis/package", self.base)
+        host_shell_tree(self.base)
+        (self.base / "modules").mkdir(exist_ok=True)
+        ids, graph = [], []
+        for props in sorted(ROOT.glob("modules/*/module.properties")):
+            module_id = props.parent.name
+            ids.append(module_id)
+            text = props.read_text()
+            (self.base / f"modules/{module_id}.properties").write_text(text)
+            values = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
+            graph.append(f"{module_id}\tdepends={values.get('depends', '')}\texcludes={values.get('excludes', '')}\n")
+        (self.base / "modules.list").write_text("".join(i + "\n" for i in ids))
+        (self.base / "modules.graph").write_text("".join(graph))
+        self.data, self.inbox, self.live = temp / "data", temp / "inbox", temp / "live"
+        for path in (self.data, self.inbox, self.live):
+            path.mkdir()
+        (self.live / "ro.build.product").write_text(product)
+        (self.live / "ro.build.version.sdk").write_text("19")
+        classes = temp / "classes"
+        compiled = subprocess.run(["javac", "-nowarn", "-d", str(classes), str(EXTRACTOR)], capture_output=True, text=True)
+        if compiled.returncode != 0:
+            raise RuntimeError("javac could not build the package extractor: " + compiled.stderr.strip())
+        fake = temp / "fake"
+        script(fake / "getprop", 'cat "$FAKE_LIVE/$1" 2>/dev/null || true\n')
+        script(fake / "setprop", 'printf %s "$2" > "$FAKE_LIVE/$1"\n')
+        script(fake / "app_process", f'shift; cls=$1; shift; exec java -cp "{classes}" "$cls" "$@"\n')
+        script(fake / "pm", "echo package:fixture\n")
+        self.env = car_env(dict(os.environ, PATH=f"{fake}:{os.environ['PATH']}", FAKE_LIVE=str(self.live),
+                                SG_DATA_ROOT=str(self.data), SG_PROPERTY_ROOT=str(temp / "property"),
+                                SG_HSM_INBOX=str(self.inbox)))
+
+    def root(self, *args):
+        return subprocess.run([SHELL, str(self.base / "bin/hmg-seogaemo-root"), *args], env=self.env,
+                              capture_output=True, text=True, timeout=180)
+
+
+def validate(module_dir, product):
+    data = pack_bytes(module_dir)
+    digest = hashlib.sha256(data).hexdigest()
+    with tempfile.TemporaryDirectory() as directory:
+        box = Sandbox(Path(directory).resolve(), product)
+        (box.inbox / f"{digest}.hsm").write_bytes(data)
+        result = box.root("module", "install", digest)
+        output = (result.stdout + result.stderr).strip()
+        if result.returncode != 0:
+            print(output)
+            return result.returncode
+        module_id = field(module_dir, "id")
+        manifest = (box.data / f"installed/{module_id}.properties").read_text().splitlines()
+        print(f"ok {module_id} {field(module_dir, 'version')} ({len(data)} bytes)")
+        for line in manifest:
+            key, _, value = line.partition("=")
+            if value and (key.startswith("owns_") or key in ("services", "service_calls", "reassert_props", "restore")):
+                print(f"  {key}={value}")
+        return 0
+
+
+def cmd_new(args):
+    if not args.id.replace("-", "").isalnum() or args.id != args.id.lower() or args.id.startswith("-"):
+        return fail("id must be lowercase letters, digits and single hyphens")
+    target = Path(args.dir or args.id)
+    if target.exists():
+        return fail(f"{target} already exists")
+    for name, text in SKELETON.items():
+        path = target / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text.format(id=args.id, snake=args.id.replace("-", "_")))
+    (target / "files").mkdir()
+    (target / "files/.gitkeep").write_text("")
+    print(f"created {target}; next: hsm validate {target}")
+    return 0
+
+
+def cmd_validate(args):
+    module_dir = Path(args.dir)
+    if not (module_dir / "module.properties").is_file():
+        return fail(f"{module_dir}/module.properties not found")
+    return validate(module_dir, args.product)
+
+
+def cmd_pack(args):
+    module_dir = Path(args.dir)
+    if not (module_dir / "module.properties").is_file():
+        return fail(f"{module_dir}/module.properties not found")
+    if not args.no_validate and validate(module_dir, args.product) != 0:
+        return 1
+    data = pack_bytes(module_dir)
+    out = Path(args.out) / f"{field(module_dir, 'id')}-{field(module_dir, 'version')}.hsm"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(data)
+    print(out)
+    print(hashlib.sha256(data).hexdigest())
+    return 0
+
+
+def cmd_push(args):
+    package = Path(args.package)
+    data = package.read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
+    adb = ["adb"] + (["-s", args.serial] if args.serial else [])
+    remote = f"/data/local/tmp/hsm/{digest}.hsm"
+    steps = [
+        adb + ["shell", "mkdir -p /data/local/tmp/hsm"],
+        adb + ["push", str(package), remote],
+        adb + ["shell", "cp /system/xbin/nemesis /data/local/tmp/nemesis-d"],
+        adb + ["shell", f"/data/local/tmp/nemesis-d root -c '/system/bin/sh {ROOT_CMD} module install {digest}'"],
+    ]
+    for step in steps:
+        result = subprocess.run(step)
+        if result.returncode != 0:
+            return fail("command failed: " + " ".join(step))
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="hsm", description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+    new = sub.add_parser("new", help="create a working module directory")
+    new.add_argument("id")
+    new.add_argument("dir", nargs="?")
+    for name, helptext in (("validate", "install into a sandboxed head unit and report errors"),
+                           ("pack", "validate, then write <id>-<version>.hsm and its SHA-256")):
+        command = sub.add_parser(name, help=helptext)
+        command.add_argument("dir", nargs="?", default=".")
+        command.add_argument("--product", default=PRODUCT, help="ro.build.product of the sandbox")
+        if name == "pack":
+            command.add_argument("--out", default="dist")
+            command.add_argument("--no-validate", action="store_true")
+    push = sub.add_parser("push", help="install a packed .hsm on a head unit over adb")
+    push.add_argument("package")
+    push.add_argument("--serial")
+    args = parser.parse_args(argv)
+    try:
+        return {"new": cmd_new, "validate": cmd_validate, "pack": cmd_pack, "push": cmd_push}[args.command](args)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        return fail(str(error))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

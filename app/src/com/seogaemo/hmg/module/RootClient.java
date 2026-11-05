@@ -20,13 +20,45 @@ public final class RootClient {
         return "apply".equals(verb) || "revert".equals(verb) ? WRITE_TIMEOUT_MS : READ_TIMEOUT_MS;
     }
 
+    private static final String ROOT = "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root ";
+
+    /** Same shape the root dispatcher accepts; root checks that the id is installed. */
+    public static boolean validId(String id) {
+        return id != null && id.length() <= 48 && id.matches("[a-z0-9]+(-[a-z0-9]+)*");
+    }
+
     public static RootResult run(String moduleId, String verb) {
-        try { ModuleRegistry.depends(moduleId); }
-        catch (IllegalArgumentException bad) { return failure("unknown module"); }
+        if (!validId(moduleId)) return failure("unknown module");
         if (!("apply".equals(verb) || "revert".equals(verb) ||
                 "status".equals(verb) || "precheck".equals(verb))) return failure("invalid verb");
-        final String command = "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root " + moduleId + " " + verb;
-        return invoke(command, moduleTimeoutMs(verb));
+        return invoke(ROOT + moduleId + " " + verb, moduleTimeoutMs(verb));
+    }
+
+    /** Installed packages only; a running module is reverted and applied again. */
+    public static RootResult moduleSet(String moduleId, String key, String value) {
+        if (!validId(moduleId) || key == null || !key.matches("[a-z0-9_]{1,40}") ||
+                value == null || !value.matches("[a-z0-9_.-]{1,40}")) return failure("invalid setting");
+        return invoke(ROOT + moduleId + " set " + key + " " + value, 2 * WRITE_TIMEOUT_MS);
+    }
+
+    public static RootResult moduleList() {
+        return invoke(ROOT + "module list", READ_TIMEOUT_MS);
+    }
+
+    public static RootResult moduleDescribe(String moduleId, String locale) {
+        if (!validId(moduleId) || locale == null || !locale.matches("[a-z]{2}")) return failure("invalid module");
+        return invoke(ROOT + "module describe " + moduleId + " " + locale, READ_TIMEOUT_MS);
+    }
+
+    /** The package must already be at files/hsm/<sha256>.hsm in the app's private storage. */
+    public static RootResult moduleInstall(String sha256) {
+        if (sha256 == null || !sha256.matches("[0-9a-f]{64}")) return failure("invalid package digest");
+        return invoke(ROOT + "module install " + sha256, WRITE_TIMEOUT_MS);
+    }
+
+    public static RootResult moduleRemove(String moduleId) {
+        if (!validId(moduleId)) return failure("invalid module");
+        return invoke(ROOT + "module remove " + moduleId, WRITE_TIMEOUT_MS);
     }
 
     /** Deletes the wireless module's two generated turn-by-turn observation files (fixed verb, no arguments). */
@@ -101,7 +133,7 @@ public final class RootClient {
             }
             reader.join(1000);
             if (reader.isAlive() || readError[0] != null) return failure("root output incomplete");
-            return parse(new String(bytes, 0, length[0], "US-ASCII"), exit);
+            return parse(new String(bytes, 0, length[0], "UTF-8"), exit);
         } catch (Exception error) {
             if (process != null) process.destroy();
             return failure(error.getClass().getSimpleName());

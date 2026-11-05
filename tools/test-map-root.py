@@ -57,8 +57,18 @@ sg_print state=on restart=none "detail=map verified"
     status=subprocess.run(command+["map","status"],env=env,capture_output=True,text=True)
     assert status.returncode==0 and "verification needed" in status.stdout,status
     assert not (state/"core").exists(), list(state.rglob("*"))
+    product=state/"car-maps/NEEV.KOR.0000.V039.001.260902"
+    stale=[product/"0123456789abcdef0123456789abcdef/11111111111111111111111111111111",
+           product/"fedcba9876543210fedcba9876543210/22222222222222222222222222222222"]
+    for old in stale:
+        old.mkdir(parents=True)
+        (old/"map.json").write_text("{}")
+    (product/"0123456789abcdef0123456789abcdef/not-a-map").mkdir()
     result=subprocess.run(command+["map","run"],env=env,capture_output=True,text=True)
     assert result.returncode==0,(result.stdout,result.stderr)
+    assert not any(old.exists() for old in stale) and not stale[1].parent.exists(), list(product.rglob("*"))
+    assert (product/"0123456789abcdef0123456789abcdef/not-a-map").is_dir()
+    assert not list((state/"car-maps").glob(".before.*")), list((state/"car-maps").iterdir())
     assert (state/"core/vm/dalvik-cache").is_dir()
     status=subprocess.run(command+["map","status"],env=env,capture_output=True,text=True)
     assert status.returncode==0 and not list((state/"core").glob("vm.status.*")),status

@@ -16,6 +16,8 @@ public final class ModuleManager {
     public ModuleManager(Context context) { this.context = context; }
 
     public ModulePlan plan(String id, boolean enable) {
+        // Installed packages take part in ordering and exclusions even before screens show them.
+        ModuleRegistry.refreshInstalled("en");
         ModuleRegistry.depends(id);
         String[] order = ModuleRegistry.orderedIds();
         Map<String, String[]> dependencies = new HashMap<String, String[]>();

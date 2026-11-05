@@ -5,7 +5,7 @@ OUT := out/hmg-seogaemo.apk
 SOURCES := $(shell find app/src modules -name '*.java' -not -path '*/test/*' | sort)
 INPUTS := $(shell find app/res modules -type f | sort)
 
-.PHONY: all clean generate module-build map-build test package verify-dist
+.PHONY: all clean generate module-build map-build hsm-build hook-build test package verify-dist
 all: $(OUT)
 
 module-build:
@@ -18,6 +18,18 @@ map-build:
 	touch -t 198001010000 out/map-dex/classes.dex
 	rm -f out/package/core/map/hmg-seogaemo-mapper.jar
 	cd out/map-dex && zip -q -X ../package/core/map/hmg-seogaemo-mapper.jar classes.dex
+
+hsm-build:
+	rm -rf out/hsm-classes out/hsm-dex
+	mkdir -p out/hsm-classes out/hsm-dex out/package/core/hsm
+	javac -source 1.7 -target 1.7 -bootclasspath $(ANDROID_JAR) -cp $(ANDROID_JAR) -d out/hsm-classes $$(find core/hsm/src -name '*.java' | sort)
+	$(BT)/d8 --min-api 19 --lib $(ANDROID_JAR) --release --output out/hsm-dex $$(find out/hsm-classes -name '*.class' | sort)
+	touch -t 198001010000 out/hsm-dex/classes.dex
+	rm -f out/package/core/hsm/hmg-seogaemo-hsm.jar
+	cd out/hsm-dex && zip -q -X ../package/core/hsm/hmg-seogaemo-hsm.jar classes.dex
+
+hook-build:
+	sh core/hook/build.sh
 
 generate:
 	sh tools/gen-modules.sh
@@ -45,7 +57,7 @@ $(OUT): VERSION app/AndroidManifest.xml app/allow-sha1.security $(SOURCES) $(INP
 	$(BT)/zipalign -f 4 out/unsigned.apk $(OUT)
 	$(BT)/apksigner verify --verbose --min-sdk-version 19 $(OUT)
 
-package: $(OUT) map-build
+package: $(OUT) map-build hsm-build hook-build
 	python3 tools/package.py build --aapt $(BT)/aapt
 
 verify-dist:
@@ -67,6 +79,9 @@ test: package
 	python3 tools/lint-android44-shell.py
 	python3 tools/lint-module-root.py
 	python3 tools/lint-names.py
+	python3 tools/test-hsm.py
+	python3 tools/test-module-install.py
+	python3 tools/test-hsm-cli.py
 	mkdir -p out/planner-test
 	javac -d out/planner-test app/src/com/seogaemo/hmg/module/ModulePlan.java app/src/com/seogaemo/hmg/module/ModulePlanner.java app/src/com/seogaemo/hmg/module/Warning.java tools/ModulePlannerTest.java
 	java -cp out/planner-test ModulePlannerTest
@@ -79,6 +94,10 @@ test: package
 	mkdir -p out/guards-test
 	javac -source 7 -target 7 -d out/guards-test app/src/com/seogaemo/hmg/core/update/BoundedProcess.java app/src/com/seogaemo/hmg/module/ModuleResume.java app/src/com/seogaemo/hmg/module/RestoreGate.java app/src/com/seogaemo/hmg/module/RootResult.java tools/AppGuardsTest.java
 	java -cp out/guards-test AppGuardsTest
+	rm -rf out/installed-test
+	mkdir -p out/installed-test
+	javac -encoding UTF-8 -source 7 -target 7 -d out/installed-test $(addprefix app/src/com/seogaemo/hmg/module/,InstalledModule.java RootResult.java RootClient.java ModuleRegistry.java Module.java ModuleAction.java InfoRow.java HomeTile.java Warning.java ModuleStatus.java ModulePlan.java ModulePlanner.java) app/src/com/seogaemo/hmg/ui/settings/SettingsPage.java tools/InstalledModuleTest.java
+	java -cp out/installed-test com.seogaemo.hmg.module.InstalledModuleTest
 
 clean:
 	rm -rf out

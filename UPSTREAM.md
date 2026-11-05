@@ -37,6 +37,7 @@ when the translated component has been accepted.
 | Review component | Baseline | Tracked HMG-API paths |
 | --- | --- | --- |
 | Mapper and catalogue | `4fab437` | Mapper engine files listed above, `core/hookpoints/**`, mapper/verification tools |
+| Core hook host (`core/hook/`) | `4fab437` | Built from the ported wireless payload (`core/loader/**`, `core/zygote/**`, `core/runtime/java/hmgapi/hook/**`) with core paths; `core/hook/src` replaces `HmgApi`, `ModContext`, `RuntimeResult`, `RequiredPoints` |
 | Ported wireless payload | `4fab437` | `mods/wireless-carplay-aa/**` (including native converter and recipes), `core/loader/**`, `core/zygote/**`, `core/runtime/java/hmgapi/hook/**`, `MemRecipe.java`, `tools/mkrecipe.py`, `tools/mkmemrecipe.py` |
 | Install, uninstall and restore | `4fab437` | `install/**`, `core/app/install.sh`, installer/NEMESIS package tools |
 | hmgapid and runtime engine | `4fab437` | `core/hmgapid/**`, engine/vehicle Java, runtime tests |

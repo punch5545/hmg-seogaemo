@@ -37,6 +37,9 @@ typedef unsigned long ul;
 #ifndef HOOKLIB
 #define HOOKLIB "/system/lib/libhmg_seogaemo_wireless_hook.so"
 #endif
+#ifndef KTAG
+#define KTAG "hmg-seogaemo-wireless"
+#endif
 #define MAXSTARTS 3
 #ifndef GUARD_DELAY
 #define GUARD_DELAY 120
@@ -135,7 +138,7 @@ static void start_watcher(void)
             if (!alive(zpid)) xexit(0);
             fd = xopen(HOOKDIR "/starts", O_WR, 0600);
             if (fd >= 0) { xwrite(fd, "0", 1); xclose(fd); }
-            put("<6>hmg-seogaemo-wireless: zygote "); putn(zpid); put(" up "); putn(GUARD_DELAY);
+            put("<6>" KTAG ": zygote "); putn(zpid); put(" up "); putn(GUARD_DELAY);
             put(" s, boot guard reset"); flush();
         }
         xexit(0);
@@ -156,7 +159,7 @@ int main(int argc, char **argv, char **envp)
     for (i = 0; envp[i]; i++)
         if (spre(envp[i], "NO_ADDR_COMPAT_LAYOUT_FIXUP=")) reexec = 1;
 
-    put("<6>hmg-seogaemo-wireless: ");
+    put("<6>" KTAG ": ");
     put(zygote ? "zygote" : "app_process");
     if (reexec) put(" (re-exec)");
     else if (zygote && exists(HOOKDIR "/enable")) {
@@ -179,7 +182,7 @@ int main(int argc, char **argv, char **envp)
     flush();
     if (use) start_watcher();
     rc = xexecve(STOCK, argv, env);
-    put("<3>hmg-seogaemo-wireless: exec " STOCK " failed, errno ");
+    put("<3>" KTAG ": exec " STOCK " failed, errno ");
     putn(-rc);
     flush();
     (void)slen;

@@ -1,0 +1,4 @@
+name=Hook sample
+summary=Logs a line from Settings and DiPO to check the core hook host
+greeting=Greeting
+how_it_works=Restart the head unit after turning it on, then check logcat for HMG-Seogaemo-Hook.

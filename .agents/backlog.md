@@ -54,6 +54,34 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
 - [ ] Guard test: no new `hmgapi/mods` class may extend/implement a `hmgapi/hook` type
   other than `MethodHook` (dexdump check in the module test).
 
+## 1b. Core hook host and installable modules (branch `installable-modules`)
+
+- [x] **On-car check of the core hook host** — done 2026-11-05 on NEEV KOR with only the
+  root-side branch files swapped in (release APK kept): `hooks on, start 1`, Settings logged
+  `[hook-sample] hello from com.android.settings`, revert + restart left `app_process` stock
+  (md5 `33f79811…`, 9492 B, 0:2000), no extras, no wrapper lines in `dmesg`. The
+  boot re-apply marked a needless restart each boot; fixed (`hsm-module.sh`,
+  `sg_core_hook_ensure`, test in `test_hook_host`). Original procedure:
+  (`core/hook/`, contract "Core hook host").
+  Keep adb ready; CarPlay must be off first (they exclude each other). Build the package
+  plus `out/hook-sample/hook-sample-0.1.0.hsm` (`make package`, then
+  `python3 tools/hsm pack out/hook-sample/module --out out/hook-sample`), install with
+  `python3 tools/hsm push out/hook-sample/hook-sample-0.1.0.hsm`, then
+  `hmg-seogaemo-root hook-sample apply`, restart, and check: `dmesg | grep hmg-seogaemo-hook`
+  (hooks on, start 1), `logcat -s HMG-Seogaemo-Hook` (zygote init, "hello from" in Settings
+  and DiPO), `cat /data/nemesis/backup/hmg-seogaemo/core/hook/status`, module status
+  `info.hook_*`. Then revert, restart, confirm `app_process` md5 is stock and the extras are
+  gone; repeat with stock restore. Boot guard: 3 forced zygote crashes turn hooks off.
+- [ ] Settings changed while on are applied by revert+apply; the zygote reads them only at
+  start (restart needed). Decide whether hook modules should say so in the UI.
+- [ ] On-car check with two hook modules sharing one wrapper (both `hello` lines).
+- [ ] After the last hook module is off, `core/hook/core-hook.properties`, the empty
+  `core/hook/mods/` and `modules/core-hook/{module.log,assets-repaired-boot}` remain; clean up.
+- [ ] Installed-module status prints `info.desired=off` twice (runner + dispatcher).
+- [ ] `tools/hsm pack` without `--out` writes to `./dist/` (not gitignored); default to `out/`.
+- [ ] Migrate CarPlay onto the core host (plan in `module-plugin-design.md` P3).
+  Until then CarPlay and hook modules exclude each other.
+
 ## 2. Older open items
 
 - [ ] `nemesis root -c` with long commands fails with "daemon write failed"; find the
@@ -62,6 +90,14 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
   not attempted; decide whether to continue with the others (`stock-restore.md`).
 - [ ] Show "/system stays rw until restart" (remount-ro EBUSY) in the UI/status, not
   only in `module.log`.
+- [ ] (With the UI/UX redesign) Wireless ADB shows "확인 불가" / `adbd 상태: stopped`
+  when the app polls during the boot re-apply's adbd restart (about 70 s after boot):
+  `wireless-adb.sh` status reports `failed` while `init.svc.adbd` is not `running`, and
+  the app never re-polls. Report a transient "applying" state and re-poll in the app.
+- [ ] (With the UI/UX redesign) Switching wifi-client -> CarPlay from the CarPlay row
+  refused with "ADB state unknown" until the owner opened the Wireless ADB screen once;
+  after that refresh the switch worked (2026-11-05). The plan/precheck uses a stale or
+  unknown wireless-adb status instead of polling it; refresh dependents before planning.
 - [ ] On-car checks not yet done: wifi-client disable exact restore (+restart);
   both user buttons after restart and after visiting stock settings
   (`user-button-shortcut.md`); full NEMESIS uninstall leaves the unit byte-identical
