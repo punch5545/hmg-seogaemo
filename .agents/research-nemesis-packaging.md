@@ -1,8 +1,8 @@
-Status: partly superseded — upstream packaging research is retained; the earlier design proposal is historical and the implemented-package section is current.
+Status: current — NEMESIS packaging research, implemented package layout, USB/update behavior, extraction-mode audit.
 
 # NEMESIS packaging for HMG-Seogaemo
 
-Paths and line references below are relative to `tmp/`. This describes NEMESIS 1.16.4 source and upstream documentation; the implemented HMG-Seogaemo package has not been tested on a head unit.
+Paths and line references below are relative to `tmp/`. Describes NEMESIS 1.16.4 source/docs; the implemented package is untested on a head unit.
 
 ## Verified facts
 
@@ -42,6 +42,12 @@ HMG-API's `tools/mkinstallers.sh` builds `hmgapi-<v>-nemesis-package.zip` direct
 
 Target **NEMESIS 1.16.4 or newer** for the current path validation and service fixes; descriptor 1.1 debuted in 1.16, dependency/conflict behavior improved in 1.16.3. Known field issues: a stale watchdog pidfile may prevent daemon startup; `/system` remount should use `nemesis remount rw|ro` (toolbox remount fails); the unit lacks `tail`; shell scripts need KitKat toolbox-compatible commands. `hmg_nemesis/README.md:82-115`; `HMG-API/CLAUDE.md:50-58`; `hmg_nemesis/04-Packages.md:182`.
 
+### USB reinstall and update route (2026-11-04 car session)
+
+- NEMESIS 1.16.1/1.16.2 `usb.c:do_install` runs a standalone uninstall then install for USB reinstalls while Android is up; the hook cannot tell that from an intentional removal and no replacement is staged. Never infer an update from stale staging files or USB presence. 1.16.3 (`dc08358`) and 1.16.4 use `install --update`: `pkg.c` stages `/data/local/tmp/nemesis/stage/hmg-seogaemo/` before the old hook, and `util.c:run_script` forks and execs sh with the install process as parent; the existing guard preserves state on that route.
+- The USB wrapper uses confirmed `type=execute` and a fixed script calling `nemesis install --update` for fresh installs and replacements (cwd = stick root). `type=update` is reserved for NEMESIS core ZIPs. Real uninstall keeps guarded stock restore and APK removal; works when updating an older installed hook. No upstream code copied.
+- Old installed stable dispatchers need one fixed NEMESIS USB package refresh. New stable entries delegate to the selected OTA logic, but USB postinstall always uses its fresh tree. Successful APK install (or Android down) retires stale OTA selection/rollback pointers and journal, keeping version directories, baselines, ledger. Failed APK install preserves selection. Host fixtures cover both Android-up outcomes.
+
 ## Implemented package (off-car verified; no head-unit install yet)
 
 `make package` builds `hmg-seogaemo-<v>-nemesis-package.zip`,
@@ -57,24 +63,13 @@ with a valid staged HMG-Seogaemo descriptor retains it and its app data.
 When Android is down, postinstall leaves the APK in the package and Manager
 Launch installs it once Android is up. This path has not been tested on a car.
 
-## Earlier design proposal (historical)
+## Design decisions (from the earlier proposal)
 
-Historical proposal: use a user APK plus a NEMESIS wrapper, build with `make -C app`, and produce `hmg-seogaemo-<v>-nemesis-package.zip` and `hmg-seogaemo-<v>-nemesis.zip`. The current build is top-level `make package` and emits `hmg-seogaemo-<v>-nemesis-package.zip`, `hmg-seogaemo-<v>-nemesis-usb.zip`, and `hmg-seogaemo-<v>-ota.zip`. Mirror HMG-API's assembly and validate with `nemesis pkg-info` before car testing. `HMG-API/tools/mkinstallers.sh:42-58`; `hmg_nemesis/04-Packages.md:188-214`.
-
-```text
-package/                       USB wrapper/
-  NEMESIS.data                   NEMESIS.data  # type=install; path=packages/hmg-seogaemo.zip
-  app/hmg-seogaemo.apk               packages/hmg-seogaemo.zip
-  bin/open.sh
-  scripts/postinstall.sh
-  scripts/preuninstall.sh
-  scripts/postuninstall.sh       # only if needed
-  svc/root-helper.sh             # only if a persistent helper is needed
-```
-
-Historical proposed descriptor: `version=1.1`, `id=hmg-seogaemo`, `name=HMG-Seogaemo` (current descriptor uses `name=HMG-Seogaemo`), `type=application` (add `service` only when used), numeric `package-version`, concise descriptions, explicit tested `os` glob(s), `models` scope, and `depends` only for real package dependencies/conflicts. Use `[app.0] kind=sh,path=bin/open.sh,uid=root` without `package`/`component` to preserve app state across NEMESIS package updates; follow HMG-API's open/install pattern. An optional `[service.0] kind=sh,name=root-helper,path=svc/root-helper.sh,uid=root,mode=restart` is for genuine long-running work; ordinary toggles can call `nemesis root -c` on demand. `hmg_nemesis/04-Packages.md:27-48,86-120`; `HMG-API/install/nemesis/README.md:37-43`.
-
-`postinstall` should set `umask 077`, copy the APK to a stable package-owned `/data/hmg-seogaemo/` location **readable by PackageManager**, install/update it when Android is up using the boot-property workaround, and save any live-file snapshots before changes. For Android-down recovery installs, arrange a bounded background install after `sys.boot_completed=1` (as HMG-API's pending installer does), and keep the Launch script able to reinstall if needed. `open.sh` should open `com.seogaemo.hmg/.MainActivity`. `preuninstall` should distinguish staged update from real removal; for real removal, stop helper work, restore exact snapshots, uninstall the APK, and delete backups **only after** successful restoration. Any `/system` edits need stock checks and `nemesis remount`. Avoid a `kind=apk` entry if retaining Android app data through NEMESIS updates matters. `HMG-API/install/nemesis/scripts/postinstall.sh:1-7`; `HMG-API/install/nemesis/scripts/preuninstall.sh:1-22`; `HMG-API/install/common/app-open.sh:15-35`; `HMG-API/install/common/app-pending.sh:1-34`; `HMG-API/install/common/install.sh:115-120,189-209`; `hmg_nemesis/Sources/packages/adb-tcp/scripts/preun.sh:5-13`; `HMG-API/CLAUDE.md:7-8,52,58`.
+- Build is top-level `make package` (see AGENTS.md); mirrors HMG-API's assembly (`HMG-API/tools/mkinstallers.sh:42-58`); validate with `nemesis pkg-info` before car tests.
+- `[app.0] kind=sh,path=bin/open.sh,uid=root` without `package`/`component` preserves app data across NEMESIS package updates (a `kind=apk` entry makes NEMESIS `pm uninstall` the app); follows HMG-API's open/install pattern (`HMG-API/install/nemesis/README.md:37-43`).
+- `postinstall`: `umask 077`; copy the APK to a package-owned location readable by PackageManager; install/update when Android is up with the boot-property workaround; save live-file snapshots first. Android-down installs: bounded background install after `sys.boot_completed=1` (HMG-API's pending installer, `install/common/app-pending.sh:1-34`), Launch can reinstall (`install/common/app-open.sh:15-35`).
+- `preuninstall`: distinguish staged update from real removal; on real removal restore exact snapshots, uninstall the APK, delete backups only after successful restoration (`install/nemesis/scripts/preuninstall.sh:1-22`; `adb-tcp/scripts/preun.sh:5-13`). `/system` edits need stock checks and `nemesis remount`.
+- A `[service.0]` long-running helper only for genuine long-running work; toggles call `nemesis root -c` on demand.
 
 ## Verified on-car extraction modes and execution audit (2026-11-03)
 

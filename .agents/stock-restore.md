@@ -93,6 +93,55 @@ Upstream evidence, read-only:
 - `svc.c:115-132`: service stop targets the registered service PID. The copied
   uninstall runner is not a package service or an app-UID child.
 
+## Command surface and receipt
+
+- `hmg-seogaemo-root stock restore|status` and `package uninstall` take exactly two arguments. `core/stock.sh` holds the operation
+  lock across preflight, reverse-dependency reverts, verification, desired-state commits and result publication, and visits every
+  module including interrupted applies with snapshots but desired off. The real `preuninstall` hook runs the same transaction
+  (the staged-update exception preserves state). Preflight uses the existing runtime guards (zygote counters, derived dex-cache
+  tracking). Successful restore writes desired off for every module; maps, ledger and OTA recovery payloads stay for diagnostics.
+- Receipt (bounded): `state=off|pending-restart|conflict|failed`, `restart=none|head_unit`, `detail`, and
+  `info.module_<snake_id>` per module (`reverted`, `conflict`, `failed`, `not_attempted`). Pending restart = successful guarded
+  restore, no baseline left, desired off; it never claims transient framework behavior is restored before a kernel boot. `stock
+  status` is read-only, returns the last receipt, clears the displayed restart requirement after a different boot ID; no receipt =
+  no operation. Start, module outcomes and completion/failure are in the change ledger; an interrupted receipt fails closed.
+- `package uninstall`: restore first (any failure prevents NEMESIS dispatch), then queue a fixed runner copied to
+  `/data/nemesis/backup/hmg-seogaemo/uninstall/` that invokes only `nemesis uninstall hmg-seogaemo` (never `--force`). The runner
+  does not use a fixed delay to decide safety; the root caller is a NEMESIS daemon child independent of the app UID and package
+  services. A persistent pending marker blocks new applies until removal finishes or fails.
+- `device reboot`: `hmg-seogaemo-root device reboot` (exactly two arguments) runs toolbox `sync` then KitKat `reboot`, stopping if
+  sync fails; `RootClient.rebootDevice()` exposes only that literal command. Settings → General → Restart head unit (KO 헤드 유닛
+  재시작) uses the destructive ConfirmDialog, Cancel focused left; failure is localized. AOSP `android-4.4.2_r1` implements reboot in
+  `system/core/reboot/reboot.c` (standalone binary, not a toolbox applet); the no-argument form requests the normal init reboot.
+
+## Module-switch incident recovery (2026-11-04 car session)
+
+- Reported-state fixes: Wi-Fi feature removal now reports pending disable explicitly on status/revert (previously
+  pending-restart without `info.desired=off`); the dispatcher accepts that bounded receipt for exact restores as well as
+  `restore=reboot`; EN/KO restart text distinguishes direction. CarPlay disk revert reports desired off even while a restart
+  is still needed; the dispatcher persists that receipt before the next plan step, the app continues successful
+  pending-restart steps and shows one combined result with the strongest restart requirement. Saved intent participates
+  in exclusion planning even when the live module is off. Structured refusals expose the reason.
+- A missing module build baseline returns false without logging or creating state; a recorded different product still logs
+  conflict and blocks restore. A snapshot-free module revert is idempotent, including stale desired-on after an earlier
+  completed restore; remaining restore material keeps firmware, content and metadata guards. Failed restore diagnostics name
+  stage/target in the root receipt and app. Regression: shipped CarPlay script with no build/baselines, saved desired on,
+  dispatch paused → stock restore succeeds; the Java planner/dispatcher test covers an explicit Wi-Fi switch from that
+  paused stale-intent state and verifies dispatch resumes.
+- ADB export chmodded the timestamp subtree but left its parent 0700; ADB now opens the export root for shell traversal
+  after copying (USB unchanged). Current manifests/ledger sources hold feature XML, properties, executables, hook payloads,
+  call receipts and map metadata, not Wi-Fi credentials; no redaction needed, exports stay an intentional diagnostic copy.
+- The ASCII semicolon issue came from `sg_clean`'s whitelist omitting `;`; all module root text was audited as ASCII and the
+  character is preserved at source.
+- Owner recovery: install the release-signed fixed NEMESIS USB ZIP (wrapper `install --update` path; see
+  `research-nemesis-packaging.md`); in the app confirm Restore stock state, restart if requested, then confirm Wi-Fi client
+  enable and restart if requested; connect via stock Wi-Fi settings and reopen the app. Direct Wi-Fi enable also reverts stale
+  CarPlay intent and clears the failed-restore pause. A previously accepted update check continues after the new boot,
+  Wi-Fi readiness and usable network (app must be opened); otherwise confirm a new update check. Genuine drift still blocks
+  restore: export the retained ledger instead of forcing old bytes.
+- Still to validate on the car: physical reboot, stock Wi-Fi menu visibility, TLS/network, OTA continuation. Static
+  Broadcom capability checks show stock software support, not physical radio health.
+
 ## Validation and on-car checks
 
 `tools/test-stock.py` exercises the actual dispatcher and preuninstall hook with
