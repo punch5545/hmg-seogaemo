@@ -179,9 +179,21 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
   No fallback to another index or 0x5202 linked lane is used. Missing current entries and hidden
   lanes blank the old frame; state 0, stop, disconnect and source changes clear the cache.
   Existing angle/status modes produce the 81-byte 0xF1 frame; auto highlights preferred lanes
-  when supplied, and highlight 1000 means none. Invalid angles produce no arrow. Known defect (car,
-  2026-11-05): multi-arrow lanes get single glyphs and a per-lane status, so only slot 0 is drawn;
-  fix tracked in backlog ("CarPlay lanes"). Refresh resends
+  when supplied, and highlight 1000 means none. Invalid angles produce no arrow. A lane's angles
+  become distinct direction classes (the `laneIcon` thresholds); one class keeps the plain 1..8
+  glyph, two or three use the car-verified component glyph pair/triple from `CpTurns.LaneGlyphs`
+  ([cluster-lane-arrows.md](cluster-lane-arrows.md)), whatever order the phone lists the angles.
+  A set not in the table is retried with slight/sharp turns snapped to plain left/right; if it
+  still does not match (or has more than 3 directions) only the recommended arrow is drawn as a
+  single glyph, else the first. The status byte is 2 bits per slot (`01` plain, `10` recommended,
+  `00` not drawn), following the arrow each slot shows: `10` only on the arrow whose angle
+  equals the lane's highlight; with no valid highlight a preferred lane lights all its arrows
+  (U-turn + left, route left: arrows `0a 0e`, status `0x09`). The lane modes pick which lanes are lit
+  and the value of the others (dim0/dim3 repeat their `00`/`11` on each slot). While a frame with
+  lanes shows, `NavigationCluster.updateRemainDis(dist, unit, tenths, 0)` carries the distance to
+  the next maneuver (the turn's distance and unit; feet and yards as metres; resent every 2 s,
+  `65535, 15, 15, 0` when lanes go away; no toll-gate flag). The trailer bytes 0x43..0x50 stay
+  zero. Not yet seen on the car with this build. Refresh resends
   the last frame. tbt-lanes records contain raw numeric lane fields, description byte count,
   current index/count and all 81 frame bytes. Developer mode logs entries and index matches.
   0x5204 has no distance; route updates supply it.

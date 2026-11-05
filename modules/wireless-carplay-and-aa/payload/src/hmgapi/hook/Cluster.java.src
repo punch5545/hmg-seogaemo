@@ -141,6 +141,14 @@ public final class Cluster {
         call("update_lane_info", (Object) frame);
     }
 
+    /**
+     * NavigationCluster.updateRemainDis: the distance shown beside the lane strip. unit 0 m, 1 km, 2 mi;
+     * tenths the first decimal for km / mi; tollGate 1 swaps the turn icon for a toll-gate picture (send 0).
+     */
+    public void remainDis(int distance, int unit, int tenths, int tollGate) {
+        call("update_remain_dis", distance, unit, tenths, tollGate);
+    }
+
     /** NavigationCluster.updateTPFlexibleDestinationName. */
     public void destinationName(int type, String name) {
         try {
