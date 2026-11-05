@@ -13,6 +13,6 @@ No new point was added to a module requirement.
 
 [evidence.json](evidence.json) separates mapped names, exact-stock reflection
 and physical feature observations without extending the runtime car schema.
-The owner reports wireless CarPlay works without audio at HMG-Seogaemo 0.1.21;
-the audio fix is pending physical verification. Reflection is not a feature test.
+The owner confirmed wireless CarPlay music, Siri and calls/mic at HMG-Seogaemo
+0.1.25. Wireless Android Auto is untested. Reflection is not a feature test.
 See the generated [catalogue coverage](../../../../../docs/hookpoints.md).

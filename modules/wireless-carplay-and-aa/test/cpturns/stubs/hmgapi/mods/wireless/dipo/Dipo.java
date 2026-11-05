@@ -2,7 +2,6 @@ package hmgapi.mods.wireless.dipo;
 
 /** host stand-in: CpTurns only logs through it and asks it for the settings */
 final class Dipo {
-    static String laneMode = "off";
     static String lastLog = "";
     static final java.util.List<String> logs = new java.util.ArrayList<String>();
 
@@ -26,10 +25,6 @@ final class Dipo {
 
     static boolean dev() {
         return dev;
-    }
-
-    static String laneMode() {
-        return laneMode;
     }
 
 }

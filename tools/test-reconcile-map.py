@@ -6,10 +6,9 @@ import shutil
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 import time
 
-from testlib import SHELL, car_env, copy_shell_script
+from testlib import SHELL, car_env, copy_shell_script, run_tests
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -587,13 +586,6 @@ while True: time.sleep(1)
             process.communicate()
 
 
-with tempfile.TemporaryDirectory(prefix="hmg-seogaemo-reconcile-map-") as tmp:
-    test_pending_install(Path(tmp).resolve() / "pending")
-    test_android_readiness(Path(tmp).resolve() / "readiness")
-    test_reconcile(Path(tmp).resolve() / "reconcile")
-    test_detached_lifecycle(Path(tmp).resolve() / "detached")
-    test_retry_backoff(Path(tmp).resolve() / "backoff")
-    test_reverse_restore_material(Path(tmp).resolve() / "reverse")
-    test_payload_replacement(Path(tmp).resolve() / "replacement")
-    test_mapper_deadlines(Path(tmp).resolve() / "deadline")
-print("reconcile map verification, retries, dependencies and deadlines passed")
+run_tests([test_pending_install, test_android_readiness, test_reconcile, test_detached_lifecycle,
+           test_retry_backoff, test_reverse_restore_material, test_payload_replacement,
+           test_mapper_deadlines], "reconcile map verification, retries, dependencies and deadlines passed")

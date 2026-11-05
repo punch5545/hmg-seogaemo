@@ -16,7 +16,7 @@ Evidence: [maps/hyundai/ioniq5/kor/260902/evidence.json](../maps/hyundai/ioniq5/
 
 - 2026-11-03: owner-reported on-car reflection passed 324/324 points in that historical snapshot.
 
-- wireless CarPlay, 0.1.21: **partial** — Owner reports wireless CarPlay works without audio. Audio fix pending physical verification; no claim for other features.
+- wireless CarPlay, 0.1.25: **passed** — Owner confirmed wireless CarPlay music, Siri and calls/mic work after the payload permission fix. Wireless Android Auto not tested.
 
 The new catalogue additions require on-car reflection; existing module requirements are unchanged.
 

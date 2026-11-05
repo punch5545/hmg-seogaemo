@@ -1,44 +1,52 @@
-Status: current — index of the agent notes, reviewed against local main on 2026-11-03.
+Status: current — index of the agent notes, reorganized 2026-11-05.
 
 # Agent notes
 
-Read `module-architecture.md`, `module-runtime-contract.md`, `ui-guidelines.md`, and `ota-implementation.md` first. Then read the module implementation notes relevant to your change. The research notes retain upstream evidence and explicitly mark older HMG-Seogaemo proposals as historical.
+`archive/` is not part of the reading order; do not read it unless explicitly asked.
 
-| Document | Status | Purpose |
-| --- | --- | --- |
-| [backlog.md](backlog.md) | Current | Open on-car checks and planned work; delete items when done. |
-| [boot-lifecycle.md](boot-lifecycle.md) | Current | NEMESIS startup semantics, readiness retries, and QuickBoot evidence limits. |
-| [module-architecture.md](module-architecture.md) | Partly superseded | Built-in modules, package, state, UI, and recovery architecture; Home wiring is current. |
-| [module-runtime-contract.md](module-runtime-contract.md) | Partly superseded | Implemented root/Java contract and test rules; original parallel work ownership table is historical. |
-| [module-runtime-implementation.md](module-runtime-implementation.md) | Current | Runtime and host-test implementation findings. |
-| [stock-restore.md](stock-restore.md) | Current | Whole-package stock restore, detached uninstall, recovery and on-car checks. |
-| [android44-shell-audit.md](android44-shell-audit.md) | Current | Pinned KitKat toolbox/mksh evidence, compatibility fixes, lint boundaries and waivers. |
-| [ui-guidelines.md](ui-guidelines.md) | Partly superseded | Display tokens and touch measurements; emulator capture commands are historical. |
-| [ui-redesign.md](ui-redesign.md) | Current | Approved app redesign: Features/Car/Settings tabs, card and detail behaviour, module-provided UI. |
-| [display-size-support.md](display-size-support.md) | Partly superseded | Upstream display research and the current single-panel decision. |
-| [ota-implementation.md](ota-implementation.md) | Current | Signed GitHub Releases OTA, trust roots, transaction, and validation gaps. |
-| [wifi-client.md](wifi-client.md) | Current | Implemented Wi-Fi client file edits, status, tests, and on-car checklist. |
-| [wireless-adb.md](wireless-adb.md) | Current | Implemented ADB property behavior, network observations, and on-car checklist. |
-| [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) | Current | Implemented AGPL projection port, owned changes, recovery, and on-car checklist. |
-| [user-button-shortcut.md](user-button-shortcut.md) | Current | Independent steering/head-unit shortcuts, owner-approved reassertion on boot/wake/property drift, original restore and KOR evidence. |
-| [skip-consent-screen.md](skip-consent-screen.md) | Current | Factory82 provenance, owner-tested NEEV KOR behavior, implemented watcher and reboot restore, on-car checklist. |
-| [neev-kor-api-inventory.md](neev-kor-api-inventory.md) | Current | Offline NEEV KOR vehicle/vendor API inventory, exact signatures, risk classes, candidate hooks and deferred on-car checks. |
-| [research-car-mapping.md](research-car-mapping.md) | Implemented plus historical research | KOR evidence, core mapper design, and remaining on-car validation. |
-| [catalogue-v101.md](catalogue-v101.md) | Current | KOR evidence for 18 v1.0.1 additions, honest coverage, and verification-cache migration. |
-| [carplay-tbt-learnings.md](carplay-tbt-learnings.md) | Current | CarPlay turn-by-turn fixes ported from HMG-API, open problems, Wi-Fi client/AP findings. |
-| [research-nemesis-packaging.md](research-nemesis-packaging.md) | Partly superseded | NEMESIS source research and current package layout; older proposal marked historical. |
-| [research-ota-update.md](research-ota-update.md) | Partly superseded | Upstream OTA research and historical design choices, with current release notes. |
-| [research-wifi-client.md](research-wifi-client.md) | Partly superseded | Upstream STA/AP research and updated HMG-Seogaemo module test plan. |
-| [research-wifi-enable.md](research-wifi-enable.md) | Historical research | Superseded core Wi-Fi proposal; use `wifi-client.md` for current behavior. |
-| [research-adb-wireless-module.md](research-adb-wireless-module.md) | Partly superseded | Upstream ADB research; design inferences predate `wireless-adb.md`. |
-| [car-session-followups.md](car-session-followups.md) | Current | Real-car USB reinstall and status/export corrections. |
-| [module-plugin-design.md](module-plugin-design.md) | Proposal | Runtime-installable module packages, tiers, trust, install/remove, and AI-friendly tooling. |
-| [module-resources.md](module-resources.md) | Proposal | Resource names and modes modules use to declare conflicts. |
-| [README.md](README.md) | Current | This index and reading order. |
-| [ci-upstream-tracking.md](ci-upstream-tracking.md) | Current | CI timing, bounded shell-suite parallelism, workflow pins and upstream review evidence. |
+Reading order: `module-architecture.md` → `module-runtime-contract.md` → `ui-guidelines.md` → `ota-implementation.md`, then the docs for the area you change. Each fact lives in one doc; others link to it. Off-car tests do not establish physical-car behavior.
 
-The target is Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (package glob `NEEV.KOR.*.260902`), onebin `neev_kr`, Android 4.4.2. Installation is NEMESIS plus HMG-Seogaemo only. Off-car tests do not establish physical-car behavior.
+Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (package glob `NEEV.KOR.*.260902`), onebin `neev_kr`, Android 4.4.2; NEMESIS + HMG-Seogaemo only.
 
-The app opens on the Features tab (`ui-redesign.md`); `Module.homeTiles()` remains in the contract, but no screen reads it.
+## Core design and runtime
 
-Core mapping uses `core/hookpoints/`, `core/map/`, and `maps/`. The operational workflow is `docs/mapping-new-firmware.md`; `UPSTREAM.md` pins HMG-API reference paths and `tools/upstream-diff.sh` reports later changes. Settings → Car mapping is the core status, mapping, and PR export page.
+| Doc | Content |
+| --- | --- |
+| [module-architecture.md](module-architecture.md) | Module contract, state/privilege/recovery, source layout, build-time module list. |
+| [module-runtime-contract.md](module-runtime-contract.md) | Root/Java interface: mutation API, status block, ledger, export, line ownership, payload/dir transactions, restore guarantees, shell tools. |
+| [module-runtime-implementation.md](module-runtime-implementation.md) | Runtime and host-test implementation findings (shell parity). |
+| [boot-lifecycle.md](boot-lifecycle.md) | NEMESIS service semantics, reconcile/watch retries, deferred APK install, map-verify deferral, QuickBoot limits. |
+| [stock-restore.md](stock-restore.md) | Whole-package restore, detached uninstall, restart verb, recovery incidents, on-car checks. |
+| [installable-modules.md](installable-modules.md) | `.hsm` module packages (API 1), restricted scripts, resource conflicts, core hook host, design rationale. |
+| [car-mapping.md](car-mapping.md) | Core mapper, KOR map evidence, v1.0.1 additions, verification seal. |
+| [ota-implementation.md](ota-implementation.md) | Signed GitHub Releases OTA, decisions, TLS roots, dispatch/rollback guards. |
+| [research-nemesis-packaging.md](research-nemesis-packaging.md) | NEMESIS package facts, implemented package, USB/update route, extraction-mode audit. |
+| [android44-shell-audit.md](android44-shell-audit.md) | Pinned KitKat toolbox/mksh evidence, lint boundaries, waivers. |
+| [ui-guidelines.md](ui-guidelines.md) | Display tokens, touch sizes, single-panel decision, API 19 notes. |
+| [ui-redesign.md](ui-redesign.md) | Approved app redesign: Modules/Car/Settings tabs, card and detail behaviour, Add/USB install, module-provided UI. |
+| [ci-upstream-tracking.md](ci-upstream-tracking.md) | CI timing, shell-suite parallelism, workflow pins, upstream review. |
+| [backlog.md](backlog.md) | Open on-car checks and planned work; delete items when done. |
+
+## Modules
+
+| Doc | Content |
+| --- | --- |
+| [wifi-client.md](wifi-client.md) | Implemented design, capability gate, checklist. |
+| [wireless-adb.md](wireless-adb.md) | Implemented ADB properties, upstream facts, restart rule, checklist. |
+| [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) | AGPL projection port, hook points, change inventory, TBT behavior, zygote/runtime-record details. |
+| [user-button-shortcut.md](user-button-shortcut.md) | Steering/head-unit shortcuts, reassertion, KOR evidence. |
+| [skip-consent-screen.md](skip-consent-screen.md) | Factory82 provenance, watcher behavior, checklist. |
+
+## Firmware and TBT research
+
+| Doc | Content |
+| --- | --- |
+| [neev-kor-api-inventory.md](neev-kor-api-inventory.md) | Offline NEEV KOR vehicle/vendor API inventory, Binder tables, candidate hooks. |
+| [cluster-lane-frame.md](cluster-lane-frame.md) | 81-byte cluster lane frame, trailer bitmasks. |
+| [cluster-lane-arrows.md](cluster-lane-arrows.md) | Firmware lane arrow image-ID tables, status byte. |
+| [cluster-tbt-icons.md](cluster-tbt-icons.md) | Firmware TBT turn-icon and distance-unit codes. |
+| [navi-lib-index.md](navi-lib-index.md) | Index of stock `libExSLNavi.so`. |
+| [carplay-tbt-learnings.md](carplay-tbt-learnings.md) | TBT fixes ported from HMG-API, open problems. |
+| [carplay-tbt-external-research.md](carplay-tbt-external-research.md) | Index of third-party iAP2/HKMC TBT research in `carplay-tbt-external/` (`iap2-protocol`, `mib2q-deep-dive`, `apps-and-oems`, `hkmc-cluster-tbt`, `hkmc-extras`, `sources`). |
+
+Mapping workflow: `docs/mapping-new-firmware.md`; HMG-API reference pins: `UPSTREAM.md` and `tools/upstream-diff.sh`.

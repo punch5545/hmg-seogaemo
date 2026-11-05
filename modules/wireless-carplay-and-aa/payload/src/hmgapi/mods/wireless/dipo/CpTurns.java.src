@@ -1,5 +1,5 @@
 package hmgapi.mods.wireless.dipo;
-// Modified by HMG-Seogaemo: Korean CarPlay turn-by-turn fixes (icon bands, lane marking modes, HUD distance rounding); see .agents/carplay-tbt-learnings.md.
+// Modified by HMG-Seogaemo: Korean CarPlay turn-by-turn fixes (icon bands, lane colours, HUD distance rounding); see .agents/carplay-tbt-learnings.md.
 
 import android.content.Context;
 import android.text.format.DateFormat;
@@ -48,6 +48,15 @@ final class CpTurns {
     /** last HUD list sent (type, next, road), so an unchanged one isn't resent */
     int hudType, hudNext;
     String hudRoad;
+    /**
+     * The last HUD list frame and when it went out. The HUD (a separate unit) can miss a frame or
+     * lose its state while the cluster keeps working; on the car its arrow and road then froze while
+     * the HUD distance (sent every push) kept counting down, until the route was restarted. So the
+     * unchanged frame is resent every HUD_RESEND_MS from refresh(), independent of phone updates.
+     */
+    byte[] lastHud;
+    long hudAt;
+    static final long HUD_RESEND_MS = 2000L;
     /** the last lane log line, so an unchanged one isn't logged again */
 
     /** diagnostics: per kind, how many were seen and the last "change key" logged */
@@ -93,6 +102,12 @@ final class CpTurns {
             return;
         }
         long now = System.currentTimeMillis();
+        byte[] hud = lastHud;
+        if (hud != null && now - hudAt >= HUD_RESEND_MS) {
+            if (sample("hud-resend", null)) d("HUD list resent unchanged (" + (now - hudAt) + " ms since the last one)");
+            cluster.turnListNew(hud);
+            hudAt = now;
+        }
         if (now - lastSendAt < 900L) return;
         refreshes++;
         if (sample("refresh", null)) d("refresh without fresh phone data: last update " + (now - rgAt) + " ms ago, last send " + (now - lastSendAt) + " ms ago, refresh #" + refreshes);
@@ -249,6 +264,62 @@ final class CpTurns {
                 + " linkedLane=" + x.linkedLane + " descLen=" + len(x.description) + " afterRoadLen=" + len(x.afterRoad) + " stored=" + (maneuvers.get(id) == null ? 0 : maneuvers.get(id).size()));
     }
 
+    /** Last 16 lane windows across components; 0x5204 normally precedes 0x5201. */
+    final LinkedHashMap<Long, CpLaneDecoder.Info> laneInfos = new LinkedHashMap<Long, CpLaneDecoder.Info>();
+
+    private static long laneKey(int component, int index) {
+        return ((long) component << 32) | (index & 0xffffffffL);
+    }
+
+    void rawLanes(CpLaneDecoder.Info info) {
+        long key = laneKey(info.component, info.index);
+        laneInfos.remove(key);
+        laneInfos.put(key, info);
+        while (laneInfos.size() > 16) laneInfos.remove(laneInfos.keySet().iterator().next());
+        d("decoded lanes " + info.summary());
+        Update u = updates.get(info.component);
+        if (activeId != null && activeId == info.component && u != null) selectLanes(info.component, u);
+    }
+
+    private void selectLanes(int component, Update u) {
+        boolean showing = u.lanesShown && !(u.count == 0 && u.state <= 0) && u.state != 0;
+        CpLaneDecoder.Info info = showing ? laneInfos.get(laneKey(component, u.laneIndex)) : null;
+        if (sample("lane-match", component + "|" + u.laneIndex + "|" + showing + "|" + (info != null)))
+            d("lane match comp=" + component + " index=" + u.laneIndex + " showing=" + showing + " found=" + (info != null));
+        if (info == null) {
+            if (lastLane != null) {
+                byte[] blank = new byte[81]; blank[0] = (byte) 0xf1;
+                cluster.laneInfo(blank);
+                lastLane = null;
+            }
+            clearLaneDist();
+            return;
+        }
+        byte[] f = new byte[81]; f[0] = (byte) 0xf1; f[1] = (byte) info.lanes.length;
+        for (int k = 0; k < info.lanes.length; k++) {
+            CpLaneDecoder.Lane l = info.lanes[k];
+            int[] one = laneValues(l.status, l.angles, new int[] { l.highlight });
+            f[3 + k] = (byte) one[0];
+            for (int j = 0; j < 3; j++) f[19 + 3 * k + j] = (byte) one[1 + j];
+        }
+        StringBuilder hex = new StringBuilder();
+        for (byte b : f) hex.append(Character.forDigit((b >> 4) & 15, 16)).append(Character.forDigit(b & 15, 16));
+        String detail = "laneIndex=" + u.laneIndex + " laneCount=" + u.laneCount + " frame=" + hex;
+        String observation = info.summary() + "|" + detail;
+        if (!observation.equals(lastLaneObs)) {
+            lastLaneObs = observation;
+            // Observations fields are capped at 400 chars: one lane per key preserves all 16 angles.
+            String prefix = "source=CarPlay comp=" + info.component + " index=" + info.index
+                    + " descBytes=" + info.descriptionLength + " n=" + info.lanes.length;
+            if (info.lanes.length == 0) Dipo.observe(true, prefix, detail, null);
+            for (CpLaneDecoder.Lane lane : info.lanes) Dipo.observe(true, prefix + " lane=" + lane.index
+                    + " status=" + lane.status + " angles=" + arr(lane.angles) + " h" + lane.highlight, detail, null);
+        }
+        if (!java.util.Arrays.equals(lastLane, f)) cluster.laneInfo(f);
+        lastLane = f;
+        if (info.lanes.length == 0) clearLaneDist();
+    }
+
     /** LaneGuidance (the build's applyLanes): up to 8 lanes as the cluster's 0xF1 frame */
     void lanes(Iap2NotiMsg msg) {
         Iap2NotiMsg.Iap2ObjGroup g = msg == null ? null : msg.getItemGroup();
@@ -263,12 +334,9 @@ final class CpTurns {
             Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(k);
             if (it != null && it.getItemParamType() == 13 && it.getItemId() == 2) lanes = it.getItemGroupArray();
         }
-        String mode = Dipo.laneMode();
-        // auto: the phone's preferred lane alone when it names one, else every lane along the route
-        if ("auto".equals(mode)) mode = anyPreferred(lanes) ? "rec" : "off";
         if (lanes != null) {
             for (int k = 0; k < lanes.length && n < 8; k++) {
-                int[] one = laneOne(lanes[k], mode);
+                int[] one = laneOne(lanes[k]);
                 status[n] = one[0];
                 a[n] = one[1];
                 b[n] = one[2];
@@ -287,47 +355,18 @@ final class CpTurns {
         }
         StringBuilder sb = new StringBuilder();
         for (int k = 0; k < n; k++) sb.append(k == 0 ? "" : " ").append(status[k]).append(':').append(a[k]).append('/').append(b[k]).append('/').append(c[k]);
-        if (sample("ln", n + "|" + sb)) d("lanes mode=" + mode + " phoneLanes=" + (lanes == null ? -1 : lanes.length) + " sent=" + n + " [" + sb + "]");
+        if (sample("ln", n + "|" + sb)) d("lanes phoneLanes=" + (lanes == null ? -1 : lanes.length) + " sent=" + n + " [" + sb + "]");
         lastLane = f.clone();
-        observeLanes(lanes, mode, n, sb.toString(), f);
+        observeLanes(lanes, n, sb.toString(), f);
         cluster.laneInfo(f);
     }
 
-    /** does any lane of a LaneGuidance say it is the preferred one (status 2)? */
-    static boolean anyPreferred(Iap2NotiMsg.Iap2ObjGroup[] lanes) {
-        if (lanes == null) return false;
-        for (int k = 0; k < lanes.length; k++) {
-            Iap2NotiMsg.Iap2ObjGroup g = lanes[k];
-            if (g == null) continue;
-            for (int j = 0; j < g.getItemCnt(); j++) {
-                Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(j);
-                if (it == null || it.getItemId() != 1) continue;
-                int t = it.getItemParamType();
-                if (t != 5 && t != 8) continue;
-                int[] v = it.getItemIntArray();
-                if (v != null && v.length > 0 && v[0] == 2) return true;
-            }
-        }
-        return false;
-    }
-
-    /** one lane as lanes() sends it today */
-    static int[] laneOne(Iap2NotiMsg.Iap2ObjGroup g) {
-        return laneOne(g, "off");
-    }
-
     /**
-     * one lane: {mark, up to 3 arrow icons}. The phone gives a lane a status (2 = preferred),
-     * its arrow angles and the angles that lead along the route (highlight). The cluster's
-     * mark is 1 (drawn) or 2 (highlighted); 0 and 3 aren't known to draw anything in
-     * particular, so they're only sent in the modes of the setting "lanes":
-     *   auto the preferred lane alone when the phone names one, otherwise as off
- *   off  preferred or any route angle: 2, the rest 1 (as before)
-     *   rec  preferred: 2, the rest 1
-     *   dim0 preferred: 2, a lane that leads along the route: 1, the rest 0
-     *   dim3 preferred: 2, a lane that leads along the route: 1, the rest 3
+     * one lane: {status byte, up to 3 arrow icons}. The phone gives a lane a status (0 not good,
+     * 1 good, 2 preferred), its arrow angles and the angle that leads along the route (highlight);
+     * laneValues turns them into the cluster's per-arrow colours.
      */
-    static int[] laneOne(Iap2NotiMsg.Iap2ObjGroup g, String mode) {
+    static int[] laneOne(Iap2NotiMsg.Iap2ObjGroup g) {
         int[] r = new int[4];
         r[0] = 1;
         if (g == null) return r;
@@ -349,20 +388,133 @@ final class CpTurns {
                 highlight = v;
             }
         }
-        boolean preferred = status == 2;
-        boolean along = highlight != null && highlight.length > 0;
-        if ("rec".equals(mode)) r[0] = preferred ? 2 : 1;
-        else if ("dim0".equals(mode)) r[0] = preferred ? 2 : along ? 1 : 0;
-        else if ("dim3".equals(mode)) r[0] = preferred ? 2 : along ? 1 : 3;
-        else r[0] = preferred || along ? 2 : 1;
+        return laneValues(status, angles, highlight);
+    }
+
+    /**
+     * One lane as {status byte, up to 3 arrow image ids}. The status byte holds 2 bits per arrow
+     * slot, slot 0 lowest: 00 not drawn, 01 normal (white), 10 recommended (blue), 11 inactive
+     * (grey), car-verified 2026-11-05 (.agents/cluster-lane-arrows.md); the arrows are drawn
+     * overlaid, so a lane with several directions needs the matching component glyphs
+     * (LaneGlyphs), not the single ones.
+     *
+     * The colours mirror CarPlay per lane, from the lane status and the highlight angle (an arrow
+     * "matches" when its angle equals a highlight angle; none valid, or none matching, means all
+     * arrows match): status 0 grey on every arrow; status 1 white on the matching arrows and grey
+     * on the others; status 2 blue on the matching arrows and grey on the others. Blue only ever
+     * comes from the phone's status 2. A status that is not 0..2 counts as 1. A lane with no valid
+     * angle sends the lane's value on slot 0 only.
+     */
+    static int[] laneValues(int status, int[] angles, int[] highlights) {
+        int[] r = new int[4];
+        // the colour of an arrow on the route (matching) and off it
+        int on = status == 2 ? 2 : status == 0 ? 3 : 1, off = 3;
+        // the lane's distinct direction classes (laneIcon values), in the phone's order, and which one the route takes
+        int[] cls = new int[8];
+        boolean[] hit = new boolean[8];
+        int n = 0;
+        boolean anyHit = false;
         if (angles != null) {
-            int n = 0;
-            for (int k = 0; k < angles.length && n < 3; k++) {
-                int icon = laneIcon(angles[k]);
-                if (icon != 0) r[1 + n++] = icon;
+            for (int k = 0; k < angles.length; k++) {
+                int a = angles[k];
+                if (a < -180 || a > 180) continue;
+                int c = laneIcon(a), i = 0;
+                while (i < n && cls[i] != c) i++;
+                if (i == n) cls[n++] = c;
+                if (highlights != null) for (int h : highlights) if (h == a) hit[i] = anyHit = true;
             }
         }
+        if (n == 0) {
+            r[0] = on;
+            return r;
+        }
+        // the arrows that take the lane's colour: the highlighted ones, or all when none matches
+        boolean[] rec = new boolean[8];
+        for (int i = 0; i < n; i++) rec[i] = !anyHit || hit[i];
+        boolean snap = false;
+        int[][] row = LaneGlyphs.find(cls, n, false);
+        if (row == null) {
+            row = LaneGlyphs.find(cls, n, true);
+            snap = row != null;
+        }
+        if (row == null) {
+            // not a verified set (more than 3 directions, or none of the table's): only the
+            // highlighted arrow, else the first, as a single glyph
+            int pick = 0;
+            for (int i = n - 1; i >= 0; i--) if (rec[i]) pick = i;
+            row = new int[][] { { cls[pick] }, { cls[pick] } };
+        }
+        for (int j = 0; j < row[0].length; j++) {
+            boolean slotRec = false;
+            for (int i = 0; i < n; i++) if (rec[i] && LaneGlyphs.fold(cls[i], snap) == row[0][j]) slotRec = true;
+            r[0] |= (slotRec ? on : off) << (2 * j);
+            r[1 + j] = row[1][j];
+        }
         return r;
+    }
+
+    /**
+     * Image ids for the arrows of a multi-direction lane, car-verified 2026-11-05 and listed in
+     * .agents/cluster-lane-arrows.md ("Car-verified glyphs and multi-arrow pairs"). Single
+     * directions use the plain ids 1..8 (laneIcon values, which double as the direction classes
+     * here). Each row is {direction classes in slot order, image ids in slot order}; the lane's set
+     * of directions matches a row whatever order the phone lists its angles in, and slot k of the
+     * status byte belongs to the k-th class of the row.
+     */
+    static final class LaneGlyphs {
+        static final int ST = 1, SLR = 2, R = 3, SHR = 4, UT = 5, SHL = 6, L = 7, SLL = 8;
+        static final int[][][] SETS = {
+            { { UT, L }, { 10, 14 } },
+            { { UT, SLL }, { 10, 15 } },
+            { { ST, L }, { 9, 12 } },
+            { { ST, SLL }, { 9, 13 } },
+            { { ST, SHL }, { 9, 11 } },
+            { { ST, UT }, { 9, 10 } },
+            { { L, SLL }, { 12, 13 } },
+            { { ST, R }, { 16, 18 } },
+            { { ST, SLR }, { 16, 19 } },
+            { { ST, SHR }, { 16, 17 } },
+            { { R, SLR }, { 18, 21 } },
+            { { L, R }, { 31, 32 } },
+            { { SLL, SLR }, { 30, 33 } },
+            { { UT, R }, { 26, 32 } },
+            { { UT, SLR }, { 26, 33 } },
+            { { L, ST, R }, { 28, 22, 24 } },
+            { { SLL, ST, R }, { 30, 22, 24 } },
+            { { L, ST, SLR }, { 28, 22, 33 } },
+            { { SHL, ST, R }, { 27, 22, 24 } },
+            { { L, ST, SHR }, { 28, 22, 25 } },
+            { { SLL, ST, SLR }, { 30, 22, 33 } },
+            { { L, SLL, ST }, { 12, 13, 9 } },
+            { { ST, SLR, R }, { 16, 19, 18 } },
+            { { UT, L, ST }, { 26, 31, 22 } },
+            { { UT, ST, R }, { 26, 22, 24 } },
+            { { UT, L, R }, { 26, 31, 32 } },
+        };
+
+        /** snap: slight and sharp turns count as the plain left / right */
+        static int fold(int c, boolean snap) {
+            if (!snap) return c;
+            return c == SLR || c == SHR ? R : c == SLL || c == SHL ? L : c;
+        }
+
+        /** the row for the classes cls[0..n) (one class: the plain glyph), or null when none matches */
+        static int[][] find(int[] cls, int n, boolean snap) {
+            int mask = 0, count = 0, first = 0;
+            for (int i = 0; i < n; i++) {
+                int c = fold(cls[i], snap);
+                if ((mask & (1 << c)) != 0) continue;
+                mask |= 1 << c;
+                if (count++ == 0) first = c;
+            }
+            if (count == 1) return new int[][] { { first }, { first } };
+            for (int[][] row : SETS) {
+                int m = 0;
+                for (int c : row[0]) m |= 1 << c;
+                if (m == mask) return row;
+            }
+            return null;
+        }
     }
 
     /** a lane angle (degrees, right positive) as the cluster's arrow: 1 straight, 2-4 right, 5 back, 6-8 left */
@@ -392,6 +544,7 @@ final class CpTurns {
 
     /** route guidance stopped (DiPO e/u.nS: the car's navigation took turn-by-turn back, or state 0) */
     void stop() {
+        laneInfos.clear();
         activeId = null;
         hudBlank();
         Dipo.flushObservations(true);
@@ -399,6 +552,8 @@ final class CpTurns {
 
     /** forget every component's state and maneuvers (DiPO e/u.nT) */
     void reset() {
+        laneInfos.clear();
+        lastLane = null;
         activeId = null;
         for (LinkedHashMap<Integer, Maneuver> m : maneuvers.values()) {
             if (m != null) m.clear();
@@ -441,6 +596,7 @@ final class CpTurns {
             return;
         }
         activeId = id;
+        selectLanes(id, u);
         lastSendAt = System.currentTimeMillis();
         int[] list = u.list == null ? null : u.list.clone();
         float dist = 0f;
@@ -467,6 +623,7 @@ final class CpTurns {
             // the maneuver isn't here (yet): what is known still goes out, and the phone is asked to resend
             if (sample("tn-drop2", u.state + "|" + (m == null) + "|" + (list == null) + "|" + (list == null ? -1 : list[0]))) d("turn without maneuver: comp=" + id + " state=" + u.state + " maneuvers=" + (m == null ? "none" : String.valueOf(m.size())) + " list=" + arr(list) + " (known comps=" + maneuvers.keySet() + ")");
             sendHudDist(dist, unit);
+            sendLaneDist(dist, unit);
             sendTrip(u);
             askResend("maneuver " + (list == null ? "list" : String.valueOf(list[0])) + " missing");
             return;
@@ -487,6 +644,7 @@ final class CpTurns {
         cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);
         sendHud(icon, id, u);
         sendHudDist(dist, unit);
+        sendLaneDist(dist, unit);
         sendTrip(u);
         sendAhead(id, u);
     }
@@ -540,7 +698,7 @@ final class CpTurns {
         Dipo.observe(false, key, detail, text);
     }
 
-    private void observeLanes(Iap2NotiMsg.Iap2ObjGroup[] lanes, String mode, int n, String marks, byte[] frame) {
+    private void observeLanes(Iap2NotiMsg.Iap2ObjGroup[] lanes, int n, String marks, byte[] frame) {
         StringBuilder key = new StringBuilder("n=" + (lanes == null ? 0 : lanes.length));
         for (int k = 0; lanes != null && k < lanes.length && k < 8; k++) {
             Iap2NotiMsg.Iap2ObjGroup g = lanes[k];
@@ -560,15 +718,21 @@ final class CpTurns {
         Update u = activeId == null ? null : updates.get(activeId);
         StringBuilder hex = new StringBuilder();
         for (int k = 0; k < frame.length; k++) hex.append(Character.forDigit((frame[k] >> 4) & 15, 16)).append(Character.forDigit(frame[k] & 15, 16));
-        String detail = "mode=" + mode + " sent=" + n + " marks=" + marks + " frame=" + hex + (u == null ? "" : " laneIndex=" + u.laneIndex + " laneCount=" + u.laneCount + " distNext=" + u.distNext + " nextStr=" + u.nextStr);
+        String detail = "sent=" + n + " marks=" + marks + " frame=" + hex + (u == null ? "" : " laneIndex=" + u.laneIndex + " laneCount=" + u.laneCount + " distNext=" + u.distNext + " nextStr=" + u.nextStr);
         String both = key + "|" + detail;
         if (both.equals(lastLaneObs)) return;
         lastLaneObs = both;
         Dipo.observe(true, key.toString(), detail, null);
     }
 
-    /** the cluster's "no turn icon" (the turn list's 64): distances, lanes and trip still go out */
-    static final int NO_ICON = 64;
+    /**
+     * The cluster's "no turn icon" for an unmappable maneuver: distances, lanes and trip still go out.
+     * Firmware (Gen5W libExSLNavi RGIconIDToClusterDispType) falls back to 8, not the legacy Gen3
+     * default 64 — and 64 rendered as a spinning "loading" glyph on this car. 8 is below the HUD
+     * list gate (>=64) so no bogus arrow enters the HUD. See .agents/cluster-tbt-icons.md.
+     * (Firmware-indicated; confirm the exact glyph on the car.)
+     */
+    static final int NO_ICON = 8;
 
     /**
      * An icon for a maneuver the exact tables don't list, so the stream goes on. A misleading
@@ -752,6 +916,19 @@ final class CpTurns {
 
     /** the HUD's list frame (0xF2): count, this icon, the next turn's icon, 0, road after this turn (UTF-16LE) */
     void sendHud(int type, Integer id, Update u) {
+        if (type == NO_ICON) {
+            // no arrow for this maneuver (car-verified 2026-11-05): the empty list blanks the HUD TBT, so
+            // the previous turn's arrow doesn't stay up and isn't resent; the next mapped turn goes out again
+            if (lastHud != null && lastHud.length == 1) return;
+            byte[] empty = { (byte) 0xF2 };
+            cluster.turnListNew(empty);
+            lastHud = empty;
+            hudAt = System.currentTimeMillis();
+            hudType = -1;
+            hudNext = 0;
+            hudRoad = null;
+            return;
+        }
         if (type < 64) return;
         int next = 0;
         String road = "";
@@ -781,6 +958,8 @@ final class CpTurns {
         System.arraycopy(r, 0, f, 5, n);
         Dipo.log("CarPlay: hud list type " + type + " next " + next);
         cluster.turnListNew(f);
+        lastHud = f;
+        hudAt = System.currentTimeMillis();
         hudType = type;
         hudNext = next;
         hudRoad = road;
@@ -803,9 +982,59 @@ final class CpTurns {
         cluster.tbtSubInfo2C(unit, tenths, whole, 0, 0, 0, 0, 0, 0);
     }
 
+    /** the lane distance last sent (whole, unit, tenths) and when; null while none shows */
+    private int[] laneDist;
+    long laneDistAt;
+    static final long LANE_DIST_RESEND_MS = 2000L;
+
+    /**
+     * The distance to the next maneuver in the box beside the lane strip (updateRemainDis), the
+     * same distance and unit as the turn, while a lane frame with lanes shows (car-verified
+     * 2026-11-05, .agents/cluster-lane-frame.md 1b). Sent on change and every LANE_DIST_RESEND_MS.
+     * Only m, km and mi are verified: feet and yards go out as metres. The toll-gate flag stays 0.
+     */
+    void sendLaneDist(float f, int unit) {
+        if (lastLane == null || lastLane[1] <= 0) {
+            clearLaneDist();
+            return;
+        }
+        if (f < 0f || unit < 0 || unit > 4) return;
+        if (unit == Cluster.UNIT_FT) {
+            f *= 0.3048f;
+            unit = Cluster.UNIT_M;
+        } else if (unit == Cluster.UNIT_YD) {
+            f *= 0.9144f;
+            unit = Cluster.UNIT_M;
+        }
+        int whole = (int) (f + 0.5f), tenths = 0;
+        if (unit == Cluster.UNIT_KM || unit == Cluster.UNIT_MI) {
+            int t = (int) (f * 10f + 0.5f);
+            whole = t / 10;
+            tenths = t % 10;
+        }
+        if (whole > 65534) {
+            whole = 65534;
+            tenths = 0;
+        }
+        int[] v = { whole, unit, tenths };
+        long now = System.currentTimeMillis();
+        if (laneDist != null && java.util.Arrays.equals(laneDist, v) && now - laneDistAt < LANE_DIST_RESEND_MS) return;
+        laneDist = v;
+        laneDistAt = now;
+        cluster.remainDis(whole, unit, tenths, 0);
+    }
+
+    /** lanes gone: the lane distance box back to the invalid pattern the stock navigation uses */
+    private void clearLaneDist() {
+        if (laneDist == null) return;
+        laneDist = null;
+        cluster.remainDis(65535, 15, 15, 0);
+    }
+
     /** HUD list and extras cleared (the build's sendHudBlank) */
     void hudBlank() {
         lastLane = null;
+        clearLaneDist();
         cluster.tbtSubInfo2C(0, 0, 0, 0, 0, 0, 0, 0, 0);
         byte[] lanes = new byte[81];
         lanes[0] = (byte) 0xF1;
@@ -813,6 +1042,7 @@ final class CpTurns {
         hudType = -1;
         hudNext = 0;
         hudRoad = null;
+        lastHud = null;
         byte[] empty = { (byte) 0xF2 };
         cluster.turnListNew(empty);
         cluster.turnListNew(empty);

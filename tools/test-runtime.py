@@ -5,9 +5,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
-from testlib import car_env, SHELL, host_shell_script, copy_shell_script
+from testlib import car_env, SHELL, host_shell_script, copy_shell_script, run_tests
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -316,9 +315,10 @@ def test_automatic_intent_lock(temp):
         copy_shell_script(ROOT / 'nemesis/package/bin/hmg-seogaemo-root', dispatcher)
         # A private sleep wrapper makes lock contention observable even with
         # mksh's builtin sleep, without timing the race against the host clock.
-        # Ten retries of 0.3 s leave slow CI runners time to finish the explicit call.
+        # One second per retry (ten retries) keeps the lock-wait budget at ~10 s so a
+        # slow or loaded CI runner still finishes the explicit call before "busy".
         dispatcher.write_text(dispatcher.read_text().replace('umask 077', '''umask 077
-sleep() { : > "$SG_DATA_ROOT/queued"; /bin/sleep 0.3; }''', 1))
+sleep() { : > "$SG_DATA_ROOT/queued"; /bin/sleep 1; }''', 1))
         copy_shell_script(ROOT / 'nemesis/package/lib/common.sh', base / 'lib/common.sh')
         (base / 'modules.list').write_text('example\n')
         (base / 'modules.graph').write_text('example\tdepends=\texcludes=\n')
@@ -2093,31 +2093,30 @@ esac
     assert (base / 'state/invoked').read_text().strip() == 'clear'
 
 
-with tempfile.TemporaryDirectory() as directory:
-    root = Path(directory).resolve()
-    test_toolbox_md5(root)
-    test_file_key_failures(root)
-    test_common(root)
-    test_output_bytes(root)
-    test_root(root)
-    test_automatic_intent_lock(root)
-    test_mutation_api_and_export(root)
-    test_service_call_api(root)
-    test_reconcile(root)
-    test_watch_dispatch(root)
-    test_reconcile_does_not_watch(root)
-    test_noglob_and_changes_dedup(root)
-    test_lint(root)
-    test_module_build_hook(root)
-    test_zygote_and_dex(root)
-    test_zygote_foreign(root)
-    test_remount_ro_busy(root)
-    test_system_directory_mode(root)
-    test_stray_temporaries(root)
-    test_residue_cleanup(root)
-    test_public_readable(root)
-    test_file_metadata_guards(root)
-    test_kill_tree(root)
-    test_update_signal(root)
-    test_projection_reader_vm(root)
-print("shared runtime tests passed")
+run_tests([
+    test_toolbox_md5,
+    test_file_key_failures,
+    test_common,
+    test_output_bytes,
+    test_root,
+    test_automatic_intent_lock,
+    test_mutation_api_and_export,
+    test_service_call_api,
+    test_reconcile,
+    test_watch_dispatch,
+    test_reconcile_does_not_watch,
+    test_noglob_and_changes_dedup,
+    test_lint,
+    test_module_build_hook,
+    test_zygote_and_dex,
+    test_zygote_foreign,
+    test_remount_ro_busy,
+    test_system_directory_mode,
+    test_stray_temporaries,
+    test_residue_cleanup,
+    test_public_readable,
+    test_file_metadata_guards,
+    test_kill_tree,
+    test_update_signal,
+    test_projection_reader_vm,
+], "shared runtime tests passed")

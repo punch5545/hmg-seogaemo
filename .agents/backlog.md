@@ -1,38 +1,17 @@
-Status: current — open verification and development items, 2026-11-04 (after v0.1.26).
+Status: current — open verification and development items.
 
 # Backlog: checks and planned work
 
-**Maintenance rule.** This is a to-do list, not a history. When an item is done
-(implemented and merged, or verified on the car), **delete it from this file** in the
-same commit; record lasting findings in the linked topic document instead. Add new
-items with enough context and links for an agent who has not seen the session.
+**Maintenance rule.** To-do list, not history. Delete an item in the commit that completes it (merged, or verified on the car); record lasting findings in the linked topic doc. New items need enough context and links for an agent without the session.
 
-Car baseline for these items: Hyundai Ioniq 5 KOR (NEEV.KOR.\*.260902), NEMESIS +
-HMG-Seogaemo only. As of 2026-11-04 23:15 the car runs a local build equal to v0.1.26
-(shown as 0.1.25): wireless CarPlay + wireless ADB on, wifi-client off, developer mode
-off, adb at `192.168.0.1:5555` over the car hotspot. `/data/local/tmp/nemesis-d` was
-removed; recreate it with `adb shell cp /system/xbin/nemesis /data/local/tmp/nemesis-d`
-before root commands.
+Car baseline: Ioniq 5 KOR (NEEV.KOR.\*.260902), NEMESIS + HMG-Seogaemo only. The car runs release v0.1.28: wireless CarPlay, wireless ADB, skip-consent-screen and user-button-shortcut on, wifi-client off, developer mode on (`persist.hmg_seogaemo.dev=1`), adb at `192.168.0.1:5555` over the hotspot, `/data/local/tmp/nemesis-d` present (recreate with `adb shell cp /system/xbin/nemesis /data/local/tmp/nemesis-d` if missing).
 
-Local evidence from the 2026-11-04 drives (gitignored, on the owner's Mac):
-`tmp/car-sessions/2026-11-04-tbt/` (live logcat, USB export with `diagnostics/tbt/`,
-ledger, `analysis/` reports on maneuver table, raw 0x5204 lanes and follow-ups).
+Local evidence (gitignored, owner's Mac): `tmp/car-sessions/2026-11-04-tbt/` (live logcat, USB export with `diagnostics/tbt/`, `analysis/` reports); `tmp/car-sessions/2026-11-05-drive/` (0.1.28 drive logcat, exports, `drive-notes.txt` with the lane-injection results). Lane injection tool: `tmp/lane-probe/` (`lanes.sh`, `trailer.sh`, `LaneProbe call <method> <ints>`).
 
 ## 1. CarPlay turn-by-turn follow-ups
 
-Background and fixed causes: `carplay-tbt-learnings.md`, `wireless-carplay-and-aa.md`
-(observation records, developer toggle `persist.hmg_seogaemo.dev`, Dalvik cross-dex rule),
-runtime contract section "Turn-by-turn observation records and `tbt-reset`".
+Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x5204 layout, ManeuverType enum, icon codes), `wireless-carplay-and-aa.md` (observation records, developer toggle `persist.hmg_seogaemo.dev`, Dalvik cross-dex rule), runtime contract "Turn-by-turn observation records and `tbt-reset`".
 
-- [ ] **Lane guidance via our own 0x5204 decoder.** The stock table registers
-  LaneGuidanceInformation under 0x5202; routing 0x5204 to the stock parser
-  (recipe `iap2-lane-msgid`, now disabled in `Wireless.java.src` `iap2()`) crashed
-  `com.tcc.iap2server` (SIGSEGV in `libIap2Acc.so`
-  `iAP2NativeMsg2Parcel::convertSubGroup`). Decode the raw 0x5204 in
-  `dipo/Bridge.java.src` `onCpIapIn` (control-session id is already parsed there) and
-  feed `CpTurns.lanes()` (81-byte 0xF1 frame, recommended-lane highlight, lane distance).
-  Decide whether to keep shipping the unused recipe file or drop it from
-  `owns_files`/`put_assets`.
 - [ ] **Maneuver → icon table from field data.** NAVER Map (via CarPlay) sends no exit
   angle; type-based arrows now cover 1/2/47–50. Review the recorded combinations and
   instruction texts (`tbt-icons.txt`/journal in exports) and refine: type 0 with
@@ -40,8 +19,9 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
   Third-party reference (reference only, do not copy):
   owner upload `nav_mapping.py` (HKMC `Navigation$DisplayType`, 81-byte lane struct
   incl. bitmasks at 0x43–0x50).
-- [ ] **No-icon value.** Icon 64 renders as a "loading" indicator on the cluster and
-  blank on the HUD; find a better "no symbol" value or keep the last arrow.
+- [ ] **TBT icons from firmware (ramps/roundabout); verify on car.** Icon 8 (none) and highway 160–165 are car-verified (`cluster-tbt-icons.md`). Firmware: highway entry/exit use 160–165 (not only 81/82/86), still to be used by `exactIcon`; roundabout has a main family (96/97/99/100/102/104/105/107) and an alternate-side family (192/193/195/196/198/200/201/203). Extending `exactIcon`/ramp/roundabout needs the phone-side driving-side/alt-side selector; verify against captured stock frames and drive logs first.
+- [ ] **Retire HU-side captures once firmware mapping is verified.** Lane frame (81 bytes), arrow codes and TBT icon/unit codes are being confirmed from stock libExSLNavi.so (`cluster-lane-frame.md`, `cluster-lane-arrows.md`, `cluster-tbt-icons.md`), so HU-side values no longer need reverse-engineering from observations. Plan: (1) next drive, check firmware values against captured stock `source=car-nav` 81-byte frames matched to real on-road lanes; (2) then stop the always-on `source=car-nav` capture (CarLaneCapture) or make it dev-mode-only. Keep the iAP2/phone-side records (`tbt-icons`, CarPlay `tbt-lanes`): what NAVER/Apple send is not in HU firmware and still needs field data for the maneuver/lane tables.
+- [ ] **Verify CarPlay lane glyph pairs, per-arrow status and lane distance on the car.** Implemented in `CpTurns` (`LaneGlyphs`, `laneValues`, `sendLaneDist`); host-tested only. Check on a drive with multi-direction lanes: pairs/triples draw as in [cluster-lane-arrows.md](cluster-lane-arrows.md), only the route arrow is blue, the distance box beside the strip tracks the turn distance and clears (`65535,15,15,0` is unverified) when lanes go away.
 - [ ] **Map app in observation keys.** Record the route-guidance SourceName (NAVER,
   Apple Maps, Kakao, …) with each observation; apps differ (angles, types).
 - [ ] **Status "unknown" with a second DiPO record.** `HmgSeogaemoProjectionRuntime`
@@ -54,27 +34,13 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
 - [ ] **Trip distance vs next-turn distance.** `updateTBTSubInfo` carries remaining
   trip distance (km, 0.1 steps); confirm on the cluster/HUD which field shows the
   next-turn distance and that units switch correctly under 1 km.
+- [ ] **Pull the decrypted stock navigation engine from the car (read-only).** `libExSLNavi.so` (and other native libs of `com.mnsoft.navi`, e.g. under `/data/app-lib/`) is missing from the 2026-11-04 offline dump; the official update backup (V031/V036) only has encrypted `enc_libExSLNavi.so`. The car's decrypted copy would show how lane fields (`dir`, `idx`, `valid`) become the 81-byte 0xF1 frame. Locate with toolbox `ls` (no `find`), `adb pull`, no writes.
 - [ ] Guard test: no new `hmgapi/mods` class may extend/implement a `hmgapi/hook` type
   other than `MethodHook` (dexdump check in the module test).
 
-## 1b. Core hook host and installable modules (branch `installable-modules`)
+## 1b. Core hook host and installable modules
 
-- [x] **On-car check of the core hook host** — done 2026-11-05 on NEEV KOR with only the
-  root-side branch files swapped in (release APK kept): `hooks on, start 1`, Settings logged
-  `[hook-sample] hello from com.android.settings`, revert + restart left `app_process` stock
-  (md5 `33f79811…`, 9492 B, 0:2000), no extras, no wrapper lines in `dmesg`. The
-  boot re-apply marked a needless restart each boot; fixed (`hsm-module.sh`,
-  `sg_core_hook_ensure`, test in `test_hook_host`). Original procedure:
-  (`core/hook/`, contract "Core hook host").
-  Keep adb ready; CarPlay must be off first (they exclude each other). Build the package
-  plus `out/hook-sample/hook-sample-0.1.0.hsm` (`make package`, then
-  `python3 tools/hsm pack out/hook-sample/module --out out/hook-sample`), install with
-  `python3 tools/hsm push out/hook-sample/hook-sample-0.1.0.hsm`, then
-  `hmg-seogaemo-root hook-sample apply`, restart, and check: `dmesg | grep hmg-seogaemo-hook`
-  (hooks on, start 1), `logcat -s HMG-Seogaemo-Hook` (zygote init, "hello from" in Settings
-  and DiPO), `cat /data/nemesis/backup/hmg-seogaemo/core/hook/status`, module status
-  `info.hook_*`. Then revert, restart, confirm `app_process` md5 is stock and the extras are
-  gone; repeat with stock restore. Boot guard: 3 forced zygote crashes turn hooks off.
+- [ ] **Finish the on-car check of the core hook host** (`core/hook/`, contract "Core hook host"). Single hook module verified on NEEV KOR 2026-11-05 (root-side branch files only, release APK kept): `hooks on, start 1`, Settings logged `[hook-sample] hello from com.android.settings`, revert + restart left `app_process` stock (md5 `33f79811…`, 9492 B, 0:2000), no extras, no wrapper lines in `dmesg`. Still open: repeat the revert check with stock restore, and the boot guard (3 forced zygote crashes turn hooks off). Procedure: adb ready, CarPlay off first (mutually exclusive); `make package`, `python3 tools/hsm pack out/hook-sample/module --out out/hook-sample`, `python3 tools/hsm push out/hook-sample/hook-sample-0.1.0.hsm`, `hmg-seogaemo-root hook-sample apply`, restart; check `dmesg | grep hmg-seogaemo-hook`, `logcat -s HMG-Seogaemo-Hook` ("hello from" in Settings and DiPO), `/data/nemesis/backup/hmg-seogaemo/core/hook/status`, module status `info.hook_*`; then revert, restart, confirm stock `app_process` md5 and extras gone.
 - [ ] Settings changed while on are applied by revert+apply; the zygote reads them only at
   start (restart needed). Decide whether hook modules should say so in the UI.
 - [ ] On-car check with two hook modules sharing one wrapper (both `hello` lines).
@@ -82,7 +48,7 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
   `core/hook/mods/` and `modules/core-hook/{module.log,assets-repaired-boot}` remain; clean up.
 - [ ] Installed-module status prints `info.desired=off` twice (runner + dispatcher).
 - [ ] `tools/hsm pack` without `--out` writes to `./dist/` (not gitignored); default to `out/`.
-- [ ] Migrate CarPlay onto the core host (plan in `module-plugin-design.md` P3).
+- [ ] Migrate CarPlay onto the core host (plan in `installable-modules.md` Core hook host).
   Until then CarPlay and hook modules exclude each other.
 
 ## 2. Older open items
@@ -91,8 +57,6 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
   limit and keep app/root commands below it (split or script file).
 - [ ] Restore stock stops at the first module conflict and leaves later modules
   not attempted; decide whether to continue with the others (`stock-restore.md`).
-- [ ] Status details render `;` as `?` in the app (RootClient US-ASCII parsing vs
-  non-ASCII punctuation in root output) — verify whether still present.
 - [ ] Show "/system stays rw until restart" (remount-ro EBUSY) in the UI/status, not
   only in `module.log`.
 - [ ] (With the UI/UX redesign) Wireless ADB shows "확인 불가" / `adbd 상태: stopped`
@@ -100,9 +64,9 @@ runtime contract section "Turn-by-turn observation records and `tbt-reset`".
   `wireless-adb.sh` status reports `failed` while `init.svc.adbd` is not `running`, and
   the app never re-polls. Report a transient "applying" state and re-poll in the app.
 - [ ] (With the UI/UX redesign) Switching wifi-client -> CarPlay from the CarPlay row
-  refused with "ADB state unknown" until the owner opened the Wireless ADB screen once;
-  after that refresh the switch worked (2026-11-05). The plan/precheck uses a stale or
-  unknown wireless-adb status instead of polling it; refresh dependents before planning.
+  refuses with "ADB state unknown" until the Wireless ADB screen has been opened once.
+  The plan/precheck uses a stale or unknown wireless-adb status instead of polling it;
+  refresh dependents before planning.
 - [ ] On-car checks not yet done: wifi-client disable exact restore (+restart);
   both user buttons after restart and after visiting stock settings
   (`user-button-shortcut.md`); full NEMESIS uninstall leaves the unit byte-identical
@@ -117,9 +81,7 @@ Evidence and candidate hooks: `neev-kor-api-inventory.md`.
 - [ ] USB ADB role switch.
 - [ ] Battery diagnostics, read-only first; any control needs owner approval.
 - [ ] EV information to the phone over iAP2 (EV routing).
-
-## 4. Security
-
-- [ ] Consider rotating the release keystore password (printed in a 2026-11-03
-  session transcript); update the GitHub `release` environment secret and the owner's
-  local backup (`~/.config/hmg-seogaemo-release`).
+- [ ] Virtual exhaust / driving sound in the cabin: research the head-unit audio path and the
+  vehicle-speed/accelerator signals available to it (and any stock sound feature to reuse).
+- [ ] Manual battery preconditioning (start battery conditioning without a navigation
+  destination to a charger); find the BMS/thermal request the stock EV navigation sends.

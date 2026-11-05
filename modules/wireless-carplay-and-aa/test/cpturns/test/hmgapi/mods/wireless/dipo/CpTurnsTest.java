@@ -107,10 +107,10 @@ public final class CpTurnsTest {
         l1.add(1, U16, i(1)).add(2, U16, i(0));
         l2.add(2, U16, i(90, 45)).add(3, U16, i(90));
         lanes.getItemGroup().add(0, U16, i(1)).add(2, GROUPS, new Iap2NotiMsg.Iap2ObjGroup[] { l1, l2 });
-        t.lanes(lanes);
+        new CpTurns(new android.content.Context(), c, null).lanes(lanes);
         StringBuilder z = new StringBuilder();
         for (int k = 0; k < 14; k++) z.append("00");
-        expect("lanes: straight; right + slight right highlighted", "lanes f102000102" + z + "0100000302");
+        expect("lanes: straight; right + slight right as the 18 + 21 pair, route right white, slight right grey (status 0d)", "lanes f10200010d" + z + "0100001215");
 
         Car.unit = Car.DISTANCE_KM;
         t.routeGuidance(msg(0, U16, i(1), 7, U32, i(800), 11, STR, s("1.5"), 12, ENUM, i(KM)));
@@ -201,26 +201,20 @@ public final class CpTurnsTest {
         pref.add(1, U16, i(2)).add(2, U16, i(0)).add(3, U16, i(0));
         along.add(1, U16, i(1)).add(2, U16, i(0, 90)).add(3, U16, i(0));
         off.add(1, U16, i(0)).add(2, U16, i(90));
-        check("lane marks, off: preferred 2, route 2, other 1 (as before)",
-                CpTurns.laneOne(pref, "off")[0] == 2 && CpTurns.laneOne(along, "off")[0] == 2 && CpTurns.laneOne(off, "off")[0] == 1
-                        && CpTurns.laneOne(pref)[0] == 2);
-        check("lane marks, rec: only the preferred lane is 2",
-                CpTurns.laneOne(pref, "rec")[0] == 2 && CpTurns.laneOne(along, "rec")[0] == 1 && CpTurns.laneOne(off, "rec")[0] == 1);
-        check("lane marks, dim0 / dim3: preferred 2, route lane 1, the rest 0 / 3",
-                CpTurns.laneOne(pref, "dim0")[0] == 2 && CpTurns.laneOne(along, "dim0")[0] == 1 && CpTurns.laneOne(off, "dim0")[0] == 0
-                        && CpTurns.laneOne(off, "dim3")[0] == 3 && CpTurns.laneOne(along, "dim3")[0] == 1);
-        Dipo.laneMode = "auto";
+        // pref / off have one arrow; along has two (straight + right), route straight
+        check("lane colours: preferred lane blue, a good lane white on its route arrow and grey on the other, a not-good lane grey",
+                CpTurns.laneOne(pref)[0] == 2 && CpTurns.laneOne(along)[0] == 0x0d && CpTurns.laneOne(off)[0] == 3);
         Iap2NotiMsg.Iap2ObjGroup[] withPref = { along, pref, off }, noPref = { along, off };
-        check("auto: a preferred lane is named", CpTurns.anyPreferred(withPref) && !CpTurns.anyPreferred(noPref) && !CpTurns.anyPreferred(null));
         Iap2NotiMsg am = new Iap2NotiMsg();
         am.getItemGroup().add(0, U16, i(1)).add(2, GROUPS, withPref);
         t.lanes(am);
         Iap2NotiMsg am2 = new Iap2NotiMsg();
         am2.getItemGroup().add(0, U16, i(1)).add(2, GROUPS, noPref);
         t.lanes(am2);
-        Dipo.laneMode = "off";
-        expect("auto: with a preferred lane the frame marks 1 2 1; without one the route lane is 2 (marks 2 1)",
-                "lanes f103000102010000000000000000000000000001030001000003", "lanes f102000201000000000000000000000000000001030003");
+        StringBuilder z13 = new StringBuilder();
+        for (int k = 0; k < 13; k++) z13.append("00");
+        expect("lanes: colours follow each lane's own status, whether or not another lane is preferred",
+                "lanes f10300" + "0d0203" + z13 + "101200" + "010000" + "03", "lanes f10200" + "0d03" + z + "101200" + "03");
         t.sendHudDist(0.96f, Cluster.UNIT_MI);
         t.sendHudDist(1.97f, Cluster.UNIT_KM);
         t.sendHudDist(0.1f, Cluster.UNIT_MI);
@@ -247,6 +241,13 @@ public final class CpTurnsTest {
             c.calls.clear();
             r.refresh();
             check("refresh right after a phone update sends nothing", c.calls.isEmpty());
+            r.hudAt -= CpTurns.HUD_RESEND_MS + 1000L;
+            r.refresh();
+            check("HUD list resent unchanged after 2 s even while phone updates keep coming (" + c.calls + ")",
+                    c.calls.size() == 1 && c.calls.get(0).startsWith("hud f2"));
+            c.calls.clear();
+            r.refresh();
+            check("not again right away", c.calls.isEmpty());
             r.lastSendAt -= 5000L;
             r.refresh();
             boolean again = false;
@@ -256,8 +257,9 @@ public final class CpTurnsTest {
             r.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(0)));
             c.calls.clear();
             r.lastSendAt -= 5000L;
+            r.hudAt -= 5000L;
             r.refresh();
-            check("no refresh once guidance state is 0", c.calls.isEmpty());
+            check("no refresh (and no HUD resend) once guidance state is 0", c.calls.isEmpty() && r.lastHud == null);
         }
         check("match kinds: exact, band, angle, semantic, blank",
                 "exact".equals(CpTurns.matchKind(2, 0, 0, 90, 1)) && "semantic".equals(CpTurns.matchKind(2, 0, 0, 0, 1)) && "band".equals(CpTurns.matchKind(2, 0, 0, 75, 1))
@@ -288,15 +290,116 @@ public final class CpTurnsTest {
                 CpTurns.fallbackIcon(13, 0, 0, 0) == 71 && CpTurns.fallbackIcon(14, 0, 0, 0) == 66 && CpTurns.fallbackIcon(6, 0, 1, 0) == 96
                         && CpTurns.fallbackIcon(6, 1, 1, 0) == 97 && CpTurns.fallbackIcon(12, 1, 0, 0) == 112 && CpTurns.fallbackIcon(15, 0, 1, 0) == 176
                         && CpTurns.fallbackIcon(4, 0, 0, 0) == 72 && CpTurns.fallbackIcon(4, 1, 0, 0) == 73);
-        check("left/right turn without an angle: the type's arrow (70/67); off-ramp, unknown type, start route -> 64 (no icon)",
-                CpTurns.fallbackIcon(1, 0, 0, 0) == 70 && CpTurns.fallbackIcon(2, 0, 0, 0) == 67 && CpTurns.fallbackIcon(8, 0, 0, 0) == 64
-                        && CpTurns.fallbackIcon(99, 0, 0, 0) == 64 && CpTurns.fallbackIcon(11, 0, 0, 0) == 64);
+        check("left/right turn without an angle: the type's arrow (70/67); off-ramp, unknown type, start route -> 8 (no icon)",
+                CpTurns.fallbackIcon(1, 0, 0, 0) == 70 && CpTurns.fallbackIcon(2, 0, 0, 0) == 67 && CpTurns.fallbackIcon(8, 0, 0, 0) == CpTurns.NO_ICON
+                        && CpTurns.fallbackIcon(99, 0, 0, 0) == CpTurns.NO_ICON && CpTurns.fallbackIcon(11, 0, 0, 0) == CpTurns.NO_ICON);
         check("turns ahead for sharp/slight types: 47 -> 69, 48 -> 68, 49 -> 71, 50 -> 66",
                 CpTurns.aheadIcon(47, 0, 0, 0) == 69 && CpTurns.aheadIcon(48, 0, 0, 0) == 68 && CpTurns.aheadIcon(49, 0, 0, 0) == 71
                         && CpTurns.aheadIcon(50, 0, 0, 0) == 66 && CpTurns.aheadIcon(99, 0, 0, 0) == 64);
         check("lane angles: 0 straight, 90 right, -45 slight left, 180 back",
                 CpTurns.laneIcon(0) == 1 && CpTurns.laneIcon(90) == 3 && CpTurns.laneIcon(-45) == 8 && CpTurns.laneIcon(180) == 5
                         && CpTurns.laneIcon(270) == 7);
+
+        // lane glyph pairs and per-arrow status (.agents/cluster-lane-arrows.md)
+        // status per slot: 00 blank, 01 white, 10 blue, 11 grey; arrows off the route are grey
+        laneIs("U-turn + left, good lane, route left: U-turn grey, left white", CpTurns.laneValues(1, i(180, -90), i(-90)), 0x07, 10, 14);
+        laneIs("U-turn + left listed left first: same slots", CpTurns.laneValues(1, i(-90, 180), i(-90)), 0x07, 10, 14);
+        laneIs("U-turn + left, preferred lane, route left: left blue", CpTurns.laneValues(2, i(180, -90), i(-90)), 0x0b, 10, 14);
+        laneIs("U-turn + left, not-good lane: both grey", CpTurns.laneValues(0, i(180, -90), i(-90)), 0x0f, 10, 14);
+        laneIs("U-turn + left, good lane, route U-turn", CpTurns.laneValues(1, i(180, -90), i(180)), 0x0d, 10, 14);
+        laneIs("U-turn + left, preferred lane, route U-turn", CpTurns.laneValues(2, i(180, -90), i(180)), 0x0e, 10, 14);
+        laneIs("straight + left, good lane, route straight: 9 + 12, white + grey", CpTurns.laneValues(1, i(0, -90), i(0)), 0x0d, 9, 12);
+        laneIs("straight + left, good lane, route left: grey + white", CpTurns.laneValues(1, i(0, -90), i(-90)), 0x07, 9, 12);
+        laneIs("left + straight + right, preferred, route right: 28 22 24, blue on the right only", CpTurns.laneValues(2, i(-90, 0, 90), i(90)), 0x2f, 28, 22, 24);
+        laneIs("left + straight + right listed in another order, good, route straight", CpTurns.laneValues(1, i(90, -90, 0), i(0)), 0x37, 28, 22, 24);
+        laneIs("sharp left + straight + slight right is not listed: snapped to left + straight + right", CpTurns.laneValues(2, i(-135, 0, 45), i(45)), 0x2f, 28, 22, 24);
+        laneIs("slight left + slight right is listed as is: 30 + 33", CpTurns.laneValues(1, i(-45, 45), i(-45)), 0x0d, 30, 33);
+        laneIs("sharp + slight left snap to one left glyph", CpTurns.laneValues(1, i(-135, -45), i(-45)), 0x01, 7);
+        laneIs("... preferred: blue", CpTurns.laneValues(2, i(-135, -45), i(-45)), 0x02, 7);
+        laneIs("four directions, preferred: only the highlighted arrow, right (3), blue", CpTurns.laneValues(2, i(-90, 0, 90, 180), i(90)), 0x02, 3);
+        laneIs("four directions, good lane with no highlight: the first arrow, white", CpTurns.laneValues(1, i(-90, 0, 90, 180), i(1000)), 0x01, 7);
+        laneIs("four directions, preferred with no highlight: the first arrow, blue", CpTurns.laneValues(2, i(-90, 0, 90, 180), i(1000)), 0x02, 7);
+        laneIs("four directions, not-good lane: the first arrow, grey", CpTurns.laneValues(0, i(-90, 0, 90, 180), i(1000)), 0x03, 7);
+        laneIs("preferred without a highlight: every arrow blue", CpTurns.laneValues(2, i(0, -90), i(1000)), 0x0a, 9, 12);
+        laneIs("good lane without a highlight: every arrow white", CpTurns.laneValues(1, i(0, -90), i(1000)), 0x05, 9, 12);
+        laneIs("a highlight that matches no arrow counts as none", CpTurns.laneValues(1, i(0, -90), i(45)), 0x05, 9, 12);
+        laneIs("single direction keeps the plain glyph; two angles of one direction are one arrow", CpTurns.laneValues(2, i(85, 95), i(95)), 0x02, 3);
+        laneIs("a not-good single arrow is grey", CpTurns.laneValues(0, i(90), i(1000)), 0x03, 3);
+        laneIs("angle outside -180..180 is skipped", CpTurns.laneValues(1, i(1000, 90), i(1000)), 0x01, 3);
+        laneIs("a status that is not 0..2 counts as good", CpTurns.laneValues(-1, i(90), i(1000)), 0x01, 3);
+        check("no usable angle: the lane's value on slot 0 only (preferred blue, good white, not good grey)",
+                CpTurns.laneValues(2, null, i(1000))[0] == 2 && CpTurns.laneValues(1, null, i(1000))[0] == 1
+                        && CpTurns.laneValues(0, null, i(1000))[0] == 3 && CpTurns.laneValues(2, null, i(1000))[1] == 0);
+
+        // lane distance beside the lane strip: updateRemainDis(distance, unit, tenths, 0)
+        Cluster rc = new Cluster();
+        CpTurns rt = new CpTurns(new android.content.Context(), rc, null);
+        CpLaneDecoder.Info rinfo = new CpLaneDecoder.Info(1, 7, new CpLaneDecoder.Lane[] {
+                new CpLaneDecoder.Lane(0, 2, i(0, -90), 0) }, 0);
+        rt.rawLanes(rinfo);
+        rt.routeGuidance(laneUpdate(7, true, "1.2", KM));
+        check("lane distance 1.2 km: 1 km 2 tenths, toll gate 0", remains(rc).equals("[remain 1 1 2 0]"));
+        rt.routeGuidance(laneUpdate(7, true, "1.2", KM));
+        check("the same distance is not sent again at once", remains(rc).equals("[]"));
+        rt.routeGuidance(laneUpdate(7, true, "150", 2));
+        check("150 m: whole metres, no tenths", remains(rc).equals("[remain 150 0 0 0]"));
+        rt.routeGuidance(laneUpdate(7, true, "0.4", MILES));
+        check("0.4 mi: unit 2, 4 tenths", remains(rc).equals("[remain 0 2 4 0]"));
+        rt.routeGuidance(laneUpdate(7, true, "100", 3));
+        check("100 yd goes out as 91 m", remains(rc).equals("[remain 91 0 0 0]"));
+        rt.lastSendAt = 0;
+        rt.laneDistAt = 0L;
+        rt.refresh();
+        check("refresh resends the lane distance once the resend interval has passed", remains(rc).equals("[remain 91 0 0 0]"));
+        rt.routeGuidance(laneUpdate(7, false, "100", 3));
+        check("lanes hidden: the distance box is cleared with 65535 15 15 0", remains(rc).equals("[remain 65535 15 15 0]"));
+        rt.routeGuidance(laneUpdate(7, false, "90", 3));
+        check("no more lane distance while no lanes show", remains(rc).equals("[]"));
+        rt.routeGuidance(laneUpdate(7, true, "2.0", KM));
+        check("lanes back: the distance is sent again", remains(rc).equals("[remain 2 1 0 0]"));
+        java.lang.reflect.Field lastLaneField = CpTurns.class.getDeclaredField("lastLane");
+        lastLaneField.setAccessible(true);
+        byte[] lastFrame = (byte[]) lastLaneField.get(rt);
+        check("lane frame keeps the trailer bytes 0x43..0x50 zero", lastFrame != null && lastFrame[1] == 1 && allZero(lastFrame, 0x43, 0x50));
+        rt.stop();
+        check("route guidance stopped: the distance box is cleared", remains(rc).equals("[remain 65535 15 15 0]"));
+
+        // an unmapped turn (icon 8) blanks the HUD instead of leaving the last arrow up
+        Cluster hc = new Cluster();
+        CpTurns ht = new CpTurns(new android.content.Context(), hc, null);
+        ht.sendHud(67, 1, null);
+        ht.sendHud(CpTurns.NO_ICON, 1, null);
+        ht.sendHud(CpTurns.NO_ICON, 1, null);
+        check("HUD: a turn, then icon 8 sends the empty list once", hc.calls.toString().equals("[hud f20143, hud f2]"));
+        check("HUD: the blank frame is kept as the one refresh() resends", ht.lastHud != null && ht.lastHud.length == 1 && (ht.lastHud[0] & 0xff) == 0xf2);
+        hc.calls.clear();
+        ht.sendHud(67, 1, null);
+        check("HUD: the next mapped turn is sent again", hc.calls.toString().equals("[hud f20143]"));
         System.exit(fail);
+    }
+
+    static void laneIs(String what, int[] r, int status, int... ids) {
+        boolean ok = r[0] == status;
+        for (int k = 0; k < 3; k++) ok &= r[1 + k] == (k < ids.length ? ids[k] : 0);
+        check(what + " (status " + Integer.toHexString(r[0]) + ", ids " + r[1] + "," + r[2] + "," + r[3] + ")", ok);
+    }
+
+    /** a RouteGuidanceUpdate for component 1: guidance on, lane window `index`, shown or hidden, with the distance to the next maneuver */
+    static Iap2NotiMsg laneUpdate(int index, boolean showing, String dist, int units) {
+        return msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s(dist), 12, ENUM, i(units), 14, U16, i(2),
+                16, U16, i(index), 17, U16, i(4), 18, 9, i(showing ? 1 : 0));
+    }
+
+    /** the lane distance calls since the last look, as a list */
+    static String remains(Cluster cl) {
+        List<String> r = new java.util.ArrayList<String>();
+        for (String x : cl.calls) if (x.startsWith("remain ")) r.add(x);
+        cl.calls.clear();
+        return r.toString();
+    }
+
+    static boolean allZero(byte[] b, int from, int to) {
+        for (int k = from; k <= to; k++) if (b[k] != 0) return false;
+        return true;
     }
 }

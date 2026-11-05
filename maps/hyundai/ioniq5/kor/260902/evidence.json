@@ -186,9 +186,9 @@
   "physical_features": [
     {
       "feature": "wireless CarPlay",
-      "observation": "Owner reports wireless CarPlay works without audio. Audio fix pending physical verification; no claim for other features.",
-      "result": "partial",
-      "version": "0.1.21"
+      "observation": "Owner confirmed wireless CarPlay music, Siri and calls/mic work after the payload permission fix. Wireless Android Auto not tested.",
+      "result": "passed",
+      "version": "0.1.25"
     }
   ],
   "reflection": [
