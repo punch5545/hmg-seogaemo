@@ -46,7 +46,7 @@ Resource names in this table omit `ba_drawable_rg_ic_`. Repeated RG inputs share
 
 `FrameCluster::setClusterArrived(bool)` (`0x23f55a8`) stores the arrival flag at `this+0x0a`. `SetTurnData` checks it, writes display byte **3** at `0x23f5c40–0x23f5c44` for counter values 0 through 4, then clears flag/counter. Normal display comes from `stItem+0x29` to frame `+0x28` at `0x23f5cac–0x23f5cb0`. `SetCaseDestWayPoint` (`0x2b11a74`) calls the destination converter, stores display at `0x2b11aa0`, and zeros direction/fraction. Thus **112 approach versus 3 arrived** is independently established.
 
-Legacy `RGIconIDToClusterDispTypeForGen3` (`0x2b10a18`) resolves pool `0x2b10a2c` bytes `b2 63 53 01` using ADD at `0x2b10a22` to the byte table `0x4046dd8`. It maps straight RG0 to **2**, left RG1 to **7**, right RG2 to **4**, destination RG103 to **35**, with **64** fallback. This is a different numbering family: its fallback cannot validate `CpTurns.NO_ICON=64` for Gen5W. Nor does the evidence establish that replacing 64 with 8 would visually clear this cluster.
+Legacy `RGIconIDToClusterDispTypeForGen3` (`0x2b10a18`) resolves pool `0x2b10a2c` bytes `b2 63 53 01` using ADD at `0x2b10a22` to the byte table `0x4046dd8`. It maps straight RG0 to **2**, left RG1 to **7**, right RG2 to **4**, destination RG103 to **35**, with **64** fallback. This is a different numbering family: its 64 fallback does not apply to Gen5W, whose none-icon 8 is car-verified as a blank TBT.
 
 ## Highway, ramps, divergence, and fork
 
@@ -150,7 +150,7 @@ References: `modules/wireless-carplay-and-aa/payload/src/hmgapi/hook/Cluster.jav
 | Current claim / behavior | Verdict | Confidence / boundary |
 | --- | --- | --- |
 | Straight 65; right 66/67/68; left 71/70/69; U-turn 72/73 | Correct HU code family. Exact angle cutoffs and side selection still need phone evidence. | H HU; U phone policy |
-| `NO_ICON=64` (`CpTurns:655`) | Not validated for Gen5W; recovered Gen5W converter defaults to 8. Gen3 fallback 64 is a separate enum. No loading picture established. | H distinction; U physical clearing |
+| `NO_ICON=8` | Car-verified 2026-11-05: icon 8 shows as a blank TBT on the cluster. The HUD keeps its last arrow unless sent the empty list `{0xF2}` (or `{0xF2,0x01,0x08,0x00,0x00}`); `CpTurns.sendHud` sends `{0xF2}` for icon 8. Gen3 fallback 64 is a separate enum (it rendered as a loading glyph). | H cluster and HUD |
 | 81/82/86 as generic off-ramps | Too broad: explicit overpass/ground divergence names and platform-dependent 86/88 branch. | H HU; U mapping arbitrary phone exits |
 | 96..106 roundabout-by-angle | Incorrect as a stock enumeration: eight codes end at 107; separate B family starts at 192. Current `roundaboutIcon:703` already includes 107. | H HU |
 | `side==0 ? 96 : 97` for straight roundabout | Stock A/B straight pair is 96/192; 97 denotes A right-front. Whether phone `side` should select A/B needs validation. | H HU; U phone selector |
@@ -179,6 +179,7 @@ Each row below is consecutive raw bytes from the binary, not disassembly. Halfwo
 Reproduce with `/opt/homebrew/opt/llvm/bin/llvm-objdump -d --triple=thumbv7 --start-address=0x2b10f0c --stop-address=0x2b11200 libExSLNavi.so`; read bytes with Python `struct.unpack_from('<H', binary, base+2*index)`. Reuse `tbt-main.asm`, `tbt-cluster-convert.asm`, `tbt-hud.asm(.annotated)`, `tbt-frame-main.asm`, `tbt-sendturn.asm`, `tbt-fork.asm`, and `tbt-distance/{convert-and-tp,subinfo,format-dispatch}.asm`. Resource IDs returned by HUD conversion are not cluster codes.
 
 ## To do in our code
-- Try the HU's own none handling instead of `CpTurns.NO_ICON=64` (may be why 64 rendered as "loading"; Gen5W falls back to 8).
+- Highway icons are car-verified on the cluster (2026-11-05): 160 entry straight, 161 entry right, 162 entry left, 163 exit straight, 164 exit right, 165 exit left.
+- Junction view is not feasible: no image path reaches the cluster/HUD, `updateCluDataNew_14` advanced_tbt/pattern_guide had no visible effect, and stock navigation never calls it.
 - Refine `exactIcon`/ramp/roundabout mapping from the 160-165 highway family and the two roundabout families once verified on the car.
 - Still phone-side (field data only): which iAP2 ManeuverType/angle NAVER/Apple actually send ([carplay-tbt-external/apps-and-oems.md](carplay-tbt-external/apps-and-oems.md)).

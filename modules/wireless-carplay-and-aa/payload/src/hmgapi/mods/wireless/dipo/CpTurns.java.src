@@ -969,6 +969,19 @@ final class CpTurns {
 
     /** the HUD's list frame (0xF2): count, this icon, the next turn's icon, 0, road after this turn (UTF-16LE) */
     void sendHud(int type, Integer id, Update u) {
+        if (type == NO_ICON) {
+            // no arrow for this maneuver (car-verified 2026-11-05): the empty list blanks the HUD TBT, so
+            // the previous turn's arrow doesn't stay up and isn't resent; the next mapped turn goes out again
+            if (lastHud != null && lastHud.length == 1) return;
+            byte[] empty = { (byte) 0xF2 };
+            cluster.turnListNew(empty);
+            lastHud = empty;
+            hudAt = System.currentTimeMillis();
+            hudType = -1;
+            hudNext = 0;
+            hudRoad = null;
+            return;
+        }
         if (type < 64) return;
         int next = 0;
         String road = "";

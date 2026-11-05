@@ -368,6 +368,18 @@ public final class CpTurnsTest {
         check("lane frame keeps the trailer bytes 0x43..0x50 zero", lastFrame != null && lastFrame[1] == 1 && allZero(lastFrame, 0x43, 0x50));
         rt.stop();
         check("route guidance stopped: the distance box is cleared", remains(rc).equals("[remain 65535 15 15 0]"));
+
+        // an unmapped turn (icon 8) blanks the HUD instead of leaving the last arrow up
+        Cluster hc = new Cluster();
+        CpTurns ht = new CpTurns(new android.content.Context(), hc, null);
+        ht.sendHud(67, 1, null);
+        ht.sendHud(CpTurns.NO_ICON, 1, null);
+        ht.sendHud(CpTurns.NO_ICON, 1, null);
+        check("HUD: a turn, then icon 8 sends the empty list once", hc.calls.toString().equals("[hud f20143, hud f2]"));
+        check("HUD: the blank frame is kept as the one refresh() resends", ht.lastHud != null && ht.lastHud.length == 1 && (ht.lastHud[0] & 0xff) == 0xf2);
+        hc.calls.clear();
+        ht.sendHud(67, 1, null);
+        check("HUD: the next mapped turn is sent again", hc.calls.toString().equals("[hud f20143]"));
         System.exit(fail);
     }
 
