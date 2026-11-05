@@ -1,12 +1,12 @@
-Status: current — offline NEEV KOR stock TBT icon and distance audit, 2026-11-05; phone maneuver translation and physical cluster rendering remain unverified.
+Status: current — offline NEEV KOR stock TBT icon and distance audit; phone maneuver translation and physical cluster rendering remain unverified.
 
 # Stock cluster TBT icons and distance encoding
 
-Source: read-only stock navigation engine `libExSLNavi.so`, ARM32 Thumb-2, 69,612,252 bytes, ELF build ID `c9fc6b0ba98c35c4054041ab3ff4ebddfec8d421`. Target stock dump: `NEEV.KOR.0000.V039.001.260902`. No car access or experiment. The binary is not committed. Scratch disassemblies and indexes are under `tmp/navi-re/`.
+Source: read-only stock navigation engine `libExSLNavi.so`, ARM32 Thumb-2, 69,612,252 bytes, ELF build ID `c9fc6b0ba98c35c4054041ab3ff4ebddfec8d421` ([navi-lib-index.md](navi-lib-index.md)); stock dump `NEEV.KOR.0000.V039.001.260902`. No car access or experiment. Binary not committed; scratch disassemblies and indexes under `tmp/navi-re/`.
 
-**H** = explicit native instructions, table bytes, resolved resource name, or explicit Java bytecode; **M** = semantic/structural inference; **U** = unresolved. All native addresses below are hexadecimal **vaddr = file offset** in this ELF's `.text`, `.rodata`, and `.data`. A resource name establishes the HU's maneuver picture identity, not the physical cluster's pixels or support for an arbitrary injected value. Every recovered native table below is **HU-side**. Phone/iAP2 interpretation is discussed separately.
+**H** = explicit native instructions, table bytes, resolved resource name or Java bytecode; **M** = semantic/structural inference; **U** = unresolved. Native addresses are hexadecimal **vaddr = file offset** in `.text`, `.rodata`, `.data`. A resource name gives the HU's maneuver picture identity, not the cluster's pixels or support for an arbitrary injected value. Every table here is **HU-side**; phone/iAP2 interpretation is separate.
 
-The ordinary arrows agree with HMG-API. The broader claim does not: Gen5W's recovered switch falls back to **8**, not 64; the roundabout family is sparse and has a separate alternate-side family; highway entry/exit codes include **160–165**. `172` is a conditional straight interchange variant, `176` is ferry, and the meanings of `173–175` remain unverified. Units are **0=m, 1=km, 2=mi, 3=ft, 4=yd**, reversing the question's tentative km/m order.
+Summary: ordinary arrows agree with HMG-API. The broader HMG-API claims do not: Gen5W's switch falls back to **8**, not 64; the roundabout family is sparse with a separate alternate-side family; highway entry/exit includes **160-165**. `172` is a conditional straight interchange variant, `176` ferry, `173-175` unverified. Units are **0=m, 1=km, 2=mi, 3=ft, 4=yd**.
 
 ## How the tables were joined
 
@@ -143,9 +143,9 @@ These HU smali files are under `tmp/car-sessions/2026-11-04-devdump/analysis/api
 
 Consequently **1.2 km** is `updateTBTSubInfo(1.2f, ..., unit=1, ...)`, or one SubInfo2C group **(1, 2, 1)**, whose serialized bytes are `12 00 01`. It is not whole=12 with an implied global tenths scale. For 350 m the group is `(0,0,350)` → `00 01 5e`. H for encoding. Fractional nibble width does not make values 10–15 ordinary decimal digits.
 
-## Comparison with our hook and phone-side boundary
+## Gap table: our hook versus stock, and phone-side boundary
 
-References: `modules/wireless-carplay-and-aa/payload/src/hmgapi/hook/Cluster.java.src` and `modules/wireless-carplay-and-aa/payload/src/hmgapi/mods/wireless/dipo/CpTurns.java.src`. No implementation was changed during this audit.
+References: `modules/wireless-carplay-and-aa/payload/src/hmgapi/hook/Cluster.java.src` and `modules/wireless-carplay-and-aa/payload/src/hmgapi/mods/wireless/dipo/CpTurns.java.src`.
 
 | Current claim / behavior | Verdict | Confidence / boundary |
 | --- | --- | --- |
@@ -176,19 +176,9 @@ Each row below is consecutive raw bytes from the binary, not disassembly. Halfwo
 | `0x2b10fc6` | Main RG86 | `5b 01` → `0x2b111d0` | H |
 | `0x2b10fe8` | Main RG103 | `23 01` → `0x2b11160` | H |
 
-Reproduce with `/opt/homebrew/opt/llvm/bin/llvm-objdump -d --triple=thumbv7 --start-address=0x2b10f0c --stop-address=0x2b11200 libExSLNavi.so`; read bytes with Python `struct.unpack_from('<H', binary, base+2*index)`. Reuse `tbt-main.asm`, `tbt-cluster-convert.asm`, `tbt-hud.asm(.annotated)`, `tbt-frame-main.asm`, `tbt-sendturn.asm`, `tbt-fork.asm`, and `tbt-distance/{convert-and-tp,subinfo,format-dispatch}.asm`. Original annotated PC-literal results were checked against the binary; resource IDs returned by HUD conversion are deliberately not substituted for the cluster codes.
+Reproduce with `/opt/homebrew/opt/llvm/bin/llvm-objdump -d --triple=thumbv7 --start-address=0x2b10f0c --stop-address=0x2b11200 libExSLNavi.so`; read bytes with Python `struct.unpack_from('<H', binary, base+2*index)`. Reuse `tbt-main.asm`, `tbt-cluster-convert.asm`, `tbt-hud.asm(.annotated)`, `tbt-frame-main.asm`, `tbt-sendturn.asm`, `tbt-fork.asm`, and `tbt-distance/{convert-and-tp,subinfo,format-dispatch}.asm`. Resource IDs returned by HUD conversion are not cluster codes.
 
-## Match against our builder (2026-11-05)
-
-- **Distance units CONFIRMED match:** our `Cluster.UNIT_M=0, UNIT_KM=1, UNIT_MI=2, UNIT_FT=3,
-  UNIT_YD=4` equal the firmware enum. `updateTBTSubInfo2C(unit, fractional, whole)` with tenths for
-  km/mi is correct (1.2 km → `(1,2,1)`).
-- **Ordinary turn arrows match:** 65 straight, 66/67/68 right slight/turn/sharp, 71/70/69 left, 72/73
-  U-turn, 112 arrive, 3 arrived, 176 ferry — all firmware-confirmed.
-- **To revisit in our code:** the none/fallback icon. The Gen5W switch falls back to **8**, not 64;
-  64 is only the legacy Gen3 default and is not proven to clear this cluster. Our `CpTurns.NO_ICON=64`
-  may be why icon 64 rendered as "loading" — try the HU's own none handling. Highway entry/exit use
-  **160–165** (not only 81/82/86); roundabout has a main family (96/97/99/100/102/104/105/107) and a
-  separate alternate-side family (192/193/195/196/198/200/201/203). Refine `exactIcon`/ramp/roundabout
-  mapping from these once verified on the car.
-- Still phone-side (field data only): which iAP2 ManeuverType/angle NAVER/Apple actually send.
+## To do in our code
+- Try the HU's own none handling instead of `CpTurns.NO_ICON=64` (may be why 64 rendered as "loading"; Gen5W falls back to 8).
+- Refine `exactIcon`/ramp/roundabout mapping from the 160-165 highway family and the two roundabout families once verified on the car.
+- Still phone-side (field data only): which iAP2 ManeuverType/angle NAVER/Apple actually send ([carplay-tbt-external/apps-and-oems.md](carplay-tbt-external/apps-and-oems.md)).

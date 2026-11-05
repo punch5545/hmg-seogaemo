@@ -2,7 +2,7 @@ Status: current — off-car runtime and host-test findings; physical-car behavio
 
 # Shared runtime implementation findings
 
-Shared line ownership (2026-11-03) is an independent implementation. HMG-API's
+Shared line ownership is an independent implementation. HMG-API's
 `Engine.java` `rebaseWhy` was read as background for stock-based composition;
 HMG-Seogaemo refuses external drift rather than rebasing it. The Python ownership
 validator emits the graph companion `modules.lines`; root APIs enforce the same
@@ -33,13 +33,13 @@ Android 4.4 head-unit confirmation.
 - Off-car tests use fake roots and a fake NEMESIS command. They do not establish
   that the wrapper boots, Dalvik loads the JAR, or wireless projection works on
   the target head unit.
-# Host shell test parity (2026-11-03)
+# Host shell test parity
 
 Root script tests prepend `tools/testlib/fakebin`, whose `md5` prints the Android
 4.4 toolbox digest format (two spaces before the path), rejects absent filename
 arguments, and maps explicit `/proc/self/fd/0` to host stdin for `sg_file_key`.
-The updater checks digest fields independently of spacing. The source audit in
-`android44-shell-audit.md` supersedes earlier tool-availability assumptions.
+The updater checks digest fields independently of spacing. Tool availability is defined by the source audit in
+`android44-shell-audit.md`.
 CI and release install `mksh`; root regression suites run under both `sh` and
 `mksh` when installed. The module tests keep restricted command paths; `stat` remains forbidden,
 while their tested `cmp` and `grep -E` options work on the host implementations.

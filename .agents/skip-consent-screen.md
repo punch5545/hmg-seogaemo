@@ -1,47 +1,32 @@
-Status: implemented off-car, 2026-11-03. Owner reports `local.hkmc.factory82`
-worked on their NEEV KOR 260902 car; HMG-Seogaemo's implementation still needs a car test.
+Status: implemented off-car. Owner reports `local.hkmc.factory82` worked on their NEEV KOR 260902 car; HMG-Seogaemo's implementation still needs a car test.
 
-# Startup consent screen investigation
+# Startup consent screen
 
-The module skips the driver-safety notice at startup. The driver remains responsible for safe operation. The owner approved the `restore=reboot` class: disabling stops future calls, and a full head-unit restart is required to restore the stock notice. This module makes no persistent stock file or property changes.
+The module skips the driver-safety notice at startup; the driver remains responsible for safe operation. Owner approved the `restore=reboot` class (see AGENTS.md): disabling stops future calls, a full head-unit restart restores the stock notice. No persistent stock file or property changes.
 
 ## Reference package
 
-NEMESIS Manager's source defines the read-only Store index as `https://portal.xwtk.cloud/nemesis/v1/store/catalog` and package descriptors as `/store/packages/<id>` (`tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/Portal.java`). On 2026-11-03 the Store host did not resolve from this workspace and the web reader could not open it. No Store descriptor or ZIP could be obtained or inspected, so its listing, current artifact, and ZIP contents are unverified.
+- NEMESIS Manager source defines the Store index `https://portal.xwtk.cloud/nemesis/v1/store/catalog` and descriptors `/store/packages/<id>` (`tmp/hmg_nemesis/Sources/manager/src/com/nemesis/manager/Portal.java`). The host did not resolve when checked (2026-11-03), so no Store descriptor or ZIP was inspected; listing, current artifact and ZIP contents are unverified.
+- Likely package: `local.hkmc.factory82`, author `armandodollia`, release 4.2.1, MIT ([repo](https://github.com/armandodollia/nemesis-package-builds), [release](https://github.com/armandodollia/nemesis-package-builds/releases/tag/v4.2.1)); 4.2.1 changes metadata/build only, service stays v4.2. Source descriptor exposes `types=application,service`, a diagnostic shell app, a restarting `apply` service and a preuninstall script; the exact 4.2.1 descriptor and preuninstall script were not accessible.
+- Readable [service source](https://raw.githubusercontent.com/armandodollia/nemesis-package-builds/main/packages/hkmc-factory82/svc/watch.sh): polls for startup, screen wake, QuickBoot marker loss and a long resume gap; waits for factory Binder registration and boot readiness; issues `service call com.hkmc.factory 82` with one limited retry for a boot-incomplete exception. Diagnostics in `/data/nemesis/state/local.hkmc.factory82/`, session marker `/data/local/tmp/hkmc.factory82.session`; the diagnostic app exports to USB. No property change, feature XML edit, settings DB key, stock APK patch or stock-file replacement in the readable source (not an audit of the release artifact).
+- The package README says only an earlier v4 build was seen dismissing the screen (2022 Kia EV6); 4.2.1 was simulated, not vehicle-tested. Binder transaction 82 is undocumented, a zero Parcel is not proof of dismissal, and uninstall stops future calls without establishing reversal of any persistent effect.
 
-The public [HKMC Factory 82 repository](https://github.com/armandodollia/nemesis-package-builds) identifies the likely package as `local.hkmc.factory82`, author `armandodollia`, release `4.2.1`, MIT license. The [release notes](https://github.com/armandodollia/nemesis-package-builds/releases/tag/v4.2.1) say 4.2.1 changes metadata/build only; the service remains v4.2. The source descriptor previously exposed `types=application,service`, a diagnostic shell app, a restarting `apply` service, and a preuninstall script. The exact 4.2.1 descriptor and preuninstall script were not accessible.
+## NEEV KOR evidence and design
 
-The readable [service source](https://raw.githubusercontent.com/armandodollia/nemesis-package-builds/main/packages/hkmc-factory82/svc/watch.sh) polls for startup, screen wake, QuickBoot marker loss, and a long resume gap. It waits for factory Binder registration and boot readiness, then issues `service call com.hkmc.factory 82`, with one limited retry for a boot-incomplete exception. It records diagnostics under `/data/nemesis/state/local.hkmc.factory82/` and a session marker at `/data/local/tmp/hkmc.factory82.session`. The diagnostic app can export data to USB. The readable script has no property change, feature XML edit, settings DB key, stock APK patch, or stock-file replacement. Because the ZIP was unavailable, this is a statement about the readable source, not a complete audit of the release artifact.
+- Owner's private Car Report resolves `framework.factory_service.hide_consent_screen` to `IMicomFactoryService.hideConsentScreen()` on `NEEV.KOR.0000.V039.001.260902`. Same point in `core/hookpoints/framework.json` and `maps/hyundai/ioniq5/kor/260902/map.json`; bundled map hashes `/system/framework/framework.odex` as `ffe86fa1540c8dea3b5499b1191bb727`. Owner installed `local.hkmc.factory82` and observed the skip: this shows the reference package's behavior, not ours. HMG-API `docs/vehicle-commands.md` records no known inverse.
+- `modules/skip-consent-screen/` declares the core point, `service_calls=com.hkmc.factory:82`, `watch=boot,screen_on`, `restore=reboot`. Apply checks API 19, `NEEV.KOR.*.260902`, the exact framework.odex MD5 and absence of `local.hkmc.factory82`; no Binder call until the confirmed enable commits desired state. The `watcher` service (separate from boot-only `reconcile`) invokes the module on boot and display off-to-on while enabled. The module waits for boot completion and factory Binder registration, then calls transaction 82 via `sg_service_call` (exact declared pair, 15 s bound, each response/outcome in ledger/export), with one immediate retry for the known boot-incomplete exception.
+- Revert sets desired off. If a call happened under the current kernel boot ID, status is `pending-restart head_unit` with `info.desired=off` and the UI keeps the toggle off and explains the restart; after a new boot ID status is off. Effects of the call are undocumented: stock behavior after restart is claimed, not a proven inverse.
 
-The [package README](https://github.com/armandodollia/nemesis-package-builds) says only an earlier v4 build was observed to dismiss the screen on a 2022 Kia EV6. Version 4.2.1 was simulated but not vehicle-tested. It explicitly says Binder transaction 82 is undocumented, a zero Parcel is not proof of dismissal, and uninstall stops future invocations but does not establish reversal of any persistent effect.
+## Retry semantics
 
-## NEEV KOR evidence and design boundary
+Boot completion means a successful ledgered factory call, not any attempt. The watcher acknowledges only successful dispatch and keeps a persistent six-attempt budget per kernel boot/event (retry delays 5/10/20/40/60 s). Failed wake delivery stays queued across polls and watcher restarts; a newly observed wake starts a new budget. Failed and successful attempts stay in the ledger. QuickBoot evidence limits: `boot-lifecycle.md` (no reliable same-boot always-awake ignition signal in the private snapshot).
 
-The owner's private Car Report resolves `framework.factory_service.hide_consent_screen` to `IMicomFactoryService.hideConsentScreen()` on `NEEV.KOR.0000.V039.001.260902`. The same point is already in `core/hookpoints/framework.json` and `maps/hyundai/ioniq5/kor/260902/map.json`; the bundled map hashes `/system/framework/framework.odex` as `ffe86fa1540c8dea3b5499b1191bb727`. The owner installed `local.hkmc.factory82` on this car and observed that it skipped the screen. This establishes the behavior of the reference package, not of our new module. HMG-API's `docs/vehicle-commands.md` records no known inverse.
+## On-car checks
 
-`modules/skip-consent-screen/` declares the required core point, `service_calls=com.hkmc.factory:82`, `watch=boot,screen_on`, and `restore=reboot`. Apply checks API 19, `NEEV.KOR.*.260902`, the exact framework.odex MD5, and absence of `local.hkmc.factory82`; it makes no Binder call until the confirmed enable has committed desired state. The package `watcher` service (separate from the boot-only `reconcile` service) then invokes the module on boot and display off-to-on transitions, while enabled. The module waits for boot completion and factory Binder registration and issues transaction 82 through `sg_service_call`. It retries once only for the known boot-incomplete exception. The API validates the exact declared pair, bounds the call to 15 seconds, and records each response and outcome in the ledger/export.
+Also check late Binder registration and transient failure (inspect each ledger attempt; success stops boot retries), that disable and paused stock restore suppress retries, and that a new ignition cycle produces a detectable display transition before claiming QuickBoot coverage.
 
-Revert changes desired state to off. If a call happened under the current kernel boot ID, status remains `pending-restart head_unit` with `info.desired=off`; the UI keeps the toggle off and explains the restart requirement. After a new kernel boot ID, status is off. The call's full effects remain undocumented, so this restore class claims stock behavior after restart, not a proven inverse transaction.
-
-## On-car verification
-
-Boot completion now means a successful ledgered factory call, not any attempted
-call. The watcher acknowledges only successful dispatch and reserves a persistent
-six-attempt budget per kernel boot/event, with 5/10/20/40/60-second retry delays.
-Failed wake delivery remains queued across polls and watcher restarts; a new
-observed wake starts another budget. Both failed and successful Binder attempts
-remain in the runtime ledger. The known boot-incomplete exception still gets its
-one immediate retry through the same API. See `boot-lifecycle.md` for the
-QuickBoot evidence boundary: no reliable same-boot always-awake ignition signal
-has been established from the private snapshot.
-
-Check late Binder registration and transient Binder failure on the car, inspect
-each ledger attempt, then verify success stops boot retries. Confirm disable
-and paused stock restore suppress retries and that a new ignition cycle really
-produces a detectable display transition before claiming QuickBoot coverage.
-
-1. Export the current NEMESIS ledger and record the exact product/framework hash. Uninstall `local.hkmc.factory82`, reboot, and check that the stock notice appears.
-2. Install a release-signed HMG-Seogaemo build. Confirm the new module is off. Enable it via `ConfirmDialog`, then reboot. Verify the startup notice is skipped and inspect the `service_call` ledger row.
-3. Turn the screen off and on twice. Verify one call per observed wake and that the notice remains skipped. Check service CPU/log growth over a parked session.
-4. Disable the module. Verify the toggle is off with a pending head-unit restart, no further calls occur on screen wake, and the stock notice returns after reboot.
-5. Re-enable, reboot, and uninstall HMG-Seogaemo through NEMESIS. Reboot and verify the original notice returns. Test a changed framework hash and installed `local.hkmc.factory82` as fail-closed gates. Export and compare ledgers before and after.
+1. Export the NEMESIS ledger; record product and framework hash. Uninstall `local.hkmc.factory82`, reboot, confirm the stock notice appears.
+2. Install a release-signed build; module is off. Enable via `ConfirmDialog`, reboot; notice skipped; inspect the `service_call` ledger row.
+3. Screen off/on twice: one call per wake, notice stays skipped. Check service CPU/log growth over a parked session.
+4. Disable: toggle off with pending head-unit restart, no calls on wake, stock notice returns after reboot.
+5. Re-enable, reboot, uninstall via NEMESIS, reboot: original notice returns. Test a changed framework hash and installed `local.hkmc.factory82` as fail-closed gates. Compare ledgers before/after.

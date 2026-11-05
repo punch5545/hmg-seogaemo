@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 
 /** Original HMG-Seogaemo decoder; wire references (no source copied):
- * .agents/carplay-tbt-external/iap2-lane-guidance.md. No Android dependencies. */
+ * .agents/carplay-tbt-external/iap2-protocol.md. No Android dependencies. */
 final class CpLaneDecoder {
     static final int MAX = 65535;
     static final class Lane {

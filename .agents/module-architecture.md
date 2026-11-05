@@ -1,146 +1,48 @@
-Status: partly superseded — planning-era scaffold and future-module descriptions are updated below; physical-car behavior remains untested.
-
-Current update (2026-11-03): `skip-consent-screen` is a fourth built-in module.
-NEMESIS runs two services: `reconcile` (`mode=once`, boot reconciliation and OTA
-health checks only) and `watcher` (`svc/watcher.sh`, `mode=restart`), which only
-dispatches fixed boot/screen-on watch events and never applies or reverts.
-Earlier references below to three modules are historical.
+Status: current — implemented off-car architecture; physical-car behavior untested.
 
 # Built-in module architecture
 
-Shared text ownership (2026-11-03): declare one literal
-`owns_lines.N=/path:<exact stock line>` per changed line. Split at the first
-colon only; preserve punctuation, backslashes and spaces. Each stock line has
-one owner. Whole-file put/delete, bind mounts and zygote installation require
-exclusive `owns_files`. The generator validates claims and emits `modules.lines`
-in generated module order; runtime independently enforces ownership.
+HMG-Seogaemo on Gen5W (Android 4.4.2/API 19, 1920×720 hdpi, English default + Korean), installed by NEMESIS 1.16.4+, target setup NEMESIS + HMG-Seogaemo only (no HMG-API). Built-in modules (`wifi-client`, `wireless-adb`, `wireless-carplay-and-aa`, `skip-consent-screen`, `user-button-*`; the list is generated from `modules/*`) are compiled into one APK and one NEMESIS package; no third-party loader (installable `.hsm` packages: [installable-modules.md](installable-modules.md)). Wi-Fi client and ADB are independent implementations; wireless projection ports AGPL-covered HMG-API code with attribution ([wireless-carplay-and-aa.md](wireless-carplay-and-aa.md)). Per-module behavior: [wifi-client.md](wifi-client.md), [wireless-adb.md](wireless-adb.md), [skip-consent-screen.md](skip-consent-screen.md), [user-button-shortcut.md](user-button-shortcut.md). Interfaces: [module-runtime-contract.md](module-runtime-contract.md).
 
-The runtime keeps one product-bound baseline per shared path under
-`shared-lines/<path-md5>/`, with stock bytes, mode/UID/GID, composed version
-snapshots, per-module old/new patches, an active pointer and pending journal.
-Composition starts from stock and preserves final-newline presence. Atomic
-replacement and journal recovery accept only previous or prepared next bytes;
-unexpected bytes, metadata or firmware fail closed. Module-local line markers
-expose interrupted line-only applies to reconciliation and uninstall.
-
-Revert preflights every module target, then recomposes without that module.
-Other patches stay applied. Last revert verifies stock bytes and metadata before
-clearing the shared baseline. Ledger exports include patch text and composed
-before/after bytes with toolbox MD5 hashes. Existing whole-file baselines must
-be reverted before using line claims. See the runtime contract for details.
-
-Wi-Fi client owns only its feature XML as a whole file and claims the exact
-Wi-Fi removal line in `featurexml.cfg` via `owns_lines.1`. Projection claims
-three different removal lines. The STA/AP exclusion remains a functional radio
-constraint; shared-file safety does not depend on it.
-
-Design for HMG-Seogaemo on Gen5W (Android 4.4.2/API 19, 1920×720 hdpi, English default and Korean), installed by NEMESIS 1.16.4+. This is an implemented off-car architecture; physical-car behavior remains untested. The target setup is **NEMESIS + HMG-Seogaemo only**: HMG-API is not installed. The built-in modules are `wifi-client`, `wireless-adb`, and `wireless-carplay-and-aa`, compiled into one APK and NEMESIS package; there is no third-party loader. Wi-Fi client and ADB behavior are independently implemented; wireless projection ports AGPL-covered HMG-API code with retained attribution (see `.agents/wireless-carplay-and-aa.md`).
+NEMESIS services: `reconcile` (`background`, boot reconciliation + OTA health) and `watcher` (`svc/watcher.sh`, `mode=restart`; dispatches fixed boot/screen-on watch events, never apply/revert) — see [boot-lifecycle.md](boot-lifecycle.md).
 
 ## Module contract
 
-Each `Module` has a stable ID; English/Korean name and description resource IDs; Settings category and optional Home action; `requiresRoot`; a typed settings interface (currently no module settings); `checkCompatibility`, `checkConflicts`, `apply`, `revert`, and `status`; and a restart requirement (`NONE`, `ADBD`, or `HEAD_UNIT`). Root status reports state, restart, and detail. The Java `ModuleStatus` adapter currently derives desired/observed from that state and leaves last-operation time at zero. The registry lists only built-in modules and is generated at build time from `modules/*/module.properties` (see layout below). `owns_props`, `owns_files` and `owns_lines.N` name state a module may change; `conflicts` lists external owners to detect and refuse, while `depends` and `excludes` relate built-in IDs.
+- A `Module` has: stable ID; EN/KO name and description resource IDs; Settings category and optional Home action; `requiresRoot`; typed settings (currently none); `checkCompatibility`, `checkConflicts`, `apply`, `revert`, `status`; restart requirement (`NONE`, `ADBD`, `HEAD_UNIT`). Root status reports state, restart, detail; `ModuleStatus` derives desired/observed from it (last-operation time stays 0).
+- Registry lists only built-in modules, generated from `modules/*/module.properties`. `owns_props`, `owns_files`, `owns_lines.N` name what a module may change; `conflicts` lists external owners to detect and refuse; `depends`/`excludes` relate built-in IDs.
+- `wireless-adb` does not depend on `wifi-client` (optional). `wifi-client` excludes `wireless-carplay-and-aa`; exclusion is symmetric even if declared on one side. Enabling a module auto-enables its dependency chain after UI confirmation; disabling auto-disables dependents. Enabling an excluded module prompts with the exact enabled modules that will be turned off (including dependents), then disables them first. Root re-checks dependencies and exclusions and refuses inconsistent states. Boot reconciliation applies in dependency order, reverts in reverse. Implemented and exercised off-car.
+- Root scripts check Android/product, owner, chip and stock-file conditions before mutating. Package install checks the `ro.build.product` glob; projection additionally requires the exact mapped firmware. NEMESIS 1.16.4+ is the target but not runtime-probed. Unknown variants fail closed where guards require exact evidence. NEMESIS descriptor `os`/`models` narrows installation but doesn't replace module checks. Descriptor `depends=!id` is for package-wide conflicts only; module-only conflicts (including `adb.tcp`) are runtime checks so the rest stays installable. HMG-API/Leafia/NEMESIS ownership checks only detect leftovers and refuse mutation; none is a dependency (`tmp/hmg_nemesis/04-Packages.md:27-80`).
 
-`wireless-adb` does not depend on `wifi-client` (optional; see `module-runtime-contract.md`, "Current module decisions"). `wifi-client` excludes `wireless-carplay-and-aa`; exclusion is symmetric even if declared on one side. Enabling a module auto-enables its full dependency chain after UI confirmation. Disabling a module auto-disables all dependents. Enabling either excluded module prompts with the exact enabled modules that will be turned off, including dependents, then disables them before enabling the requested module. The root side independently re-checks dependencies and exclusions and refuses inconsistent states. Boot reconciliation applies in dependency order and reverts in reverse dependency order. The generated relations, UI planning, and root operations are implemented and exercised off-car.
+## State, privilege, recovery
 
-The root scripts check their relevant Android/product, owner, chip, and stock-file conditions before mutation. Package install checks the `ro.build.product` glob; projection additionally requires the exact mapped firmware. NEMESIS 1.16.4+ is the target but is not currently checked by a runtime version probe. Unknown or untested variants fail closed where the module guards require exact evidence. NEMESIS descriptor `os`/`models` narrows installation; it does not replace module checks. Descriptor `depends=!id` is reserved for a package-wide conflict; module-only conflicts, including `adb.tcp`, are checked at runtime so the rest of HMG-Seogaemo remains installable. HMG-API, Leafia, and NEMESIS package ownership checks are only safety checks to detect leftovers and refuse mutation; none is a runtime dependency (`tmp/hmg_nemesis/04-Packages.md:27-80`).
-
-## State, privilege, and recovery
-
-The root side owns `/data/nemesis/backup/hmg-seogaemo/` (mode 0700): desired-state files, per-module baseline snapshots, a change ledger, update journal, and reconcile log. APK preferences keep only UI choices such as language; they are never the authority for enabled state. Before the first mutation of an enable session, snapshot each owned persistent property's **live value and `/data/property/<key>` existence/content**, including the difference between absent and empty; snapshot any owned file's bytes, existence, mode, and ownership. Wireless ADB changes no stock file. Never overwrite the baseline on reapply or update. On successful revert, restore the saved values and backing-file absence/content; clear the baseline only after verification. If a property was originally absent, clear its live value and remove its persistent backing file; a reboot may be needed for exact boot-state restoration (compare HMG-API's unset path at `tmp/HMG-API/core/runtime/java/hmgapi/engine/Engine.java:2007-2013`).
-
-Operations take one root-side lock and journal intent before mutation. Apply changes only differing values, verifies readback, and commits desired state after success; repeated apply/revert is harmless. Failure rolls back to the baseline when safe, otherwise retains the snapshot and reports an error. If an external owner or unexpected drift appears, stop rather than overwrite its changes. At boot, a NEMESIS root `kind=sh,mode=once` service waits until properties are available, checks compatibility/ownership, and reconciles enabled modules. The APK has no `BootReceiver`. On package update, the old `preuninstall` recognizes a valid staged HMG-Seogaemo update and preserves state/baselines; the new `postinstall` installs the APK, while the boot service reconciles preserved desired state. On real NEMESIS uninstall, `preuninstall` reverts every enabled module and verifies restoration **before** permitting package removal, then removes package-owned state and the APK. Failed restoration leaves backups and aborts normal uninstall. NEMESIS runs the old hook on update and stops services before uninstall (`tmp/hmg_nemesis/Sources/native/pkg.c:630-680,851-880`); backup cleanup is the package's responsibility (`tmp/hmg_nemesis/04-Packages.md:184-186,241-249`). Direct `pm uninstall` of only the APK bypasses that hook: the root boot service must detect the missing APK and revert on the next boot; the UI should direct users to NEMESIS package uninstall.
-
-The UI is an ordinary, unprivileged APK. It calls a fixed root entry point through NEMESIS: `hmg-seogaemo-root <id> apply|revert|status` (later settings: `set <id> <known-key> <validated-value>`). The root script accepts only registered IDs, verbs, and typed values; uses fixed paths/commands, no caller-supplied shell fragments or arbitrary file paths; limits output; and sets `umask 077`. The app constructs a constant command for each action and parses bounded machine-readable status. NEMESIS's root socket is accessible to any UID, so this limits **HMG-Seogaemo's own interface**, not NEMESIS's global root capability (`tmp/hmg_nemesis/Sources/native/su.c:64-103,229-258`).
+- Root owns `/data/nemesis/backup/hmg-seogaemo/` (0700): desired-state files, per-module baselines, change ledger, update journal, reconcile log. APK preferences hold only UI choices such as language, never enabled state.
+- Before the first mutation of an enable session, snapshot each owned persistent property's live value and `/data/property/<key>` existence/content (absent ≠ empty) and each owned file's bytes, existence, mode, ownership. Never overwrite a baseline on reapply/update. On revert restore values and backing-file absence/content; clear the baseline only after verification. An originally absent property is cleared live and its backing file removed; exact boot-state restoration may need a reboot (compare HMG-API's unset path, `tmp/HMG-API/core/runtime/java/hmgapi/engine/Engine.java:2007-2013`).
+- Operations take one root lock and journal intent. Apply changes only differing values, verifies readback, commits desired state after success; repeats are harmless. Failure rolls back to baseline when safe, else retains the snapshot and reports an error. External owner or unexpected drift → stop, never overwrite.
+- Boot: a NEMESIS root service waits for properties, checks compatibility/ownership, reconciles enabled modules. The APK has no `BootReceiver`.
+- Package update: the old `preuninstall` recognizes a valid staged update and preserves state; the new `postinstall` installs the APK; the boot service reconciles preserved desired state. Real uninstall: `preuninstall` reverts every enabled module and verifies restoration before allowing removal, then removes package state and the APK; failed restoration keeps backups and aborts uninstall (NEMESIS runs the old hook on update and stops services first: `tmp/hmg_nemesis/Sources/native/pkg.c:630-680,851-880`; backup cleanup is the package's job: `04-Packages.md:184-186,241-249`). Direct `pm uninstall` of only the APK bypasses the hook: the boot service must detect the missing APK and revert next boot; the UI directs users to NEMESIS uninstall. Whole-package restore/uninstall details: [stock-restore.md](stock-restore.md).
+- The UI is an unprivileged APK calling `hmg-seogaemo-root <id> apply|revert|status` (and `set <id> <key> <value>` for installed modules) with registered IDs/verbs, fixed paths/commands, no caller shell fragments or paths, bounded output, `umask 077`. NEMESIS's root socket is open to any UID, so this limits only our own interface (`tmp/hmg_nemesis/Sources/native/su.c:64-103,229-258`).
 
 ## Source and package layout
 
-Settings → General has **Restore stock state** and **Uninstall HMG-Seogaemo**.
-Both use the shared confirmation dialog; uninstall uses the destructive style.
-`core/stock.sh` and `lib/stock.sh` serialize one restore across all modules in
-reverse generated dependency order, preflight all snapshots, pause watch and
-boot reapply, invoke guarded module reverts, and commit desired off after each
-verified success. Failure retains the failed/unvisited desired state and recovery
-material; no force path exists. Per-module receipts and restart requirements
-remain readable through `stock status`, and the change ledger remains exportable.
-The real `preuninstall` hook uses this same transaction before removing the APK.
-
-App uninstall first restores, then launches a root-owned runner copied under
-the retained backup directory. It ignores HUP, disconnects stdio and cwd from
-the caller, and waits for an explicit PID handoff after lock release before
-calling `nemesis uninstall hmg-seogaemo`. NEMESIS stops package services and
-runs the shared hook again. The copied runner survives package/APK removal and
-records the final result. Cancel changes nothing; confirmed work cannot be
-cancelled. Failed restore leaves HMG-Seogaemo installed with automatic module
-calls paused. A successful explicit module apply resumes normal dispatch.
-See [stock-restore.md](stock-restore.md) for evidence and on-car checks.
-
-**Decided: one module = one directory under `modules/`, and the module list is generated at build time from day one.**
+One module = one directory under `modules/`; the module list is generated at build time (no hand-edited list). Layout summary is in AGENTS.md; module directory shape:
 
 ```text
-Makefile                            # top level: APK + NEMESIS zips into out/
-tools/gen-modules.sh                # POSIX sh + awk: modules/*/module.properties -> generated files
-app/                                # module-independent shell
-  AndroidManifest.xml
-  res/values*/strings.xml           # shared UI strings (EN default, KO)
-  src/com/seogaemo/hmg/
-    ui/                             # Home, Settings, sidebar, shared row views
-    module/                         # Module, ModuleStatus, ModuleRegistry, RootClient
-modules/
-  wifi-client/                      # dir name == module id
-  wireless-adb/
-  wireless-carplay-and-aa/          # implemented projection port; untested on-car
-    module.properties               # id, class, version, requires_root, restart,
-                                    # owns_props, owns_files, owns_lines.N, depends, excludes, conflicts
-    src/com/seogaemo/hmg/modules/wirelessadb/WirelessAdbModule.java
-    res/values/strings.xml          # wireless_adb_* strings (EN)
-    res/values-ko/strings.xml       # (KO)
-    root/wireless-adb.sh            # apply | revert | status, run as root
-    test/                           # off-car script tests
-nemesis/                            # module-independent package parts
-  package/NEMESIS.data              # descriptor 1.1 template
-  package/bin/hmg-seogaemo-root         # validated dispatcher, only ids in modules.list
-  package/bin/open.sh               # Manager Launch / APK recovery
-  package/scripts/postinstall.sh, preuninstall.sh
-  package/svc/reconcile.sh          # boot reconciliation (mode=once)
-  package/svc/watcher.sh            # boot/screen_on watch dispatch (mode=restart)
-  usb/NEMESIS.data                  # USB install wrapper
-out/                                # build output (gitignored)
+modules/<id>/                       # dir name == module id
+  module.properties                 # id, class, version, requires_root, restart, owns_props/files/lines.N, depends, excludes, conflicts
+  src/com/seogaemo/hmg/modules/<idnohyphen>/<Class>Module.java
+  res/values/strings.xml, res/values-ko/strings.xml   # <snake_id>_* only
+  root/<id>.sh                      # apply | revert | status | precheck, run as root
+  test/                             # off-car script tests
 ```
 
-Naming: module ID and directory use kebab-case (`[a-z0-9]+(-[a-z0-9]+)*`); Java package drops the hyphens (`com.seogaemo.hmg.modules.wirelessadb`); string resource names use the snake_case ID as prefix (`wireless_adb_*`); the root script is `<id>.sh`.
+Naming: kebab-case module ID `[a-z0-9]+(-[a-z0-9]+)*`; Java package drops hyphens; resources use the snake_case ID prefix; root script `<id>.sh`.
 
-Build-time module list (`tools/gen-modules.sh`, run by `make` before aapt/javac):
+`tools/gen-modules.sh` (POSIX sh + awk, run by `make` before aapt/javac):
 
-1. Scan `modules/*/module.properties` in sorted order. Fail the build if `id` ≠ directory name, an ID is duplicated or malformed, `class` is missing from that module's `src/`, `root/<id>.sh` is missing while `requires_root=true`, or a resource name lacks the module prefix.
-2. Parse `depends=` and `excludes=` as comma-separated built-in IDs (empty allowed). Reject unknown IDs, self-reference, dependency cycles, and any dependency closure containing an excluded pair. Symmetrize `excludes` from either declaration. Emit a topological order, choosing the lowest ID whenever multiple modules are ready.
-3. Generate `out/gen/com/seogaemo/hmg/module/GeneratedModules.java`: static Java 1.7 arrays that instantiate each class and expose ordered IDs, dependencies, and symmetric exclusions. `ModuleRegistry` provides read-only relation copies; runtime switch planning and execution are implemented in `ModuleManager`.
-4. Generate `out/package/modules.list` in dependency order and `out/package/modules.graph` with tab-separated `id`, `depends=<csv>`, `excludes=<csv>` fields. Copy scripts to `out/package/modules/<id>.sh`, and render each `module.properties` with the project `VERSION`. The packaged `hmg-seogaemo-root` accepts only listed IDs and fixed verbs; module behavior and boot reconciliation are implemented.
-5. Compile with `javac` over `app/src`, `modules/*/src` and `out/gen`; link resources with `aapt package -S app/res -S modules/<id>/res … --auto-add-overlay` and a single `R` package `com.seogaemo.hmg`.
+1. Scan `modules/*/module.properties` sorted. Fail if `id` ≠ directory, duplicate/malformed ID, `class` missing from `src/`, `root/<id>.sh` missing while `requires_root=true`, or a resource name lacks the module prefix.
+2. Parse `depends=`/`excludes=` as comma-separated built-in IDs. Reject unknown IDs, self-reference, cycles, and any dependency closure containing an excluded pair. Symmetrize `excludes`. Emit topological order, lowest ID first among ready modules.
+3. Generate `out/gen/com/seogaemo/hmg/module/GeneratedModules.java` (Java 1.7 arrays: instances, ordered IDs, dependencies, symmetric exclusions). `ModuleRegistry` gives read-only copies; switch planning/execution is in `ModuleManager`.
+4. Generate `out/package/modules.list` (dependency order) and `modules.graph` (tab-separated `id`, `depends=<csv>`, `excludes=<csv>`), plus `modules.lines` for line claims ([module-runtime-contract.md](module-runtime-contract.md), "Shared text-file line ownership"). Copy scripts to `out/package/modules/<id>.sh`; render each `module.properties` with `VERSION`. The packaged `hmg-seogaemo-root` accepts only listed IDs and fixed verbs.
+5. Compile `javac` over `app/src`, `modules/*/src`, `out/gen`; link `aapt package -S app/res -S modules/<id>/res … --auto-add-overlay`, single `R` package `com.seogaemo.hmg`.
 
-Adding a module = adding a directory; removing it = deleting the directory. No hand-edited list exists anywhere.
-
-`MainActivity` hosts live Settings controls, module pages, Logs export, and update actions. `HomeView` now renders enabled modules’ `Module.homeTiles()` after the built-in Settings tile; the current modules supply none. `make package` now assembles the NEMESIS descriptor 1.1 with the root shell app entry, a one-shot service, the API 19 v1-signed APK, and the USB wrapper. Both archive names start with `hmg-seogaemo-<version>`; the USB wrapper points to `packages/hmg-seogaemo.zip`. Release builds require the stable keystore; debug builds use a throwaway key. See `.agents/research-nemesis-packaging.md` for the current package behavior and remaining car validation.
-
-## Wi-Fi client module (`wifi-client`)
-
-Off by default. Gate apply on `ro.build.product` matching `NEEV.KOR.*.260902` (real value `NEEV.KOR.0000.V039.001.260902`), verified stock Broadcom capability (boot vendor property and nonempty driver/firmware files), NEMESIS 1.16.4+, and no HMG-API/Leafia/NEMESIS wireless package leftovers claiming the files. `owns_files` is `/system/etc/permissions/android.hardware.wifi.xml`; `owns_props` is `persist.wifi.state` (set to `3`). The car's stock `featurexml.cfg` has no Wi-Fi removal line (verified 2026-11-03), so the module claims no line there. Capture each file's existence, exact bytes, mode, and owner before mutation; preserve the baseline through reapply/update; revert exact bytes or absence, then verify before clearing it. Apply/status distinguishes incompatible, conflict, pending head-unit reboot, and the observed PackageManager Wi-Fi feature; actual stock Settings menu visibility requires an on-car check. Network selection uses that stock menu; HMG-Seogaemo has no picker. `restart=HEAD_UNIT`. It excludes `wireless-carplay-and-aa`, which also disables its dependents when `wifi-client` is enabled. `wireless-adb` offers it as an optional "Connect to another Wi-Fi" action. See the on-car checklist in `.agents/research-wifi-client.md` for apply, reboot, menu/network, conflict, and exact-restore checks.
-
-`persist.wifi.state=3` is set with the feature XML; its effect on this firmware is unverified.
-
-## Wireless projection module (`wireless-carplay-and-aa`)
-
-Because HMG-API is absent, the car-as-AP wireless CarPlay/Android Auto behavior comes from our built-in module. It ports HMG-API's AGPL-covered wireless hooks and native recipes, owns the feature files and projection/bridge properties, and installs a guarded `/system/bin/app_process` wrapper through `sg_zygote_install`. It is excluded by `wifi-client`. The off-car build and fake-root tests pass; head-unit boot and projection are untested. See `.agents/wireless-carplay-and-aa.md`.
-
-## UI and Wireless ADB (`wireless-adb`)
-
-Settings has core pages (General, Modules, Logs, About), a divider, and a page for each built-in module. `wireless-adb` has an **off-by-default** toggle, fixed `5555` port, observed connection rows, a stock-switch warning, and a "Connect to another Wi-Fi" action. Home renders live module shortcuts, while module switches remain in Settings. Keep 70 dp sidebar and at least 75 dp setting rows, 60 dp actions, large text, clear press states, and EN/KO strings (`.agents/ui-guidelines.md`; `app/res/values/strings.xml:25-49`). The module rows show the root state and detail, including conflicts, failures, and pending restart. Logs offers USB export of the change ledger. The restart banner displays the requirement but has no head-unit restart action; a successful ADB daemon restart alone does not claim the head unit rebooted.
-
-Wireless ADB owns only `persist.service.adb.tcp.enable` and `persist.adb.tcp.port`. Enabling: verify compatibility and no other owner; capture baseline; set the stock switch to `0`; set TCP port to `5555`; restart `adbd` only if the port changed; verify both property values. Test ADB reachability separately on the car. The stock switch can assign `eth0` `192.168.0.123`, overlapping the hotspot subnet; if that address is already present, report **head-unit restart required** to clear it (`tmp/HMG-API/core/runtime/java/hmgapi/engine/Engine.java:1900-1917`). Use an observed reachable address for the connection command; `192.168.0.1:5555` applies only when the car hotspot is running, and `wifi-client` does not promise that AP. Disabling restores both exact baselines and restarts `adbd` if the effective port changes. A saved stock switch value of `1` can reintroduce the projection conflict after revert; warn before disabling/uninstalling. USB ADB and `persist.sys.usb.config` are outside this first module (`tmp/HMG-API/mods/adb/patches.json:3-7`, `settings.json:4-9`).
-
-Block enable if NEMESIS `adb.tcp` is installed: it sets the opposite switch value and edits `/system/build.prop` (`tmp/hmg_nemesis/Sources/packages/adb-tcp/NEMESIS.data:1-12`, `scripts/common.sh:288-300`). Also detect leftover HMG-API `adb` ownership and Leafia's `wireless.carplay.aa` ADB marker; if ownership is ambiguous, show a conflict and make no change. Leafia's marker records a conditional property fix and its uninstall may restore that fix (`tmp/HMG-Leafia-Plus/packages/wireless-carplay-aa/scripts/common.sh:313-335`). Stock adbd has no key authentication; anyone able to reach its TCP port may connect. The owner accepts this risk; no key-authorizing daemon is planned. Keep the module off by default. Reachability and firewall behavior remain car-specific.
-
-Car test: record model/firmware/NEMESIS version and original property/file states; verify default off; enable with the stock switch initially on and off; check `eth0`, hotspot DHCP, wireless CarPlay and Android Auto, `adb connect`, and status after reboot. Repeat apply, disable, reinstall/update, and uninstall; compare exact original state and verify no stale TCP listener. Test with each external owner installed, with a failed `adbd` restart, and with an interrupted apply. Do not infer success from property readback alone.
-
-## Remaining scope question
-
-USB ADB switching, if desired later, needs a separate design because it can disrupt wired phone projection and USB drives.
+`MainActivity` hosts Settings controls, module pages, Logs export, update actions. `HomeView` renders enabled modules' `Module.homeTiles()` after the built-in Settings tile (current modules supply none). `make package` assembles descriptor 1.1 (root shell app entry, one-shot service, API 19 v1-signed APK, USB wrapper); archive names start `hmg-seogaemo-<version>`; release builds need the stable keystore, debug builds a throwaway key. Package behavior: [research-nemesis-packaging.md](research-nemesis-packaging.md). UI sizes (70 dp sidebar, ≥75 dp rows, 60 dp actions): [ui-guidelines.md](ui-guidelines.md); the restart banner shows the requirement but a successful `adbd` restart alone does not claim a head-unit reboot.

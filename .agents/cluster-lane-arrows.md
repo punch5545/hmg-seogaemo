@@ -1,39 +1,27 @@
-Status: current — lane arrow image-ID tables extracted from the stock navigation engine, 2026-11-05.
+Status: current — lane arrow image-ID tables extracted from the stock navigation engine.
 
 # Lane arrow image IDs (ConvertGuidance::getLaneItemImageID)
 
-Source: decrypted `libExSLNavi.so` (not in the repo; index in [navi-lib-index.md](navi-lib-index.md)).
-`ConvertGuidance::getLaneItemImageID` (`0x20b48b0`) and `getLaneItemImageIDConnect` (`0x20b4da8`)
-map a lane's direction to the arrow image byte placed in the 81-byte frame (per-lane arrows at
-`0x13+3k`, see [cluster-lane-frame.md](cluster-lane-frame.md)). Confidence **H** (direct table bytes).
+Source: decrypted `libExSLNavi.so` (not in the repo; [navi-lib-index.md](navi-lib-index.md)). `ConvertGuidance::getLaneItemImageID` (`0x20b48b0`) and `getLaneItemImageIDConnect` (`0x20b4da8`) map a lane's direction to the arrow image byte in the 81-byte frame (per-lane arrows at `0x13+3k`, [cluster-lane-frame.md](cluster-lane-frame.md)). Confidence **H** (direct table bytes). All tables live at base `0x3f1a514`.
 
 Lookup inputs:
-- `d` = **normalized direction index 0..8** from `convertDirectionToDirectionIndex` (`0x20b49c0`),
-  NOT the raw engine `dir` in the `[Lane] dir:N` logs.
-- `eRgLaneOverlapType` selects a family: 1 = simple (single arrow), 2/3/4 = multi-arrow overlaps.
+- `d` = **normalized direction index 0..8** from `convertDirectionToDirectionIndex` (`0x20b49c0`), NOT the raw engine `dir` in `[Lane] dir:N` logs.
+- `eRgLaneOverlapType` selects the family: 1 simple (single arrow), 2/3/4 multi-arrow overlaps (types 2-4 use 9-byte-stride structures with recommend/connect variants).
 - `N` = count of active (non-zero valid) arrows in the lane; `N>2` vs `N<=2` picks a sub-table.
-- `B` = a flag set by `setLaneItemImageID` when the lowest angle code `<=2` (straight group).
-- The "Connect" tables are used by `getLaneItemImageIDConnect` for connected/through forms.
-- `X` = `0xff` = no image (invalid combination). All tables live at base `0x3f1a514`.
+- `B` = flag set by `setLaneItemImageID` when the lowest angle code is `<=2` (straight group).
+- "Connect" tables are used by `getLaneItemImageIDConnect` for connected/through forms.
+- `X` = `0xff` = no image (invalid combination).
 
-## Simple lane (overlapType 1), table @ 0x3f1a5c0 (9 bytes)
+## Simple lane (overlapType 1), `imageID[d]` table @ `0x3f1a514+0xac` = `0x3f1a5c0` (9 bytes)
 
 | d | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|---|
 | imageID | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 34 |
 
-Single-lane arrows are **1..8** (then 34 for d=8). This is the same value space our
-`CpTurns.laneIcon` emits (1=straight, 2 slight-right, 3 right, 4 sharp-right, 5 U-turn, 6 sharp-left,
-7 left, 8 slight-left). So for ordinary single-arrow lanes our codes line up with stock; the exact
-picture each ID draws is a cluster resource, to be confirmed against captured `source=car-nav`
-frames and the engine `[Lane] dir:_ idx:_` logs. IDs **9..57 (0x09..0x39)** are multi-arrow /
-combined forms produced only by the overlap/connect tables below; `0x22`(34), `0x23`(35),
-`0x24`(36), `0x25`(37) are the "many arrows" composite images.
+Single-lane arrows are **1..8** (then 34 for d=8): the same value space our `CpTurns.laneIcon` emits (1 straight, 2 slight right, 3 right, 4 sharp right, 5 U-turn, 6 sharp left, 7 left, 8 slight left). Our builder writes 1..8 directly. IDs **9..57 (0x09..0x39)** are multi-arrow/combined forms from the overlap/connect tables; `0x22`(34), `0x23`(35), `0x24`(36), `0x25`(37) are the "many arrows" composites.
 
 ## Multi-arrow tables (overlapType 2/3/4 and Connect)
-
-Each cell is `p=0 / p=1 / p=2..8` where a single value repeats for all nine `p` columns (a second
-index; usually identical). Raw bytes per table are in `tmp/navi-re/generated-tables.md` (gitignored).
+Each cell is `p=0 / p=1 / p=2..8` where a single value repeats for all nine `p` columns (a second index, usually identical). Raw bytes per table: `tmp/navi-re/generated-tables.md` (gitignored).
 
 ### Normal lookup (getLaneItemImageID)
 
@@ -64,16 +52,8 @@ index; usually identical). Raw bytes per table are in `tmp/navi-re/generated-tab
 | 8 | 35 | 35 | 36 |
 
 ## Per-lane status byte (0x03+k)
+**2 bits per arrow direction** within the byte. Internal valid codes `0/1/3/2` map to wire `0/1/2/3` (2 = preferred/recommended arrow; 3 not otherwise interpreted). Matches our builder's `laneOne` (1 normal, 2 highlighted) for the common case. Special lane types (hi-pass/bus/toll/closed) are carried by the trailer bitmasks `0x43..0x4f`, not this byte.
 
-The status is **2 bits per arrow direction** within the byte. Internal valid codes `0/1/3/2`
-map to wire values `0/1/2/3` (2 = the preferred/recommended arrow). This matches our builder's
-`laneOne` status (1 normal, 2 highlighted) for the common case; the special lane types
-(hi-pass / bus / toll / closed) are carried by the trailer bitmasks `0x43..0x4f`, not this byte.
-
-## What still needs the car / phone
-
-- Which picture each image ID (1..57) actually draws on this cluster: verify against captured stock
-  frames. Our single-arrow 1..8 almost certainly match; the composite IDs (9..57) only appear for
-  multi-arrow lanes we would rarely synthesize from CarPlay.
-- The full raw `dir` → normalized `d` map (`convertDirectionToDirectionIndex`) is in
-  `tmp/navi-re/enum-*.thumb.txt`; label it against the `[Lane] dir:N idx:M` drive logs when verifying.
+## Still needs the car / phone
+- Which picture each image ID (1..57) draws on this cluster: verify against captured stock `source=car-nav` frames. Single-arrow 1..8 almost certainly match; composite IDs (9..57) appear only for multi-arrow lanes we would rarely synthesize from CarPlay.
+- The full raw `dir` -> normalized `d` map is in `tmp/navi-re/enum-*.thumb.txt`; label it against the `[Lane] dir:N idx:M` drive logs ([cluster-lane-frame.md](cluster-lane-frame.md) section 6).
