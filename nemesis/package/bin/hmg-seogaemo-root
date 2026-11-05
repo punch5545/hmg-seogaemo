@@ -17,7 +17,7 @@ case "$1" in
     update) case "$#:$2" in 2:stage|2:apply|2:rollback|2:status) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     module)
         case "$#:$2" in
-            2:list) ;;
+            2:list|2:usb-import) ;;
             3:install) case "$3" in *[!0-9a-f]*|'') refuse 2 failed 'Invalid command';; esac
                 [ "${#3}" -eq 64 ] || refuse 2 failed 'Invalid command' ;;
             3:remove) case "$3" in ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command';; esac ;;
@@ -27,6 +27,8 @@ case "$1" in
     *)
         case "$1" in ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command';; esac
         case "$#:$2" in 2:apply|2:revert|2:status|2:precheck|2:tbt-reset) ;;
+            3:action) case "$3" in ''|*[!a-z0-9_]*) refuse 2 failed 'Invalid command';; esac
+                [ "${#3}" -le 40 ] || refuse 2 failed 'Invalid command' ;;
             3:watch) case "$3" in boot|screen_on) ;; *) refuse 2 failed 'Invalid command';; esac ;;
             4:set) case "$3" in ''|*[!a-z0-9_]*) refuse 2 failed 'Invalid command';; esac
                 case "$4" in ''|*[!a-z0-9_.-]*) refuse 2 failed 'Invalid command';; esac ;;
@@ -153,7 +155,7 @@ fi
 case "$1" in
     ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command' ;;
 esac
-case "$2:$#" in apply:2|revert:2|status:2|precheck:2|tbt-reset:2|set:4) ;; watch:3)
+case "$2:$#" in apply:2|revert:2|status:2|precheck:2|tbt-reset:2|set:4|action:3) ;; watch:3)
     case "$3" in boot|screen_on) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     *) refuse 2 failed 'Invalid command' ;;
 esac
@@ -270,6 +272,15 @@ if [ "$2" = set ]; then
     fi
     /system/bin/sh "$script" revert > /dev/null 2>&1 || refuse 1 failed 'Could not restore before applying the new setting'
     /system/bin/sh "$script" apply
+    exit $?
+fi
+if [ "$2" = action ]; then
+    # A ui.txt button re-runs apply.sh of a running installed module with action_is NAME true.
+    [ ! -f "$SG_DATA_ROOT/uninstall/pending" ] || refuse 3 conflict 'Uninstall pending'
+    [ ! -f "$SG_DATA_ROOT/stock/paused" ] || refuse 3 conflict 'Automatic module calls paused'
+    ! sg_module_builtin "$base" "$1" || refuse 2 failed 'Invalid command'
+    desired_on "$1" || refuse 3 conflict 'Turn the module on first'
+    /system/bin/sh "$script" action "$3"
     exit $?
 fi
 if [ "$2" = apply ]; then

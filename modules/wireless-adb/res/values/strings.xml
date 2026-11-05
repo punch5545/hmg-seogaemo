@@ -1,6 +1,6 @@
 <resources>
     <string name="wireless_adb_name">Wireless ADB</string>
-    <string name="wireless_adb_description">ADB connection through the car hotspot</string>
+    <string name="wireless_adb_description">Connect to ADB over Wi-Fi without USB.</string>
     <string name="wireless_adb_hotspot_ssid">Car hotspot SSID</string>
     <string name="wireless_adb_hotspot_ip">Hotspot IP</string>
     <string name="wireless_adb_adb_endpoint">ADB endpoint</string>
@@ -12,4 +12,6 @@
     <string name="wireless_adb_connect_other_wifi">Connect to another Wi-Fi</string>
     <string name="wireless_adb_effective_port">Effective ADB port</string>
     <string name="wireless_adb_daemon_state">adbd state</string>
+    <string name="wireless_adb_on_result">Computers on the car hotspot can run adb connect.</string>
+    <string name="wireless_adb_off_result">The original ADB setting is restored.</string>
 </resources>

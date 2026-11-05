@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PRODUCT = "NEEV.KOR.0000.V039.001.260902"
 
 SAMPLE = {
-    "module.properties": "id=sample\nversion=1.0.0\napi=1\ncars=NEEV.KOR.*.260902\nrerun_on=boot\n"
+    "module.properties": "id=sample\nversion=1.0.0\napi=1\ncars=NEEV.KOR.*.260902\nrerun_on=boot\nicon=wifi\n"
                          "uses=wifi.radio:ap\nsetting.1=audio:toggle:off\nsetting.2=mode:choice(fast|safe):safe\n",
     "apply.sh": "set_prop --reassert persist.test.mode {setting:mode}\n"
                 "if setting_is audio on; then\n    set_prop persist.test.extra on\nfi\n",
@@ -108,6 +108,8 @@ def test_install_validation(car):
     assert "digest mismatch" in car.root("module", "install", wrong, code=1)
     bad_key = variant(**{"module.properties": SAMPLE["module.properties"] + "owns_props=persist.x\n"})
     assert "HSM-E203" in car.root("module", "install", car.offer(bad_key), code=1)
+    bad_icon = variant(**{"module.properties": SAMPLE["module.properties"].replace("icon=wifi", "icon=../x.png")})
+    assert "HSM-E204 module.properties: bad value for icon" in car.root("module", "install", car.offer(bad_icon), code=1)
     builtin = variant(**{"module.properties": SAMPLE["module.properties"].replace("id=sample", "id=builtin-a")})
     assert "built-in" in car.root("module", "install", car.offer(builtin), code=3)
     collide = variant(**{"apply.sh": "put_file /system/etc/builtin.conf files/x.conf\n", "files/x.conf": "x"})
@@ -135,7 +137,7 @@ def test_lifecycle(car):
     listing = car.root("module", "list")
     assert "info.module_builtin_a=builtin-a," in listing and "info.module_sample=sample,1.0.0,direct" in listing
     described = car.root("module", "describe", "sample", "ko").splitlines()
-    for line in ("info.version=1.0.0", "info.source=direct", "info.restore=exact", "info.uses=wifi.radio:ap",
+    for line in ("info.version=1.0.0", "info.source=direct", "info.restore=exact", "info.uses=wifi.radio:ap", "info.icon=wifi",
                  "info.setting_1=audio:toggle:off", "info.ui_1=status", "info.ui_2=toggle setting=audio label=@audio",
                  "info.str_name=Sample", "info.str_name=샘플", "info.str_audio=Audio", "state=on"):
         assert line in described, described
@@ -265,8 +267,65 @@ def test_hook_host(car):
     car.root("module", "remove", "hook-two")
 
 
+def test_button_action(car):
+    pkg = variant(**{"module.properties": SAMPLE["module.properties"].replace("id=sample", "id=buttons")
+                     .replace("rerun_on=boot\n", ""),
+                     "apply.sh": "set_prop persist.test.mode on\nif action_is rescan; then\n"
+                                 "    set_prop persist.test.extra rescanned\nfi\n",
+                     "ui.txt": "button name=rescan label=@audio confirm=@audio\n"})
+    car.root("module", "install", car.offer(pkg))
+    assert "Turn the module on first" in car.root("buttons", "action", "rescan", code=3)
+    car.root("buttons", "apply")
+    (car.data / "desired/buttons").write_text("on")
+    assert car.prop("persist.test.extra") == "stock-extra"
+    assert "Unknown button" in car.root("buttons", "action", "other", code=1)
+    car.root("buttons", "action", "Bad", code=2)
+    car.root("builtin-a", "action", "rescan", code=2)
+    out = car.root("buttons", "action", "rescan")
+    assert "state=on" in out, out
+    assert car.prop("persist.test.extra") == "rescanned"
+    assert "state=off" in car.root("buttons", "revert")
+    assert car.prop("persist.test.extra") == "stock-extra" and car.prop("persist.test.mode") == "stock-mode"
+
+
+def test_usb_import(car):
+    usb, unmounted, app = car.base.parent / "usb0", car.base.parent / "usb1", car.base.parent / "app-files"
+    dest = app / "hsm-usb"
+    for path in (usb, unmounted):
+        (path / "HSM").mkdir(parents=True)
+    mounts = car.base.parent / "mounts"
+    mounts.write_text(f"/dev/block/sda1 {usb} vfat rw 0 0\n")
+    car.env.update(SG_USB_DIRS=f"{usb} {unmounted}", SG_MOUNTS_FILE=str(mounts), SG_HSM_USB_INBOX=str(dest))
+    assert "App storage not ready" in car.root("module", "usb-import", code=1)
+    app.mkdir()
+    dest.mkdir()
+    (dest / "stale.hsm").write_text("old")
+    folder = usb / "HSM"
+    (usb / "top-level.hsm").write_bytes(b"PK-top")
+    (folder / "theme-1.0.hsm").write_bytes(b"PK-theme")
+    (folder / "UPPER.HSM").write_bytes(b"PK-upper")
+    (folder / "bad name.hsm").write_bytes(b"PK")
+    (folder / ".hidden.hsm").write_bytes(b"PK")
+    (folder / "empty.hsm").write_bytes(b"")
+    (folder / "notes.txt").write_text("x")
+    (folder / "link.hsm").symlink_to(folder / "theme-1.0.hsm")
+    (unmounted / "HSM" / "other.hsm").write_bytes(b"PK-other")
+    out = car.root("module", "usb-import")
+    assert "state=on" in out and "info.count=2" in out, out
+    assert sorted(path.name for path in dest.iterdir()) == ["UPPER.hsm", "theme-1.0.hsm"]
+    assert (dest / "theme-1.0.hsm").read_bytes() == b"PK-theme"
+    assert oct(dest.stat().st_mode & 0o777) == "0o755"
+    assert oct((dest / "theme-1.0.hsm").stat().st_mode & 0o777) == "0o644"
+    (folder / "theme-1.0.hsm").unlink()
+    (folder / "UPPER.HSM").unlink()
+    assert "info.count=0" in car.root("module", "usb-import")
+    assert list(dest.iterdir()) == []
+    car.root("module", "usb-import", "x", code=2)
+
+
 def main():
-    for test in (test_install_validation, test_lifecycle, test_reconcile_reapplies, test_hook_host):
+    for test in (test_install_validation, test_lifecycle, test_reconcile_reapplies, test_hook_host, test_usb_import,
+                 test_button_action):
         with tempfile.TemporaryDirectory() as directory:
             test(Car(Path(directory).resolve()))
     print("installed module tests passed")

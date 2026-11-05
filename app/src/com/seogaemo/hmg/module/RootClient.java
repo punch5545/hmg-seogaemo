@@ -51,6 +51,19 @@ public final class RootClient {
     }
 
     /** The package must already be at files/hsm/<sha256>.hsm in the app's private storage. */
+    public static boolean validActionName(String name) { return name != null && name.matches("[a-z0-9_]{1,40}"); }
+
+    /** Runs an installed module's declared `ui.txt` button; root re-checks the name and that the module is on. */
+    public static RootResult moduleAction(String moduleId, String name) {
+        if (!validId(moduleId) || !validActionName(name)) return failure("invalid action");
+        return invoke(ROOT + moduleId + " action " + name, WRITE_TIMEOUT_MS);
+    }
+
+    /** Copies USB packages into the app-readable inbox; changes no stock state. */
+    public static RootResult moduleUsbImport() {
+        return invoke(ROOT + "module usb-import", WRITE_TIMEOUT_MS);
+    }
+
     public static RootResult moduleInstall(String sha256) {
         if (sha256 == null || !sha256.matches("[0-9a-f]{64}")) return failure("invalid package digest");
         return invoke(ROOT + "module install " + sha256, WRITE_TIMEOUT_MS);

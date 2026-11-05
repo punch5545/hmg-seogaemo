@@ -12,6 +12,7 @@ public final class UserButtonShortcutModule extends RootBackedModule {
     public String id() { return "user-button-shortcut"; }
     public int nameResId() { return R.string.user_button_shortcut_name; }
     public int descriptionResId() { return R.string.user_button_shortcut_description; }
+    public String icon() { return "button"; }
     public String settingsCategory() { return "general"; }
     public boolean hasHomeAction() { return false; }
     public boolean requiresRoot() { return true; }

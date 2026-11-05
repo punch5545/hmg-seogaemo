@@ -13,6 +13,7 @@ public final class WirelessCarplayAndAaModule extends RootBackedModule {
     public String id() { return "wireless-carplay-and-aa"; }
     public int nameResId() { return R.string.wireless_carplay_and_aa_name; }
     public int descriptionResId() { return R.string.wireless_carplay_and_aa_description; }
+    public String icon() { return "phone"; }
     public String settingsCategory() { return "wireless"; }
     public boolean hasHomeAction() { return false; }
     public boolean requiresRoot() { return true; }

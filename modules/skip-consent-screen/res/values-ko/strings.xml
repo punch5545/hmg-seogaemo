@@ -1,6 +1,8 @@
 <resources>
     <string name="skip_consent_screen_name">동의 화면 건너뛰기</string>
-    <string name="skip_consent_screen_description">시작할 때 안전 안내 화면을 자동으로 닫습니다</string>
+    <string name="skip_consent_screen_description">시작할 때 나오는 안전 안내 화면을 자동으로 닫습니다.</string>
     <string name="skip_consent_screen_note">안전 운전의 책임은 운전자에게 있습니다.</string>
     <string name="skip_consent_screen_restore_note">끄고 나서 헤드 유닛을 재시작하면 기본 안내 화면이 복원됩니다.</string>
+    <string name="skip_consent_screen_on_result">시작 안내 화면이 자동으로 닫힙니다.</string>
+    <string name="skip_consent_screen_off_result">재시작 후 기본 안내 화면이 돌아옵니다.</string>
 </resources>

@@ -1,7 +1,6 @@
 package com.seogaemo.hmg;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.BroadcastReceiver;
@@ -18,20 +17,20 @@ import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.SystemClock;
-import android.util.TypedValue;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
-import com.seogaemo.hmg.module.InfoRow;
-import com.seogaemo.hmg.module.HomeTile;
-import com.seogaemo.hmg.module.HomeTileCatalog;
+import com.seogaemo.hmg.module.InstalledModule;
 import com.seogaemo.hmg.module.Module;
 import com.seogaemo.hmg.module.ModuleAction;
 import com.seogaemo.hmg.module.ModuleManager;
@@ -42,38 +41,76 @@ import com.seogaemo.hmg.module.RestoreGate;
 import com.seogaemo.hmg.module.RootClient;
 import com.seogaemo.hmg.module.RootResult;
 import com.seogaemo.hmg.module.Warning;
+import com.seogaemo.hmg.ui.ConfirmDialog;
+import com.seogaemo.hmg.ui.Feature;
+import com.seogaemo.hmg.ui.FeatureCard;
+import com.seogaemo.hmg.ui.FeaturesView;
+import com.seogaemo.hmg.ui.LineIcon;
+import com.seogaemo.hmg.ui.OptionsList;
+import com.seogaemo.hmg.ui.PlanSummaryView;
+import com.seogaemo.hmg.ui.StepProgressDialog;
+import com.seogaemo.hmg.ui.Theme;
 import com.seogaemo.hmg.ui.settings.SettingsPage;
 import com.seogaemo.hmg.ui.settings.SettingsUi;
-import com.seogaemo.hmg.ui.ConfirmDialog;
-import java.util.ArrayList;
-import java.util.List;
-import com.seogaemo.hmg.ui.HomeView;
 import com.seogaemo.hmg.core.update.UpdateClient;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.security.MessageDigest;
+import java.text.Collator;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
-/** Gen5W settings and built-in module controls. */
+/** Gen5W app: Features, Car and Settings tabs over the built-in and installed modules. */
 public final class MainActivity extends Activity {
-    private static final int CANVAS = 0xFF111111;
-    private static final int SURFACE = 0xFF171717;
-    private static final int RAISED = 0xFF202020;
-    private static final int HAIRLINE = 0xFF343434;
-    private static final int WHITE = 0xFFF5F5F5;
-    private static final int MUTED = 0xFF9A9A9A;
-    private static final int BLUE = 0xFF0070F3;
-    private static final int ERROR = 0xFFEE0000;
-    private static final int PRESS = 0xFF294563;
-    private static final int RED_PRESS = 0xFF633030;
-    private static final int[] CATEGORIES = {R.string.cat_general, R.string.cat_mapping, R.string.cat_modules,
-        R.string.cat_logs, R.string.cat_about};
-    private static final int[] CATEGORY_SUBS = {R.string.cat_general_sub, R.string.cat_mapping_sub, R.string.cat_modules_sub,
-        R.string.cat_logs_sub, R.string.cat_about_sub};
+    private static final int CANVAS = Theme.CANVAS;
+    private static final int SURFACE = Theme.SURFACE;
+    private static final int RAISED = Theme.RAISED;
+    private static final int HAIRLINE = Theme.HAIRLINE;
+    private static final int WHITE = Theme.WHITE;
+    private static final int MUTED = Theme.MUTED;
+    private static final int BLUE = Theme.BLUE;
+    private static final int ERROR = Theme.ERROR;
+    private static final int WARNING = Theme.WARNING;
+
+    private enum Tab { FEATURES, CAR, SETTINGS }
+
+    private static final int CATEGORY_UPDATE = 0;
+    private static final int CATEGORY_LANGUAGE = 1;
+    private static final int CATEGORY_SUPPORT = 2;
+    private static final int CATEGORY_DEVELOPER = 3;
+    private static final int CATEGORY_RESET = 4;
+    private static final int[] CATEGORIES = {R.string.settings_update, R.string.language, R.string.settings_support,
+        R.string.settings_developer, R.string.settings_reset};
+    private static final String[] CATEGORY_ICONS = {"download", "globe", "help", "code", "undo"};
+    private static final int SETTLE_ATTEMPTS = 6;
+    private static final long SETTLE_DELAY_MS = 2000L;
+
     private Typeface sans;
     private Typeface medium;
+    private Tab tab = Tab.FEATURES;
     private int category = 0;
+    private String detailId;
+    private boolean addVisible;
     private int sidebarOffset;
     private ScrollView sidebarScroll;
     private boolean settingsVisible;
-    private HomeView homeView;
+    private FeaturesView featuresView;
+    private final Map<String, RootResult> statuses = new HashMap<String, RootResult>();
+    private final Set<String> settling = new HashSet<String>();
+    private final Handler handler = new Handler();
+    private boolean restartLater;
+    private boolean sortOnLoad;
+    private int loadGeneration;
     private TextView updateStatus;
     private boolean updateBusy;
     private boolean modulePlanning;
@@ -95,11 +132,14 @@ public final class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(5894 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         sans = Typeface.create("sans-serif", Typeface.NORMAL);
         medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
-        if (state != null && state.getBoolean("settings", false)) {
+        if (state != null) {
+            tab = Tab.values()[Math.max(0, Math.min(Tab.values().length - 1, state.getInt("tab", 0)))];
             category = state.getInt("category", 0);
             sidebarOffset = state.getInt("sidebarOffset", 0);
-            showSettings();
-        } else showHome();
+            detailId = state.getString("detail");
+            addVisible = state.getBoolean("add", false);
+        }
+        render();
         refreshMap(true);
         registerReceiver(networkChanges, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
         if (!getSharedPreferences("update", MODE_PRIVATE).getBoolean("resume", false) &&
@@ -174,19 +214,22 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
-        state.putBoolean("settings", settingsVisible);
+        state.putInt("tab", tab.ordinal());
         state.putInt("category", category);
         state.putInt("sidebarOffset", sidebarScroll == null ? sidebarOffset : sidebarScroll.getScrollY());
+        state.putString("detail", detailId);
+        state.putBoolean("add", addVisible);
         super.onSaveInstanceState(state);
     }
 
     @Override protected void onResume() {
         super.onResume();
-        if (!settingsVisible && homeView != null) refreshHomeTiles(homeView);
+        if (featuresVisible() && featuresView != null) loadFeatures(false);
         resumeUpdateWhenReady();
     }
 
     @Override protected void onDestroy() {
+        handler.removeCallbacksAndMessages(null);
         unregisterReceiver(networkChanges);
         super.onDestroy();
     }
@@ -211,7 +254,9 @@ public final class MainActivity extends Activity {
                 if (!canResume || isFinishing() || isDestroyed() || updateBusy || moduleWorking || modulePlanning ||
                         stockBusy || mapBusy || mapRefreshing || !getSharedPreferences("update", MODE_PRIVATE)
                         .getBoolean("resume", false)) return;
-                category = 0;
+                category = CATEGORY_UPDATE;
+                detailId = null;
+                addVisible = false;
                 showSettings();
                 checkUpdate(); // The earlier confirmation saved this resume intent.
             }});
@@ -246,6 +291,10 @@ public final class MainActivity extends Activity {
         return getSharedPreferences("ui_language", MODE_PRIVATE);
     }
 
+    private boolean diagnosticsEnabled() {
+        return getSharedPreferences("ui_developer", MODE_PRIVATE).getBoolean("diagnostics", false);
+    }
+
     private void applyLocale() {
         String choice = preferences().getString("language", "system");
         Locale selected = "system".equals(choice) ? Resources.getSystem().getConfiguration().locale
@@ -256,36 +305,20 @@ public final class MainActivity extends Activity {
         getResources().updateConfiguration(config, getResources().getDisplayMetrics());
     }
 
-    private int dp(float value) {
-        return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value,
-                getResources().getDisplayMetrics());
-    }
+    private Locale locale() { return getResources().getConfiguration().locale; }
 
-    private GradientDrawable shape(int fill, int border, int radius) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(fill);
-        d.setCornerRadius(dp(radius));
-        if (border != Color.TRANSPARENT) d.setStroke(dp(1), border);
-        return d;
-    }
+    private String particle(String name) { return Theme.objectParticle(locale(), name); }
+
+    private int dp(float value) { return Theme.dp(this, value); }
+
+    private GradientDrawable shape(int fill, int border, int radius) { return Theme.shape(this, fill, border, radius); }
 
     private StateListDrawable selectable(int fill, int border, int radius, boolean destructive) {
-        StateListDrawable d = new StateListDrawable();
-        d.addState(new int[] {android.R.attr.state_pressed}, shape(destructive ? RED_PRESS : PRESS,
-                destructive ? ERROR : BLUE, radius));
-        d.addState(new int[] {}, shape(fill, border, radius));
-        return d;
+        return Theme.selectable(this, fill, border, radius, destructive);
     }
 
     private TextView text(String label, float sp, int color, Typeface face) {
-        TextView t = new TextView(this);
-        t.setText(label);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
-        t.setTextColor(color);
-        t.setTypeface(face);
-        t.setGravity(Gravity.CENTER_VERTICAL);
-        t.setIncludeFontPadding(false);
-        return t;
+        return Theme.text(this, label, sp, color, face == medium);
     }
 
     private LinearLayout vertical() {
@@ -308,10 +341,14 @@ public final class MainActivity extends Activity {
         return r;
     }
 
-    private void divider(LinearLayout parent, boolean vertical) {
-        View d = new View(this);
-        d.setBackgroundColor(HAIRLINE);
-        parent.addView(d, new LinearLayout.LayoutParams(vertical ? dp(1) : -1, vertical ? -1 : dp(1)));
+    private void divider(LinearLayout parent, boolean vertical) { Theme.addHairline(this, parent, vertical); }
+
+    private ImageView iconBox(String icon, int color, int boxDp, int iconDp) {
+        ImageView view = new ImageView(this);
+        view.setScaleType(ImageView.ScaleType.CENTER);
+        view.setImageDrawable(new LineIcon(this, icon, color, iconDp));
+        view.setBackgroundDrawable(shape(RAISED, Color.TRANSPARENT, Theme.CARD_RADIUS));
+        return view;
     }
 
     private final class BrandMark extends View {
@@ -326,88 +363,293 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void header(LinearLayout root, boolean back) {
+    private void header(LinearLayout root, String backTitle) {
         LinearLayout bar = horizontal();
         bar.setBackgroundColor(SURFACE);
-        View inset = new View(this);
-        bar.addView(inset, new LinearLayout.LayoutParams(dp(22), dp(60)));
-        bar.addView(new BrandMark(), new LinearLayout.LayoutParams(dp(32), dp(32)));
-        View gap = new View(this);
-        bar.addView(gap, new LinearLayout.LayoutParams(dp(12), dp(60)));
-        TextView brand = text(getString(R.string.app_name), 28, WHITE, medium);
-        bar.addView(brand, new LinearLayout.LayoutParams(dp(256), dp(60)));
-        if (back) {
-            TextView section = text(getString(R.string.settings), 22, MUTED, sans);
-            section.setPadding(dp(SettingsUi.MD), 0, 0, 0);
-            bar.addView(section, new LinearLayout.LayoutParams(dp(130), dp(60)));
-        }
-        View spacer = new View(this);
-        bar.addView(spacer, new LinearLayout.LayoutParams(0, dp(60), 1));
-        if (back) {
-            TextView backButton = text(getString(R.string.nav_back_label), 21, WHITE, medium);
-            backButton.setGravity(Gravity.CENTER);
-            backButton.setContentDescription(getString(R.string.back));
-            backButton.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
-            backButton.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) { showHome(); }
-            });
-            bar.addView(backButton, new LinearLayout.LayoutParams(dp(132), dp(60)));
+        if (backTitle != null) {
+            TextView back = text(getString(R.string.nav_back_glyph), 38, WHITE, sans);
+            back.setGravity(Gravity.CENTER);
+            back.setContentDescription(getString(R.string.back));
+            back.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
+            back.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { goBack(); } });
+            bar.addView(back, new LinearLayout.LayoutParams(dp(72), dp(60)));
+            TextView title = text(backTitle, 26, WHITE, medium);
+            title.setSingleLine(true);
+            bar.addView(title, new LinearLayout.LayoutParams(0, dp(60), 1));
         } else {
-            TextView close = text(getString(R.string.nav_close_glyph), 35, MUTED, sans);
-            close.setGravity(Gravity.CENTER);
-            close.setContentDescription(getString(R.string.close));
-            close.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
-            close.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) { close(); }
-            });
-            bar.addView(close, new LinearLayout.LayoutParams(dp(72), dp(60)));
+            View inset = new View(this);
+            bar.addView(inset, new LinearLayout.LayoutParams(dp(22), dp(60)));
+            bar.addView(new BrandMark(), new LinearLayout.LayoutParams(dp(32), dp(32)));
+            View gap = new View(this);
+            bar.addView(gap, new LinearLayout.LayoutParams(dp(12), dp(60)));
+            TextView brand = text(getString(R.string.header_brand), 28, WHITE, medium);
+            brand.setPadding(0, 0, dp(SettingsUi.LG), 0);
+            bar.addView(brand, new LinearLayout.LayoutParams(-2, dp(60)));
+            for (Tab target : Tab.values()) bar.addView(tabButton(target), new LinearLayout.LayoutParams(-2, dp(60)));
+            View spacer = new View(this);
+            bar.addView(spacer, new LinearLayout.LayoutParams(0, dp(60), 1));
         }
+        TextView close = text(getString(R.string.nav_close_glyph), 35, MUTED, sans);
+        close.setGravity(Gravity.CENTER);
+        close.setContentDescription(getString(R.string.close));
+        close.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
+        close.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { close(); } });
+        bar.addView(close, new LinearLayout.LayoutParams(dp(72), dp(60)));
         root.addView(bar, new LinearLayout.LayoutParams(-1, dp(60)));
         divider(root, false);
     }
 
-    private void showHome() {
-        settingsVisible = false;
-        LinearLayout r = root();
-        header(r, false);
-        homeView = new HomeView(this, new Runnable() {
-            public void run() { showSettings(); }
-        }, new HomeView.ActionHandler() {
-            public void run(ModuleAction action) { dispatchModuleAction(action); }
-        });
-        r.addView(homeView, new LinearLayout.LayoutParams(-1, 0, 1));
-        refreshHomeTiles(homeView);
+    private View tabButton(final Tab target) {
+        boolean selected = target == tab;
+        int labelRes = target == Tab.FEATURES ? R.string.tab_features : target == Tab.CAR ? R.string.tab_car : R.string.settings;
+        FrameLayout holder = new FrameLayout(this);
+        holder.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
+        holder.setPadding(dp(SettingsUi.LG), 0, dp(SettingsUi.LG), 0);
+        TextView label = text(getString(labelRes), 23, selected ? WHITE : MUTED, medium);
+        label.setGravity(Gravity.CENTER);
+        holder.addView(label, new FrameLayout.LayoutParams(-2, -1, Gravity.CENTER));
+        if (selected) {
+            View underline = new View(this);
+            underline.setBackgroundColor(BLUE);
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dp(44), dp(3),
+                    Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+            params.bottomMargin = dp(SettingsUi.XS);
+            holder.addView(underline, params);
+        }
+        holder.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { selectTab(target); } });
+        return holder;
     }
 
-    private void refreshHomeTiles(final HomeView view) {
-        new Thread(new Runnable() {
-            public void run() {
-                Module[] modules = ModuleRegistry.all();
-                HomeTileCatalog.Entry[] entries = new HomeTileCatalog.Entry[modules.length];
-                for (int i = 0; i < modules.length; i++) {
-                    RootResult status = RootClient.run(modules[i].id(), "status");
-                    // Tiles belong to a working module: saved intent alone (pending restart,
-                    // unknown or failed state) must not make them look available.
-                    boolean enabled = status.exitCode == 0 && "on".equals(status.state);
-                    entries[i] = new HomeTileCatalog.Entry(modules[i].id(), enabled, modules[i].homeTiles());
-                }
-                final List<HomeTile> tiles = HomeTileCatalog.collect(HomeView.settingsTile(), entries);
-                runOnUiThread(new Runnable() {
-                    public void run() {
-                        if (homeView == view && !settingsVisible) view.setTiles(tiles);
-                    }
-                });
+    private void selectTab(Tab target) {
+        if (target == tab && detailId == null && !addVisible) return;
+        tab = target;
+        detailId = null;
+        addVisible = false;
+        render();
+        if (target == Tab.CAR) refreshMap(false);
+    }
+
+    private void render() {
+        if (detailId != null) {
+            Feature feature = feature(detailId);
+            if (feature != null) { showDetail(feature); return; }
+            detailId = null;
+        }
+        if (addVisible) { showAdd(); return; }
+        if (tab == Tab.CAR) showCar();
+        else if (tab == Tab.SETTINGS) showSettings();
+        else showFeatures();
+    }
+
+    private void goBack() {
+        detailId = null;
+        addVisible = false;
+        render();
+    }
+
+    private boolean featuresVisible() { return tab == Tab.FEATURES && detailId == null && !addVisible; }
+
+    private List<Feature> features() {
+        List<Feature> list = new ArrayList<Feature>();
+        for (Module module : ModuleRegistry.all()) list.add(Feature.of(this, module));
+        for (InstalledModule module : ModuleRegistry.installed()) list.add(Feature.of(module));
+        return list;
+    }
+
+    private Feature feature(String id) {
+        for (Feature candidate : features()) if (candidate.id.equals(id)) return candidate;
+        return null;
+    }
+
+    private String describeLocale() {
+        String language = locale().getLanguage();
+        return language != null && language.matches("[a-z]{2}") ? language : "en";
+    }
+
+    private static boolean readable(RootResult result) {
+        return result.exitCode == 0 && ("on".equals(result.state) || "off".equals(result.state) ||
+                "pending-restart".equals(result.state));
+    }
+
+    private static boolean unreachable(RootResult result) {
+        return result.exitCode != 0 && "failed".equals(result.state) && result.info.isEmpty();
+    }
+
+    private static boolean observedOn(RootResult result) {
+        return "on".equals(result.state) ||
+                ("pending-restart".equals(result.state) && !"off".equals(result.info.get("desired")));
+    }
+
+    private String excludedBy(String id) {
+        for (String other : ModuleRegistry.excludes(id)) {
+            RootResult status = statuses.get(other);
+            if (status != null && status.exitCode == 0 && observedOn(status)) {
+                Feature blocker = feature(other);
+                return blocker == null ? other : blocker.name;
             }
-        }, "home-tiles").start();
+        }
+        return null;
+    }
+
+    private String reasonText(RootResult result) {
+        if ("conflict".equals(result.state)) return getString(R.string.module_status_conflict);
+        if ("incompatible".equals(result.state)) return getString(R.string.module_status_incompatible);
+        if ("not-implemented".equals(result.state)) return getString(R.string.module_status_unsupported);
+        if (result.detail.length() > 0) Log.w("HMG-Seogaemo", "Module status: " + result.detail);
+        return getString(R.string.module_status_unknown);
+    }
+
+    private FeaturesView.Entry entry(Feature feature) {
+        FeaturesView.Entry entry = new FeaturesView.Entry(feature);
+        RootResult result = statuses.get(feature.id);
+        if (result == null) return entry;
+        if (settling.contains(feature.id) && !readable(result)) {
+            entry.state = FeatureCard.State.APPLYING;
+            return entry;
+        }
+        entry.statusTappable = true;
+        if ("pending-restart".equals(result.state)) {
+            entry.state = FeatureCard.State.APPLYING;
+            entry.note = getString(R.string.note_restart_pending);
+        } else if (result.exitCode == 0 && "on".equals(result.state)) {
+            entry.state = FeatureCard.State.ON;
+        } else if (result.exitCode == 0 && "off".equals(result.state)) {
+            String blocker = excludedBy(feature.id);
+            if (blocker != null) {
+                entry.state = FeatureCard.State.UNAVAILABLE;
+                entry.note = getString(R.string.note_in_use, blocker);
+                entry.noteError = true;
+            } else entry.state = FeatureCard.State.OFF;
+        } else if (unreachable(result)) {
+            entry.state = FeatureCard.State.UNKNOWN;
+        } else {
+            entry.state = FeatureCard.State.UNAVAILABLE;
+            entry.note = reasonText(result);
+            entry.noteError = true;
+        }
+        String note = result.info.get("note");
+        if (entry.note == null && note != null && note.length() > 0) entry.note = note;
+        return entry;
+    }
+
+    private List<FeaturesView.Entry> sortedEntries(List<Feature> features) {
+        List<FeaturesView.Entry> list = new ArrayList<FeaturesView.Entry>();
+        for (Feature feature : features) list.add(entry(feature));
+        final Collator collator = Collator.getInstance(locale());
+        Collections.sort(list, new Comparator<FeaturesView.Entry>() {
+            public int compare(FeaturesView.Entry left, FeaturesView.Entry right) {
+                int byGroup = group(left.state) - group(right.state);
+                return byGroup != 0 ? byGroup : collator.compare(left.feature.name, right.feature.name);
+            }
+        });
+        return list;
+    }
+
+    private static int group(FeatureCard.State state) {
+        if (state == FeatureCard.State.ON || state == FeatureCard.State.APPLYING) return 0;
+        if (state == FeatureCard.State.OFF || state == FeatureCard.State.LOADING) return 1;
+        return 2;
+    }
+
+    private boolean restartPending() {
+        for (RootResult status : statuses.values()) if ("pending-restart".equals(status.state)) return true;
+        return false;
+    }
+
+    private void showFeatures() {
+        tab = Tab.FEATURES;
+        settingsVisible = false;
+        LinearLayout r = root();
+        header(r, null);
+        featuresView = new FeaturesView(this, new FeaturesView.Listener() {
+            public void openDetail(Feature feature) { detailId = feature.id; render(); }
+            public void tapStatus(Feature feature) { tapFeatureStatus(feature); }
+            public void add() { addVisible = true; render(); }
+            public void restartLater() { restartLater = true; featuresView.setRestartPending(false); }
+            public void restartNow() { MainActivity.this.restartNow(); }
+        });
+        r.addView(featuresView, new LinearLayout.LayoutParams(-1, 0, 1));
+        featuresView.setEntries(sortedEntries(features()));
+        featuresView.setRestartPending(!restartLater && restartPending());
+        sortOnLoad = true;
+        loadFeatures(true);
+    }
+
+    private void restartNow() { confirmReboot(R.string.module_restart_confirm); }
+
+    private void tapFeatureStatus(Feature feature) {
+        RootResult result = statuses.get(feature.id);
+        if (result == null || settling.contains(feature.id)) return;
+        if (readable(result)) { prepareModuleChange(feature, !moduleEnabled(result), false); return; }
+        ConfirmDialog.showResult(this, feature.name, unreachable(result)
+                ? getString(R.string.module_status_unknown) : reasonText(result), getString(R.string.close));
+    }
+
+    /** Reads the installed list and every status on a worker, then updates the cards (re-sorted only on entry). */
+    private void loadFeatures(final boolean entering) {
+        final int generation = ++loadGeneration;
+        final String locale = describeLocale();
+        new Thread(new Runnable() { public void run() {
+            ModuleRegistry.refreshInstalled(locale);
+            final List<Feature> list = features();
+            final Map<String, RootResult> results = new HashMap<String, RootResult>();
+            for (Feature feature : list) results.put(feature.id, RootClient.run(feature.id, "status"));
+            runOnUiThread(new Runnable() { public void run() {
+                statuses.putAll(results);
+                if (generation != loadGeneration || featuresView == null || !featuresVisible()) return;
+                boolean sameSet = true;
+                for (Feature feature : list) if (!featuresView.shows(feature.id)) sameSet = false;
+                if (entering || sortOnLoad || !sameSet) featuresView.setEntries(sortedEntries(list));
+                else for (Feature feature : list) featuresView.update(entry(feature));
+                sortOnLoad = false;
+                featuresView.setRestartPending(!restartLater && restartPending());
+            } });
+        } }, "hmg-seogaemo-features").start();
+    }
+
+    private void refreshAfterOperation() {
+        if (featuresVisible()) {
+            if (featuresView != null) {
+                for (Feature feature : features()) featuresView.update(entry(feature));
+                featuresView.setRestartPending(!restartLater && restartPending());
+            }
+        } else if (detailId != null) render();
+        else if (settingsVisible) showSettings();
+        else if (tab == Tab.CAR) showCar();
+    }
+
+    /** Modules whose status is momentarily unreadable after an operation show 적용 중 and are re-read. */
+    private void settle(final int attempt) {
+        if (settling.isEmpty()) return;
+        handler.postDelayed(new Runnable() { public void run() {
+            if (isFinishing() || settling.isEmpty()) return;
+            final List<String> ids = new ArrayList<String>(settling);
+            new Thread(new Runnable() { public void run() {
+                final Map<String, RootResult> results = new HashMap<String, RootResult>();
+                for (String id : ids) results.put(id, RootClient.run(id, "status"));
+                runOnUiThread(new Runnable() { public void run() {
+                    statuses.putAll(results);
+                    for (String id : ids) if (readable(results.get(id)) || attempt >= SETTLE_ATTEMPTS) settling.remove(id);
+                    refreshAfterOperation();
+                    settle(attempt + 1);
+                } });
+            } }, "hmg-seogaemo-settle").start();
+        } }, SETTLE_DELAY_MS);
     }
 
     private void dispatchModuleAction(ModuleAction action) {
-        if (action.type == ModuleAction.Type.ENABLE_MODULE)
-            prepareModuleChange(ModuleRegistry.find(action.target), true, false);
-        else if (action.type == ModuleAction.Type.OPEN_STOCK_WIFI_SETTINGS)
-            startActivity(new Intent("android.settings.WIFI_SETTINGS"));
-        else if (action.type == ModuleAction.Type.RESET_TBT_RECORDS)
-            confirmTbtReset();
+        if (action.type == ModuleAction.Type.ENABLE_MODULE) {
+            Feature target = feature(action.target);
+            if (target != null) prepareModuleChange(target, true, false);
+        } else if (action.type == ModuleAction.Type.OPEN_STOCK_WIFI_SETTINGS) openWifiSettings();
+        else if (action.type == ModuleAction.Type.RESET_TBT_RECORDS) confirmTbtReset();
+    }
+
+    private void openWifiSettings() {
+        try { startActivity(new Intent("android.settings.WIFI_SETTINGS")); }
+        catch (ActivityNotFoundException missing) {
+            Toast.makeText(this, R.string.screen_unavailable, Toast.LENGTH_SHORT).show();
+        }
     }
 
     private boolean tbtResetBusy;
@@ -429,13 +671,12 @@ public final class MainActivity extends Activity {
                                     public void run() {
                                         tbtResetBusy = false;
                                         dialog.dismiss();
-                                        if (settingsVisible) showSettings();
+                                        refreshAfterOperation();
                                         ConfirmDialog.showResult(MainActivity.this,
                                                 getString(R.string.wireless_carplay_and_aa_tbt_reset),
-                                                result.exitCode == 0 && "on".equals(result.state)
+                                                result.exitCode == 0
                                                         ? getString(R.string.wireless_carplay_and_aa_tbt_reset_done)
-                                                        : result.detail,
-                                                getString(R.string.close));
+                                                        : result.detail, getString(R.string.close));
                                     }
                                 });
                             }
@@ -444,121 +685,653 @@ public final class MainActivity extends Activity {
                 }, null);
     }
 
-    private void showSettings() {
-        if (sidebarScroll != null) sidebarOffset = sidebarScroll.getScrollY();
-        settingsVisible = true;
+    private void showDetail(final Feature feature) {
+        detailId = feature.id;
+        settingsVisible = false;
         LinearLayout r = root();
-        header(r, true);
-        LinearLayout body = horizontal();
+        header(r, feature.name);
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.HORIZONTAL);
         r.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
-        ScrollView sideScroll = new ScrollView(this);
-        sidebarScroll = sideScroll;
-        LinearLayout side = vertical();
-        side.setBackgroundColor(SURFACE);
-        sideScroll.addView(side);
-        body.addView(sideScroll, new LinearLayout.LayoutParams(0, -1, 1));
-        addSidebarSection(side, R.string.app, 0);
-        for (int i = 0; i < CATEGORIES.length; i++) addCategory(side, i);
-        View sectionDivider = new View(this);
-        sectionDivider.setBackgroundColor(0xFF555555);
-        side.addView(sectionDivider, new LinearLayout.LayoutParams(-1, dp(1)));
-        addSidebarSection(side, R.string.module_settings, 24);
-        for (int i = 0; i < ModuleRegistry.all().length; i++)
-            addModuleCategory(side, i, ModuleRegistry.all()[i]);
-        sideScroll.post(new Runnable() {
-            public void run() { if (sidebarScroll != null) sidebarScroll.scrollTo(0, sidebarOffset); }
-        });
+
+        final LinearLayout panelHolder = vertical();
+        panelHolder.setPadding(dp(SettingsUi.LG), dp(SettingsUi.LG), dp(SettingsUi.LG), dp(SettingsUi.LG));
+        body.addView(panelHolder, new LinearLayout.LayoutParams(0, -1, 2));
         divider(body, true);
-        LinearLayout content = vertical();
-        body.addView(content, new LinearLayout.LayoutParams(0, -1, 2));
-        int titleRes = category < CATEGORIES.length ? CATEGORIES[category]
-                : ModuleRegistry.all()[category - CATEGORIES.length].nameResId();
-        TextView paneTitle = text(getString(titleRes), 26, WHITE, medium);
-        paneTitle.setPadding(dp(SettingsUi.PAGE), 0, 0, 0);
-        content.addView(paneTitle, new LinearLayout.LayoutParams(-1, dp(52)));
-        divider(content, false);
-        if (category == 0) {
-            ScrollView scroll = new ScrollView(this);
-            LinearLayout general = vertical();
-            scroll.addView(general);
-            content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-            showLanguage(general);
-            showUpdate(general);
-            showStock(general);
-            return;
-        } else if (category == 1) {
-            showMapping(content);
-            return;
-        } else if (category == 2) {
-            showModules(content);
-            return;
-        } else if (category == 3) {
-            TextView explanation = text(getString(R.string.export_changes_hint), 19, MUTED, sans);
-            explanation.setPadding(dp(SettingsUi.PAGE), 0, dp(SettingsUi.PAGE), 0);
-            content.addView(explanation, new LinearLayout.LayoutParams(-1, dp(85)));
-            TextView export = action(getString(R.string.export_changes_usb), true);
-            LinearLayout.LayoutParams ep = SettingsUi.contentAction(this);
-            content.addView(export, ep);
-            export.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View v) {
-                    ConfirmDialog.show(MainActivity.this, getString(R.string.export_changes_usb),
-                            getString(R.string.export_changes_hint), getString(R.string.export_changes_usb),
-                            getString(R.string.cancel), false, new ConfirmDialog.Action() {
-                        public void run(final ConfirmDialog dialog) {
-                            dialog.showProgress();
-                            new Thread(new Runnable() {
-                                public void run() {
-                                    final RootResult result = RootClient.exportUsb();
-                                    runOnUiThread(new Runnable() {
-                                        public void run() {
-                                            dialog.dismiss();
-                                            if (!isFinishing()) new AlertDialog.Builder(MainActivity.this)
-                                                    .setMessage(exportMessage(result))
-                                                    .setPositiveButton("OK", null).show();
-                                        }
-                                    });
-                                }
-                            }, "export-changes").start();
-                        }
-                    }, null);
+        LinearLayout right = vertical();
+        body.addView(right, new LinearLayout.LayoutParams(0, -1, 3));
+        TextView optionsTitle = text(getString(R.string.detail_options), 17, MUTED, sans);
+        optionsTitle.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.LG), dp(SettingsUi.PAGE), dp(SettingsUi.SM));
+        right.addView(optionsTitle, new LinearLayout.LayoutParams(-1, -2));
+        divider(right, false);
+        ScrollView scroll = new ScrollView(this);
+        final OptionsList options = new OptionsList(this);
+        options.setPadding(dp(SettingsUi.PAGE), 0, dp(SettingsUi.PAGE), dp(SettingsUi.LG));
+        scroll.addView(options);
+        right.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        RootResult cached = statuses.get(feature.id);
+        renderDetail(feature, cached, panelHolder, options);
+        final String id = feature.id;
+        new Thread(new Runnable() { public void run() {
+            final RootResult result = RootClient.run(id, "status");
+            final SettingsPage page = new SettingsPage();
+            if (feature.builtIn != null) feature.builtIn.buildSettingsPage(page);
+            runOnUiThread(new Runnable() { public void run() {
+                statuses.put(id, result);
+                if (!id.equals(detailId)) return;
+                renderDetail(feature, result, panelHolder, options);
+                if (feature.builtIn != null) {
+                    options.removeAllViews();
+                    for (SettingsPage.Item item : page.items()) renderPageItem(options, feature, result, item);
+                    finishOptions(options, feature, result, page);
                 }
-            });
-            return;
-        } else if (category == 4) {
-            addRow(content, R.string.app, R.string.app_description, R.string.app_name);
-            addRow(content, R.string.version, R.string.installed_version, installedVersion());
-            addRow(content, R.string.android, R.string.minimum_api, R.string.value_api);
-            addRow(content, R.string.platform, R.string.vehicle_brands, R.string.value_gen5w);
-            return;
+            } });
+        } }, "hmg-seogaemo-detail").start();
+    }
+
+    private void renderDetail(final Feature feature, RootResult result, LinearLayout panelHolder, OptionsList options) {
+        panelHolder.removeAllViews();
+        FeaturesView.Entry entry = entry(feature);
+        boolean on = entry.state == FeatureCard.State.ON;
+        LinearLayout panel = vertical();
+        int pad = dp(SettingsUi.LG);
+        panel.setPadding(pad, pad, pad, pad);
+        panel.setBackgroundDrawable(shape(SURFACE, on ? BLUE : HAIRLINE, Theme.CARD_RADIUS));
+        panelHolder.addView(panel, new LinearLayout.LayoutParams(-1, -1));
+        panel.addView(iconBox(feature.icon, on ? BLUE : MUTED, 72, 42), new LinearLayout.LayoutParams(dp(72), dp(72)));
+        TextView name = text(feature.name, 28, WHITE, medium);
+        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
+        nameParams.topMargin = dp(SettingsUi.MD);
+        panel.addView(name, nameParams);
+        TextView description = text(feature.description, 18, MUTED, sans);
+        description.setLineSpacing(dp(4), 1f);
+        LinearLayout.LayoutParams descriptionParams = new LinearLayout.LayoutParams(-1, -2);
+        descriptionParams.topMargin = dp(SettingsUi.XS);
+        panel.addView(description, descriptionParams);
+        if (entry.note != null) {
+            TextView note = text(entry.note, 18, entry.noteError ? ERROR : WHITE, sans);
+            LinearLayout.LayoutParams noteParams = new LinearLayout.LayoutParams(-1, -2);
+            noteParams.topMargin = dp(SettingsUi.MD);
+            panel.addView(note, noteParams);
+        }
+        View spacer = new View(this);
+        panel.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
+        View action;
+        if (result == null || entry.state == FeatureCard.State.LOADING) {
+            action = text(getString(R.string.state_loading), 20, MUTED, medium);
+            ((TextView) action).setGravity(Gravity.CENTER);
+        } else if (entry.state == FeatureCard.State.UNKNOWN) {
+            action = text(getString(R.string.module_status_unknown), 18, MUTED, sans);
+        } else if (entry.state == FeatureCard.State.UNAVAILABLE && !readable(result)) {
+            action = text(reasonText(result), 18, ERROR, sans);
         } else {
-            showModulePage(content, ModuleRegistry.all()[category - CATEGORIES.length]);
-            return;
+            final boolean enable = !moduleEnabled(result);
+            action = powerButton(getString(enable ? R.string.confirm_turn_on : R.string.confirm_turn_off), enable);
+            action.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View v) { prepareModuleChange(feature, enable, false); }
+            });
+        }
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(-1, dp(Theme.ACTION_HEIGHT));
+        actionParams.topMargin = dp(SettingsUi.LG);
+        panel.addView(action, actionParams);
+        if (feature.installed != null) {
+            options.removeAllViews();
+            for (String block : feature.installed.uiBlocks) renderUiBlock(options, feature, result, block);
+            finishOptions(options, feature, result, null);
+        } else if (result == null) {
+            options.removeAllViews();
+            options.addInfo(getString(R.string.state_loading));
         }
     }
 
-    private void showLanguage(LinearLayout content) {
-        TextView label = text(getString(R.string.language), 24, WHITE, medium);
-        label.setPadding(dp(SettingsUi.PAGE), 0, 0, 0);
-        content.addView(label, new LinearLayout.LayoutParams(-1, dp(48)));
-        addLanguageOption(content, R.string.language_system, "system");
-        addLanguageOption(content, R.string.language_english, "en");
-        addLanguageOption(content, R.string.language_korean, "ko");
-        TextView hint = text(getString(R.string.language_scope), 18, MUTED, sans);
-        hint.setPadding(dp(SettingsUi.PAGE), 0, 0, 0);
-        content.addView(hint, new LinearLayout.LayoutParams(-1, dp(40)));
+    private LinearLayout powerButton(String label, boolean primary) {
+        LinearLayout button = horizontal();
+        button.setGravity(Gravity.CENTER);
+        button.setBackgroundDrawable(selectable(primary ? BLUE : RAISED, primary ? BLUE : HAIRLINE, Theme.BUTTON_RADIUS, false));
+        ImageView glyph = new ImageView(this);
+        glyph.setScaleType(ImageView.ScaleType.CENTER);
+        glyph.setImageDrawable(new LineIcon(this, "power", WHITE, 22));
+        button.addView(glyph, new LinearLayout.LayoutParams(dp(24), dp(24)));
+        TextView caption = text(label, 21, WHITE, medium);
+        LinearLayout.LayoutParams captionParams = new LinearLayout.LayoutParams(-2, -2);
+        captionParams.leftMargin = dp(SettingsUi.SM);
+        button.addView(caption, captionParams);
+        button.setClickable(true);
+        return button;
     }
 
-    private String mapInfo(String key) {
-        String value = mapStatus == null ? null : mapStatus.info.get(key);
-        return value == null || value.length() == 0 ? "—" : value;
+    private void finishOptions(OptionsList options, final Feature feature, final RootResult result,
+            final SettingsPage page) {
+        final StringBuilder help = new StringBuilder();
+        if (page != null) for (SettingsPage.Item item : page.items()) {
+            if (item.type != SettingsPage.Type.NOTE) continue;
+            if (help.length() > 0) help.append("\n\n");
+            help.append(getString(item.labelResId));
+        }
+        if (help.length() > 0) options.addLink(getString(R.string.detail_help), new View.OnClickListener() {
+            public void onClick(View v) {
+                ConfirmDialog.showResult(MainActivity.this, getString(R.string.detail_help), help, getString(R.string.close));
+            }
+        });
+        if (feature.removable()) options.addRemove(getString(R.string.detail_remove), new View.OnClickListener() {
+            public void onClick(View v) { confirmRemove(feature); }
+        });
+        if (diagnosticsEnabled() && result != null) options.addLink(getString(R.string.detail_diagnostics),
+                new View.OnClickListener() {
+            public void onClick(View v) {
+                StringBuilder raw = new StringBuilder();
+                if (page != null) for (SettingsPage.Item item : page.items()) {
+                    if (item.type != SettingsPage.Type.INFO) continue;
+                    String value = result.info.get(item.key);
+                    raw.append(getString(item.labelResId)).append(": ")
+                            .append(value == null || value.length() == 0 ? "\u2014" : value).append('\n');
+                }
+                if (raw.length() > 0) raw.append('\n');
+                raw.append("state=").append(result.state).append("\nrestart=")
+                        .append(result.restart).append("\nexit=").append(result.exitCode)
+                        .append("\ndetail=").append(result.detail);
+                for (Map.Entry<String, String> value : result.info.entrySet())
+                    raw.append("\ninfo.").append(value.getKey()).append('=').append(value.getValue());
+                for (Map.Entry<String, String> value : result.warnings.entrySet())
+                    raw.append("\nwarn.").append(value.getKey()).append('=').append(value.getValue());
+                ConfirmDialog.showResult(MainActivity.this, getString(R.string.detail_diagnostics), raw, getString(R.string.close));
+            }
+        });
+        if (options.getChildCount() == 0) options.addEmpty();
     }
 
-    private void showMapping(LinearLayout content) {
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout rows = vertical();
-        rows.setPadding(0, dp(SettingsUi.SM), 0, dp(SettingsUi.LG));
-        scroll.addView(rows);
-        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+    private void renderPageItem(OptionsList rows, final Feature module, RootResult result, SettingsPage.Item item) {
+        switch (item.type) {
+            case STATUS_HEADER:
+                break;
+            case SECTION:
+                rows.addSection(getString(item.labelResId));
+                break;
+            case INFO:
+                break; // Diagnostic values belong to the developer-only diagnostics row, not to 옵션.
+
+            case NOTE:
+                break; // Guidance text is grouped behind the 도움말 row in finishOptions.
+            case WARNING:
+                rows.addWarning(getString(item.labelResId));
+                break;
+            case TOGGLE:
+            case CHOICE:
+                rows.addValue(getString(item.labelResId), null, false, null);
+                break;
+            case ACTION:
+                final ModuleAction action = item.action;
+                View.OnClickListener tap = new View.OnClickListener() {
+                    public void onClick(View view) { dispatchModuleAction(action); }
+                };
+                if (action.type == ModuleAction.Type.RESET_TBT_RECORDS)
+                    rows.addAction(getString(item.labelResId), getString(R.string.option_run), true, true, tap);
+                else rows.addLink(getString(item.labelResId), tap);
+                break;
+        }
+    }
+
+    private static Map<String, String> blockArguments(String[] tokens) {
+        Map<String, String> arguments = new HashMap<String, String>();
+        for (int i = 1; i < tokens.length; i++) {
+            int equals = tokens[i].indexOf('=');
+            if (equals > 0) arguments.put(tokens[i].substring(0, equals), tokens[i].substring(equals + 1));
+            else if (tokens[i].startsWith("@")) arguments.put("", tokens[i]);
+        }
+        return arguments;
+    }
+
+    private Module.Setting declaredSetting(InstalledModule module, String key) {
+        for (Module.Setting setting : module.settings) if (setting.key.equals(key)) return setting;
+        return null;
+    }
+
+    private String settingValue(Feature feature, Module.Setting setting) {
+        String cached = getSharedPreferences("module_settings", MODE_PRIVATE)
+                .getString(feature.id + "." + setting.key, null);
+        return cached == null ? setting.defaultValue : cached;
+    }
+
+    private String settingDisplay(Module.Setting setting, String value) {
+        if (setting.type == Module.SettingType.BOOLEAN) return getString("on".equals(value) ? R.string.on : R.string.off);
+        return value;
+    }
+
+    private void renderUiBlock(OptionsList rows, final Feature feature, RootResult result, String block) {
+        String[] tokens = block.trim().split("\\s+");
+        if (tokens.length == 0) return;
+        final String type = tokens[0];
+        final Map<String, String> arguments = blockArguments(tokens);
+        final InstalledModule installed = feature.installed;
+        final String label = arguments.containsKey("label") ? installed.text(arguments.get("label")) : "";
+        if ("status".equals(type)) return;
+        if ("info".equals(type) || "warning".equals(type)) {
+            String text = installed.text(arguments.containsKey("") ? arguments.get("") : "");
+            if ("info".equals(type)) rows.addInfo(text); else rows.addWarning(text);
+        } else if ("toggle".equals(type) || "choice".equals(type) || "number".equals(type)) {
+            final Module.Setting setting = declaredSetting(installed, arguments.get("setting"));
+            if (setting == null) return;
+            final String current = settingValue(feature, setting);
+            rows.addValue(label, settingDisplay(setting, current), true, new View.OnClickListener() {
+                public void onClick(View view) {
+                    if (setting.type == Module.SettingType.BOOLEAN)
+                        confirmSetting(feature, setting, label, "on".equals(current) ? "off" : "on");
+                    else if (setting.type == Module.SettingType.CHOICE) chooseSetting(feature, setting, label, current);
+                    else adjustSetting(feature, setting, label, current);
+                }
+            });
+        } else if ("value".equals(type)) {
+            String key = arguments.get("key");
+            rows.addReadOnly(label, key == null || result == null ? null : result.info.get(key));
+        } else if ("button".equals(type)) {
+            final String name = arguments.get("name");
+            final String confirm = arguments.containsKey("confirm") ? installed.text(arguments.get("confirm")) : label;
+            boolean on = result != null && "on".equals(result.state) && RootClient.validActionName(name);
+            rows.addAction(label, getString(R.string.option_run), false, on, new View.OnClickListener() {
+                public void onClick(View view) { confirmAction(feature, name, label, confirm); }
+            });
+        } else if ("enable".equals(type)) {
+            final Feature target = feature(arguments.get("module"));
+            if (target == null) return;
+            rows.addLink(label, new View.OnClickListener() {
+                public void onClick(View view) { prepareModuleChange(target, true, false); }
+            });
+        } else if ("open".equals(type) && "wifi_settings".equals(arguments.get("screen"))) {
+            rows.addLink(getString(R.string.option_open_wifi_settings), new View.OnClickListener() {
+                public void onClick(View view) { openWifiSettings(); }
+            });
+        }
+    }
+
+    private void confirmSetting(final Feature feature, final Module.Setting setting, String label, final String value) {
+        if (moduleWorking || modulePlanning || stockBusy) return;
+        String display = settingDisplay(setting, value);
+        ConfirmDialog.show(this, getString(R.string.option_set_confirm, label, display),
+                getString(R.string.option_set_note), getString(R.string.apply), getString(R.string.cancel), false,
+                new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { applySetting(feature, setting, value, dialog); } },
+                null);
+    }
+
+    private void chooseSetting(final Feature feature, final Module.Setting setting, String label, String current) {
+        if (moduleWorking || modulePlanning || stockBusy) return;
+        final String[] chosen = {current};
+        final LinearLayout list = vertical();
+        final List<TextView> markers = new ArrayList<TextView>();
+        for (final String value : setting.allowedValues) {
+            LinearLayout row = horizontal();
+            row.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
+            row.addView(text(settingDisplay(setting, value), 22, WHITE, medium), new LinearLayout.LayoutParams(0, -1, 1));
+            TextView marker = text(getString(value.equals(current) ? R.string.radio_selected : R.string.radio_unselected),
+                    28, value.equals(current) ? BLUE : MUTED, sans);
+            marker.setGravity(Gravity.CENTER);
+            row.addView(marker, new LinearLayout.LayoutParams(dp(60), -1));
+            markers.add(marker);
+            row.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View view) {
+                    chosen[0] = value;
+                    for (int i = 0; i < markers.size(); i++) {
+                        boolean selected = setting.allowedValues[i].equals(value);
+                        markers.get(i).setText(getString(selected ? R.string.radio_selected : R.string.radio_unselected));
+                        markers.get(i).setTextColor(selected ? BLUE : MUTED);
+                    }
+                }
+            });
+            list.addView(row, new LinearLayout.LayoutParams(-1, dp(Theme.ACTION_HEIGHT)));
+            divider(list, false);
+        }
+        ConfirmDialog.showView(this, label, list, getString(R.string.apply), getString(R.string.cancel), false,
+                new ConfirmDialog.Action() {
+                    public void run(ConfirmDialog dialog) { applySetting(feature, setting, chosen[0], dialog); }
+                }, null);
+    }
+
+    private void adjustSetting(final Feature feature, final Module.Setting setting, String label, String current) {
+        if (moduleWorking || modulePlanning || stockBusy) return;
+        final long min = Long.parseLong(setting.allowedValues[0]);
+        final long max = Long.parseLong(setting.allowedValues[1]);
+        final long[] value = {Long.parseLong(current)};
+        LinearLayout stepper = horizontal();
+        stepper.setGravity(Gravity.CENTER);
+        TextView minus = Theme.button(this, "\u2212", false, false);
+        final TextView number = text(current, 34, WHITE, medium);
+        number.setGravity(Gravity.CENTER);
+        TextView plus = Theme.button(this, "+", false, false);
+        stepper.addView(minus, new LinearLayout.LayoutParams(dp(120), dp(Theme.ACTION_HEIGHT)));
+        stepper.addView(number, new LinearLayout.LayoutParams(dp(220), dp(Theme.ACTION_HEIGHT)));
+        stepper.addView(plus, new LinearLayout.LayoutParams(dp(120), dp(Theme.ACTION_HEIGHT)));
+        minus.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) { if (value[0] > min) { value[0]--; number.setText(String.valueOf(value[0])); } }
+        });
+        plus.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) { if (value[0] < max) { value[0]++; number.setText(String.valueOf(value[0])); } }
+        });
+        ConfirmDialog.showView(this, label, stepper, getString(R.string.apply), getString(R.string.cancel), false,
+                new ConfirmDialog.Action() {
+                    public void run(ConfirmDialog dialog) { applySetting(feature, setting, String.valueOf(value[0]), dialog); }
+                }, null);
+    }
+
+    private void applySetting(final Feature feature, final Module.Setting setting, final String value,
+            final ConfirmDialog dialog) {
+        moduleWorking = true;
+        dialog.showProgress();
+        new Thread(new Runnable() { public void run() {
+            final RootResult result = RootClient.moduleSet(feature.id, setting.key, value);
+            runOnUiThread(new Runnable() { public void run() {
+                moduleWorking = false;
+                dialog.dismiss();
+                if (result.exitCode == 0) {
+                    getSharedPreferences("module_settings", MODE_PRIVATE).edit()
+                            .putString(feature.id + "." + setting.key, value).apply();
+                    refreshAfterOperation();
+                } else ConfirmDialog.showResult(MainActivity.this, getString(R.string.module_result_failed),
+                        result.detail, getString(R.string.close));
+            } });
+        } }, "hmg-seogaemo-setting").start();
+    }
+
+    private void confirmAction(final Feature feature, final String name, final String label, String question) {
+        if (moduleWorking || modulePlanning || stockBusy) return;
+        ConfirmDialog.show(this, question, null, getString(R.string.option_run), getString(R.string.cancel), false,
+                new ConfirmDialog.Action() {
+            public void run(ConfirmDialog dialog) {
+                moduleWorking = true;
+                dialog.dismiss();
+                final StepProgressDialog progress = StepProgressDialog.show(MainActivity.this, feature.name,
+                        java.util.Collections.singletonList(label));
+                if (progress != null) progress.setStep(0, StepProgressDialog.RUNNING);
+                new Thread(new Runnable() { public void run() {
+                    final RootResult result = RootClient.moduleAction(feature.id, name);
+                    runOnUiThread(new Runnable() { public void run() {
+                        moduleWorking = false;
+                        if (progress != null) progress.dismiss();
+                        if (result.exitCode == 0) refreshAfterOperation();
+                        else ConfirmDialog.showResult(MainActivity.this, getString(R.string.module_result_failed),
+                                result.detail, getString(R.string.close));
+                    } });
+                } }, "hmg-seogaemo-action").start();
+            }
+        }, null);
+    }
+
+    private void confirmRemove(final Feature feature) {
+        if (moduleWorking || modulePlanning || stockBusy) return;
+        ConfirmDialog.show(this, getString(R.string.detail_remove_confirm_title, feature.name, particle(feature.name)),
+                getString(R.string.detail_remove_confirm), getString(R.string.detail_remove), getString(R.string.cancel), true,
+                new ConfirmDialog.Action() {
+            public void run(final ConfirmDialog dialog) {
+                moduleWorking = true;
+                dialog.dismiss();
+                final StepProgressDialog progress = StepProgressDialog.show(MainActivity.this,
+                        getString(R.string.detail_remove), java.util.Collections.singletonList(
+                                getString(R.string.detail_remove_step, feature.name)));
+                if (progress != null) progress.setStep(0, StepProgressDialog.RUNNING);
+                new Thread(new Runnable() { public void run() {
+                    final RootResult result = RootClient.moduleRemove(feature.id);
+                    ModuleRegistry.refreshInstalled(describeLocale());
+                    runOnUiThread(new Runnable() { public void run() {
+                        moduleWorking = false;
+                        if (progress != null) progress.dismiss();
+                        if (result.exitCode == 0) {
+                            statuses.remove(feature.id);
+                            goBack();
+                            ConfirmDialog.showResult(MainActivity.this, getString(R.string.detail_remove),
+                                    getString(R.string.detail_removed_done, feature.name), getString(R.string.close));
+                        }
+                        else ConfirmDialog.showResult(MainActivity.this, getString(R.string.module_result_failed),
+                                result.detail, getString(R.string.close));
+                    } });
+                } }, "hmg-seogaemo-remove").start();
+            }
+        }, null);
+    }
+
+    private void prepareModuleChange(final Feature module, final boolean enable,
+            final boolean forUpdate) {
+        if (modulePlanning || moduleWorking || stockBusy) return;
+        modulePlanning = true;
+        new Thread(new Runnable() {
+            public void run() {
+                final ModulePlan plan;
+                try { plan = new ModuleManager(MainActivity.this).plan(module.id, enable); }
+                catch (final IllegalStateException error) {
+                    runOnUiThread(new Runnable() {
+                        public void run() {
+                            modulePlanning = false;
+                            ConfirmDialog.showResult(MainActivity.this, getString(R.string.module_result_failed),
+                                    error.getMessage(), getString(R.string.close));
+                        }
+                    });
+                    return;
+                }
+                final RootResult precheck = enable ? RootClient.run(module.id, "precheck") : null;
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        modulePlanning = false;
+                        confirmModuleChange(module, enable, plan, precheck, forUpdate);
+                    }
+                });
+            }
+        }, "module-plan").start();
+    }
+
+    private String resultLine(Feature feature, boolean enable) {
+        if (feature.builtIn == null) return null;
+        int id = getResources().getIdentifier(feature.id.replace('-', '_') + (enable ? "_on_result" : "_off_result"),
+                "string", getPackageName());
+        return id == 0 ? null : getString(id);
+    }
+
+    private boolean stepNeedsRestart(ModulePlan.Step step) {
+        Feature target = feature(step.id);
+        if (target == null) return false;
+        return step.enable ? target.needsHeadUnitRestart() && !target.rebootRestore() : target.needsHeadUnitRestart();
+    }
+
+    private void confirmModuleChange(final Feature module, final boolean enable,
+            final ModulePlan plan, RootResult precheck, final boolean forUpdate) {
+        PlanSummaryView summary = new PlanSummaryView(this);
+        if (forUpdate) summary.addLine(getString(R.string.update_wifi_required), WHITE);
+        boolean restart = false;
+        for (ModulePlan.Step step : plan.steps) {
+            Feature target = feature(step.id);
+            summary.addStep(target == null ? "box" : target.icon, target == null ? step.id : target.name,
+                    getString(step.enable ? R.string.confirm_turn_on : R.string.confirm_turn_off),
+                    step.enable ? BLUE : WHITE);
+            if (stepNeedsRestart(step)) restart = true;
+        }
+        if (restart) summary.addStep("restart", getString(R.string.plan_restart_name), getString(R.string.plan_restart_verb), WHITE);
+        String line = resultLine(module, enable);
+        if (line != null) summary.addLine(line, WHITE);
+        if (!enable && module.rebootRestore())
+            summary.addLine(getString(R.string.module_restore_reboot), MUTED);
+        if (plan.steps.isEmpty()) summary.addLine(getString(R.string.module_no_changes), MUTED);
+        if (precheck != null) {
+            if (module.builtIn != null) for (Warning warning : module.builtIn.enableWarnings()) {
+                if ("1".equals(precheck.warnings.get(warning.checkKey)))
+                    summary.addLine(getString(warning.messageResId), WARNING);
+            }
+            if (module.installed != null) for (Map.Entry<String, String> warning : precheck.warnings.entrySet()) {
+                if ("1".equals(warning.getValue())) summary.addLine(module.installed.text(warning.getKey()), WARNING);
+            }
+            if (precheck.exitCode != 0) summary.addLine(precheck.detail, ERROR);
+        }
+        String title = getString(enable ? R.string.confirm_turn_on_title : R.string.confirm_turn_off_title,
+                module.name, particle(module.name));
+        ConfirmDialog.showView(this, title, summary,
+                getString(forUpdate ? R.string.update_enable_wifi : enable ? R.string.confirm_turn_on : R.string.confirm_turn_off),
+                getString(R.string.cancel), false, new ConfirmDialog.Action() {
+                    public void run(final ConfirmDialog dialog) {
+                        dialog.dismiss();
+                        runPlan(module, enable, plan, forUpdate);
+                    }
+                }, null);
+    }
+
+    private void runPlan(final Feature module, final boolean enable, final ModulePlan plan, final boolean forUpdate) {
+        moduleWorking = true;
+        List<String> labels = new ArrayList<String>();
+        boolean restart = false;
+        for (ModulePlan.Step step : plan.steps) {
+            Feature target = feature(step.id);
+            labels.add(getString(step.enable ? R.string.plan_step_enable : R.string.plan_step_disable,
+                    target == null ? step.id : target.name));
+            if (stepNeedsRestart(step)) restart = true;
+        }
+        final int restartIndex = restart ? labels.size() : -1;
+        if (restart) labels.add(getString(R.string.progress_prepare_restart));
+        final StepProgressDialog progress = StepProgressDialog.show(this,
+                getString(enable ? R.string.progress_turning_on : R.string.progress_turning_off, module.name), labels);
+        final ModuleManager.StepListener listener = new ModuleManager.StepListener() {
+            public void started(final int index, ModulePlan.Step step) {
+                runOnUiThread(new Runnable() { public void run() {
+                    if (progress != null) progress.setStep(index, StepProgressDialog.RUNNING);
+                } });
+            }
+            public void finished(final int index, ModulePlan.Step step, final RootResult result) {
+                runOnUiThread(new Runnable() { public void run() {
+                    if (progress != null) progress.setStep(index,
+                            result.exitCode == 0 ? StepProgressDialog.DONE : StepProgressDialog.FAILED);
+                } });
+            }
+        };
+        new Thread(new Runnable() {
+            public void run() {
+                boolean saved = true;
+                if (forUpdate && !getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
+                    String prior = enabledModules();
+                    saved = stampResume(getSharedPreferences("update", MODE_PRIVATE).edit()
+                            .putString("restore", prior).putString("boot", ModuleResume.bootId())
+                            .putBoolean("resume", true)).commit();
+                } else if (forUpdate) {
+                    saved = stampResume(getSharedPreferences("update", MODE_PRIVATE).edit()
+                            .putString("boot", ModuleResume.bootId())
+                            .putBoolean("resume", true)).commit();
+                }
+                final RootResult outcome = !saved
+                        ? new RootResult("failed", "none", getString(R.string.module_resume_failed), 1, null)
+                        : enable
+                        ? new ModuleManager(MainActivity.this).requestEnable(module.id,
+                                forUpdate ? "update-check" : "settings", plan, listener)
+                        : new ModuleManager(MainActivity.this).execute(plan, listener);
+                if (forUpdate && outcome.exitCode != 0)
+                    getSharedPreferences("update", MODE_PRIVATE).edit().putBoolean("resume", false).commit();
+                else if (forUpdate && !"head_unit".equals(outcome.restart))
+                    getSharedPreferences("update", MODE_PRIVATE).edit().remove("boot").commit();
+                final Map<String, RootResult> after = new HashMap<String, RootResult>();
+                for (ModulePlan.Step step : plan.steps) after.put(step.id, RootClient.run(step.id, "status"));
+                if (!after.containsKey(module.id)) after.put(module.id, RootClient.run(module.id, "status"));
+                runOnUiThread(new Runnable() {
+                    public void run() {
+                        moduleWorking = false;
+                        if (progress != null) {
+                            if (restartIndex >= 0) progress.setStep(restartIndex,
+                                    outcome.exitCode == 0 ? StepProgressDialog.DONE : StepProgressDialog.PENDING);
+                            progress.dismiss();
+                        }
+                        statuses.putAll(after);
+                        settling.clear();
+                        for (Map.Entry<String, RootResult> status : after.entrySet())
+                            if (!readable(status.getValue()) && !unreachable(status.getValue())) settling.add(status.getKey());
+                        if ("head_unit".equals(outcome.restart)) restartLater = false;
+                        String resultText = moduleResultText(plan, outcome, forUpdate);
+                        if (forUpdate) updateMessage(resultText);
+                        refreshAfterOperation();
+                        settle(1);
+                        if (outcome.exitCode != 0 || forUpdate)
+                            ConfirmDialog.showResult(MainActivity.this,
+                                    getString(outcome.exitCode == 0 ? R.string.module_result_complete
+                                            : R.string.module_result_failed),
+                                    resultText, getString(R.string.close));
+                    }
+                });
+            }
+        }, "module-operation").start();
+    }
+
+    private String moduleResultText(ModulePlan plan, RootResult result, boolean forUpdate) {
+        StringBuilder message = new StringBuilder();
+        for (int i = 0; i < plan.steps.size(); i++) {
+            ModulePlan.Step step = plan.steps.get(i);
+            RootResult receipt = i < result.outcomes.size() ? result.outcomes.get(i).result : null;
+            Feature target = feature(step.id);
+            message.append("\u2022 ").append(getString(step.enable ? R.string.plan_step_enable
+                    : R.string.plan_step_disable, target == null ? step.id : target.name))
+                    .append(": ").append(getString(receipt == null ? R.string.stock_not_attempted
+                    : receipt.exitCode != 0 ? R.string.stock_module_failed
+                    : R.string.module_step_complete)).append('\n');
+        }
+        if (plan.steps.isEmpty()) message.append(getString(R.string.module_no_changes)).append('\n');
+        if (result.exitCode != 0) message.append('\n').append(result.detail).append('\n');
+        if ("head_unit".equals(result.restart))
+            message.append('\n').append(getString(R.string.module_restart));
+        else if ("adbd".equals(result.restart))
+            message.append('\n').append(getString(R.string.module_adbd_restart));
+        if (forUpdate && result.exitCode == 0)
+            message.append("\n\n").append(getString(R.string.update_resume_after_restart));
+        return message.toString();
+    }
+
+    private void showCar() {
+        tab = Tab.CAR;
+        settingsVisible = false;
+        LinearLayout r = root();
+        header(r, null);
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.HORIZONTAL);
+        r.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        LinearLayout left = vertical();
+        left.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.LG), dp(SettingsUi.PAGE), dp(SettingsUi.LG));
+        body.addView(left, new LinearLayout.LayoutParams(0, -1, 2));
+        left.addView(iconBox("car", WHITE, 72, 40), new LinearLayout.LayoutParams(dp(72), dp(72)));
+        TextView carName = text(carName(), 26, WHITE, medium);
+        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, -2);
+        nameParams.topMargin = dp(SettingsUi.MD);
+        left.addView(carName, nameParams);
+        String product = mapInfo("product");
+        if ("\u2014".equals(product)) product = Build.PRODUCT;
+        infoBlock(left, R.string.car_firmware, product);
+        infoBlock(left, R.string.car_region, region(product));
+        boolean rootReachable = (mapStatus != null && !unreachable(mapStatus)) || anyReachableStatus();
+        infoBlock(left, R.string.car_nemesis, getString(rootReachable ? R.string.car_nemesis_connected : R.string.state_unknown));
+
+        divider(body, true);
+        LinearLayout right = vertical();
+        right.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.LG), dp(SettingsUi.PAGE), dp(SettingsUi.LG));
+        body.addView(right, new LinearLayout.LayoutParams(0, -1, 3));
+        right.addView(text(getString(R.string.car_compatibility), 17, MUTED, sans), new LinearLayout.LayoutParams(-1, -2));
+        List<Feature> features = features();
+        int available = 0;
+        boolean known = false;
+        for (Feature feature : features) {
+            RootResult status = statuses.get(feature.id);
+            if (status == null) continue;
+            if (!unreachable(status)) known = true;
+            if (readable(status)) available++;
+        }
+        LinearLayout count = horizontal();
+        count.setGravity(Gravity.BOTTOM);
+        count.addView(text(known ? String.valueOf(available) : "\u2014", 60, WHITE, medium), new LinearLayout.LayoutParams(-2, -2));
+        TextView total = text(getString(R.string.car_features_available, features.size()), 20, MUTED, sans);
+        LinearLayout.LayoutParams totalParams = new LinearLayout.LayoutParams(-2, -2);
+        totalParams.leftMargin = dp(SettingsUi.SM);
+        totalParams.bottomMargin = dp(10);
+        count.addView(total, totalParams);
+        LinearLayout.LayoutParams countParams = new LinearLayout.LayoutParams(-1, -2);
+        countParams.topMargin = dp(SettingsUi.SM);
+        right.addView(count, countParams);
+        LinearLayout bar = horizontal();
+        bar.setBackgroundDrawable(shape(HAIRLINE, Color.TRANSPARENT, 3));
+        View fill = new View(this);
+        fill.setBackgroundDrawable(shape(BLUE, Color.TRANSPARENT, 3));
+        int filled = known && !features.isEmpty() ? available : 0;
+        bar.addView(fill, new LinearLayout.LayoutParams(0, -1, filled));
+        bar.addView(new View(this), new LinearLayout.LayoutParams(0, -1, Math.max(0, features.size() - filled)));
+        LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(-1, dp(6));
+        barParams.topMargin = dp(SettingsUi.MD);
+        right.addView(bar, barParams);
         int status = R.string.mapping_loading;
         if (mapStatus != null) {
             if ("on".equals(mapStatus.state)) status = R.string.mapping_ready;
@@ -566,39 +1339,426 @@ public final class MainActivity extends Activity {
             else if ("incompatible".equals(mapStatus.state)) status = R.string.mapping_needed;
             else status = R.string.mapping_unavailable;
         }
-        addRow(rows, R.string.mapping_state, R.string.mapping_state_hint,
-                getString(mapBusy ? R.string.mapping_progress : status));
-        addRow(rows, R.string.mapping_product, R.string.mapping_product_hint, mapInfo("product"));
-        String source = mapInfo("source");
-        if ("bundled".equals(source)) source = getString(R.string.mapping_source_bundled);
-        else if ("generated".equals(source)) source = getString(R.string.mapping_source_generated);
-        else if ("none".equals(source)) source = getString(R.string.mapping_source_none);
-        addRow(rows, R.string.mapping_source, R.string.mapping_source_hint, source);
-        addRow(rows, R.string.mapping_points, R.string.mapping_points_hint,
-                mapInfo("mapped") + " / " + mapInfo("verified") + " / " + mapInfo("failed"));
-        TextView failures = text(getString(R.string.mapping_failing_ids) + ": " + mapInfo("failing_ids"), 18, MUTED, sans);
-        failures.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.SM), dp(SettingsUi.PAGE), dp(SettingsUi.SM));
-        rows.addView(failures, new LinearLayout.LayoutParams(-1, -2));
+        String verified = mapInfo("verified");
+        String checkLine = getString(mapBusy ? R.string.mapping_progress : status);
+        if (!"\u2014".equals(verified)) checkLine = getString(R.string.car_last_check, verified) + " \u00B7 " + checkLine;
+        TextView check = text(checkLine, 18, MUTED, sans);
+        LinearLayout.LayoutParams checkParams = new LinearLayout.LayoutParams(-1, -2);
+        checkParams.topMargin = dp(SettingsUi.MD);
+        right.addView(check, checkParams);
         if (mapResult != null) {
-            TextView result = text(mapResult, 18, WHITE, sans);
-            result.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.SM), dp(SettingsUi.PAGE), dp(SettingsUi.SM));
-            rows.addView(result, new LinearLayout.LayoutParams(-1, -2));
+            TextView resultView = text(mapResult, 18, WHITE, sans);
+            LinearLayout.LayoutParams resultParams = new LinearLayout.LayoutParams(-1, -2);
+            resultParams.topMargin = dp(SettingsUi.SM);
+            right.addView(resultView, resultParams);
         }
-        TextView map = action(getString(R.string.mapping_run), true);
-        LinearLayout.LayoutParams mp = SettingsUi.contentAction(this);
-        mp.topMargin = dp(SettingsUi.SM);
-        rows.addView(map, mp);
-        map.setEnabled(!mapBusy);
-        map.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmMapRun(); } });
-        TextView export = action(getString(R.string.mapping_export), false);
-        LinearLayout.LayoutParams ep = SettingsUi.contentAction(this);
-        ep.topMargin = dp(SettingsUi.SM);
-        rows.addView(export, ep);
-        export.setEnabled(!mapBusy);
-        export.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmMapExport(); } });
-        TextView note = text(getString(R.string.mapping_pr_hint), 18, MUTED, sans);
-        note.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.MD), dp(SettingsUi.PAGE), dp(SettingsUi.SM));
-        rows.addView(note, new LinearLayout.LayoutParams(-1, -2));
+        View spacer = new View(this);
+        right.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout actions = horizontal();
+        actions.setGravity(Gravity.RIGHT);
+        TextView recheck = Theme.button(this, getString(R.string.car_recheck), false, false);
+        recheck.setEnabled(!mapBusy);
+        recheck.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmMapRun(); } });
+        actions.addView(recheck, new LinearLayout.LayoutParams(dp(220), dp(Theme.ACTION_HEIGHT)));
+        right.addView(actions, new LinearLayout.LayoutParams(-1, -2));
+        if (statuses.isEmpty()) loadStatusesForCar();
+    }
+
+    private boolean anyReachableStatus() {
+        for (RootResult status : statuses.values()) if (!unreachable(status)) return true;
+        return false;
+    }
+
+    private void loadStatusesForCar() {
+        final int generation = ++loadGeneration;
+        new Thread(new Runnable() { public void run() {
+            final List<Feature> list = features();
+            final Map<String, RootResult> results = new HashMap<String, RootResult>();
+            for (Feature feature : list) results.put(feature.id, RootClient.run(feature.id, "status"));
+            runOnUiThread(new Runnable() { public void run() {
+                statuses.putAll(results);
+                if (generation == loadGeneration && tab == Tab.CAR && detailId == null && !addVisible) showCar();
+            } });
+        } }, "hmg-seogaemo-car").start();
+    }
+
+    private String carName() {
+        String manufacturer = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.trim();
+        String model = Build.MODEL == null ? "" : Build.MODEL.trim();
+        if (manufacturer.length() > 0 && !"unknown".equalsIgnoreCase(manufacturer) &&
+                !model.toLowerCase(Locale.US).startsWith(manufacturer.toLowerCase(Locale.US)))
+            return (manufacturer + " " + model).trim();
+        return model.length() > 0 ? model : getString(R.string.tab_car);
+    }
+
+    private static String region(String product) {
+        String[] parts = product == null ? new String[0] : product.split("\\.");
+        return parts.length > 1 && parts[1].matches("[A-Z]{2,4}") ? parts[1] : "\u2014";
+    }
+
+    private void infoBlock(LinearLayout parent, int labelRes, String value) {
+        TextView label = text(getString(labelRes), 16, MUTED, sans);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(-1, -2);
+        labelParams.topMargin = dp(SettingsUi.LG);
+        parent.addView(label, labelParams);
+        TextView content = text(value, 20, WHITE, sans);
+        LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(-1, -2);
+        contentParams.topMargin = dp(4);
+        parent.addView(content, contentParams);
+    }
+
+    private void showAdd() {
+        addVisible = true;
+        settingsVisible = false;
+        LinearLayout r = root();
+        header(r, getString(R.string.add_title));
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.HORIZONTAL);
+        r.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
+        ScrollView listScroll = new ScrollView(this);
+        final LinearLayout list = vertical();
+        list.setBackgroundColor(SURFACE);
+        listScroll.addView(list);
+        listScroll.setBackgroundColor(SURFACE);
+        body.addView(listScroll, new LinearLayout.LayoutParams(0, -1, 2));
+        divider(body, true);
+        final LinearLayout detail = vertical();
+        detail.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.LG), dp(SettingsUi.PAGE), dp(SettingsUi.LG));
+        body.addView(detail, new LinearLayout.LayoutParams(0, -1, 3));
+        TextView loading = text(getString(R.string.add_scanning), 20, MUTED, sans);
+        loading.setPadding(dp(SettingsUi.LG), dp(SettingsUi.LG), dp(SettingsUi.LG), 0);
+        list.addView(loading, new LinearLayout.LayoutParams(-1, -2));
+        new Thread(new Runnable() { public void run() {
+            getFilesDir();
+            RootClient.moduleUsbImport();
+            final List<File> packages = findPackages();
+            for (File file : packages) packageInfo(file);
+            runOnUiThread(new Runnable() { public void run() {
+                if (!addVisible) return;
+                list.removeAllViews();
+                if (packages.isEmpty()) {
+                    TextView empty = text(getString(R.string.add_empty), 20, MUTED, sans);
+                    empty.setLineSpacing(dp(4), 1f);
+                    empty.setPadding(dp(SettingsUi.LG), dp(SettingsUi.LG), dp(SettingsUi.LG), 0);
+                    list.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+                    detail.removeAllViews();
+                    return;
+                }
+                for (File file : packages) addPackageRow(list, detail, file, packages, file == packages.get(0));
+                showPackage(detail, packages.get(0));
+            } });
+        } }, "hmg-seogaemo-add-scan").start();
+    }
+
+    private List<File> findPackages() {
+        List<File> found = new ArrayList<File>();
+        File[] files = new File(getFilesDir(), "hsm-usb").listFiles();
+        if (files != null) for (File file : files) {
+            if (file.isFile() && file.getName().toLowerCase(Locale.US).endsWith(".hsm") && file.length() > 0) found.add(file);
+        }
+        Collections.sort(found, new Comparator<File>() {
+            public int compare(File left, File right) { return left.getName().compareTo(right.getName()); }
+        });
+        return found;
+    }
+
+    private static String fileStem(File file) {
+        String name = file.getName();
+        return name.toLowerCase(Locale.US).endsWith(".hsm") ? name.substring(0, name.length() - 4) : name;
+    }
+
+    private static final Set<String> PACKAGE_ICONS = new HashSet<String>(java.util.Arrays.asList("box", "wifi",
+            "phone", "terminal", "car", "gear", "display", "speaker", "camera", "map", "power", "key", "skip",
+            "button", "link", "bolt"));
+    private final Map<String, Map<String, String>> packageInfos = new HashMap<String, Map<String, String>>();
+
+    /** Reads name, summary, icon and version from a .hsm file for the preview; the root installer validates it. */
+    private Map<String, String> packageInfo(File file) {
+        String key = file.getPath() + ":" + file.length() + ":" + file.lastModified();
+        synchronized (packageInfos) {
+            Map<String, String> cached = packageInfos.get(key);
+            if (cached != null) return cached;
+        }
+        Map<String, String> info = new HashMap<String, String>();
+        java.util.zip.ZipFile zip = null;
+        try {
+            zip = new java.util.zip.ZipFile(file);
+            Map<String, String> props = zipProperties(zip, "module.properties");
+            Map<String, String> strings = zipProperties(zip, "strings/en.txt");
+            strings.putAll(zipProperties(zip, "strings/" + describeLocale() + ".txt"));
+            if (props.get("version") != null) info.put("version", props.get("version"));
+            if (PACKAGE_ICONS.contains(props.get("icon"))) info.put("icon", props.get("icon"));
+            String name = strings.get("name");
+            info.put("name", name != null && name.length() > 0 ? name
+                    : props.get("id") != null ? props.get("id") : fileStem(file));
+            if (strings.get("summary") != null) info.put("summary", strings.get("summary"));
+        } catch (Exception unreadable) {
+            info.put("name", fileStem(file));
+        } finally {
+            if (zip != null) try { zip.close(); } catch (java.io.IOException ignored) { }
+        }
+        if (!info.containsKey("icon")) info.put("icon", "box");
+        synchronized (packageInfos) { packageInfos.put(key, info); }
+        return info;
+    }
+
+    private static Map<String, String> zipProperties(java.util.zip.ZipFile zip, String path) throws java.io.IOException {
+        Map<String, String> values = new HashMap<String, String>();
+        java.util.zip.ZipEntry entry = zip.getEntry(path);
+        if (entry == null) return values;
+        InputStream in = zip.getInputStream(entry);
+        try {
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int n;
+            while ((n = in.read(buffer)) != -1 && bytes.size() < 65536) bytes.write(buffer, 0, n);
+            for (String line : new String(bytes.toByteArray(), "UTF-8").split("\n")) {
+                int eq = line.indexOf('=');
+                if (eq > 0 && !line.startsWith("#")) values.put(line.substring(0, eq).trim(), line.substring(eq + 1).trim());
+            }
+        } finally { in.close(); }
+        return values;
+    }
+
+    private String packageName(File file) { return packageInfo(file).get("name"); }
+
+
+    private void addPackageRow(final LinearLayout list, final LinearLayout detail, final File file,
+            final List<File> all, boolean selected) {
+        LinearLayout row = horizontal();
+        row.setPadding(dp(SettingsUi.LG), 0, dp(SettingsUi.MD), 0);
+        row.setBackgroundDrawable(selectable(selected ? Theme.SELECTED : SURFACE, Color.TRANSPARENT, 0, false));
+        View marker = new View(this);
+        marker.setBackgroundColor(selected ? BLUE : Color.TRANSPARENT);
+        row.addView(marker, new LinearLayout.LayoutParams(dp(4), dp(56)));
+        ImageView glyph = iconBox(packageInfo(file).get("icon"), selected ? BLUE : MUTED, 44, 26);
+        LinearLayout.LayoutParams glyphParams = new LinearLayout.LayoutParams(dp(44), dp(44));
+        glyphParams.leftMargin = dp(SettingsUi.MD);
+        row.addView(glyph, glyphParams);
+        LinearLayout copy = vertical();
+        copy.setGravity(Gravity.CENTER_VERTICAL);
+        copy.setPadding(dp(SettingsUi.MD), 0, 0, 0);
+        SettingsUi.titleBlock(this, copy, text(packageName(file), 21, selected ? WHITE : Theme.DIM, medium),
+                text("USB" + (packageInfo(file).get("version") != null
+                        ? " \u00B7 " + packageInfo(file).get("version") : ""), 16, MUTED, sans));
+        row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
+        row.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                list.removeAllViews();
+                for (File other : all) addPackageRow(list, detail, other, all, other == file);
+                showPackage(detail, file);
+            }
+        });
+        list.addView(row, new LinearLayout.LayoutParams(-1, dp(76)));
+        divider(list, false);
+    }
+
+    private void showPackage(LinearLayout detail, final File file) {
+        detail.removeAllViews();
+        LinearLayout head = horizontal();
+        Map<String, String> info = packageInfo(file);
+        head.addView(iconBox(info.get("icon"), WHITE, 72, 40), new LinearLayout.LayoutParams(dp(72), dp(72)));
+        LinearLayout copy = vertical();
+        copy.setPadding(dp(SettingsUi.LG), 0, 0, 0);
+        String summary = info.get("summary");
+        SettingsUi.titleBlock(this, copy, text(info.get("name"), 26, WHITE, medium),
+                text(summary != null && summary.length() > 0 ? summary : getString(R.string.add_hint), 18, MUTED, sans));
+        head.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        detail.addView(head, new LinearLayout.LayoutParams(-1, -2));
+        OptionsList rows = new OptionsList(this);
+        if (info.get("version") != null) rows.addReadOnly(getString(R.string.add_version), info.get("version"));
+        rows.addReadOnly(getString(R.string.add_file), file.getName());
+        LinearLayout.LayoutParams rowsParams = new LinearLayout.LayoutParams(-1, -2);
+        rowsParams.topMargin = dp(SettingsUi.LG);
+        detail.addView(rows, rowsParams);
+        View spacer = new View(this);
+        detail.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout actions = horizontal();
+        actions.setGravity(Gravity.RIGHT);
+        TextView install = Theme.button(this, getString(R.string.add_install), true, false);
+        install.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmPackageInstall(file); } });
+        actions.addView(install, new LinearLayout.LayoutParams(dp(220), dp(Theme.ACTION_HEIGHT)));
+        detail.addView(actions, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void confirmPackageInstall(final File file) {
+        if (moduleWorking || modulePlanning || stockBusy) return;
+        String name = packageName(file);
+        ConfirmDialog.show(this, getString(R.string.add_install_confirm_title, name, particle(name)),
+                getString(R.string.add_install_confirm), getString(R.string.add_install), getString(R.string.cancel), false,
+                new ConfirmDialog.Action() {
+            public void run(final ConfirmDialog dialog) {
+                moduleWorking = true;
+                dialog.dismiss();
+                final StepProgressDialog progress = StepProgressDialog.show(MainActivity.this,
+                        getString(R.string.add_install), java.util.Collections.singletonList(
+                                getString(R.string.add_install_step, packageName(file))));
+                if (progress != null) progress.setStep(0, StepProgressDialog.RUNNING);
+                new Thread(new Runnable() { public void run() {
+                    RootResult outcome;
+                    File staged = null;
+                    try {
+                        staged = stagePackage(file);
+                        outcome = RootClient.moduleInstall(staged.getName().substring(0, 64));
+                    } catch (Exception error) {
+                        outcome = new RootResult("failed", "none", getString(R.string.add_failed), 1, null);
+                    }
+                    if (staged != null && !staged.getParentFile().equals(file.getParentFile())) staged.delete();
+                    ModuleRegistry.refreshInstalled(describeLocale());
+                    final RootResult result = outcome;
+                    runOnUiThread(new Runnable() { public void run() {
+                        moduleWorking = false;
+                        if (progress != null) progress.dismiss();
+                        if (result.exitCode == 0) {
+                            goBack();
+                            ConfirmDialog.showResult(MainActivity.this, getString(R.string.add_install),
+                                    getString(R.string.add_installed_done), getString(R.string.close));
+                        } else ConfirmDialog.showResult(MainActivity.this, getString(R.string.add_failed),
+                                result.detail, getString(R.string.close));
+                    } });
+                } }, "hmg-seogaemo-install").start();
+            }
+        }, null);
+    }
+
+    /** Copies the package into the root-readable staging directory under its SHA-256 name. */
+    private File stagePackage(File source) throws Exception {
+        File staging = new File(getFilesDir(), "hsm");
+        if (!staging.isDirectory() && !staging.mkdirs()) throw new java.io.IOException("staging");
+        File temp = new File(staging, "incoming-" + System.currentTimeMillis() + ".tmp");
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        InputStream in = new FileInputStream(source);
+        try {
+            OutputStream out = new FileOutputStream(temp);
+            try {
+                byte[] buffer = new byte[65536];
+                int n;
+                while ((n = in.read(buffer)) != -1) { digest.update(buffer, 0, n); out.write(buffer, 0, n); }
+            } finally { out.close(); }
+        } finally { in.close(); }
+        StringBuilder hex = new StringBuilder();
+        for (byte b : digest.digest()) hex.append(String.format(Locale.US, "%02x", b & 0xFF));
+        File staged = new File(staging, hex + ".hsm");
+        if (staged.exists() && !staged.delete()) throw new java.io.IOException("stale staging file");
+        if (!temp.renameTo(staged)) throw new java.io.IOException("could not stage package");
+        return staged;
+    }
+
+    private void showSettings() {
+        if (sidebarScroll != null) sidebarOffset = sidebarScroll.getScrollY();
+        tab = Tab.SETTINGS;
+        settingsVisible = true;
+        LinearLayout r = root();
+        header(r, null);
+        LinearLayout body = horizontal();
+        r.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
+        ScrollView sideScroll = new ScrollView(this);
+        sidebarScroll = sideScroll;
+        LinearLayout side = vertical();
+        side.setBackgroundColor(SURFACE);
+        sideScroll.addView(side);
+        sideScroll.setBackgroundColor(SURFACE);
+        body.addView(sideScroll, new LinearLayout.LayoutParams(0, -1, 1));
+        for (int i = 0; i < CATEGORIES.length; i++) addCategory(side, i);
+        sideScroll.post(new Runnable() {
+            public void run() { if (sidebarScroll != null) sidebarScroll.scrollTo(0, sidebarOffset); }
+        });
+        divider(body, true);
+        LinearLayout content = vertical();
+        body.addView(content, new LinearLayout.LayoutParams(0, -1, 2));
+        TextView paneTitle = text(getString(CATEGORIES[category]), 26, WHITE, medium);
+        paneTitle.setPadding(dp(SettingsUi.PAGE), 0, 0, 0);
+        content.addView(paneTitle, new LinearLayout.LayoutParams(-1, dp(52)));
+        divider(content, false);
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout pane = vertical();
+        scroll.addView(pane);
+        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        if (category == CATEGORY_UPDATE) showUpdate(pane);
+        else if (category == CATEGORY_LANGUAGE) showLanguage(pane);
+        else if (category == CATEGORY_SUPPORT) showSupport(pane);
+        else if (category == CATEGORY_DEVELOPER) showDeveloper(pane);
+        else showStock(pane);
+    }
+
+    private void showLanguage(LinearLayout content) {
+        View gap = new View(this);
+        content.addView(gap, new LinearLayout.LayoutParams(-1, dp(SettingsUi.SM)));
+        addLanguageOption(content, R.string.language_system, "system");
+        addLanguageOption(content, R.string.language_english, "en");
+        addLanguageOption(content, R.string.language_korean, "ko");
+        TextView hint = text(getString(R.string.language_scope), 18, MUTED, sans);
+        hint.setPadding(dp(SettingsUi.PAGE), 0, 0, 0);
+        content.addView(hint, new LinearLayout.LayoutParams(-1, dp(48)));
+    }
+
+    private void showSupport(LinearLayout content) {
+        TextView explanation = text(getString(R.string.export_changes_hint), 19, MUTED, sans);
+        explanation.setLineSpacing(dp(4), 1f);
+        explanation.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.LG), dp(SettingsUi.PAGE), dp(SettingsUi.LG));
+        content.addView(explanation, new LinearLayout.LayoutParams(-1, -2));
+        TextView export = action(getString(R.string.export_changes_usb), true);
+        content.addView(export, SettingsUi.contentAction(this));
+        export.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                ConfirmDialog.show(MainActivity.this, getString(R.string.export_changes_usb),
+                        getString(R.string.export_changes_hint), getString(R.string.export_changes_usb),
+                        getString(R.string.cancel), false, new ConfirmDialog.Action() {
+                    public void run(final ConfirmDialog dialog) {
+                        dialog.showProgress();
+                        new Thread(new Runnable() {
+                            public void run() {
+                                final RootResult result = RootClient.exportUsb();
+                                runOnUiThread(new Runnable() {
+                                    public void run() {
+                                        dialog.dismiss();
+                                        ConfirmDialog.showResult(MainActivity.this, getString(R.string.export_changes_usb),
+                                                exportMessage(result), getString(R.string.close));
+                                    }
+                                });
+                            }
+                        }, "export-changes").start();
+                    }
+                }, null);
+            }
+        });
+        TextView about = text(getString(R.string.support_about, getString(R.string.app_name), installedVersion(),
+                getString(R.string.value_gen5w)), 18, MUTED, sans);
+        about.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.LG), dp(SettingsUi.PAGE), dp(SettingsUi.LG));
+        content.addView(about, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void showDeveloper(LinearLayout content) {
+        OptionsList rows = new OptionsList(this);
+        rows.setPadding(dp(SettingsUi.PAGE), 0, dp(SettingsUi.PAGE), 0);
+        final boolean enabled = diagnosticsEnabled();
+        rows.addValue(getString(R.string.developer_diagnostics), getString(enabled ? R.string.on : R.string.off), true,
+                new View.OnClickListener() {
+            public void onClick(View v) {
+                ConfirmDialog.show(MainActivity.this, getString(R.string.developer_diagnostics),
+                        getString(enabled ? R.string.developer_diagnostics_off : R.string.developer_diagnostics_on),
+                        getString(R.string.apply), getString(R.string.cancel), false, new ConfirmDialog.Action() {
+                    public void run(ConfirmDialog dialog) {
+                        getSharedPreferences("ui_developer", MODE_PRIVATE).edit().putBoolean("diagnostics", !enabled).apply();
+                        dialog.dismiss();
+                        showSettings();
+                    }
+                }, null);
+            }
+        });
+        rows.addLink(getString(R.string.mapping_export), new View.OnClickListener() {
+            public void onClick(View v) { confirmMapExport(); }
+        });
+        rows.addLink(getString(R.string.open_nemesis), new View.OnClickListener() {
+            public void onClick(View v) { openNemesis(); }
+        });
+        rows.addInfo(getString(R.string.mapping_pr_hint));
+        content.addView(rows, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private String mapInfo(String key) {
+        String value = mapStatus == null ? null : mapStatus.info.get(key);
+        return value == null || value.length() == 0 ? "\u2014" : value;
     }
 
     private void refreshMap(final boolean verifyKnown) {
@@ -619,7 +1779,7 @@ public final class MainActivity extends Activity {
                 mapStatus = observed;
                 if (observedFailure != null) mapResult = observedFailure;
                 mapRefreshing = false;
-                if (settingsVisible && category == 1) showSettings();
+                if (tab == Tab.CAR && detailId == null && !addVisible) showCar();
                 resumeUpdateWhenReady();
             } });
         } }, "car-map-status").start();
@@ -648,7 +1808,7 @@ public final class MainActivity extends Activity {
     private void mapOperation(final String verb, final ConfirmDialog dialog) {
         mapBusy = true;
         dialog.showProgress();
-        if (settingsVisible && category == 1) showSettings();
+        if (tab == Tab.CAR && detailId == null && !addVisible) showCar();
         new Thread(new Runnable() { public void run() {
             final RootResult outcome = RootClient.map(verb);
             final RootResult observed = RootClient.map("status");
@@ -659,303 +1819,19 @@ public final class MainActivity extends Activity {
                         ? getString(R.string.mapping_run_done)
                         : "export".equals(verb) ? exportMessage(outcome) : outcome.detail;
                 dialog.dismiss();
-                if (settingsVisible && category == 1) showSettings();
-                if (!isFinishing()) new AlertDialog.Builder(MainActivity.this).setMessage(mapResult)
-                        .setPositiveButton("OK", null).show();
+                if (tab == Tab.CAR && detailId == null && !addVisible) showCar();
+                ConfirmDialog.showResult(MainActivity.this, getString("run".equals(verb)
+                        ? R.string.mapping_run : R.string.mapping_export), mapResult, getString(R.string.close));
                 resumeUpdateWhenReady();
             } });
         } }, "car-map-" + verb).start();
-    }
-
-    private void showModules(final LinearLayout content) {
-        final ScrollView scroll = new ScrollView(this);
-        final LinearLayout rows = vertical();
-        rows.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.SM),
-                dp(SettingsUi.PAGE), dp(SettingsUi.LG));
-        scroll.addView(rows);
-        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        rows.addView(text(getString(R.string.module_loading), 20, MUTED, sans),
-                new LinearLayout.LayoutParams(-1, dp(75)));
-        new Thread(new Runnable() {
-            public void run() {
-                final Module[] modules = ModuleRegistry.all();
-                final RootResult[] results = new RootResult[modules.length];
-                for (int i = 0; i < modules.length; i++) {
-                    results[i] = RootClient.run(modules[i].id(), "status");
-                }
-                runOnUiThread(new Runnable() {
-                    public void run() {
-                        if (!settingsVisible || category != 2) return;
-                        rows.removeAllViews();
-                        for (int i = 0; i < modules.length; i++) {
-                            if (results[i] != null) addModule(rows, modules[i], results[i]);
-                        }
-                    }
-                });
-            }
-        }, "module-status").start();
-    }
-
-    private void addModule(LinearLayout parent, final Module module, RootResult result) {
-        final boolean enabled = moduleEnabled(result);
-        final boolean observed = enabled || "off".equals(result.state) ||
-                ("pending-restart".equals(result.state) && "off".equals(result.info.get("desired")));
-        LinearLayout row = horizontal();
-        SettingsUi.cardRow(this, row);
-        row.setBackgroundDrawable(selectable(RAISED, HAIRLINE, 8, false));
-        LinearLayout copy = vertical();
-        copy.setGravity(Gravity.CENTER_VERTICAL);
-        SettingsUi.titleBlock(this, copy, text(getString(module.nameResId()), 23, WHITE, medium),
-                text(getString(module.descriptionResId()), 17, MUTED, sans));
-        row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
-        // The pill shows the observed state; saved intent only decides what a tap requests.
-        final boolean live = "on".equals(result.state);
-        final boolean pending = "pending-restart".equals(result.state);
-        final boolean stockOff = "off".equals(result.state);
-        final int pillText = live ? R.string.on : pending ? R.string.module_pill_pending
-                : stockOff ? R.string.off : R.string.module_unavailable;
-        TextView toggle = text(getString(pillText), 20, live || pending ? BLUE : MUTED, medium);
-        SettingsUi.pill(this, toggle, shape(live ? 0xFF17283A : pending ? 0xFF263347 : SURFACE,
-                live || pending ? BLUE : HAIRLINE, 6));
-        LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(
-                dp(SettingsUi.STATUS_WIDTH), dp(SettingsUi.STATUS_HEIGHT));
-        toggleParams.leftMargin = dp(SettingsUi.MD);
-        row.addView(toggle, toggleParams);
-        if (observed) row.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) { prepareModuleChange(module, !enabled, false); }
-        });
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, dp(82));
-        rp.bottomMargin = dp(SettingsUi.XS);
-        parent.addView(row, rp);
-        String stateText = moduleStateText(result);
-        parent.addView(text(stateText, 18, MUTED, sans),
-                new LinearLayout.LayoutParams(-1, dp(40)));
-        if ("pending-restart".equals(result.state)) {
-            TextView banner = text(getString(!enabled
-                    ? R.string.module_pending_disable : R.string.module_pending_enable), 20, WHITE, medium);
-            banner.setPadding(dp(SettingsUi.MD), 0, dp(SettingsUi.MD), 0);
-            banner.setBackgroundDrawable(shape(0xFF263347, BLUE, 6));
-            banner.setGravity(Gravity.CENTER_VERTICAL);
-            parent.addView(banner, new LinearLayout.LayoutParams(-1, dp(60)));
-            TextView restart = action(getString(R.string.device_reboot), true);
-            restart.setOnClickListener(new View.OnClickListener() {
-                public void onClick(View view) { confirmReboot(R.string.module_restart_confirm); }
-            });
-            LinearLayout.LayoutParams restartParams = new LinearLayout.LayoutParams(-1, dp(60));
-            restartParams.topMargin = dp(SettingsUi.XS);
-            parent.addView(restart, restartParams);
-        }
-        View gap = new View(this);
-        parent.addView(gap, new LinearLayout.LayoutParams(-1, dp(SettingsUi.SM)));
-    }
-
-    private String moduleStateText(RootResult result) {
-        if ("on".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.on);
-        if ("off".equals(result.state)) return getString(R.string.module_state) + ": " + getString(R.string.off);
-        // The banner below the row carries the full restart sentence.
-        if ("pending-restart".equals(result.state))
-            return getString(R.string.module_state) + ": " + getString(R.string.module_pill_pending);
-        if ("conflict".equals(result.state)) return getString(R.string.module_status_conflict);
-        if ("incompatible".equals(result.state)) return getString(R.string.module_status_incompatible);
-        if ("not-implemented".equals(result.state)) return getString(R.string.module_status_unsupported);
-        if (result.detail.length() > 0) Log.w("HMG-Seogaemo", "Module status: " + result.detail);
-        return getString(R.string.module_status_unknown);
-    }
-
-    private void showModulePage(final LinearLayout content, final Module module) {
-        final ScrollView scroll = new ScrollView(this);
-        final LinearLayout rows = vertical();
-        rows.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.SM),
-                dp(SettingsUi.PAGE), dp(SettingsUi.LG));
-        scroll.addView(rows);
-        content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        rows.addView(text(getString(R.string.module_loading), 20, MUTED, sans),
-                new LinearLayout.LayoutParams(-1, dp(75)));
-        new Thread(new Runnable() {
-            public void run() {
-                final RootResult result = RootClient.run(module.id(), "status");
-                final SettingsPage page = new SettingsPage();
-                module.buildSettingsPage(page);
-                runOnUiThread(new Runnable() {
-                    public void run() {
-                        if (!settingsVisible || category < CATEGORIES.length ||
-                                !ModuleRegistry.all()[category - CATEGORIES.length].id().equals(module.id()))
-                            return;
-                        rows.removeAllViews();
-                        for (SettingsPage.Item item : page.items())
-                            renderPageItem(rows, module, result, item);
-                    }
-                });
-            }
-        }, "module-settings").start();
-    }
-
-    private void renderPageItem(LinearLayout rows, final Module module,
-            RootResult result, SettingsPage.Item item) {
-        switch (item.type) {
-            case STATUS_HEADER:
-                addModule(rows, module, result);
-                break;
-            case SECTION:
-                rows.addView(text(getString(item.labelResId), 22, WHITE, medium),
-                        new LinearLayout.LayoutParams(-1, dp(55)));
-                break;
-            case INFO:
-                String value = result.info.get(item.key);
-                rows.addView(text(getString(item.labelResId) + ": " +
-                        (value == null || value.length() == 0 ? "—" : value), 19, WHITE, sans),
-                        new LinearLayout.LayoutParams(-1, dp(55)));
-                break;
-            case NOTE:
-            case WARNING:
-                TextView note = text(getString(item.labelResId), 18,
-                        item.type == SettingsPage.Type.WARNING ? 0xFFFFB366 : MUTED, sans);
-                note.setMinHeight(dp(60));
-                note.setPadding(0, dp(SettingsUi.XS), 0, dp(SettingsUi.XS));
-                rows.addView(note, new LinearLayout.LayoutParams(-1, -2));
-                break;
-            case TOGGLE:
-            case CHOICE:
-                TextView setting = text(getString(item.labelResId), 21, WHITE, medium);
-                rows.addView(setting, new LinearLayout.LayoutParams(-1, dp(75)));
-                break;
-            case ACTION:
-                final ModuleAction action = item.action;
-                TextView button = action(getString(item.labelResId), false);
-                LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(-1, dp(60));
-                ap.bottomMargin = dp(SettingsUi.XS);
-                rows.addView(button, ap);
-                button.setOnClickListener(new View.OnClickListener() {
-                    public void onClick(View view) {
-                        dispatchModuleAction(action);
-                    }
-                });
-                break;
-        }
-    }
-
-    private void prepareModuleChange(final Module module, final boolean enable,
-            final boolean forUpdate) {
-        if (modulePlanning || moduleWorking || stockBusy) return;
-        modulePlanning = true;
-        new Thread(new Runnable() {
-            public void run() {
-                final ModulePlan plan;
-                try { plan = new ModuleManager(MainActivity.this).plan(module.id(), enable); }
-                catch (final IllegalStateException error) {
-                    runOnUiThread(new Runnable() {
-                        public void run() {
-                            modulePlanning = false;
-                            ConfirmDialog.showResult(MainActivity.this, getString(R.string.module_result_failed),
-                                    error.getMessage(), getString(R.string.close));
-                        }
-                    });
-                    return;
-                }
-                final RootResult precheck = enable ? RootClient.run(module.id(), "precheck") : null;
-                runOnUiThread(new Runnable() {
-                    public void run() {
-                        modulePlanning = false;
-                        confirmModuleChange(module, enable, plan, precheck, forUpdate);
-                    }
-                });
-            }
-        }, "module-plan").start();
-    }
-
-    private void confirmModuleChange(final Module module, final boolean enable,
-            final ModulePlan plan, RootResult precheck, final boolean forUpdate) {
-        StringBuilder message = new StringBuilder();
-        if (forUpdate) message.append(getString(R.string.update_wifi_required)).append("\n\n");
-        for (ModulePlan.Step step : plan.steps) {
-            message.append("• ").append(getString(step.enable ? R.string.plan_step_enable : R.string.plan_step_disable,
-                    getString(ModuleRegistry.find(step.id).nameResId()))).append('\n');
-        }
-        if (!enable && module.rebootRestore())
-            message.append('\n').append(getString(R.string.module_restore_reboot));
-        if (plan.steps.isEmpty()) message.append(getString(R.string.module_no_changes));
-        if (precheck != null) {
-            for (Warning warning : module.enableWarnings()) {
-                if ("1".equals(precheck.warnings.get(warning.checkKey)))
-                    message.append('\n').append("• ").append(getString(warning.messageResId));
-            }
-            if (precheck.exitCode != 0) message.append('\n').append(precheck.detail);
-        }
-        ConfirmDialog.show(this, getString(R.string.module_confirm), message.toString(),
-                getString(forUpdate ? R.string.update_enable_wifi : R.string.apply),
-                getString(R.string.cancel), !enable, new ConfirmDialog.Action() {
-                    public void run(final ConfirmDialog dialog) {
-                        moduleWorking = true;
-                        dialog.showProgress();
-                        new Thread(new Runnable() {
-                            public void run() {
-                                boolean saved = true;
-                                if (forUpdate && !getSharedPreferences("update", MODE_PRIVATE).contains("restore")) {
-                                    String prior = enabledModules();
-                                    saved = stampResume(getSharedPreferences("update", MODE_PRIVATE).edit()
-                                            .putString("restore", prior).putString("boot", ModuleResume.bootId())
-                                            .putBoolean("resume", true)).commit();
-                                } else if (forUpdate) {
-                                    saved = stampResume(getSharedPreferences("update", MODE_PRIVATE).edit()
-                                            .putString("boot", ModuleResume.bootId())
-                                            .putBoolean("resume", true)).commit();
-                                }
-                                final RootResult outcome = !saved
-                                        ? new RootResult("failed", "none", getString(R.string.module_resume_failed), 1, null)
-                                        : enable
-                                        ? new ModuleManager(MainActivity.this).requestEnable(module.id(),
-                                                forUpdate ? "update-check" : "settings", plan)
-                                        : new ModuleManager(MainActivity.this).execute(plan);
-                                if (forUpdate && outcome.exitCode != 0)
-                                    getSharedPreferences("update", MODE_PRIVATE).edit().putBoolean("resume", false).commit();
-                                else if (forUpdate && !"head_unit".equals(outcome.restart))
-                                    getSharedPreferences("update", MODE_PRIVATE).edit().remove("boot").commit();
-                                runOnUiThread(new Runnable() {
-                                    public void run() {
-                                        moduleWorking = false;
-                                        dialog.dismiss();
-                                        showSettings();
-                                        String resultText = moduleResultText(plan, outcome, forUpdate);
-                                        if (forUpdate) updateMessage(resultText);
-                                        ConfirmDialog.showResult(MainActivity.this,
-                                                getString(outcome.exitCode == 0 ? R.string.module_result_complete
-                                                        : R.string.module_result_failed),
-                                                resultText, getString(R.string.close));
-                                    }
-                                });
-                            }
-                        }, "module-operation").start();
-                    }
-                }, null);
-    }
-
-    private String moduleResultText(ModulePlan plan, RootResult result, boolean forUpdate) {
-        StringBuilder message = new StringBuilder();
-        for (int i = 0; i < plan.steps.size(); i++) {
-            ModulePlan.Step step = plan.steps.get(i);
-            RootResult receipt = i < result.outcomes.size() ? result.outcomes.get(i).result : null;
-            message.append("• ").append(getString(step.enable ? R.string.plan_step_enable
-                    : R.string.plan_step_disable, getString(ModuleRegistry.find(step.id).nameResId())))
-                    .append(": ").append(getString(receipt == null ? R.string.stock_not_attempted
-                    : receipt.exitCode != 0 ? R.string.stock_module_failed
-                    : R.string.module_step_complete)).append('\n');
-        }
-        if (plan.steps.isEmpty()) message.append(getString(R.string.module_no_changes)).append('\n');
-        if (result.exitCode != 0) message.append('\n').append(result.detail).append('\n');
-        if ("head_unit".equals(result.restart))
-            message.append('\n').append(getString(R.string.module_restart));
-        else if ("adbd".equals(result.restart))
-            message.append('\n').append(getString(R.string.module_adbd_restart));
-        if (forUpdate && result.exitCode == 0)
-            message.append("\n\n").append(getString(R.string.update_resume_after_restart));
-        return message.toString();
     }
 
     private void addLanguageOption(LinearLayout content, final int labelRes, final String choice) {
         boolean selected = choice.equals(preferences().getString("language", "system"));
         LinearLayout row = horizontal();
         SettingsUi.contentRow(this, row);
-        row.setBackgroundDrawable(selectable(selected ? 0xFF1C2938 : CANVAS,
+        row.setBackgroundDrawable(selectable(selected ? Theme.SELECTED : CANVAS,
                 Color.TRANSPARENT, 0, false));
         TextView title = text(getString(labelRes), 24, WHITE, medium);
         row.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
@@ -997,35 +1873,31 @@ public final class MainActivity extends Activity {
         content.addView(rollback, rp);
     }
 
-    private void showStock(LinearLayout content) {
-        TextView nemesis = action(getString(R.string.open_nemesis), true);
-        nemesis.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) { openNemesis(); }
-        });
-        content.addView(nemesis, SettingsUi.contentAction(this));
+    private void resetRow(LinearLayout parent, int titleRes, int subRes, int buttonRes, View.OnClickListener tap) {
+        LinearLayout row = horizontal();
+        SettingsUi.contentRow(this, row);
+        LinearLayout copy = vertical();
+        copy.setGravity(Gravity.CENTER_VERTICAL);
+        SettingsUi.titleBlock(this, copy, text(getString(titleRes), 23, WHITE, medium), text(getString(subRes), 17, MUTED, sans));
+        row.addView(copy, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView button = Theme.button(this, getString(buttonRes), false, true);
+        button.setOnClickListener(tap);
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(dp(150), dp(Theme.ACTION_HEIGHT));
+        buttonParams.leftMargin = dp(SettingsUi.MD);
+        row.addView(button, buttonParams);
+        parent.addView(row, new LinearLayout.LayoutParams(-1, dp(96)));
+        divider(parent, false);
+    }
 
-        TextView restart = action(getString(R.string.device_reboot), false);
-        restart.setTextColor(ERROR);
-        restart.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) { confirmReboot(R.string.device_reboot_confirm); }
-        });
-        content.addView(restart, SettingsUi.contentAction(this));
-        TextView restore = action(getString(R.string.stock_restore), false);
-        restore.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) { confirmStock(false); }
-        });
-        LinearLayout.LayoutParams restoreParams = SettingsUi.contentAction(this);
-        restoreParams.topMargin = dp(SettingsUi.LG);
-        content.addView(restore, restoreParams);
-        TextView uninstall = action(getString(R.string.stock_uninstall), false);
-        uninstall.setTextColor(ERROR);
-        uninstall.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) { confirmStock(true); }
-        });
-        LinearLayout.LayoutParams uninstallParams = SettingsUi.contentAction(this);
-        uninstallParams.topMargin = dp(SettingsUi.SM);
-        content.addView(uninstall, uninstallParams);
-        stockStatus = text(getString(R.string.stock_hint), 20, MUTED, sans);
+    private void showStock(LinearLayout content) {
+        resetRow(content, R.string.reset_restore_title, R.string.reset_restore_sub, R.string.reset_restore_button,
+                new View.OnClickListener() { public void onClick(View view) { confirmStock(false); } });
+        resetRow(content, R.string.stock_uninstall, R.string.reset_uninstall_sub, R.string.reset_uninstall_button,
+                new View.OnClickListener() { public void onClick(View view) { confirmStock(true); } });
+        resetRow(content, R.string.device_reboot, R.string.reset_restart_sub, R.string.reset_restart_button,
+                new View.OnClickListener() { public void onClick(View view) { confirmReboot(R.string.device_reboot_confirm); } });
+        stockStatus = text(getString(R.string.stock_hint), 18, MUTED, sans);
+        stockStatus.setLineSpacing(dp(4), 1f);
         stockStatus.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.MD),
                 dp(SettingsUi.PAGE), dp(SettingsUi.LG));
         content.addView(stockStatus, new LinearLayout.LayoutParams(-1, -2));
@@ -1071,9 +1943,9 @@ public final class MainActivity extends Activity {
                     runOnUiThread(new Runnable() { public void run() {
                         stockBusy = false;
                         dialog.dismiss();
-                        if (result.exitCode != 0 && !isFinishing()) new AlertDialog.Builder(MainActivity.this)
-                                .setMessage(R.string.device_reboot_failed)
-                                .setPositiveButton("OK", null).show();
+                        if (result.exitCode != 0) ConfirmDialog.showResult(MainActivity.this,
+                                getString(R.string.device_reboot), getString(R.string.device_reboot_failed),
+                                getString(R.string.close));
                     }});
                 }}, "hmg-seogaemo-device-reboot").start();
             }
@@ -1105,6 +1977,7 @@ public final class MainActivity extends Activity {
                         stockBusy = false;
                         dialog.dismiss();
                         stockStatus.setText(stockResultText(result));
+                        statuses.clear();
                     }});
                 }}, "hmg-seogaemo-stock-operation").start();
             }
@@ -1116,13 +1989,13 @@ public final class MainActivity extends Activity {
         StringBuilder message = new StringBuilder(getString(result.exitCode != 0 ||
                 "failed".equals(result.info.get("uninstall"))
                 ? R.string.stock_failed : queued ? R.string.stock_queued : R.string.stock_complete));
-        for (Module module : ModuleRegistry.all()) {
-            String value = result.info.get("module_" + module.id().replace('-', '_'));
+        for (Feature feature : features()) {
+            String value = result.info.get("module_" + feature.id.replace('-', '_'));
             if (value == null) continue;
             int label = "reverted".equals(value) ? R.string.stock_reverted
                     : "conflict".equals(value) ? R.string.stock_conflict
                     : "failed".equals(value) ? R.string.stock_module_failed : R.string.stock_not_attempted;
-            message.append("\n• ").append(getString(module.nameResId())).append(": ").append(getString(label));
+            message.append("\n\u2022 ").append(feature.name).append(": ").append(getString(label));
         }
         if ("head_unit".equals(result.restart))
             message.append("\n\n").append(getString(R.string.stock_restart));
@@ -1154,7 +2027,8 @@ public final class MainActivity extends Activity {
             final UpdateClient client = new UpdateClient(this);
             if (!client.hasUsableNetwork()) {
                 if (dialog != null) dialog.dismiss();
-                prepareModuleChange(ModuleRegistry.find("wifi-client"), true, true);
+                Feature wifi = feature("wifi-client");
+                if (wifi != null) prepareModuleChange(wifi, true, true);
                 return;
             }
             updateBusy = true;
@@ -1172,11 +2046,11 @@ public final class MainActivity extends Activity {
                     } });
                 } catch (UpdateClient.NoUpdateException e) {
                     boolean restored = restoreModules();
-                    updateMessage(getString(R.string.update_no_update) + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
+                    updateMessage(getString(R.string.update_no_update) + (restored ? "" : " \u00B7 " + getString(R.string.update_restore_pending)));
                     finishUpdateWork(dialog);
                 } catch (Exception e) {
                     boolean restored = restoreModules();
-                    updateMessage(e.getMessage() + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
+                    updateMessage(e.getMessage() + (restored ? "" : " \u00B7 " + getString(R.string.update_restore_pending)));
                     finishUpdateWork(dialog);
                 }
             }}, "hmg-seogaemo-update-check").start();
@@ -1235,7 +2109,7 @@ public final class MainActivity extends Activity {
                 updateMessage(getString(restoreModules() ? R.string.update_complete : R.string.update_restore_pending));
             } catch (Exception e) {
                 boolean restored = restoreModules();
-                updateMessage(e.getMessage() + (restored ? "" : " · " + getString(R.string.update_restore_pending)));
+                updateMessage(e.getMessage() + (restored ? "" : " \u00B7 " + getString(R.string.update_restore_pending)));
             } finally { finishUpdateWork(dialog); }
         }}, "hmg-seogaemo-update-root").start();
     }
@@ -1305,54 +2179,25 @@ public final class MainActivity extends Activity {
         return result.exitCode == 0;
     }
 
-    private void addSidebarSection(LinearLayout parent, int titleRes, int topSpacingDp) {
-        TextView header = text(getString(titleRes), 17, MUTED, sans);
-        header.setPadding(dp(SettingsUi.LG), dp(SettingsUi.XS), 0, 0);
-        header.setFocusable(false);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(44));
-        params.topMargin = dp(topSpacingDp);
-        parent.addView(header, params);
-    }
-
     private void addCategory(LinearLayout parent, final int index) {
+        boolean selected = index == category;
         LinearLayout row = horizontal();
         row.setPadding(dp(SettingsUi.LG), 0, dp(SettingsUi.MD), 0);
-        row.setBackgroundDrawable(selectable(index == category ? 0xFF1C2938 : SURFACE,
-                Color.TRANSPARENT, 0, false));
+        row.setBackgroundDrawable(selectable(selected ? Theme.SELECTED : SURFACE, Color.TRANSPARENT, 0, false));
         View marker = new View(this);
-        marker.setBackgroundColor(index == category ? BLUE : Color.TRANSPARENT);
+        marker.setBackgroundColor(selected ? BLUE : Color.TRANSPARENT);
         row.addView(marker, new LinearLayout.LayoutParams(dp(4), dp(56)));
-        LinearLayout copy = vertical();
-        copy.setGravity(Gravity.CENTER_VERTICAL);
-        copy.setPadding(dp(SettingsUi.MD), 0, 0, 0);
-        TextView name = text(getString(CATEGORIES[index]), 23, index == category ? WHITE : 0xFFD0D0D0, medium);
-        TextView sub = text(getString(CATEGORY_SUBS[index]), 17, MUTED, sans);
-        SettingsUi.titleBlock(this, copy, name, sub);
-        row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
+        ImageView glyph = new ImageView(this);
+        glyph.setScaleType(ImageView.ScaleType.CENTER);
+        glyph.setImageDrawable(new LineIcon(this, CATEGORY_ICONS[index], selected ? WHITE : MUTED, 24));
+        LinearLayout.LayoutParams glyphParams = new LinearLayout.LayoutParams(dp(28), dp(28));
+        glyphParams.leftMargin = dp(SettingsUi.MD);
+        row.addView(glyph, glyphParams);
+        TextView name = text(getString(CATEGORIES[index]), 22, selected ? WHITE : Theme.DIM, medium);
+        name.setPadding(dp(SettingsUi.MD), 0, 0, 0);
+        row.addView(name, new LinearLayout.LayoutParams(0, -1, 1));
         row.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { category = index; showSettings(); if (index == 1) refreshMap(false); }
-        });
-        parent.addView(row, new LinearLayout.LayoutParams(-1, dp(70)));
-        divider(parent, false);
-    }
-
-    private void addModuleCategory(LinearLayout parent, int moduleIndex, Module module) {
-        final int index = CATEGORIES.length + moduleIndex;
-        LinearLayout row = horizontal();
-        row.setPadding(dp(SettingsUi.LG), 0, dp(SettingsUi.MD), 0);
-        row.setBackgroundDrawable(selectable(index == category ? 0xFF1C2938 : SURFACE,
-                Color.TRANSPARENT, 0, false));
-        View marker = new View(this);
-        marker.setBackgroundColor(index == category ? BLUE : Color.TRANSPARENT);
-        row.addView(marker, new LinearLayout.LayoutParams(dp(4), dp(56)));
-        LinearLayout copy = vertical();
-        copy.setGravity(Gravity.CENTER_VERTICAL);
-        copy.setPadding(dp(SettingsUi.MD), 0, 0, 0);
-        copy.addView(text(getString(module.nameResId()), 21,
-                index == category ? WHITE : 0xFFD0D0D0, medium));
-        row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
-        row.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) { category = index; showSettings(); }
+            public void onClick(View v) { category = index; showSettings(); }
         });
         parent.addView(row, new LinearLayout.LayoutParams(-1, dp(70)));
         divider(parent, false);
@@ -1364,10 +2209,6 @@ public final class MainActivity extends Activity {
         } catch (PackageManager.NameNotFoundException e) {
             return "?";
         }
-    }
-
-    private void addRow(LinearLayout parent, int label, int sub, int value) {
-        addRow(parent, label, sub, value == 0 ? "" : getString(value));
     }
 
     private void addRow(LinearLayout parent, int label, int sub, String value) {
@@ -1390,10 +2231,7 @@ public final class MainActivity extends Activity {
     }
 
     private TextView action(String label, boolean primary) {
-        TextView b = text(label, 21, WHITE, medium);
-        SettingsUi.button(this, b, selectable(primary ? BLUE : RAISED,
-                primary ? BLUE : HAIRLINE, 6, false));
-        return b;
+        return Theme.button(this, label, primary, false);
     }
 
     /** HMG's finishActivity() may reject a missing GET_TASKS grant. */
@@ -1405,5 +2243,9 @@ public final class MainActivity extends Activity {
         }
     }
 
-    @Override public void onBackPressed() { showHome(); }
+    @Override public void onBackPressed() {
+        if (detailId != null || addVisible) goBack();
+        else if (tab != Tab.FEATURES) selectTab(Tab.FEATURES);
+        else close();
+    }
 }

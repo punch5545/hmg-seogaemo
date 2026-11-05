@@ -16,7 +16,7 @@ def allowed(text, match):
     after = text[match.end():].lower()
     if before.endswith(("hmg-", "hmg_")):
         return True
-    if before.endswith("hmg") and match.group() == STEM.title():
+    if before.endswith(("hmg", "hmg ")) and match.group() == STEM.title():
         return True
     if before.endswith(("com.", "com/", "com\\.")) and after.startswith((".hmg", "/hmg", "\\.hmg")):
         return True

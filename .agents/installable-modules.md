@@ -19,8 +19,9 @@ reconcile of `module-runtime-contract.md`.
 ## Implementation state
 
 Implemented: root runtime (P1: `lib/hsm.sh`, `core/hsm-module.sh`, `core/module.sh`, `core/hsm/`), app data
-layer (P2, no screens), `tools/hsm` (P5), core hook host (P3, host-tested only, see Core hook host).
-Not implemented: module screens and install UX (P6), conversion of built-ins (P4), `hsm test`, `hsm logs`, CarPlay
+layer (P2), `tools/hsm` (P5), core hook host (P3, host-tested only, see Core hook host), module screens and
+USB install UX (P6, see `ui-redesign.md`; on-car check pending).
+Not implemented: conversion of built-ins (P4), `hsm test`, `hsm logs`, CarPlay
 migration to the core host, the registry/store. `raw_shell` and `app_data_dir` are still refused.
 
 ## Package
@@ -62,6 +63,7 @@ limits and writes only into the staging extraction directory.
 | `hookpoints` | member name of a text file of stable IDs | | `hookpoints.required` |
 | `setting.N` | `key:type:default` | types `toggle`, `choice(a\|b\|...)`, `number(min..max)` | `Module.settings()` |
 | `raw_shell` | `1` | see Restricted scripts | |
+| `icon` | one of `box`, `wifi`, `phone`, `terminal`, `car`, `gear`, `display`, `speaker`, `camera`, `map`, `power`, `key`, `skip`, `button`, `link`, `bolt` | app-drawn line icon on the module card and detail panel; default `box`; modules cannot ship images | `icon` |
 
 Example (`wireless-carplay-and-aa`, design sketch): `id`, `version=1.0.0`, `api=1`, `cars=NEEV.KOR.*.260902`,
 `restart=head_unit`, `rerun_on=boot,screen_on`,
@@ -295,7 +297,11 @@ hook host on; stock restore and uninstall exact.
   changes it (replaces `reassert_props`).
 - Setting change while on: `<id> set KEY VALUE` saves the validated value, reverts the module and applies it
   again, so nothing from the previous value or branch survives. While off it only saves the value.
-- Button: run `apply.sh` with `action_is NAME` true, after the confirm.
+- Button: `hmg-seogaemo-root <id> action <name>` (`[a-z0-9_]{1,40}`, installed modules only, name must be a
+  `button name=` in `ui.txt`, module must be desired on) runs `apply.sh` again with `action_is NAME` true under
+  the operation lock, after the confirm (`confirm=@s`, else the label). Targets it touches get baselines and
+  ledger entries like any apply; a failure reports `failed` and keeps backups (no rollback of the running
+  module); revert restores everything.
 - Status: `on` when every touched target is `sg_applied`; existing restart markers give `pending-restart`;
   `status.sh` adds `info.*` and may report `fail`.
 - IDs: built-in module IDs are reserved; installing a module whose `id` is already installed from another
@@ -315,6 +321,10 @@ replaces `OPEN_STOCK_WIFI_SETTINGS`). Unknown blocks refuse install. State-chang
 `ui.ConfirmDialog`. No Java from modules in API 1, so the app process stays free of third-party code. Home
 tiles (`Module.homeTiles`) are dropped: no module uses them and the Home redesign does not need them.
 
+The app draws every block with its own fixed row components, so all modules share one look. The detail
+panel and the module card already show the state, so the app ignores `status` (still accepted). `status.sh`
+may print `info note ...`; that value is the one-line note under the module name on its card.
+
 ## Root verbs and storage
 
 - `hmg-seogaemo-root module install <sha256>`: 64 lowercase hex only. Root reads `<sha256>.hsm` from the app's
@@ -324,19 +334,26 @@ tiles (`Module.homeTiles`) are dropped: no module uses them and the Home redesig
   publishes `/data/nemesis/backup/hmg-seogaemo/installed/<id>/` atomically (outside the package directory so
   package and OTA updates keep it). Installed is not enabled; enabling uses the existing plan and confirm
   flow. Installing over an enabled module is refused.
+- `hmg-seogaemo-root module usb-import`: no arguments. The app cannot read head-unit USB mounts, so root copies
+  the `*.hsm` files in the `HSM/` folder of each mounted USB drive (the same fixed drive list as `export usb`;
+  files elsewhere are ignored) into `/data/data/com.seogaemo.hmg/files/hsm-usb/` (dir 0755, files 0644,
+  previous copies removed first). Names must match `[A-Za-z0-9._-]{1,80}` and not start with `.`; symlinks,
+  empty files and files over 10 MiB are skipped; at most 20 files. Prints `info.count=<n>`. It changes no
+  stock file or property and writes no ledger entry, so the app runs it when Add opens without a confirm;
+  the confirmed step is `module install`.
 - `hmg-seogaemo-root module remove <id>`: installed modules only; reverts first, verifies stock, fails closed
   on conflict (module and backups kept), then deletes the directory.
 - `hmg-seogaemo-root module list`: one `info.module_<snake_id>=<id>,<version>,<source>,<n>` line per module
   (`builtin`, `direct`, later `registry`); `<n>` is the 1-based catalog position.
 - `hmg-seogaemo-root module describe <id> <locale>`: installed modules only (the app cannot read the
-  root-only installed directory). Prints `info.version|source|restart|depends|excludes|uses|restore`,
+  root-only installed directory). Prints `info.version|source|restart|depends|excludes|uses|restore|icon`,
   `info.setting_<N>=<declaration>`, `info.ui_<N>=<block line>`, then `info.str_<key>=<value>` for `en`
   followed by `<locale>` (later lines win). Install caps keep it inside the app's 8 KiB root output: each
   strings file 2048 bytes and 64 entries (key `[a-z0-9_]{1,40}`, value 200 characters), `ui.txt` 1024 bytes,
   32 blocks, 200 characters.
 - `hmg-seogaemo-root <id> set <key> <value>`: installed modules only; key `[a-z0-9_]+`, value `[a-z0-9_.-]+`,
   then checked against the declared type. Holds operation.lock.
-- App side (P2 data, no screens yet): `RootClient.moduleList|moduleDescribe|moduleInstall|moduleRemove|moduleSet`,
+- App side: `RootClient.moduleList|moduleDescribe|moduleInstall|moduleRemove|moduleSet|moduleUsbImport|moduleAction`,
   `InstalledModule` (parsed description), `ModuleRegistry.refreshInstalled` (called by `ModuleManager.plan`
   so installed modules take part in ordering and symmetric exclusions). Root output is decoded as UTF-8.
 - Catalog files: `installed.list` (install order), `installed.graph` (same columns as `modules.graph`),

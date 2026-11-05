@@ -12,6 +12,7 @@ public final class SkipConsentScreenModule extends RootBackedModule {
     public String id() { return "skip-consent-screen"; }
     public int nameResId() { return R.string.skip_consent_screen_name; }
     public int descriptionResId() { return R.string.skip_consent_screen_description; }
+    public String icon() { return "skip"; }
     public String settingsCategory() { return "general"; }
     public boolean hasHomeAction() { return false; }
     public boolean requiresRoot() { return true; }

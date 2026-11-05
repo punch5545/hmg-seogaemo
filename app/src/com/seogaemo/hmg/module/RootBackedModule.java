@@ -11,6 +11,7 @@ public abstract class RootBackedModule implements Module {
         for (ModuleAction action : actions()) page.action(action.labelResId, action);
     }
     public HomeTile[] homeTiles() { return new HomeTile[0]; }
+    public String icon() { return "box"; }
     public boolean rebootRestore() { return false; }
     public ModuleStatus apply() { return map(RootClient.run(id(), "apply")); }
     public ModuleStatus revert() { return map(RootClient.run(id(), "revert")); }

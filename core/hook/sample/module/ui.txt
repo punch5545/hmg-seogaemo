@@ -1,3 +1,2 @@
-status
 choice setting=greeting label=@greeting
 info @how_it_works

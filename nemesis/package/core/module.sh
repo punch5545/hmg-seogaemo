@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Fixed installed-module commands: install <sha256>, remove <id>, list.
+# Fixed installed-module commands: install <sha256>, remove <id>, list, usb-import.
 # Packages come only from fixed inbox directories, by content digest.
 umask 077
 base=${0%/*}
@@ -10,7 +10,7 @@ HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/module
 export SG_DATA_ROOT HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE
 . "$base/lib/common.sh"
 . "$base/lib/hsm.sh"
-case "${1:-}:$#" in list:1|install:2|remove:2|describe:3) ;; *) exit 2;; esac
+case "${1:-}:$#" in list:1|usb-import:1|install:2|remove:2|describe:3) ;; *) exit 2;; esac
 installed=$SG_DATA_ROOT/installed
 lock=$SG_DATA_ROOT/operation.lock
 lock_owned=0
@@ -78,6 +78,40 @@ mi_list() {
     sg_status on none 'Module list'
 }
 
+# Copies USB packages from <drive>/HSM/ into the app-readable inbox; the app cannot read USB mounts.
+mi_usb_import() {
+    mi_dest=${SG_HSM_USB_INBOX:-/data/data/com.seogaemo.hmg/files/hsm-usb}
+    mi_app=${mi_dest%/*}
+    [ -d "$mi_app" ] && [ ! -L "$mi_app" ] || mi_fail 'App storage not ready'
+    [ ! -L "$mi_dest" ] || mi_fail 'Could not prepare USB inbox'
+    mkdir -p "$mi_dest" && chmod 755 "$mi_dest" || mi_fail 'Could not prepare USB inbox'
+    for mi_old in "$mi_dest"/*; do
+        [ ! -e "$mi_old" ] && [ ! -L "$mi_old" ] || rm -rf "$mi_old" || mi_fail 'Could not prepare USB inbox'
+    done
+    mi_n=0
+    for mi_drive in ${SG_USB_DIRS:-/storage/usb0 /storage/usb1 /storage/usb2 /mnt/media_rw/usb0 /mnt/media_rw/usb1 /mnt/media_rw/usb2}; do
+        grep -q " $mi_drive " "${SG_MOUNTS_FILE:-/proc/mounts}" 2>/dev/null || continue
+        for mi_file in "$mi_drive"/HSM/*.hsm "$mi_drive"/HSM/*.HSM "$mi_drive"/hsm/*.hsm "$mi_drive"/hsm/*.HSM; do
+            [ -f "$mi_file" ] && [ ! -L "$mi_file" ] || continue
+            mi_name=${mi_file##*/}
+            mi_name=${mi_name%.*}
+            case "$mi_name" in ''|.*|*[!A-Za-z0-9._-]*) continue;; esac
+            [ "${#mi_name}" -le 80 ] || continue
+            set -- $(ls -ln "$mi_file")
+            case "$5" in *[!0-9]*|'') mi_size=$4;; *) mi_size=$5;; esac
+            case "$mi_size" in ''|*[!0-9]*) continue;; esac
+            [ "$mi_size" -gt 0 ] && [ "$mi_size" -le 10485760 ] || continue
+            [ ! -e "$mi_dest/$mi_name.hsm" ] || continue
+            [ "$mi_n" -lt 20 ] || break 2
+            cp "$mi_file" "$mi_dest/$mi_name.hsm" && chmod 644 "$mi_dest/$mi_name.hsm" ||
+                mi_fail 'Could not copy package'
+            mi_n=$((mi_n + 1))
+        done
+    done
+    sg_print "info.count=$mi_n"
+    sg_status on none "Found $mi_n packages on USB"
+}
+
 mi_csv_each() {
     mi_old_ifs=$IFS
     IFS=,
@@ -127,6 +161,7 @@ mi_check_props() {
             hookpoints) [ -f "$mi_pkg/$mi_val" ] && case "$mi_val" in files/*) hsm_ok_src "$mi_val";; *) false;; esac ;;
             setting.[1-9]|setting.[1-9][0-9])
                 hsm_setting_decl "${mi_val%%:*}" && hsm_setting_valid "$hsm_sdefault" ;;
+            icon) case "$mi_val" in box|wifi|phone|terminal|car|gear|display|speaker|camera|map|power|key|skip|button|link|bolt) ;; *) false;; esac ;;
             raw_shell) mi_fail "HSM-E202 raw_shell needs developer mode, which this runtime does not provide yet" ;;
             *) mi_fail "HSM-E203 module.properties: unknown key $mi_key" ;;
         esac || mi_fail "HSM-E204 module.properties: bad value for $mi_key"
@@ -194,6 +229,8 @@ mi_describe() {
         sg_print "info.$mi_key=$(mi_field "$mi_key" "$mi_gen")"
     done
     if grep -Fxq restore=reboot "$mi_gen"; then sg_print info.restore=reboot; else sg_print info.restore=exact; fi
+    mi_icon=$(mi_field icon "$mi_pkg/module.properties")
+    sg_print "info.icon=${mi_icon:-box}"
     while IFS='=' read -r mi_key mi_val; do
         case "$mi_key" in setting.[1-9]|setting.[1-9][0-9]) sg_print "info.setting_${mi_key#setting.}=$mi_val";; esac
     done < "$mi_pkg/module.properties"
@@ -450,6 +487,7 @@ mi_remove() {
 
 case "$1" in
     list) mi_list ;;
+    usb-import) mi_usb_import ;;
     describe) mi_describe "$2" "$3" ;;
     install) mi_lock; mi_install "$2" ;;
     remove) mi_lock; mi_remove "$2" ;;
