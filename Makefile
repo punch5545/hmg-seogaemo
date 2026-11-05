@@ -68,7 +68,8 @@ TESTS := test-root-shells test-module-install test-maps test-python test-java
 .PHONY: test-all $(TESTS)
 
 test: export PATH := $(CURDIR)/tools/testlib/fakebin:$(PATH)
-test: package
+test:
+	$(MAKE) -j$(TEST_JOBS) package
 	$(MAKE) $(if $(findstring output-sync,$(.FEATURES)),-O) -j$(TEST_JOBS) test-all
 
 test-all: $(TESTS)
