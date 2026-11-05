@@ -43,15 +43,7 @@ Upstream citations are under `tmp/HMG-API`; the private Car Report is never comm
 
 ## Verification seal migration
 
-A same-boot update could reuse a seal after the bundled map or catalogue changed (reproduced with the real Java MapTool). The
-seal now appends a deterministic map/car/catalogue/required-manifest digest; old three-line seals and changed inputs report
-off until reverified, including same-boot OTA reconciliation. Product/stock-hash lines are unchanged so the projection loader
-can accept a previously verified map before boot-time reconciliation (tying it to the boot-bound seal would break cold boot).
-Map IDs include complete published car metadata; optional reflection failures prune `by_reference` too; generated
-verification preserves export layout, binds the filtered result and selects the active generated map before historical
-directories; bundled seals bind original inputs so optional filtering does not invalidate status. Real-JVM fixtures cover
-these paths, static/reference signatures, required failure, stock mismatch and boot changes. The migration still needs
-on-car validation.
+A same-boot update could reuse a seal after the bundled map or catalogue changed (reproduced with the real Java MapTool). The seal now carries a map/car/catalogue/required-manifest digest; old three-line seals and changed inputs report off until reverified, including same-boot OTA reconciliation. Normative format, zygote gate and map-ID rules: [module-runtime-contract.md](module-runtime-contract.md), "Core car mapping". The migration still needs on-car validation.
 
 ## Upstream HMG-API mapping research
 
