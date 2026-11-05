@@ -179,7 +179,7 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 
 ## Known gaps / risks (not yet verified on a car)
 
-- The original 324 KOR map points passed on-car reflection on 2026-11-03. The 18 v1.0.1 additions have exact-stock host evidence and still need on-car reflection. Wireless CarPlay works without audio at 0.1.21; the audio fix remains pending physical verification. Other feature claims require their own evidence.
+- The original 324 KOR map points passed on-car reflection on 2026-11-03. The 18 v1.0.1 additions have exact-stock host evidence and still need on-car reflection. Wireless CarPlay music, Siri and calls/mic were verified on the car at 0.1.25 (2026-11-04); wireless Android Auto has not been tested on the car. Other feature claims require their own evidence.
 - `wireless-carplay-and-aa` replaces `/system/bin/app_process` (boot guard disables it after 3
   quick restarts). Dalvik offsets were proven on a US EV6 only. Keep an adb recovery path ready.
 - `wifi-client` STA vs the CarPlay AP on one radio: treated as mutually exclusive; concurrency is
