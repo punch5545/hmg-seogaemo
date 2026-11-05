@@ -63,8 +63,23 @@ package: $(OUT) map-build hsm-build hook-build
 verify-dist:
 	python3 tools/package.py verify --aapt $(BT)/aapt
 
+TEST_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+TESTS := test-root-shells test-module-install test-maps test-python test-java
+.PHONY: test-all $(TESTS)
+
 test: export PATH := $(CURDIR)/tools/testlib/fakebin:$(PATH)
 test: package
+	$(MAKE) $(if $(findstring output-sync,$(.FEATURES)),-O) -j$(TEST_JOBS) test-all
+
+test-all: $(TESTS)
+
+test-root-shells:
+	python3 tools/test-root-shells.py --aapt $(BT)/aapt
+
+test-module-install:
+	python3 tools/test-module-install.py
+
+test-maps:
 	python3 tools/validate-maps.py all
 	python3 tools/test-validate-maps.py
 	python3 tools/test-map-evidence.py
@@ -72,32 +87,33 @@ test: package
 	python3 tools/test-map-verification.py
 	python3 tools/test-map-car.py
 	./tools/verify-map maps/hyundai/ioniq5/kor/260902
+
+test-python:
 	python3 tools/test-confirm-routing.py
 	sh tools/test-gen-modules.sh
-	python3 tools/test-root-shells.py --aapt $(BT)/aapt
 	python3 tools/test-android44-shell.py
 	python3 tools/lint-android44-shell.py
 	python3 tools/lint-module-root.py
 	python3 tools/lint-names.py
 	python3 tools/test-hsm.py
-	python3 tools/test-module-install.py
 	python3 tools/test-hsm-cli.py
-	mkdir -p out/planner-test
-	javac -d out/planner-test app/src/com/seogaemo/hmg/module/ModulePlan.java app/src/com/seogaemo/hmg/module/ModulePlanner.java app/src/com/seogaemo/hmg/module/Warning.java tools/ModulePlannerTest.java
-	java -cp out/planner-test ModulePlannerTest
-	javac -source 7 -target 7 -d out/planner-test app/src/com/seogaemo/hmg/module/HomeTile.java app/src/com/seogaemo/hmg/module/HomeTileCatalog.java app/src/com/seogaemo/hmg/module/ModuleAction.java tools/HomeTileCatalogTest.java
-	java -cp out/planner-test HomeTileCatalogTest
 	python3 tools/test-update.py
-	mkdir -p out/trust-test
-	javac -source 7 -target 7 -d out/trust-test app/src/com/seogaemo/hmg/core/update/UpdateTrust.java tools/UpdateTrustTest.java
-	java -cp out/trust-test com.seogaemo.hmg.core.update.UpdateTrustTest app/res/raw/update_roots.pem tools/fixtures/tls/api.github.com.pem tools/fixtures/tls/objects.githubusercontent.com.pem
-	mkdir -p out/guards-test
-	javac -source 7 -target 7 -d out/guards-test app/src/com/seogaemo/hmg/core/update/BoundedProcess.java app/src/com/seogaemo/hmg/module/ModuleResume.java app/src/com/seogaemo/hmg/module/RestoreGate.java app/src/com/seogaemo/hmg/module/RootResult.java tools/AppGuardsTest.java
-	java -cp out/guards-test AppGuardsTest
-	rm -rf out/installed-test
-	mkdir -p out/installed-test
-	javac -encoding UTF-8 -source 7 -target 7 -d out/installed-test $(addprefix app/src/com/seogaemo/hmg/module/,InstalledModule.java RootResult.java RootClient.java ModuleRegistry.java Module.java ModuleAction.java InfoRow.java HomeTile.java Warning.java ModuleStatus.java ModulePlan.java ModulePlanner.java) app/src/com/seogaemo/hmg/ui/settings/SettingsPage.java tools/InstalledModuleTest.java
-	java -cp out/installed-test com.seogaemo.hmg.module.InstalledModuleTest
+
+# Each Java test compiles only the app classes it needs, against Java 7 source/target.
+JAVAC7 := javac -encoding UTF-8 -source 7 -target 7
+APPSRC := app/src/com/seogaemo/hmg
+test-java:
+	rm -rf out/java-test && mkdir -p out/java-test/planner out/java-test/tile out/java-test/trust out/java-test/guards out/java-test/installed
+	$(JAVAC7) -d out/java-test/planner $(addprefix $(APPSRC)/module/,ModulePlan.java ModulePlanner.java Warning.java) tools/ModulePlannerTest.java
+	java -cp out/java-test/planner ModulePlannerTest
+	$(JAVAC7) -d out/java-test/tile $(addprefix $(APPSRC)/module/,HomeTile.java HomeTileCatalog.java ModuleAction.java) tools/HomeTileCatalogTest.java
+	java -cp out/java-test/tile HomeTileCatalogTest
+	$(JAVAC7) -d out/java-test/trust $(APPSRC)/core/update/UpdateTrust.java tools/UpdateTrustTest.java
+	java -cp out/java-test/trust com.seogaemo.hmg.core.update.UpdateTrustTest app/res/raw/update_roots.pem tools/fixtures/tls/api.github.com.pem tools/fixtures/tls/objects.githubusercontent.com.pem
+	$(JAVAC7) -d out/java-test/guards $(APPSRC)/core/update/BoundedProcess.java $(addprefix $(APPSRC)/module/,ModuleResume.java RestoreGate.java RootResult.java) tools/AppGuardsTest.java
+	java -cp out/java-test/guards AppGuardsTest
+	$(JAVAC7) -d out/java-test/installed $(addprefix $(APPSRC)/module/,InstalledModule.java RootResult.java RootClient.java ModuleRegistry.java Module.java ModuleAction.java InfoRow.java HomeTile.java Warning.java ModuleStatus.java ModulePlan.java ModulePlanner.java) $(APPSRC)/ui/settings/SettingsPage.java tools/InstalledModuleTest.java
+	java -cp out/java-test/installed com.seogaemo.hmg.module.InstalledModuleTest
 
 clean:
 	rm -rf out
