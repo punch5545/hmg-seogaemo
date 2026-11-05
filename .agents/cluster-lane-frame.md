@@ -214,8 +214,11 @@ maps a lane direction code to the arrow image byte written into the frame, via p
 tables (branch on `eRgLaneOverlapType` 1/2/3/4; types 2–4 index 9-byte-stride structures with
 recommend/connect variants). Confirmed, **H**:
 - **Simple lane (overlapType 1):** `imageID[dir]` table at `0x3f1a514+0xac` =
-  `dir 0→1, 1→2, 2→3, 3→4, 4→5, 5→6, 6→7, 7→8, 8→34(0x22), 9/10/11→0, 12..20→37(0x25), ≥21→255`.
-  So simple-lane arrow IDs occupy **1..8** — the same range our `CpTurns.laneIcon` emits. Our
+  `d 0→1, 1→2, 2→3, 3→4, 4→5, 5→6, 6→7, 7→8, 8→34(0x22)` (9-byte table at `0x3f1a5c0`), where `d` is
+  a **normalized direction index** (`convertDirectionToDirectionIndex` at `0x20b49c0`), not the raw
+  engine `dir`. (An earlier note here wrongly read `12..20→37`; that was an out-of-bounds spill into
+  the next table.) Simple-lane arrow IDs occupy **1..8** — the same range our `CpTurns.laneIcon` emits.
+  See [cluster-lane-arrows.md](cluster-lane-arrows.md) for all 14 overlap/connect tables. Our
   builder writes its 1..8 codes directly as the arrow byte, so the value space matches; the exact
   picture each ID draws is a cluster resource, to be confirmed against captured `source=car-nav`
   frames plus the engine's `[Lane] dir:_ idx:_` logs (yesterday's drive shows pairs like
