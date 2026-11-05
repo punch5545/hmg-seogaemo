@@ -1,4 +1,4 @@
-Status: current — implemented off-car architecture; physical-car behavior untested.
+Status: current — implemented architecture; per-module car evidence is in each module doc and AGENTS.md.
 
 # Built-in module architecture
 

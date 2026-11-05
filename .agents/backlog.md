@@ -37,7 +37,7 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
 - [ ] Guard test: no new `hmgapi/mods` class may extend/implement a `hmgapi/hook` type
   other than `MethodHook` (dexdump check in the module test).
 
-## 1b. Core hook host and installable modules (branch `installable-modules`)
+## 1b. Core hook host and installable modules
 
 - [ ] **Finish the on-car check of the core hook host** (`core/hook/`, contract "Core hook host"). Single hook module verified on NEEV KOR 2026-11-05 (root-side branch files only, release APK kept): `hooks on, start 1`, Settings logged `[hook-sample] hello from com.android.settings`, revert + restart left `app_process` stock (md5 `33f79811…`, 9492 B, 0:2000), no extras, no wrapper lines in `dmesg`. Still open: repeat the revert check with stock restore, and the boot guard (3 forced zygote crashes turn hooks off). Procedure: adb ready, CarPlay off first (mutually exclusive); `make package`, `python3 tools/hsm pack out/hook-sample/module --out out/hook-sample`, `python3 tools/hsm push out/hook-sample/hook-sample-0.1.0.hsm`, `hmg-seogaemo-root hook-sample apply`, restart; check `dmesg | grep hmg-seogaemo-hook`, `logcat -s HMG-Seogaemo-Hook` ("hello from" in Settings and DiPO), `/data/nemesis/backup/hmg-seogaemo/core/hook/status`, module status `info.hook_*`; then revert, restart, confirm stock `app_process` md5 and extras gone.
 - [ ] Settings changed while on are applied by revert+apply; the zygote reads them only at

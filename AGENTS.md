@@ -37,6 +37,8 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 - onebin `neev_kr`, Android 4.4.2 (API 19, Dalvik), Telechips, display 1920x720 hdpi (density 1.5).
 - Owner-verified: HMG-API's car map + wireless mod gave a working hotspot + wireless CarPlay on this
   car; the stock firmware has no Wi-Fi client menu.
+- Car-verified: wireless CarPlay music, Siri and calls/mic; boot reconcile and readiness status;
+  324/324 original map points reflect (2026-11-03).
 
 ## Hard rules
 
@@ -109,7 +111,8 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 The module list/graph is generated at build time from `modules/*/module.properties`; there is no
 hand-edited list. Current modules: `wifi-client` (excludes `wireless-carplay-and-aa`),
 `wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`,
-and `skip-consent-screen` (factory Binder call on boot and screen wake).
+`skip-consent-screen` (factory Binder call on boot and screen wake), and
+`user-button-shortcut` / `user-button-head-unit`.
 `wireless-carplay-and-aa` claims `featurexml.cfg` stock lines; `wifi-client` owns only
 `android.hardware.wifi.xml` and `persist.wifi.state` (the NEEV KOR `featurexml.cfg` has no Wi-Fi
 removal line, verified on the car). Their exclusion is for STA versus AP on one radio.
@@ -177,11 +180,13 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   `wireless-carplay-and-aa`), keep adb reachable, export the ledger before and after, and verify
   revert restores the exact originals before moving on.
 
-## Known gaps / risks (not yet verified on a car)
+## Known gaps / risks (unverified on a car)
 
-- The original 324 KOR map points passed on-car reflection on 2026-11-03. The 18 v1.0.1 additions have exact-stock host evidence and still need on-car reflection. Wireless CarPlay music, Siri and calls/mic were verified on the car at 0.1.25 (2026-11-04); wireless Android Auto has not been tested on the car. Other feature claims require their own evidence.
+- The 18 v1.0.1 map additions have exact-stock host evidence and still need on-car reflection.
+  Wireless Android Auto, cluster/HUD lane rendering, `wifi-client` STA and user-button
+  delivery have no car evidence. Other feature claims require their own evidence.
 - `wireless-carplay-and-aa` replaces `/system/bin/app_process` (boot guard disables it after 3
-  quick restarts). Dalvik offsets were proven on a US EV6 only. Keep an adb recovery path ready.
+  quick restarts). Keep an adb recovery path ready.
 - `wifi-client` STA vs the CarPlay AP on one radio: treated as mutually exclusive; concurrency is
   unknown. `wifi-client` sets `persist.wifi.state=3` with the feature XML; no NEEV KOR system file
   names that property, and stock `HKMC_WifiSettings` gates its client menu on `android.hardware.wifi`.
@@ -198,6 +203,8 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 - One commit per logical change; each commit builds and passes `make test` on its own. Do not
   bundle unrelated fixes into one commit.
 - Merge feature branches into `main` with `--no-ff`; keep worktrees after merging.
+- Docs agents read hold only the current state: when something is verified or changes, rewrite the
+  line in place; move history to `.agents/archive/` (not read unless asked) or delete it.
 - Interface changes go into `.agents/module-runtime-contract.md` first, then code.
 
 ## Module manifest template guidance

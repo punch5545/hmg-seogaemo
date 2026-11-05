@@ -1,4 +1,4 @@
-Status: current — implemented off-car; physical-car behavior unverified.
+Status: current — implemented; the car runs it with `adb connect 192.168.0.1:5555` over the hotspot. The full on-car checklist below (exact restore, uninstall, failure cases) is not done.
 
 # wireless-adb module
 
@@ -26,7 +26,7 @@ Upstream facts kept for reference:
   stock daemon does not check ADB keys, so anyone on the hotspot can connect (`mods/adbd/patches.json:3`, `CLAUDE.md:50`).
 - No ADB firewall rule or route is declared upstream. The wireless mod has no `network` declaration; some cars
   (Ioniq 6) permit CarPlay ports on `ncm0` but not `wlan0` (`HMG-API/CLAUDE.md:62`, `docs/mod-reference.md:221,236`).
-  Reachability on this car is untested.
+  On this car the hotspot endpoint `192.168.0.1:5555` is reachable with the module on.
 - Upstream restore: records originals, restores when a mod no longer owns them (`Engine.java:1691,1720`; `mods/adb/test.sh:43`).
 
 ## Behavior
