@@ -24,8 +24,11 @@ def method(name):
 
 assert "prepareModuleChange" in method("dispatchModuleAction")
 assert "dispatchModuleAction(action)" in method("renderPageItem")
-assert "ConfirmDialog.show" in method("confirmModuleChange")
-assert "module.rebootRestore()" in method("confirmModuleChange")
+assert "ConfirmDialog.show" in method("prepareModuleChange")
+assert method("prepareModuleChange").index("ConfirmDialog.show") < method("prepareModuleChange").index("runPlan(")
+assert "dialog.setReady(false)" in method("prepareModuleChange")  # confirm stays disabled until the plan is ready
+summary_start = activity.index("private PlanSummaryView planSummary(")
+assert "module.rebootRestore()" in activity[summary_start:activity.index("private void runPlan(", summary_start)]
 assert '"off".equals(result.info.get("desired"))' in activity
 assert "ConfirmDialog.show" in method("addLanguageOption")
 assert method("addLanguageOption").index("ConfirmDialog.show") < method("addLanguageOption").index('putString("language"')
@@ -33,7 +36,7 @@ assert "ConfirmDialog.show" in method("confirmCheckUpdate")
 assert "confirmCheckUpdate()" in method("showUpdate")
 assert "ConfirmDialog.show" in method("confirmInstall")
 assert "ConfirmDialog.show" in method("confirmRollback")
-assert "ConfirmDialog.show" in method("showSupport")  # USB export
+assert "confirmReport()" in method("showSupport") and "ConfirmDialog.show" in method("confirmReport")  # USB export
 assert "confirmTbtReset()" in method("dispatchModuleAction")
 assert "ConfirmDialog.show" in method("confirmTbtReset")
 assert method("confirmTbtReset").index("ConfirmDialog.show") < method("confirmTbtReset").index("RootClient.tbtReset()")

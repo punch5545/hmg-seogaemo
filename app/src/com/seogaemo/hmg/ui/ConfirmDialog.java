@@ -154,6 +154,13 @@ public final class ConfirmDialog extends Dialog {
         return shownAtMs != 0 && nowMs - shownAtMs >= CONFIRM_ARM_DELAY_MS;
     }
 
+    /** Disables Confirm while the caller is still preparing the body; re-arms the tap guard when it becomes ready. */
+    public void setReady(boolean ready) {
+        confirm.setEnabled(ready);
+        confirm.setAlpha(ready ? 1f : 0.45f);
+        if (ready) shownAt = SystemClock.uptimeMillis();
+    }
+
     /** Keep the dialog visible while the confirmed work runs. */
     public void showProgress() { progress.setVisibility(View.VISIBLE); }
 

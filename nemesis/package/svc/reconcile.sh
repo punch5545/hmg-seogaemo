@@ -255,6 +255,8 @@ start_retry() {
     echo "$retry_pid $$" > "$retry_dir/ready"
     mv "$retry_dir/ready" "$retry_dir/pid"
 }
+# Read-only scan for other packages that overlap ours; the app shows it on the Car tab.
+[ ! -f "$base/core/foreign.sh" ] || /system/bin/sh "$base/core/foreign.sh" status > /dev/null 2>&1 < /dev/null || :
 pending=$(cat "$base/modules.list" "$state/installed.list" 2>/dev/null)
 apply_pending
 # NEMESIS starts this background service at boot and install/update.

@@ -85,8 +85,10 @@ public final class RootClient {
         return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root device reboot", READ_TIMEOUT_MS);
     }
 
-    public static RootResult exportUsb() {
-        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb", EXPORT_TIMEOUT_MS);
+    /** Problem report: everything `export usb` writes plus Android/NEMESIS logs; logs is all or ours. */
+    public static RootResult exportReport(boolean allLogs) {
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb "
+                + (allLogs ? "all" : "ours"), EXPORT_TIMEOUT_MS);
     }
 
     public static RootResult stock(String verb) {
@@ -98,6 +100,17 @@ public final class RootClient {
 
     public static RootResult uninstallPackage() {
         return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root package uninstall", STOCK_TIMEOUT_MS);
+    }
+
+    /** Other NEMESIS packages that overlap ours: read-only status, or clean one catalogue item. */
+    public static RootResult foreignStatus() {
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root foreign status", READ_TIMEOUT_MS);
+    }
+
+    public static RootResult foreignClean(String item) {
+        if (item == null || !item.matches("[a-z0-9-]{1,40}")) return failure("invalid item");
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root foreign clean " + item,
+                STOCK_TIMEOUT_MS);
     }
 
     public static RootResult map(String verb) {

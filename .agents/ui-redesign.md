@@ -42,7 +42,8 @@ raw output) on each detail screen.
 ## Features card
 
 - Full-height card: line icon (top), name, optional one-line note, bottom status row
-  (`⏻ 켜짐` blue, `⏻ 꺼짐` grey, `적용 중` warning with spinner, `사용 불가` grey).
+  (`⏻ 켜짐` blue, `⏻ 꺼짐` grey, `적용 중` warning with spinner only while an operation runs,
+  `⏻ 재시작 필요` warning without spinner for `pending-restart`, `사용 불가` grey).
 - On: blue 1dp border and blue icon. Off: grey icon and name.
 - Not available: dimmed, note line in error colour gives the reason (for example
   `Wi-Fi 연결 사용 중`).
@@ -86,7 +87,7 @@ names the card icon of a built-in module. `HomeView` is gone; `HomeTile` stays i
 `MainActivity` screens: `showFeatures` (sort on entry only; `loadFeatures(false)` updates cards in
 place), `showDetail`, `showAdd`, `showCar`, `showSettings` (categories update, language, support,
 developer, reset = `showStock`). Card state mapping is `entry(Feature)`: `on`, `off`, `pending-restart`
-= 적용 중 with the restart bar, `off` while an excluding module is on = 사용 불가 with `<name> 사용 중`,
+= 재시작 필요 (no spinner) with the restart bar, `off` while an excluding module is on = 사용 불가 with `<name> 사용 중`,
 root-reported conflict/incompatible/not-implemented = 사용 불가 with the reason, root unreachable
 (emulator) = neutral 확인 불가. After an operation the plan's modules whose status is unreadable are
 shown as 적용 중 and re-read every 2 s (six attempts). `ModuleManager.plan` now skips unrelated

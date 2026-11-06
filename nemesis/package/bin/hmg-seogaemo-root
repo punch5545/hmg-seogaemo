@@ -12,8 +12,12 @@ case "$1" in
     device) [ "$#:$2" = 2:reboot ] || refuse 2 failed 'Invalid command' ;;
     stock) case "$#:$2" in 2:restore|2:status) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     package) [ "$#:$2" = 2:uninstall ] || refuse 2 failed 'Invalid command' ;;
-    export) case "$#:$2" in 2:usb|2:adb) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+    export) case "$#:$2:${3:-}" in 2:usb:|2:adb:|3:usb:all|3:usb:ours|3:adb:all|3:adb:ours) ;;
+        *) refuse 2 failed 'Invalid command';; esac ;;
     map) case "$#:$2" in 2:status|2:run|2:verify|2:export) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+    foreign) case "$#:$2" in 2:status) ;;
+            3:clean) case "$3" in ''|*[!a-z0-9-]*) refuse 2 failed 'Invalid command';; esac ;;
+            *) refuse 2 failed 'Invalid command';; esac ;;
     update) case "$#:$2" in 2:stage|2:apply|2:rollback|2:status) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     module)
         case "$#:$2" in
@@ -80,8 +84,10 @@ if [ "$1" = device ]; then
 fi
 if [ "$1" = export ]; then
     export_mode=$2
-    case "$2" in usb|adb) ;; *) refuse 2 failed 'Invalid command';; esac
-    [ -f "$SG_DATA_ROOT/ledger/ledger.tsv" ] || {
+    # Problem report: logs=all|ours adds Android and NEMESIS logs and works before any change exists.
+    export_logs=${3:-none}
+    case "$2:$export_logs" in usb:none|adb:none|usb:all|usb:ours|adb:all|adb:ours) ;; *) refuse 2 failed 'Invalid command';; esac
+    [ -f "$SG_DATA_ROOT/ledger/ledger.tsv" ] || [ "$export_logs" != none ] || {
         echo 'state=failed'; echo 'restart=none'; echo 'detail=No change ledger'; exit 1;
     }
     if [ "$2" = usb ]; then
@@ -114,7 +120,9 @@ if [ "$1" = export ]; then
     dest=$container/$stamp
     sg_path_safe "$dest" || refuse 1 failed 'Could not prepare export'
     mkdir -p "$dest" || refuse 1 failed 'Could not prepare export'
-    cp -R "$SG_DATA_ROOT/ledger" "$dest/ledger" || refuse 1 failed 'Could not prepare export'
+    if [ -d "$SG_DATA_ROOT/ledger" ]; then
+        cp -R "$SG_DATA_ROOT/ledger" "$dest/ledger" || refuse 1 failed 'Could not prepare export'
+    fi
     mkdir -p "$dest/desired" || refuse 1 failed 'Could not prepare export'
     for record in "$SG_DATA_ROOT"/desired/*; do
         [ -f "$record" ] && cp "$record" "$dest/desired/" || true
@@ -126,9 +134,11 @@ if [ "$1" = export ]; then
     . "$base/lib/common.sh"
     hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
     . "$base/lib/diagnostics.sh"
+    HMG_SEOGAEMO_EXPORT_LOGS=$export_logs
     hmg_seogaemo_diagnostics "$dest" || refuse 1 failed 'Could not collect diagnostics'
     sg_export_public "$dest" && chmod 0755 "$container" || refuse 1 failed 'Could not prepare export'
-    keys="ledger/ledger.tsv=$SG_DATA_ROOT/ledger/ledger.tsv package-version ro.build.product"
+    keys="package-version ro.build.product"
+    [ ! -f "$SG_DATA_ROOT/ledger/ledger.tsv" ] || keys="ledger/ledger.tsv=$SG_DATA_ROOT/ledger/ledger.tsv $keys"
     for record in "$SG_DATA_ROOT"/desired/*; do
         [ -f "$record" ] && [ -f "$dest/desired/${record##*/}" ] && keys="$keys desired/${record##*/}=$record"
     done
@@ -147,6 +157,10 @@ if [ "$1" = map ]; then
     case "$2" in status|run|verify|export) ;; *) refuse 2 failed 'Invalid command';; esac
     export SG_DATA_ROOT
     exec /system/bin/sh "$base/core/hmg-seogaemo-map.sh" "$2"
+fi
+if [ "$1" = foreign ]; then
+    export SG_DATA_ROOT
+    exec /system/bin/sh "$base/core/foreign.sh" "$2" ${3:+"$3"}
 fi
 if [ "$1" = module ]; then
     export SG_DATA_ROOT

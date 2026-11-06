@@ -41,7 +41,8 @@
       "forms": [
         "remount rw",
         "remount ro",
-        "uninstall hmg-seogaemo"
+        "uninstall hmg-seogaemo",
+        "log dump"
       ]
     }
   },
@@ -698,7 +699,8 @@
       "source": "NEMESIS Sources/native/main.c",
       "subcommands": [
         "remount",
-        "uninstall"
+        "uninstall",
+        "log"
       ]
     },
     "readlink": {
