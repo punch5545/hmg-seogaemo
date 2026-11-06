@@ -24,6 +24,12 @@ public final class ModuleManager {
     public ModuleManager() { this(null); }
     public ModuleManager(Context context) { this.context = context; }
 
+    /** MainActivity.applyLocale() sets the default locale to the chosen UI language. */
+    private static String language() {
+        String language = java.util.Locale.getDefault().getLanguage();
+        return language != null && language.matches("[a-z]{2}") ? language : "en";
+    }
+
     private static boolean readable(RootResult status) {
         return status.exitCode == 0 && ("off".equals(status.state) ||
                 "on".equals(status.state) || "pending-restart".equals(status.state));
@@ -44,7 +50,8 @@ public final class ModuleManager {
 
     public ModulePlan plan(String id, boolean enable) {
         // Installed packages take part in ordering and exclusions even before screens show them.
-        ModuleRegistry.refreshInstalled("en");
+        // Refresh in the UI language: this list is shared with the screens that show module text.
+        ModuleRegistry.refreshInstalled(language());
         ModuleRegistry.depends(id);
         String[] order = ModuleRegistry.orderedIds();
         Map<String, String[]> dependencies = new HashMap<String, String[]>();
