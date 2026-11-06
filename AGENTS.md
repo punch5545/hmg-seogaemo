@@ -192,8 +192,8 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   Other feature claims require their own evidence.
 - The core hook host replaces `/system/bin/app_process` for every hook module, `wireless-carplay-and-aa`
   included (boot guard disables it after 3 quick restarts). Keep an adb recovery path ready. CarPlay on the
-  host and the migration from its old self-installed wrapper are car-verified; turning CarPlay off on the
-  host (exact stock restore) is not yet.
+  host, the migration from its old self-installed wrapper and turning CarPlay off on the host (exact
+  stock restore) are car-verified; stock restore releasing the host and the boot guard are not yet.
 - `wifi` built-in STA vs the CarPlay AP on one radio: treated as mutually exclusive; concurrency is
   unknown. The USB adapter roles and the wifi-client takeover are unverified on a car. `wifi` (built-in client) sets `persist.wifi.state=3` with the feature XML; no NEEV KOR system file
   names that property, and stock `HKMC_WifiSettings` gates its client menu on `android.hardware.wifi`.

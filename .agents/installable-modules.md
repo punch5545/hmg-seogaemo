@@ -298,8 +298,8 @@ CarPlay share `app_process`.
   `sg_core_hook_ensure` installs the wrapper, `libhmg_seogaemo_hook.so` and `hmg-seogaemo-hook.jar` under the
   ledger owner `modules/core-hook` (generated manifest `core/hook/core-hook.properties`, `known_stock` taken
   from the CarPlay manifest). Revert of the last hook module restores stock through `sg_core_hook_release`;
-  stock restore also releases a leftover host. CarPlay refuses to apply while the core host owns
-  `app_process`.
+  stock restore also releases a leftover host. `wireless-carplay-and-aa` is itself a hook module of the
+  host (`hooks=1`), so it shares the wrapper with any other hook module.
 - Zygote: guard files and boot guard as CarPlay, under `modules/core-hook/`; kernel log tag
   `hmg-seogaemo-hook`, logcat tag `HMG-Seogaemo-Hook`. The engine checks the verified car map, loads each
   `mods/<id>` with its own `DexClassLoader` (odex in `core/hook/dex/<id>`), calls `zygoteInit`, then
