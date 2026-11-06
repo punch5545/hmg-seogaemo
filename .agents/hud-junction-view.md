@@ -40,20 +40,29 @@ only the generated source and generator are committed.
 
 ## CarPlay selection and lifecycle
 
-CpJunctions chooses a picture for exits and ramps only (CarPlay types 8, 22, 23), and only when
-it is likely exact: the phone's decoded lanes at the maneuver are known, the picture draws exactly
-that many lanes, and the recommended lanes are on the exit edge. The route update's lane count
-is the number of lane guidance entries, not lanes, and is never used. Keeps, forks, highway
-changes, straight-on and ordinary turns get no picture: a lane recommendation drew splits that
-were not on the road. Explicit exit types give the route side, a generic ramp takes it from the
-recommended lanes. Lane and junction angles pick the exit, Y, pocket, loop or multi-road layout.
-Road names and the next maneuver refine otherwise equal candidates; the observed stock pairs
-10193/10194 and 10168/10170 remain weak tie preferences.
+Stock picks pictures from map data, not by lane count: at 양재IC (four through lanes and one
+exit lane) it drew the three-lane 10193/10194. PE14 pictures are therefore used as templates.
+CpJunctions selects from two inputs only, the maneuver type and the phone's decoded lanes at
+the maneuver; instruction text and road names are never used (owner decision). iAP2 has no
+overpass, underpass or tunnel maneuver, and no PE14 picture draws elevation.
 
-Selection uses the classified family, side, route and lane count. The CSVs do not define
-physical lane masks for `lane_variant` highlights, so those entries are retained but never
-selected. C remains 65535. This is a best-fit diagram from the phone's available geometry;
-CarPlay supplies no stock map picture identifier or complete lane connectivity.
+- Types: highway exits and highway changes only (8, 22, 23, 51, 52, 53). Keeps (13/14) are
+  excluded because phones also use them for slip roads in town; straight-on, ordinary turns
+  and roundabouts get no picture.
+- Lanes must show one plain exit: one or two contiguous edge lanes turning to the exit side,
+  at least one through lane, every recommended lane among the exit lanes, through lanes off
+  route with no turn arrows, no U-turn (±150° or more) lane anywhere. Explicit types fix the
+  side; 8 and 51 take it from the lanes and give nothing when both edges qualify.
+- Templates: right, one exit lane: 10193/10194 (stock pair); 10168/10170 (second stock pair)
+  when the next maneuver is also a right exit (8, 23, 53); 10046/10047 on a two-lane road.
+  Right, two exit lanes, four or more lanes: 10320/10322 (wide branch). Left, one exit lane,
+  three or more lanes: 10016/10018 (no stock sample). Everything else gets no picture.
+
+The CarPlay app seen on the car sends no junction or exit angles and quantises lane arrows
+to 0, ±90 and ±180, so angles cannot pick Y, pocket, loop or multi-road pictures. The full
+picture table stays in the payload as the reference the tests check templates against.
+C remains 65535. Whether stock shows a picture at JC splits, and which picture it uses for
+two-lane exits, still needs a stock capture on the car.
 
 CpTurns sends the selection inside the same raw-metre approach window as stock turns. Only
 the current component's displayed lane index supplies lane evidence; late matching packets
