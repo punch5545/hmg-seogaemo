@@ -177,6 +177,10 @@ hmg_seogaemo_diagnostics() (
         case "$id" in ''|*[!a-z0-9-]*|-*|*--*|*-) continue;; esac
         probe "module-$id-status.txt" "$id" status
         copy_log "$SG_DATA_ROOT/modules/$id/module.log" "modules/$id/module.log" || exit 1
+        # Output of runtime-started daemons (sg_daemon_start), e.g. why hostapd exited.
+        for dlog in "$SG_DATA_ROOT/modules/$id"/daemon.*.log; do
+            copy_log "$dlog" "modules/$id/${dlog##*/}" 4 || exit 1
+        done
         paths=$(sg_module_dir "$base" "$id")
         manifest=$(sg_module_props "$base" "$id")
         if [ -f "$manifest" ]; then

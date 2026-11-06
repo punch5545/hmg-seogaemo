@@ -265,20 +265,25 @@ usb_live() {
 usb_apply() {
     [ "$usb_role" != off ] || return 0
     ua_kmod=$(usb_kmod) || { sg_log 'USB Wi-Fi adapter not connected'; return 0; }
-    sg_kmod_load "$ua_kmod" || return $?
+    sg_kmod_load "$ua_kmod" || { ua_failed $? "load $ua_kmod"; return $?; }
     wait_iface || { sg_log "no $usb_iface after loading $ua_kmod"; return 1; }
     case "$usb_role" in
         client)
-            usb_wpa_conf || return 1
-            sg_daemon_start usb-wpa || return $?
-            sg_daemon_start usb-dhcp ;;
+            usb_wpa_conf || { ua_failed $? 'write usb-wpa.conf'; return $?; }
+            sg_daemon_start usb-wpa || { ua_failed $? 'start usb-wpa'; return $?; }
+            sg_daemon_start usb-dhcp || { ua_failed $? 'start usb-dhcp'; return $?; } ;;
         carplay_ap)
-            ap_credentials && usb_hostapd_conf || return 1
-            sg_daemon_start usb-hostapd || return $?
-            sg_iface_addr "$usb_iface" "$ap_ip/24" || return $?
-            sg_daemon_start usb-dnsmasq || return $?
-            sg_net_rule 1 ;;
+            { ap_credentials && usb_hostapd_conf; } || { ua_failed $? 'write hotspot config'; return $?; }
+            sg_daemon_start usb-hostapd || { ua_failed $? 'start usb-hostapd'; return $?; }
+            sg_iface_addr "$usb_iface" "$ap_ip/24" || { ua_failed $? "address $usb_iface"; return $?; }
+            sg_daemon_start usb-dnsmasq || { ua_failed $? 'start usb-dnsmasq'; return $?; }
+            sg_net_rule 1 || { ua_failed $? 'add INPUT rule'; return $?; } ;;
     esac
+}
+# Logs which USB bring-up step failed (the app only shows a generic failure); returns its code.
+ua_failed() {
+    sg_log "USB Wi-Fi: $2 failed ($1)" || :
+    return "$1"
 }
 
 # The CarPlay hotspot for other modules (contract: peer info). ready=stock means Android
