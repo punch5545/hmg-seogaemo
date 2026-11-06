@@ -4,7 +4,7 @@ Status: current — open verification and development items.
 
 **Maintenance rule.** To-do list, not history. Delete an item in the commit that completes it (merged, or verified on the car); record lasting findings in the linked topic doc. New items need enough context and links for an agent without the session.
 
-Car baseline: Ioniq 5 KOR (NEEV.KOR.\*.260902), NEMESIS + HMG-Seogaemo only. The car runs release v0.1.28: wireless CarPlay, wireless ADB, skip-consent-screen and user-button-shortcut on, wifi-client off, developer mode on (`persist.hmg_seogaemo.dev=1`), adb at `192.168.0.1:5555` over the hotspot, `/data/local/tmp/nemesis-d` present (recreate with `adb shell cp /system/xbin/nemesis /data/local/tmp/nemesis-d` if missing).
+Car baseline: Ioniq 5 KOR (NEEV.KOR.\*.260902), NEMESIS + HMG-Seogaemo only. The car runs a 2026-11-06/07 main package installed over adb (APK 0.1.31) with every module bundled and wireless CarPlay on the core hook host; check `hmg-seogaemo-root <id> status` for module states before a session. Developer mode on (`persist.hmg_seogaemo.dev=1`); adb at `192.168.0.1:5555` over the CarPlay hotspot, or the router address while the built-in Wi-Fi client is on; `/data/local/tmp/nemesis-d` present (recreate with `adb shell cp /system/xbin/nemesis /data/local/tmp/nemesis-d` if missing).
 
 Local evidence (gitignored, owner's Mac): `tmp/car-sessions/2026-11-04-tbt/` (live logcat, USB export with `diagnostics/tbt/`, `analysis/` reports); `tmp/car-sessions/2026-11-05-drive/` (0.1.28 drive logcat, exports, `drive-notes.txt` with the lane-injection results). Lane injection tool: `tmp/lane-probe/` (`lanes.sh`, `trailer.sh`, `LaneProbe call <method> <ints>`).
 
@@ -52,16 +52,30 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
 
 ## 1b. Core hook host and installable modules
 
-- [ ] **Finish the on-car check of the core hook host** (`core/hook/`, contract "Core hook host"). Single hook module verified on NEEV KOR 2026-11-05 (root-side branch files only, release APK kept): `hooks on, start 1`, Settings logged `[hook-sample] hello from com.android.settings`, revert + restart left `app_process` stock (md5 `33f79811…`, 9492 B, 0:2000), no extras, no wrapper lines in `dmesg`. Still open: repeat the revert check with stock restore, and the boot guard (3 forced zygote crashes turn hooks off). Procedure: adb ready, CarPlay off first (mutually exclusive); `make package`, `python3 tools/hsm pack out/hook-sample/module --out out/hook-sample`, `python3 tools/hsm push out/hook-sample/hook-sample-0.1.0.hsm`, `hmg-seogaemo-root hook-sample apply`, restart; check `dmesg | grep hmg-seogaemo-hook`, `logcat -s HMG-Seogaemo-Hook` ("hello from" in Settings and DiPO), `/data/nemesis/backup/hmg-seogaemo/core/hook/status`, module status `info.hook_*`; then revert, restart, confirm stock `app_process` md5 and extras gone.
+- [ ] **Finish the on-car check of the core hook host** (`core/hook/`, contract "Core hook host").
+  Car-verified: one hook module alone (`hook-sample`, 2026-11-05: Settings logged
+  `[hook-sample] hello from com.android.settings`; revert + restart left stock `app_process`, md5
+  `33f79811…`, 9492 B, 0:2000, no extras, no wrapper lines in `dmesg`), and wireless CarPlay on the
+  host including the migration from its old self-installed wrapper; turning CarPlay off on the host
+  (2026-11-07: stock `app_process` MD5, files removed, `featurexml.cfg` lines and
+  `persist.ium.support=carplay` restored; empty asset dirs were left, since pruned in `dfea62c`).
+  Still open: Settings → Restore stock state releasing the host, and the boot guard (3 forced zygote
+  crashes turn hooks off). Check after each: restart, `app_process` md5 `33f79811…`, no `dmesg | grep hmg-seogaemo-hook` lines,
+  `/data/nemesis/backup/hmg-seogaemo/core/hook/status` gone.
+- [ ] **Two hook modules on one wrapper (on car).** CarPlay is a hook module, so `hook-sample` next
+  to it covers this: both load, and turning either off keeps the other. Procedure: adb ready;
+  `make package`, `python3 tools/hsm pack out/hook-sample/module --out out/hook-sample`,
+  `python3 tools/hsm push out/hook-sample/hook-sample-0.1.0.hsm`, `hmg-seogaemo-root hook-sample apply`,
+  restart; check `logcat -s HMG-Seogaemo-Hook` ("hello from" in Settings and DiPO, CarPlay still
+  connects), `/data/nemesis/backup/hmg-seogaemo/core/hook/status`, module status `info.hook_*`.
 - [ ] Settings changed while on are applied by revert+apply; the zygote reads them only at
   start (restart needed). Decide whether hook modules should say so in the UI.
-- [ ] On-car check with two hook modules sharing one wrapper (both `hello` lines).
-- [ ] After the last hook module is off, `core/hook/core-hook.properties`, the empty
+- [ ] After the last hook module is off, `sg_core_hook_release` removes only `core/hook/dex`,
+  `core/hook/status` and empty `core/hook/mods/<id>`: `core/hook/core-hook.properties`, the empty
   `core/hook/mods/` and `modules/core-hook/{module.log,assets-repaired-boot}` remain; clean up.
-- [ ] Installed-module status prints `info.desired=off` twice (runner + dispatcher).
+- [ ] Status of an installed module that is off or pending restart prints `info.desired=off` twice
+  (`core/hsm-module.sh` `hm_status`, then the dispatcher in `bin/hmg-seogaemo-root`); print it once.
 - [ ] `tools/hsm pack` without `--out` writes to `./dist/` (not gitignored); default to `out/`.
-- [ ] Migrate CarPlay onto the core host (plan in `installable-modules.md` Core hook host).
-  Until then CarPlay and hook modules exclude each other.
 
 ## 2. Older open items
 
