@@ -53,20 +53,18 @@ final class CpGuidance {
             return new int[] {combined ? (side > 0 ? 19 : 20) : (side > 0 ? 17 : 18), side > 0 ? 90 : 270};
         }
         if (t == 13 || t == 14 || t >= 51 && t <= 53) {
-            if (m.hasExit && ((t == 13 || t == 52) && a > 0 && a < 180
-                    || (t == 14 || t == 53) && a > 180)) return null;
-            if (a < 0) a = t == 13 || t == 52 ? 315 : t == 14 || t == 53 ? 45 : -1;
-            if (a < 0 || a == 180) return null;
-            boolean otherLeft = false, otherRight = false;
-            if (m.angles != null) for (int other : m.angles) {
-                otherLeft |= other < -15;
-                otherRight |= other > 15;
-            }
-            return new int[] {otherLeft && otherRight ? 26 : 25, a};
+            // FORK_2 25 draws only at 90 and FORK_3 26 draws nothing (car sweep): a left keep is
+            // EXIT_LEFT 18 at 270, a right keep FORK_2 25 at 90. A measured straight is no keep.
+            if (m.hasExit && a == 0) return null;
+            int side = t == 13 || t == 52 ? -1 : t == 14 || t == 53 ? 1
+                    : a < 0 || a == 180 ? 0 : a > 180 ? -1 : 1;
+            if (side == 0) return null;
+            if (m.hasExit && (side < 0 && a > 0 && a < 180 || side > 0 && a > 180)) return null;
+            return side < 0 ? new int[] {18, 270} : new int[] {25, 90};
         }
         if (t == 3 || t == 5) {
             if (a > 0) return null;
-            if (m.angles != null && m.angles.length == 1) {
+            if (m.angles != null && m.angles.length == 1 && CpJunctions.highwayCue(m)) {
                 int other = m.angles[0];
                 if (other > 15 && other < 165) return new int[] {17, 270};
                 if (other < -15 && other > -165) return new int[] {18, 90};

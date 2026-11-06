@@ -103,6 +103,8 @@ final class CpJunctions {
                 || type == 22 || type == 23 || type == 49 || type == 50
                 || type == 51 || type == 52 || type == 53;
     }
+    /** Road name or instruction names a highway (shared with CpGuidance). */
+    static boolean highwayCue(CpTurns.Maneuver m) { return highway(text(m)); }
     private static boolean offRamp(int type) { return type == 8 || type == 22 || type == 23; }
     private static int maneuverSide(CpTurns.Maneuver m) {
         switch (m.type) {

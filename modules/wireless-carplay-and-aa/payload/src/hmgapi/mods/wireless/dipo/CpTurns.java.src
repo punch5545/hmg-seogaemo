@@ -561,6 +561,7 @@ final class CpTurns {
     /** forget every component's state and maneuvers (DiPO e/u.nT) */
     void reset() {
         clearGuidance();
+        lastProjection = 0;
         laneInfos.clear();
         lastLane = null;
         activeId = null;
@@ -638,7 +639,11 @@ final class CpTurns {
         if (x == null) {
             boolean wasApproaching = approachComponent != null;
             clearGuidance();
-            if (wasApproaching) clusterIdle();
+            // Leave the AR view mid-route with the projection icon; the idle compass is only for stop/disconnect.
+            if (wasApproaching && lastProjection != 0) {
+                cluster.tbtInfo(lastProjection, 0, 0f, dist, 0, 0, unit, 0, 0);
+                clusterTurn = true;
+            }
             // the maneuver isn't here (yet): what is known still goes out, and the phone is asked to resend
             if (sample("tn-drop2", u.state + "|" + (m == null) + "|" + (list == null) + "|" + (list == null ? -1 : list[0]))) d("turn without maneuver: comp=" + id + " state=" + u.state + " maneuvers=" + (m == null ? "none" : String.valueOf(m.size())) + " list=" + arr(list) + " (known comps=" + maneuvers.keySet() + ")");
             sendHudDist(dist, unit);
@@ -660,6 +665,7 @@ final class CpTurns {
             essential("first turn() push: rg#" + rgCount + ", " + (System.currentTimeMillis() - firstRgAt) + " ms after the first RouteGuidanceUpdate");
         }
         if (sample("tn", id + "|" + icon + "|" + u.state + "|" + list[0])) d("turn comp=" + id + " state=" + u.state + " index=" + list[0] + " type=" + x.type + " side=" + x.side + " junction=" + x.junction + " exit=" + x.exit + " -> icon " + icon + " dist=" + dist + " unit=" + unit);
+        lastProjection = icon;
         int[] stock = CpGuidance.approach(u, x) ? CpGuidance.stock(x) : null;
         if (stock == null) clearApproach();
         else {
@@ -678,6 +684,8 @@ final class CpTurns {
         sendAhead(id, u);
     }
 
+    /** projection icon of the last turn sent, resent when the AR window closes without a maneuver */
+    private int lastProjection;
     private Integer approachComponent;
     private int approachIndex;
 

@@ -20,8 +20,8 @@ public final class CpGuidanceTest {
     }
     public static void main(String[] args) {
         mapping(1, -90, 13, 270); mapping(2, 90, 13, 90);
-        mapping(47, null, 13, 225); mapping(50, null, 13, 45);
-        mapping(2, 62, 13, 45); mapping(4, null, 31, 270);
+        mapping(47, null, 13, 225); mapping(50, null, 13, 45); mapping(49, null, 13, 315);
+        mapping(2, 62, 13, 45); mapping(1, -40, 13, 315); mapping(48, null, 13, 135); mapping(4, null, 31, 270);
         CpTurns.Maneuver leftTraffic = m(4, null); leftTraffic.side = 1;
         require(CpGuidance.stock(leftTraffic)[1] == 90, "LHT U loop");
         mapping(22, null, 18, 270); mapping(23, null, 17, 90);
@@ -30,18 +30,24 @@ public final class CpGuidanceTest {
         require(CpGuidance.stock(combined)[0] == 19, "combined right exits");
         combined.type = 22; combined.exit = -45; combined.angles = new int[] {-90};
         require(CpGuidance.stock(combined)[0] == 20, "classified combined left picture");
-        mapping(13, null, 25, 315); mapping(53, null, 25, 45);
+        mapping(13, null, 18, 270); mapping(52, null, 18, 270);
+        mapping(14, null, 25, 90); mapping(53, null, 25, 90); mapping(51, 30, 25, 90); mapping(51, -30, 18, 270);
+        require(CpGuidance.stock(m(14, 0)) == null, "measured straight is no keep");
+        require(CpGuidance.stock(m(51, null)) == null, "highway change without side");
+        require(CpGuidance.stock(m(51, 0)) == null, "highway change straight"); 
         for (int type : new int[] {13, 52, 14, 53})
             require(CpGuidance.stock(m(type, type == 13 || type == 52 ? 90 : -90)) == null,
                     "contradictory keep/highway side " + type);
-        CpTurns.Maneuver fork = m(51, 0); fork.angles = new int[] {-40, 40};
-        require(CpGuidance.stock(fork)[0] == 26, "three-way fork from topology");
+        CpTurns.Maneuver fork = m(14, 30); fork.angles = new int[] {-40, 0};
+        require(CpGuidance.stock(fork)[0] == 25, "three-way fork never 26");
         mapping(3, 0, 13, 0); mapping(7, 180, 32, 180); mapping(28, -90, 32, 270);
         require(CpGuidance.stock(m(28, null)) == null, "roundabout ordinal is not an angle");
         require(CpGuidance.stock(m(2, -90)) == null, "contradictory direction fallback");
         require(CpGuidance.stock(m(8, null)) == null, "unknown ramp side fallback");
         CpTurns.Maneuver straight = m(3, 0); straight.angles = new int[] {45};
-        require(CpGuidance.stock(straight)[0] == 17 && CpGuidance.stock(straight)[1] == 270, "straight past right exit");
+        require(CpGuidance.stock(straight)[0] == 13 && CpGuidance.stock(straight)[1] == 0, "urban straight past side road");
+        straight.afterRoad = "경부고속도로";
+        require(CpGuidance.stock(straight)[0] == 17 && CpGuidance.stock(straight)[1] == 270, "highway straight past right exit");
         for (int n = 0; n <= 300; n++) {
             int level = CpGuidance.bar(n, 300);
             require(level >= 0 && level <= 100 && level <= CpGuidance.bar(n + 1, 300), "monotone bar");
@@ -73,6 +79,11 @@ public final class CpGuidanceTest {
         require(Dipo.approaches.get(Dipo.approaches.size()-1).equals("false 0"), "replacement clears lease");
         t.routeGuidance(msg(0,U16,i(1),10,U32,i(100)));
         require(Dipo.approaches.get(Dipo.approaches.size()-1).equals("true 33"), "replacement with fresh distance");
+        c.calls.clear();
+        t.routeGuidance(msg(0,U16,i(1),10,U32,i(90),13,U16,i(7)));
+        require(Dipo.approaches.get(Dipo.approaches.size()-1).equals("false 0"), "unknown next maneuver clears lease");
+        require(!c.calls.contains("tbt 8 0 0.0 0.0 -1 0 0 0 -1"), "no idle compass mid-route");
+        require(c.calls.toString().contains("tbt 70 0 0.0"), "projection icon resent mid-route");
         c.calls.clear();
         t.routeGuidance(msg(0,U16,i(1),1,ENUM,i(5)));
         require(c.calls.contains("tbt 10 0 0.0 0.0 0 0 0 0 0"), "rerouting");
