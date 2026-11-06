@@ -542,7 +542,8 @@ Path(os.environ["SG_DATA_ROOT"], "child").write_text(str(os.getpid()))
 while True: time.sleep(1)
 ''')
     (fake / "app_process").chmod(0o755)
-    (fake / "sleep").write_text(f"#!{sys.executable}\nimport time\ntime.sleep(0.03)\n")
+    # Refuses fractions like toolbox sleep, so the deadline also covers sg_bounded_wait's whole-second fallback.
+    (fake / "sleep").write_text(f"#!{sys.executable}\nimport sys, time\nif '.' in sys.argv[1]: sys.exit(1)\ntime.sleep(0.03)\n")
     (fake / "sleep").chmod(0o755)
     env = dict(car_env(), PATH=str(fake) + ":" + car_env()["PATH"], SG_DATA_ROOT=str(state))
     for verb in ("status", "verify"):

@@ -39,9 +39,13 @@ public final class ModuleRegistry {
             try { order.put(Integer.valueOf(fields[3]), fields[0]); }
             catch (NumberFormatException bad) { return false; }
         }
+        final String language = locale;
+        Map<String, RootResult> described = ParallelReads.each(order.values(), new ParallelReads.Read() {
+            public RootResult read(String id) { return RootClient.moduleDescribe(id, language); }
+        });
         List<InstalledModule> found = new ArrayList<InstalledModule>();
         for (String id : order.values()) {
-            InstalledModule module = InstalledModule.parse(id, RootClient.moduleDescribe(id, locale));
+            InstalledModule module = InstalledModule.parse(id, described.get(id));
             if (module == null) return false;
             found.add(module);
         }

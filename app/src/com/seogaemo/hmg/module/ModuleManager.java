@@ -60,13 +60,16 @@ public final class ModuleManager {
             dependencies.put(candidate, ModuleRegistry.depends(candidate));
             exclusions.put(candidate, ModuleRegistry.excludes(candidate));
         }
-        Set<String> related = ModulePlanner.related(id, order, dependencies, exclusions);
+        final Set<String> related = ModulePlanner.related(id, order, dependencies, exclusions);
+        Map<String, RootResult> statuses = ParallelReads.each(java.util.Arrays.asList(order), new ParallelReads.Read() {
+            public RootResult read(String candidate) { return readStatus(candidate, related.contains(candidate)); }
+        });
         Set<String> on = new HashSet<String>();
         Set<String> desired = new HashSet<String>();
         RootResult wifi = null;
         for (String candidate : order) {
             boolean linked = related.contains(candidate);
-            RootResult status = readStatus(candidate, linked);
+            RootResult status = statuses.get(candidate);
             if (WIFI.equals(candidate)) wifi = status;
             if (status.desiredEnabled()) desired.add(candidate);
             if (!readable(status)) {

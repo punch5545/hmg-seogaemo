@@ -2432,12 +2432,15 @@ EOF
 )
 # SIGKILL is not catchable, so the final wait on the target returns as soon as
 # the kernel reaps it; only an uninterruptible process could delay it.
+# Polls every tenth of a second so a short child (the projection reader) is not
+# rounded up to a whole second. mksh's builtin sleep takes fractions; a shell
+# whose sleep refuses one falls back to whole seconds with the same limit.
 sg_bounded_wait() {
     case "$1:$2" in ''|*[!0-9:]*|:*|*:) return 2;; esac
-    sg_bw_pid=$1; sg_bw_limit=$2; sg_bw_elapsed=0
+    sg_bw_pid=$1; sg_bw_limit=$(($2 * 10)); sg_bw_elapsed=0
     while kill -0 "$sg_bw_pid" 2>/dev/null && [ "$sg_bw_elapsed" -lt "$sg_bw_limit" ]; do
-        sleep 1
-        sg_bw_elapsed=$((sg_bw_elapsed + 1))
+        if sleep 0.1 2>/dev/null; then sg_bw_elapsed=$((sg_bw_elapsed + 1)) # android44-shell: allow -- mksh builtin sleep (funcs.c c_sleep, parse_usec) accepts fractions
+        else sleep 1; sg_bw_elapsed=$((sg_bw_elapsed + 10)); fi
     done
     if kill -0 "$sg_bw_pid" 2>/dev/null; then
         sg_kill_tree "$sg_bw_pid" 3

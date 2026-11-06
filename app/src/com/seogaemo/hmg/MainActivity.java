@@ -37,6 +37,7 @@ import com.seogaemo.hmg.module.ModuleManager;
 import com.seogaemo.hmg.module.ModulePlan;
 import com.seogaemo.hmg.module.ModuleRegistry;
 import com.seogaemo.hmg.module.ModuleResume;
+import com.seogaemo.hmg.module.ParallelReads;
 import com.seogaemo.hmg.module.RestoreGate;
 import com.seogaemo.hmg.module.RootClient;
 import com.seogaemo.hmg.module.RootResult;
@@ -670,8 +671,9 @@ public final class MainActivity extends Activity {
         new Thread(new Runnable() { public void run() {
             refreshInstalled(locale);
             final List<Feature> list = features();
-            final Map<String, RootResult> results = new HashMap<String, RootResult>();
-            for (Feature feature : list) results.put(feature.id, RootClient.run(feature.id, "status"));
+            List<String> ids = new ArrayList<String>();
+            for (Feature feature : list) ids.add(feature.id);
+            final Map<String, RootResult> results = readStatuses(ids);
             runOnUiThread(new Runnable() { public void run() {
                 statuses.putAll(results);
                 for (Map.Entry<String, RootResult> status : results.entrySet()) {
@@ -703,6 +705,13 @@ public final class MainActivity extends Activity {
         else if (tab == Tab.CAR) showCar();
     }
 
+    /** Reads module statuses at once on the calling worker thread. */
+    private static Map<String, RootResult> readStatuses(List<String> ids) {
+        return ParallelReads.each(ids, new ParallelReads.Read() {
+            public RootResult read(String id) { return RootClient.run(id, "status"); }
+        });
+    }
+
     /** A status that is neither readable nor a definite reason (conflict, incompatible, unsupported, unreachable). */
     private static boolean notReady(RootResult result) {
         return !readable(result) && !unreachable(result) && !"conflict".equals(result.state)
@@ -717,8 +726,7 @@ public final class MainActivity extends Activity {
             if (isFinishing() || rechecking.isEmpty()) { recheckRunning = false; return; }
             final List<String> ids = new ArrayList<String>(rechecking);
             new Thread(new Runnable() { public void run() {
-                final Map<String, RootResult> results = new HashMap<String, RootResult>();
-                for (String id : ids) results.put(id, RootClient.run(id, "status"));
+                final Map<String, RootResult> results = readStatuses(ids);
                 runOnUiThread(new Runnable() { public void run() {
                     statuses.putAll(results);
                     for (String id : ids) if (!notReady(results.get(id)) || attempt >= SETTLE_ATTEMPTS) rechecking.remove(id);
@@ -737,8 +745,7 @@ public final class MainActivity extends Activity {
             if (isFinishing() || settling.isEmpty()) return;
             final List<String> ids = new ArrayList<String>(settling);
             new Thread(new Runnable() { public void run() {
-                final Map<String, RootResult> results = new HashMap<String, RootResult>();
-                for (String id : ids) results.put(id, RootClient.run(id, "status"));
+                final Map<String, RootResult> results = readStatuses(ids);
                 runOnUiThread(new Runnable() { public void run() {
                     statuses.putAll(results);
                     for (String id : ids) if (readable(results.get(id)) || attempt >= SETTLE_ATTEMPTS) settling.remove(id);

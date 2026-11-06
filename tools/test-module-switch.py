@@ -196,7 +196,7 @@ sg_commit_file "$HMG_SEOGAEMO_BASE/stock-file" "$HMG_SEOGAEMO_BASE/module-bytes"
     java = ROOT / 'app/src/com/seogaemo/hmg/module'
     sources = [str(p) for p in (temp / 'src').rglob('*.java')]
     sources += [str(java / (name + '.java')) for name in (
-        'ModuleManager', 'ModulePlan', 'ModulePlanner', 'RootResult', 'ModuleResume', 'Warning')]
+        'ModuleManager', 'ModulePlan', 'ModulePlanner', 'RootResult', 'ModuleResume', 'Warning', 'ParallelReads')]
     subprocess.run(['javac', '-source', '7', '-target', '7', '-d', str(classes), *sources], check=True)
     env = car_env(dict(os.environ, SG_DATA_ROOT=str(base / 'state'),
                        TEST_SHELL=SHELL, TEST_DISPATCHER=str(base / 'bin/hmg-seogaemo-root')))
