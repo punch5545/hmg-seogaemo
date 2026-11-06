@@ -1397,18 +1397,31 @@ sg_tr_net_rule() (
     esac
 )
 # One manifest declaration; shared by the runtime calls and package installation.
+# derived_bin.<name>=: a stock program, an absolute path string in it, and the file name
+# (in the module state directory, the daemons' working directory) that replaces it.
+sg_tr_derived_spec() (
+    sg_tr_split_ok "$1" || exit 1
+    set -- $1
+    [ "$#" -eq 3 ] || exit 1
+    case "$1" in /system/bin/?*|/system/xbin/?*) ;; *) exit 1;; esac
+    case "${1#/system/*bin/}" in .*|*[!a-zA-Z0-9_.-]*) exit 1;; esac
+    case "$2" in /*) ;; *) exit 1;; esac
+    case "$2" in *..*|*//*|*[!a-zA-Z0-9_./-]*) exit 1;; esac
+    case "$3" in .*|*[!a-zA-Z0-9_.-]*) exit 1;; esac
+    [ "${#2}" -ge 4 ] && [ "${#2}" -le 128 ] && [ "${#3}" -le "${#2}" ]
+)
 sg_transient_decl_ok() (
     set -f
     key=$1; value=$2
     case "$key" in
-        kmods|daemons|owns_ifaces)
+        kmods|daemons|owns_ifaces|derived_bins)
             case "$value" in ''|,*|*,|*,,*) exit 1;; esac
             IFS=,
             set -- $value
             for item do
                 case "$key" in
                     kmods) sg_tr_kmod_name "$item" ;;
-                    daemons) sg_tr_daemon_name "$item" ;;
+                    daemons|derived_bins) sg_tr_daemon_name "$item" ;;
                     *) sg_tr_iface_glob "$item" ;;
                 esac || exit 1
             done ;;
@@ -1419,6 +1432,7 @@ sg_transient_decl_ok() (
             sg_tr_ko "$value" ;;
         kmod_params.*) sg_tr_kmod_name "${key#kmod_params.}" && sg_tr_kmod_params "$value" ;;
         daemon.*) sg_tr_daemon_name "${key#daemon.}" && sg_tr_daemon_spec "$value" ;;
+        derived_bin.*) sg_tr_daemon_name "${key#derived_bin.}" && sg_tr_derived_spec "$value" ;;
         net_rules.*)
             n=${key#net_rules.}
             case "$n" in ''|0*|*[!0-9]*) exit 1;; esac
@@ -1585,6 +1599,58 @@ sg_daemon_expand() (
     done
     sg_write "$out"
 )
+# Prints the derived_bin name whose stock program is $1.
+sg_derived_name() {
+    sg_dn_manifest=$(sg_manifest_file) || return 1
+    while IFS='=' read -r sg_dn_key sg_dn_value; do
+        case "$sg_dn_key" in derived_bin.*) ;; *) continue;; esac
+        [ "${sg_dn_value%% *}" = "$1" ] || continue
+        sg_print "${sg_dn_key#derived_bin.}"
+        return 0
+    done < "$sg_dn_manifest"
+    return 1
+}
+# Makes $HMG_SEOGAEMO_STATE/bin/<name>, a private copy of the derived_bin.<name>= stock
+# program with its fixed string replaced (package helper in a root app_process). Rebuilt
+# when the stock program changes; the stock file is only read.
+sg_bin_derive() {
+    [ "$#" -eq 1 ] && sg_tr_daemon_name "$1" || return 2
+    sg_validate derived_bins "$1" || return 2
+    sg_bd_spec=$(sg_manifest_value "derived_bin.$1") || return 2
+    sg_tr_derived_spec "$sg_bd_spec" || return 2
+    sg_ready || return 1
+    set -f; set -- "$1" $sg_bd_spec; set +f
+    sg_bd_src=${HMG_SEOGAEMO_TOOL_ROOT:-}$2
+    [ -f "$sg_bd_src" ] && [ ! -L "$sg_bd_src" ] || return 1
+    sg_bd_md5=$(md5 "$sg_bd_src") || return 1
+    sg_bd_md5=${sg_bd_md5%% *}
+    sg_bd_dir=$HMG_SEOGAEMO_STATE/bin
+    sg_bd_out=$sg_bd_dir/$1
+    if [ -f "$sg_bd_out" ] && [ "$(cat "$sg_bd_out.source" 2>/dev/null)" = "$sg_bd_md5 $3 $4" ]; then return 0; fi
+    mkdir -p "$sg_bd_dir" && chmod 700 "$sg_bd_dir" || return 1
+    rm -f "$sg_bd_out" "$sg_bd_out.source" "$sg_bd_out.tmp" || return 1
+    sg_bd_vm=$SG_DATA_ROOT/core/vm
+    sg_vm_prepare "$sg_bd_vm" || return 1
+    if sg_bd_boot=$(sg_bootclasspath); then BOOTCLASSPATH=$sg_bd_boot; export BOOTCLASSPATH; fi
+    ANDROID_DATA="$sg_bd_vm" CLASSPATH="$HMG_SEOGAEMO_BASE/core/hsm/hmg-seogaemo-hsm.jar" app_process /system/bin \
+        com.seogaemo.hmg.core.hsm.HmgSeogaemoBinPatch patch "$sg_bd_src" "$sg_bd_out.tmp" "$3" "$4" \
+        < /dev/null > "$sg_bd_out.result" 2>&1 &
+    sg_bd_pid=$!
+    sg_bounded_wait "$sg_bd_pid" 60 && sg_bd_code=0 || sg_bd_code=$?
+    sg_bd_result=$(dd if="$sg_bd_out.result" bs=1 count=200 2>/dev/null)
+    rm -f "$sg_bd_out.result"
+    case "$sg_bd_code:$sg_bd_result" in
+        0:ok*) ;;
+        *)
+            rm -f "$sg_bd_out.tmp"
+            sg_log "could not derive $1 from $2 (exit $sg_bd_code): $(sg_clean "$sg_bd_result")" || :
+            sg_tr_ledger bin_derive "$1" "$2 md5 $sg_bd_md5" "exit $sg_bd_code" failed || :
+            return 1 ;;
+    esac
+    chmod 700 "$sg_bd_out.tmp" && mv "$sg_bd_out.tmp" "$sg_bd_out" || return 1
+    sg_print "$sg_bd_md5 $3 $4" > "$sg_bd_out.source" || return 1
+    sg_tr_ledger bin_derive "$1" "$2 md5 $sg_bd_md5" "$sg_bd_out: $3 -> $4 ($sg_bd_result)"
+}
 # Read-only: 0 while daemon $1 started by this module this boot still runs with
 # exactly its recorded command line (a reused PID does not count).
 sg_daemon_running() {
@@ -1616,8 +1682,13 @@ sg_daemon_start() {
     case "$1" in
         /system/*)
             sg_path_safe "$1" || return 3
-            # HMG_SEOGAEMO_TOOL_ROOT is the host-test seam of the sg_tool_* wrappers.
-            sg_dm_exec=${HMG_SEOGAEMO_TOOL_ROOT:-}$1
+            if sg_dm_derived=$(sg_derived_name "$1"); then
+                sg_bin_derive "$sg_dm_derived" || return $?
+                sg_dm_exec=$HMG_SEOGAEMO_STATE/bin/$sg_dm_derived
+            else
+                # HMG_SEOGAEMO_TOOL_ROOT is the host-test seam of the sg_tool_* wrappers.
+                sg_dm_exec=${HMG_SEOGAEMO_TOOL_ROOT:-}$1
+            fi
             shift
             set -- "$sg_dm_exec" "$@" ;;
         *) sg_payload "${1#"$HMG_SEOGAEMO_MODULE_DIR/"}" || return 2 ;;
@@ -1631,7 +1702,7 @@ sg_daemon_start() {
     mv "$sg_dm_record.cmdline.tmp.$$" "$sg_dm_record.cmdline" || return 1
     sg_dm_log=$HMG_SEOGAEMO_STATE/daemon.$sg_dm_name.log
     if [ -f "$sg_dm_log" ] && [ "$(sg_file_size "$sg_dm_log")" -gt 65536 ]; then : > "$sg_dm_log" || return 1; fi
-    ( exec "$@" ) < /dev/null >> "$sg_dm_log" 2>&1 & # android44-shell: allow -- argv is the manifest daemon.<name> command checked by sg_tr_daemon_spec
+    ( cd "$HMG_SEOGAEMO_STATE" && exec "$@" ) < /dev/null >> "$sg_dm_log" 2>&1 & # android44-shell: allow -- argv is the manifest daemon.<name> command checked by sg_tr_daemon_spec
     sg_dm_pid=$!
     sg_tr_record "$sg_dm_record" "$sg_dm_boot" "$sg_dm_pid" || return 1
     sg_changed daemon "$sg_dm_name" || return 1
@@ -1641,9 +1712,16 @@ sg_daemon_start() {
         sg_dm_wait=$((sg_dm_wait + 1))
     done
     if ! sg_daemon_running "$sg_dm_name"; then
-        kill -9 "$sg_dm_pid" 2>/dev/null || :
+        # Say why: the program exited (with its status) or runs with another command line.
+        if kill -0 "$sg_dm_pid" 2>/dev/null; then
+            sg_dm_why='still running, command line differs'
+            ! sg_equal "$sg_dm_record.cmdline" "${SG_PROC_ROOT:-/proc}/$sg_dm_pid/cmdline" || sg_dm_why='still running'
+            kill -9 "$sg_dm_pid" 2>/dev/null || :
+        elif wait "$sg_dm_pid" 2>/dev/null; then sg_dm_why='exited 0'
+        else sg_dm_why="exited $?"; fi
+        sg_log "daemon $sg_dm_name did not stay up: $sg_dm_why" || :
         rm -f "$sg_dm_record"
-        sg_tr_ledger daemon_start "$sg_dm_name" stopped "$sg_dm_line" failed || :
+        sg_tr_ledger daemon_start "$sg_dm_name" stopped "$sg_dm_line ($sg_dm_why)" failed || :
         return 1
     fi
     sg_tr_ledger daemon_start "$sg_dm_name" stopped "pid $sg_dm_pid: $sg_dm_line"

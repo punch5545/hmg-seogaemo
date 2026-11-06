@@ -440,7 +440,9 @@ def test_declarations(base):
             ("daemons", "wpa,dhcp-client"), ("daemon.wpa", "/system/bin/wpa_supplicant -i rtwlan0 -c@state@/w.conf"),
             ("daemon.dhcp", "@payload@/bin/udhcpc -p @state@/pid -s @payload@/script"),
             ("net_rules.1", "iptables FORWARD -i rtwlan0 ! -o rtwlan0 -j ACCEPT"),
-            ("net_rules.12", "ip rule iif rtwlan0 lookup 61 prio 9000"), ("owns_ifaces", "rtwlan*,wlan1")]
+            ("net_rules.12", "ip rule iif rtwlan0 lookup 61 prio 9000"), ("owns_ifaces", "rtwlan*,wlan1"),
+            ("derived_bins", "hostapd"),
+            ("derived_bin.hostapd", "/system/bin/hostapd /data/misc/wifi/all_sta.list usb_sta.list")]
     bad = [("kmods", ""), ("kmods", "R8188"), ("kmods", "a,,b"), ("kmod.r8188eu", "/system/lib/r.ko"),
            ("kmod.r8188eu", "drivers/r8188eu.so"), ("kmod.r8188eu.tcc.803", "d/r.ko"), ("kmod.R", "d/r.ko"),
            ("kmod_params.r8188eu", "a=1;b=2"), ("kmod_params.r8188eu", "flag"), ("kmod_params.r8188eu", "a=$(x)"),
@@ -448,7 +450,11 @@ def test_declarations(base):
            ("daemon.wpa", "/system/bin/wpa @state@@payload@"), ("daemon.wpa", "/system/bin/wpa a|b"),
            ("daemon.wpa", "/system/bin/wpa @state@x"), ("net_rules.0", "ip rule from all lookup 1"),
            ("net_rules.1", "iptables -t nat POSTROUTING -I x"), ("net_rules.1", "ip rule show"),
-           ("owns_ifaces", "*"), ("owns_ifaces", "rtw[0-9]"), ("unknown", "x")]
+           ("owns_ifaces", "*"), ("owns_ifaces", "rtw[0-9]"), ("derived_bins", "-x"),
+           ("derived_bin.hostapd", "/data/hostapd /data/x.list a"), ("derived_bin.hostapd", "/system/bin/hostapd data/x.list a"),
+           ("derived_bin.hostapd", "/system/bin/hostapd /data/x.list a/b"), ("derived_bin.hostapd", "/system/bin/hostapd /d/x longername"),
+           ("derived_bin.hostapd", "/system/bin/hostapd /data/../x.list a"), ("derived_bin.hostapd", "/system/bin/hostapd /data/x.list"),
+           ("unknown", "x")]
     body = "".join(f"sg_transient_decl_ok '{k}' '{v}' || {{ echo 'refused {k}={v}'; exit 1; }}\n" for k, v in good)
     body += "".join(f"if sg_transient_decl_ok '{k}' '{v}'; then echo 'accepted {k}={v}'; exit 1; fi\n" for k, v in bad)
     car.sh(body)
@@ -457,7 +463,8 @@ def test_declarations(base):
     ownership = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ownership)
     declared = {"kmods": "r8188eu", "kmod.r8188eu": "d/r.ko", "daemons": "wpa,dhcp",
-                "daemon.wpa": "/system/bin/wpa", "daemon.dhcp": "/system/bin/dhcp"}
+                "daemon.wpa": "/system/bin/wpa", "daemon.dhcp": "/system/bin/dhcp", "derived_bins": "hostapd",
+                "derived_bin.hostapd": "/system/bin/hostapd /data/misc/wifi/all_sta.list usb_sta.list"}
     for key, value in good:
         fields = dict(declared, **{key: value})
         if key == "kmods":
@@ -547,6 +554,50 @@ def test_system_daemon_seam(base):
         car.cleanup()
 
 
+def test_daemon_exit_reason(base):
+    car = Car(base)
+    executable(car.payload / "bin/fake-daemon", "#!/bin/sh\nexit 3\n")
+    car.sh("sg_daemon_start fakesupp", code=1)
+    assert "daemon fakesupp did not stay up: exited 3" in (car.state / "module.log").read_text()
+    assert ("daemon_start", "fakesupp", "failed") in car.ledger()
+
+
+def test_derived_program(base):
+    classes = base / "binpatch-classes"
+    subprocess.run(["javac", "-nowarn", "-d", str(classes),
+                    str(ROOT / "core/hsm/src/com/seogaemo/hmg/core/hsm/HmgSeogaemoBinPatch.java")],
+                   check=True, capture_output=True)
+    manifest = MANIFEST.replace("daemon.fakesupp=@payload@/bin/fake-daemon", "daemon.fakesupp=/system/bin/fake-daemon")
+    manifest += ("derived_bins=fakehostapd\n"
+                 "derived_bin.fakehostapd=/system/bin/fake-daemon /data/misc/wifi/all_sta.list usb_sta.list\n")
+    car = Car(base, manifest)
+    executable(base / "fake/app_process", f'#!/bin/sh\nshift\nexec java -cp "{classes}" "$@"\n')
+    stock = base / "tools/system/bin/fake-daemon"
+    copy = car.state / "bin/fakehostapd"
+    try:
+        # Nothing to replace: the daemon runs as an identical private copy.
+        executable(stock, FAKE_DAEMON)
+        car.sh("sg_daemon_start fakesupp\nsg_daemon_running fakesupp")
+        pid = car.daemon_pid()
+        assert (car.proc / str(pid) / "cmdline").read_bytes().split(b"\0")[0] == str(copy).encode()
+        assert copy.read_bytes() == stock.read_bytes()
+        car.sh("sg_revert_all")
+        wait_gone(pid)
+        # Every occurrence becomes the NUL-padded file name; the stock program is only read.
+        blob = b"\x7fELF" + b"/data/misc/wifi/all_sta.list\x00x" * 2
+        stock.write_bytes(blob)
+        car.sh("sg_bin_derive fakehostapd")
+        assert copy.read_bytes() == blob.replace(b"/data/misc/wifi/all_sta.list", b"usb_sta.list".ljust(28, b"\0"))
+        assert stock.read_bytes() == blob
+        rows = [row for row in car.ledger() if row[0] == "bin_derive"]
+        assert len(rows) == 2 and all(row[2] == "ok" for row in rows)
+        car.sh("sg_bin_derive fakehostapd")
+        assert [row for row in car.ledger() if row[0] == "bin_derive"] == rows
+        car.sh("sg_bin_derive other", code=2)
+    finally:
+        car.cleanup()
+
+
 def test_peer_info(base):
     car = Car(base)
     car.sh("sg_peer_publish radio=usb interface=rtwlan0 ip=192.168.50.1 ssid=HMG-Seogaemo-1a2b ready=1 empty=")
@@ -596,6 +647,8 @@ run_tests([
     test_revert_transient_keeps_persistent,
     test_daemon_restart,
     test_system_daemon_seam,
+    test_daemon_exit_reason,
+    test_derived_program,
     test_peer_info,
     test_mutation_lint,
 ], "transient runtime tests passed")
