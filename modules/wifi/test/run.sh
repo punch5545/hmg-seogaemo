@@ -258,6 +258,11 @@ data = open(source, "rb").read()
 open(dest, "xb").write(data.replace(old.encode(), new.encode().ljust(len(old), b"\\0")))
 print("ok count=%d" % data.count(old.encode()))
 EOF
+# Ownership changes are recorded, not made (the host user cannot give files to uid 1010).
+cat > "$work/bin/chown" <<'EOF'
+#!/bin/sh
+echo "chown $*" >> "$TEST_WORK/chowns"
+EOF
 chmod +x "$work/bin/"* "$work/tools/system/bin/"*
 
 # Rewrite only fixed filesystem roots in a private copy.
@@ -278,7 +283,7 @@ for tool in cat cmp cp dd grep rm mkdir mv chmod ls date sleep; do
 done
 ln -s "$repo/tools/testlib/fakebin/md5" "$work/allowed/md5"
 ln -s "$python" "$work/allowed/python3"
-for tool in getprop setprop pm ifconfig netcfg dmesg app_process; do
+for tool in getprop setprop pm ifconfig netcfg dmesg app_process chown; do
     ln -s "$work/bin/$tool" "$work/allowed/$tool"
 done
 for tool in awk sed tail head cut tr wc sort uniq xargs find stat readlink sha256sum sha1sum tar unzip busybox toybox; do
@@ -534,6 +539,14 @@ grep -Fxq 'interface=rtwlan0' "$state/usb-hostapd.conf"
 # hostapd runs as a private copy that keeps its station list out of the stock hotspot's file.
 [ -x "$state/bin/hostapd" ] && grep -q ' /data/misc/wifi/all_sta.list usb_sta.list$' "$state/bin/hostapd.source"
 grep -q '	bin_derive	hostapd	' "$data/ledger/ledger.tsv"
+# hostapd drops root for wifi before reading its config: it starts in a wifi-owned run directory
+# with a private copy of the config, passed relative to it (no ctrl_interface in our root dir).
+run_dir=$state/run/usb-hostapd
+cmp -s "$state/usb-hostapd.conf" "$run_dir/usb-hostapd.conf"
+grep -Fxq "chown 1010:1010 $run_dir" "$work/chowns" && grep -Fxq "chown 1010:1010 $run_dir/usb-hostapd.conf" "$work/chowns"
+if grep -q ctrl_interface "$state/usb-hostapd.conf"; then exit 1; fi
+"$python" -c 'import sys; assert open(sys.argv[1], "rb").read().split(b"\0")[1] == b"usb-hostapd.conf"' \
+    "$work/proc/$(daemon_pid usb-hostapd)/cmdline"
 for key in radio:usb interface:rtwlan0 ip:192.168.50.1 ssid:HMG-Seogaemo-6f1d passphrase:6f1d2e3c4b5a49688776 \
         channel:6 ready:1; do
     [ "$(peer "${key%%:*}")" = "${key#*:}" ] || { echo "peer ${key%%:*}: $(peer "${key%%:*}")"; exit 1; }

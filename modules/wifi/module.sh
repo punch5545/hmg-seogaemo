@@ -215,7 +215,7 @@ ap_credentials() {
 usb_hostapd_conf() {
     sg_ready || return 1
     sg_print "interface=$usb_iface" driver=nl80211 "ssid=$(state_value usb-ap ssid)" country_code=KR \
-        "ctrl_interface=$HMG_SEOGAEMO_STATE/hostapd" hw_mode=g "channel=$ap_channel" ieee80211n=1 wmm_enabled=1 auth_algs=1 wpa=2 \
+        hw_mode=g "channel=$ap_channel" ieee80211n=1 wmm_enabled=1 auth_algs=1 wpa=2 \
         wpa_key_mgmt=WPA-PSK rsn_pairwise=CCMP "wpa_passphrase=$(state_value usb-ap pass)" \
         > "$HMG_SEOGAEMO_STATE/usb-hostapd.conf"
 }
@@ -282,7 +282,8 @@ usb_apply() {
     esac
 }
 # Android hostapd reports to logcat, not to its output; keep its lines beside the daemon logs.
-hostapd_logcat() { logcat -d -v time -t 300 -s hostapd > "$HMG_SEOGAEMO_STATE/daemon.usb-hostapd.logcat.log" 2>/dev/null || :; }
+# No -t: it counts unfiltered lines, and this unit logs hundreds per second.
+hostapd_logcat() { logcat -d -v time -s hostapd > "$HMG_SEOGAEMO_STATE/daemon.usb-hostapd.logcat.log" 2>/dev/null || :; }
 # Logs which USB bring-up step failed (the app only shows a generic failure); returns its code.
 ua_failed() {
     sg_log "USB Wi-Fi: $2 failed ($1)" || :
