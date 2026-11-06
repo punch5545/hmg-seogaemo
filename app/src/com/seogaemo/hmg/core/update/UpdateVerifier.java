@@ -32,6 +32,8 @@ public final class UpdateVerifier {
         "VDyFwIvlY3lIJJp+5kZysiLTii0/wqFqLnzIF7PPx7fmaypjJMlXZdw0DbmESXun" +
         "xZZc1Nqz6L2Gsn/+N6C2uldPKjhQ91MV3TgpRUPyEBSLAgMBAAE=";
     private static final String VERSION = "[0-9]+\\.[0-9]+\\.[0-9]+";
+    /** An installed build may be a beta (prerelease), which a release of the same version replaces. */
+    private static final String INSTALLED = VERSION + "(-beta\\.[1-9][0-9]?)?";
     private static final String ASSET = "\\{\"name\":\"([A-Za-z0-9_.-]+)\",\"sha256\":\"([0-9a-f]{64})\",\"size\":([0-9]+)\\}";
     private static final Pattern MANIFEST = Pattern.compile("\\{\"assets\":\\[((?:" + ASSET + ",){3}" + ASSET + ")\\],\"schema\":1,\"target\":\\{\"androidApi\":19,\"models\":\"neev_kr\",\"os\":\"NEEV.KOR.\\*.260902\"\\},\"version\":\"(" + VERSION + ")\",\"versionCode\":([0-9]+)\\}\\n");
     private static final Pattern ASSET_PATTERN = Pattern.compile(ASSET);
@@ -47,7 +49,7 @@ public final class UpdateVerifier {
 
     /** Key parameter supports host-side signature tests; production always uses the embedded key. */
     public static String verify(File directory, String installed, PublicKey key) throws Exception {
-        if (!installed.matches(VERSION)) throw new IOException("invalid installed version");
+        if (!installed.matches(INSTALLED)) throw new IOException("invalid installed version");
         File[] manifests = directory.listFiles();
         if (manifests == null) throw new IOException("missing staging directory");
         File manifest = null;
@@ -167,14 +169,16 @@ public final class UpdateVerifier {
         if (count != 3) throw new IOException("incomplete download");
     }
 
+    /** Is release a newer than installed b? A beta b is older than its own version's release. */
     public static boolean isNewer(String a, String b) {
-        if (!a.matches(VERSION) || !b.matches(VERSION)) return false;
-        String[] x = a.split("\\."), y = b.split("\\.");
+        if (!a.matches(VERSION) || !b.matches(INSTALLED)) return false;
+        int dash = b.indexOf('-');
+        String[] x = a.split("\\."), y = (dash < 0 ? b : b.substring(0, dash)).split("\\.");
         for (int i = 0; i < 3; i++) {
             long n = Long.parseLong(x[i]), m = Long.parseLong(y[i]);
             if (n != m) return n > m;
         }
-        return false;
+        return dash >= 0;
     }
     private static byte[] readBounded(File file, int max) throws IOException {
         if (file.length() > max) throw new IOException("file too large");

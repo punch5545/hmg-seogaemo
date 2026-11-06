@@ -12,7 +12,7 @@ import subprocess
 import sys
 import zipfile
 
-from version import read_version
+from version import read_label, read_version
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "out/dist"
@@ -76,9 +76,10 @@ def apk_version(apk, aapt):
 
 def build(aapt):
     version, code = read_version(ROOT / "VERSION")
+    label, _ = read_label(ROOT / "VERSION")
     apk = ROOT / "out/hmg-seogaemo.apk"
-    if apk_version(apk, aapt) != (version, code):
-        raise ValueError("APK version differs from VERSION")
+    if apk_version(apk, aapt) != (label, code):
+        raise ValueError("APK version differs from VERSION/PRERELEASE")
     if DIST.exists():
         shutil.rmtree(DIST)
     DIST.mkdir(parents=True)
@@ -98,6 +99,9 @@ def build(aapt):
                     raise ValueError("descriptor version placeholder missing")
                 data = data.replace(b"@VERSION@", version.encode())
             files[name] = data
+    if label != version:
+        # a beta: the root updater reads it to compare the installed USB package with releases
+        files["PRERELEASE"] = (label[len(version) + 1:] + "\n").encode()
     for source in (ROOT / "out/package").rglob("*"):
         if source.is_file():
             files[source.relative_to(ROOT / "out/package").as_posix()] = source
@@ -198,7 +202,7 @@ def verify(aapt):
     for name, value in checks.items():
         if digest(DIST / name) != value:
             raise ValueError(f"SHA256SUMS mismatch: {name}")
-    if apk_version(DIST / f"{prefix}.apk", aapt) != (version, code):
+    if apk_version(DIST / f"{prefix}.apk", aapt) != (read_label(ROOT / "VERSION")[0], code):
         raise ValueError("distribution APK version mismatch")
     print("Distribution hashes and version verified")
 

@@ -35,7 +35,7 @@ hook-build:
 generate:
 	sh tools/gen-modules.sh
 
-$(OUT): VERSION app/AndroidManifest.xml app/allow-sha1.security $(SOURCES) $(INPUTS) Makefile tools/gen-modules.sh tools/version.py generate module-build
+$(OUT): VERSION $(wildcard PRERELEASE) app/AndroidManifest.xml app/allow-sha1.security $(SOURCES) $(INPUTS) Makefile tools/gen-modules.sh tools/version.py generate module-build
 	rm -rf out/classes out/dex
 	mkdir -p out/gen out/classes out/dex
 	python3 tools/version.py --manifest out/AndroidManifest.xml

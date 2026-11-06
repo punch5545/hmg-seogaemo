@@ -31,6 +31,11 @@ current_version() {
 }
 installed=$(current_version)
 case "$installed" in *[!0-9.]*|'') echo 'invalid installed version' >&2; exit 1 ;; esac
+# A beta USB package (no OTA current yet) is older than the release of the same version.
+if [ ! -f "$root/current/VERSION" ] && [ -f "$base/PRERELEASE" ]; then
+    IFS= read -r pre < "$base/PRERELEASE" || :
+    case "$pre" in beta.[1-9]|beta.[1-9][0-9]) installed=$installed-$pre ;; *) echo 'invalid prerelease' >&2; exit 1 ;; esac
+fi
 if [ "$verb" = status ]; then
     sg_print "version=$installed"
     if [ -f "$root/journal" ]; then

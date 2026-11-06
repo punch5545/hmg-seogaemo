@@ -156,9 +156,11 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   `main`, wait until CI on that exact commit is green, then tag that commit `vX.Y.Z` (must equal
   `VERSION`) and push only the tag. Never tag a commit CI has not run on (e.g. a local merge
   commit), and never move or reuse a pushed tag; a failed release gets the next patch version.
-- Beta: from a feature branch, tag `vX.Y.Z-beta.N` (`X.Y.Z` = that branch's `VERSION`). It is
-  published as a GitHub prerelease, which in-app OTA (`releases/latest`) never offers; install it
-  by hand. Merge to `main` after car verification; the final release gets the next unused patch.
+- Beta: on a feature branch, `VERSION` holds the coming release (`X.Y.Z`) and `PRERELEASE` holds
+  `beta.N`; tag `vX.Y.Z-beta.N`. The APK shows `X.Y.Z-beta.N` (same versionCode), the package
+  carries `PRERELEASE`, and the release is a GitHub prerelease that in-app OTA
+  (`releases/latest`) never offers; install it by hand. The `X.Y.Z` release replaces it over OTA
+  (a beta is older than its release). Delete `PRERELEASE` before merging to `main`.
 - Release workflow: `release.yml` builds
   with the release keystore, checks the APK certificate SHA-256, signs the manifest, waits for CI
   on the tagged SHA (success: `make test-dist` on the release build; otherwise the full suite via

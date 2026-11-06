@@ -95,6 +95,10 @@ def run():
         assert result.returncode == 0, result.stderr
         assert current.resolve() == new_dir.resolve(), (current.resolve(), next_link.exists(), result.stdout, result.stderr)
         assert java(installed=version).returncode != 0
+        # a beta of this version is replaced by its release; a beta of the next is not
+        assert java(installed=version + "-beta.2").returncode == 0
+        assert java(installed="1.2.4-beta.1").returncode != 0
+        assert java(installed=version + "-beta").returncode != 0
         bad = bytearray(signature.read_bytes()); bad[0] ^= 1; signature.write_bytes(bad)
         assert java().returncode != 0
         sign("0" * 64)

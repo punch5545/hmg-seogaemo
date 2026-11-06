@@ -25,14 +25,10 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
-          version="$(python3 tools/version.py)"
-          # vX.Y.Z, or a beta vX.Y.Z-beta.N (published as a prerelease, which OTA's
-          # releases/latest never offers)
-          case "$tag" in
-            "v$version") ;;
-            "v$version"-beta.[1-9]|"v$version"-beta.[1-9][0-9]) ;;
-            *) echo "tag $tag does not match VERSION $version"; exit 1;;
-          esac
+          # VERSION, plus PRERELEASE (beta.N) for a beta, published as a prerelease that
+          # OTA's releases/latest never offers
+          version="$(python3 tools/version.py --label)"
+          test "$tag" = "v$version"
           : "${RELEASE_KEYSTORE_B64:?missing release keystore}"
           : "${RELEASE_KEYSTORE_PASSWORD:?missing keystore password}"
           : "${RELEASE_KEY_ALIAS:?missing keystore alias}"
