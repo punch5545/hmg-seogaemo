@@ -3,6 +3,7 @@
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 car_shell=${HMG_SEOGAEMO_TEST_SHELL:-$(command -v mksh || command -v sh)}
+export TEST_CAR_SHELL=$car_shell
 export HMG_SEOGAEMO_TEST_COMMON="$HERE/../../nemesis/package/lib/common.sh"
 . "$HMG_SEOGAEMO_TEST_COMMON"
 T=$(mktemp -d)
@@ -160,8 +161,12 @@ sg_zygote_foreign() {
 }
 # Stale wrapper guard state handling is exercised by tools/test-runtime.py.
 sg_zygote_guard_sweep() { [ ! -f "$HMG_SEOGAEMO_STATE/guard-sweep-fails" ]; }
-# The real peer reader, on the fake root's data directory.
-sg_peer_info() ( SG_DATA_ROOT=$SG_WIRELESS_TEST_ROOT$SG_DATA_ROOT; . "$HMG_SEOGAEMO_TEST_COMMON"; sg_peer_info "$@" )
+# The real peer reader, on the fake root's data directory. A fresh shell avoids
+# loading common.sh twice in one process (about a second each under mksh R59).
+sg_peer_info() {
+    SG_DATA_ROOT=$SG_WIRELESS_TEST_ROOT$SG_DATA_ROOT "$TEST_CAR_SHELL" -c '. "$1"; shift; sg_peer_info "$@"' \
+        sh "$HMG_SEOGAEMO_TEST_COMMON" "$@"
+}
 sg_status() { sg_print "state=$1" "restart=$2" "detail=${3:-}"; case "$1" in conflict) return 3;; incompatible) return 4;; failed) return 1;; esac; }
 SH
 cat > "$T/bin/getprop" <<'SH'
