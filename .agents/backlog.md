@@ -26,11 +26,6 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   lane, `updateRemainDis` 300 m / 1.2 km, an empty `0xF1` frame removes strip and box. Still open (needs real phone lane data): `CpTurns`
   (`LaneGlyphs`, `laneValues`, `sendLaneDist`) turns NAVER/Apple lanes into the right
   pairs/colours, only the route arrow is blue, the box tracks the turn distance.
-- [ ] **HUD junction view for CarPlay exits.** Codes and semantics are mapped
-  ([hud-junction-view.md](hud-junction-view.md); per-code tables in the local dataset
-  `datasets/hud-junction-pe14/`). Implement in `CpTurns`: on CarPlay off-ramp / keep / fork
-  maneuvers pick a picture and highlight by side and maneuver from the dataset tables, send it
-  in the approach window and clear it after the maneuver.
 - [ ] **CarPlay altScreen (iOS-rendered cluster video) research record.** Kept separate
   from the junction view: document altScreen (display type 111) declaration,
   negotiation, stream format and what iOS renders, even if this cluster cannot
@@ -38,17 +33,21 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   `tmp/analysis/carplay-altscreen/` (sources: DiPlay `tmp/DiPlay-src`, offline dump).
   Move lasting findings into a topic doc when done.
 - [ ] **Exit angle reset on partial 0x5202 updates (suspected bug).** `Maneuver.read()`
-  sets `exit = 0` before parsing (`CpTurns.java.src` ~1321-1344), so an update without
-  optional p11 erases a cached exit angle and "absent" is indistinguishable from 0°
-  (straight). Confirm against tests/dispatch, then keep a validity flag and preserve the
-  cached value. Raised independently by the 2026-11-06 external-project comparisons.
-- [ ] **Stock-format turns for the cluster AR view and HUD hologram (HMG-API PR #75 idea, for AA and CarPlay).**
-  Calls and conditions are car-verified ([cluster-ar-view.md](cluster-ar-view.md), [hud-hologram.md](hud-hologram.md)).
-  Implement in `CpTurns`/`AaTurns`: near a maneuver send the stock `Navigation.DisplayType`
-  (TURN 13 + 45° direction, U_TURN 31, FORK_2 25, EXIT 17/18, roundabout 32/33), side street 0
-  and the trap-info bar instead of the projection icon; route search / reroute as type 9 / 10.
-  Decide the approach window (stock uses about 150-600 m) and the setting path from app to
-  payload. Analysis and CarPlay mapping draft (local): `tmp/analysis/hmg-api-pr75/`.
+  sets `exit = 0` / `hasExit = false` before parsing, so an update without optional p11
+  erases a cached exit angle (absent is now distinguishable from 0° via `hasExit`). Confirm
+  against tests/dispatch, then preserve the cached value. Raised independently by the 2026-11-06 external-project comparisons.
+- [ ] **Verify CarPlay stock-format guidance on a drive.** Implemented
+  ([cluster-ar-view.md](cluster-ar-view.md), [hud-hologram.md](hud-hologram.md),
+  [hud-junction-view.md](hud-junction-view.md)); the six guidance map points still need on-car
+  reflection. Check: AR view / hologram open at 300 m (urban) and 600 m (ramps) and fall back to
+  the flat icon after the maneuver; 45° turns, exits, forks, U-turn (left loop) and roundabout
+  shapes; route search 9 / 10 text; the trap bar falls with distance and real camera/limit data
+  survives it (and whether stock navigation sends any trap record while CarPlay guides; without
+  one no bar is drawn); junction pictures on highway exits/forks match the road and clear after
+  the maneuver, on reroute, guidance end and disconnect; idle compass at the end; HUD F2 list.
+- [ ] **Stock-format turns for Android Auto.** CarPlay only today: `CpGuidance`/`CpJunctions`
+  read CarPlay maneuver and 0x5204 lane geometry, while `AaTurns` gets a different callback
+  model. Needs an AA-side adapter to the same policy.
 - [ ] **Map app in observation keys.** Record the route-guidance SourceName (NAVER,
   Apple Maps, Kakao, …) with each observation; apps differ (angles, types).
 - [ ] **Status "unknown" with a second DiPO record.** `HmgSeogaemoProjectionRuntime`

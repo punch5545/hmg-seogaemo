@@ -17,9 +17,15 @@ from the cluster AR view ([cluster-ar-view.md](cluster-ar-view.md)) and the HUD 
 ## Shapes per type
 
 - Only turn, exit and fork types draw a hologram: TURN 13 (shape follows the direction),
-  EXIT_RIGHT 17 / EXIT_LEFT 18, EXIT_RIGHT_COMBI_1/2 19/20, FORK_2 25, FORK_3 26.
+  EXIT_RIGHT 17 / EXIT_LEFT 18, combined exits 19/20, FORK_2 25, FORK_3 26.
 - U-turn and roundabout types draw no hologram; ARRIVED 3 shows a flag; 9 / 10 show the route
   search text.
 
 Dataset: `datasets/hud-hologram-tbt/` (local, gitignored): photos per `DisplayType` × direction,
 per-row shapes in `classify.csv`, overview in `summary.md`.
+
+CarPlay sends stock types through CpGuidance inside the approach window documented in
+[cluster-ar-view.md](cluster-ar-view.md). Outside it, or with ambiguous geometry, the flat
+projection icon remains. The F2 HUD turn list and its periodic refresh retain the existing
+projection format; hologram output comes from the main TBT call. The module leaves the
+owner's HUD display mode unchanged.

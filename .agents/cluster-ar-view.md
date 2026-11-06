@@ -19,7 +19,8 @@ turn in the stock `Navigation.DisplayType` format. Separate from the HUD hologra
 | distance, unit | distance text shown in the view (unit 0 = m, 1 = km) |
 | bar, barErr | ignored by the view; send as stock does |
 
-- Projection icon codes (what the CarPlay module sends today) keep the flat icon.
+- Projection icon codes keep the flat icon. CarPlay uses them outside its approach window or
+  when the maneuver geometry cannot be mapped reliably.
 - Distance does not gate the view: 600 m and 0 m both draw it. Stock navigation opens its AR
   window about 150-600 m before a maneuver and leaves it after the maneuver.
 - Works with stock guidance and with CarPlay guidance active.
@@ -29,7 +30,30 @@ turn in the stock `Navigation.DisplayType` format. Separate from the HUD hologra
 
 The bar beside the AR view is `updateTBTTrapInfo` (17 ints, 12th = `barGraphLevel`) /
 `updateTBTTrapInfoNew`, 0..100 (100 full). The same call carries speed-camera, limit and toll
-fields, so a sender owns those fields while it drives the bar.
+fields. CarPlay captures the latest real stock call in the navigation process and replaces
+only the bar during an approach lease. Both the 17-int and object-record paths preserve the
+camera, speed-limit and toll values. With no captured stock record it sends no trap record.
+Leaving the window restores the latest stock bar; a 3500 ms lease also restores it if DiPO
+stops renewing. Trap calls are never included in the phone-guidance suppression list.
+
+## CarPlay policy
+
+Stock-format output is enabled with normal TBT, independent of the developer logging toggle.
+The window is 300 m for ordinary turns and 600 m for ramps, exits, keeps and highway changes,
+inclusive, using the raw distance in metres to the current maneuver. These fixed thresholds
+approximate the observed stock urban onset of 150–375 m and highway onset of 580–600 m;
+CarPlay does not expose the stock road-dependent guide-window policy. A changed current
+maneuver needs a fresh distance. Unknown distance cannot open the window.
+
+The independently implemented CpGuidance policy uses maneuver type, explicit exit angle,
+other junction angles and driving handedness. It rounds turn geometry to 45 degrees, chooses
+the correct exit branch or straight-past-exit direction, and uses the Korean left-loop U-turn
+by default. Roundabout positions require an explicit exit angle; ordinal exit numbers do not
+provide an angular position. Ambiguous or contradictory geometry retains the projection icon.
+The bar decreases linearly from 100 at entry to 0 at the maneuver. Route states Loading and
+Rerouting send stock types 9 and 10. The HUD F2 list retains its projection icon format.
+
+The classified car sweep is in local, gitignored dataset `datasets/cluster-ar-tbt/`: `summary.md` and per-row `classify.csv`.
 
 ## Reading the state
 

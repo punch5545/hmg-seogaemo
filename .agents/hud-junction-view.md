@@ -33,7 +33,36 @@ Firmware path and packing: [navi-ar-guidance.md](navi-ar-guidance.md).
 Dataset: `datasets/hud-junction-pe14/` (local, gitignored), described in its `README.md`.
 `sweep/groups/table.csv` lists each picture (layout, lanes, side, straight / exit / left / right
 highlight codes), `sweep/groups/b_table.csv` each highlight code, `sweep/groups/summary.md` the
-families and offsets. Choose A and B for a maneuver and side from these tables.
+families and offsets. The compact generated CpJunctionTable in the wireless payload retains
+all 292 pictures and 721 highlight entries. Regenerate it with
+`tools/generate-hmg-seogaemo-junctions.py --table PATH/table.csv --b-table PATH/b_table.csv`;
+only the generated source and generator are committed.
+
+## CarPlay selection and lifecycle
+
+CpJunctions chooses a picture for exits, ramps, keeps, forks and highway changes. A straight
+route shows the through highlight past an exit only with a highway road name or instruction; ordinary urban turns do not get a
+junction view. Explicit maneuver types and exit angles determine route side first, followed
+by weighted recommended-lane highlights/arrows and instruction text. Driving handedness is
+never used as exit side. All lane geometry, including non-recommended lanes, and other
+junction angles help identify exit, Y, pocket, loop, fork and multi-road layouts. Actual
+decoded lane count takes precedence over the route-update count. Road names and the next
+maneuver refine otherwise equal candidates. The observed stock pairs 10193/10194 and
+10168/10170 remain available as weak tie preferences.
+
+Selection uses the classified family, side, route and lane count. The CSVs do not define
+physical lane masks for `lane_variant` highlights, so those entries are retained but never
+selected. C remains 65535. This is a best-fit diagram from the phone's available geometry;
+CarPlay supplies no stock map picture identifier or complete lane connectivity.
+
+CpTurns sends the selection inside the same raw-metre approach window as stock turns. Only
+the current component's displayed lane index supplies lane evidence; late matching packets
+recompute the selection. Unchanged pictures are not resent. A changed maneuver or component
+clears the old picture even if the replacement selects the same codes. Window exit, missing
+current maneuver, loading/rerouting, arrival, route end, source change, stop and disconnect
+all clear with three 65535 values. Junction clearing and trap-bar restoration precede the
+final idle compass at stop/disconnect. Stock navigation PE14 writes are suppressed during
+phone guidance, alongside its ordinary TBT writes; camera/trap calls continue normally.
 
 ## Tools (local)
 
