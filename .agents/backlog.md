@@ -38,16 +38,18 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   against tests/dispatch, then preserve the cached value. Raised independently by the 2026-11-06 external-project comparisons.
 - [ ] **Verify CarPlay stock-format guidance on a drive.** Implemented
   ([cluster-ar-view.md](cluster-ar-view.md), [hud-hologram.md](hud-hologram.md),
-  [hud-junction-view.md](hud-junction-view.md)); the six guidance map points still need on-car
-  reflection. Check: AR view / hologram open at 300 m (urban) and 600 m (ramps) and fall back to
-  the flat icon after the maneuver; 45° turns, exits, forks, U-turn (left loop) and roundabout
-  shapes; route search 9 / 10 text; the trap bar falls with distance and real camera/limit data
-  survives it (on a calm road the bar rides on a neutral record; check that it shows and that a
-  real camera record arriving mid-window takes over); 19/20 lane-change exits while driving; junction pictures on highway exits/forks match the road and clear after
-  the maneuver, on reroute, guidance end and disconnect; a stock picture left before CarPlay
-  starts is cleared; idle compass at the end; HUD F2 list. Also check that `stop()` does not race
-  stock navigation resuming its own guidance (our idle/junction clear landing after stock's
-  first calls).
+  [hud-junction-view.md](hud-junction-view.md)); the six guidance map points reflect on the car.
+  First drive (2026-11-07, 0.1.36): AR, hologram and junction pictures appear with the right
+  direction, but junction lane counts did not match the road (a two-lane picture on a one-lane
+  ramp), arrival showed no flag, and a five-lane split (1-3 straight, 4 overpass, 5 right) showed
+  a right Y then a left Y. Since then keeps send no stock shape, junction pictures are exits only
+  with exact lane counts and exit-edge recommended lanes, and arrival sends the flag.
+  Check next: exit junction pictures match the road (lane count, side) and appear often enough;
+  destination flag; route search 9 / 10 text (the phone may not send the Loading/Rerouting
+  states); 19/20 lane-change exits; the trap bar falls with distance and a real camera record
+  takes it over; clears after the maneuver, on reroute, guidance end and disconnect; idle compass
+  at the end; `stop()` does not race stock navigation
+  resuming its own guidance.
 - [ ] **Stock-format turns for Android Auto.** CarPlay only today: `CpGuidance`/`CpJunctions`
   read CarPlay maneuver and 0x5204 lane geometry, while `AaTurns` gets a different callback
   model. Needs an AA-side adapter to the same policy.

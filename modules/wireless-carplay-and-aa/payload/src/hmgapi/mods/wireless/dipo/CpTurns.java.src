@@ -674,8 +674,9 @@ final class CpTurns {
         if (sample("tn", id + "|" + icon + "|" + u.state + "|" + list[0])) d("turn comp=" + id + " state=" + u.state + " index=" + list[0] + " type=" + x.type + " side=" + x.side + " junction=" + x.junction + " exit=" + x.exit + " -> icon " + icon + " dist=" + dist + " unit=" + unit);
         lastProjection = icon;
         CpLaneDecoder.Info shownLanes = u.lanesShown ? laneInfos.get(laneKey(id, u.laneIndex)) : null;
-        int[] stock = CpGuidance.approach(u, x) ? CpGuidance.stock(x, shownLanes) : null;
-        if (stock == null) clearApproach();
+        int[] stock = u.state == 2 ? CpGuidance.ARRIVED.clone()
+                : CpGuidance.approach(u, x) ? CpGuidance.stock(x, shownLanes) : null;
+        if (stock == null || u.state == 2) clearApproach();
         else {
             if (approachComponent != null && (!approachComponent.equals(id) || approachIndex != x.index)) clearApproach();
             approachComponent = id;
@@ -710,7 +711,7 @@ final class CpTurns {
         if (!CpGuidance.approach(u, current)) { clearJunction(); return; }
         Maneuver next = list.length > 1 ? known.get(list[1]) : null;
         CpLaneDecoder.Info lanes = u.lanesShown ? laneInfos.get(laneKey(component, u.laneIndex)) : null;
-        int[] selected = CpJunctions.select(current, next, lanes, u.laneCount);
+        int[] selected = CpJunctions.select(current, next, lanes);
         if (selected == null) { clearJunction(); return; }
         if (junctionComponent != null && (junctionComponent != component || junctionIndex != current.index)) clearJunction();
         if (!java.util.Arrays.equals(junction, selected)) cluster.junctionView(selected[0], selected[1], selected[2]);

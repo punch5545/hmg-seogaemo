@@ -40,15 +40,15 @@ only the generated source and generator are committed.
 
 ## CarPlay selection and lifecycle
 
-CpJunctions chooses a picture for exits, ramps, keeps, forks and highway changes. A straight
-route shows the through highlight past an exit only with a highway road name or instruction; ordinary urban turns do not get a
-junction view. Explicit maneuver types and exit angles determine route side first, followed
-by weighted recommended-lane highlights/arrows and instruction text. Driving handedness is
-never used as exit side. All lane geometry, including non-recommended lanes, and other
-junction angles help identify exit, Y, pocket, loop, fork and multi-road layouts. Actual
-decoded lane count takes precedence over the route-update count. Road names and the next
-maneuver refine otherwise equal candidates. The observed stock pairs 10193/10194 and
-10168/10170 remain available as weak tie preferences.
+CpJunctions chooses a picture for exits and ramps only (CarPlay types 8, 22, 23), and only when
+it is likely exact: the phone's decoded lanes at the maneuver are known, the picture draws exactly
+that many lanes, and the recommended lanes are on the exit edge. The route update's lane count
+is the number of lane guidance entries, not lanes, and is never used. Keeps, forks, highway
+changes, straight-on and ordinary turns get no picture: a lane recommendation drew splits that
+were not on the road. Explicit exit types give the route side, a generic ramp takes it from the
+recommended lanes. Lane and junction angles pick the exit, Y, pocket, loop or multi-road layout.
+Road names and the next maneuver refine otherwise equal candidates; the observed stock pairs
+10193/10194 and 10168/10170 remain weak tie preferences.
 
 Selection uses the classified family, side, route and lane count. The CSVs do not define
 physical lane masks for `lane_variant` highlights, so those entries are retained but never

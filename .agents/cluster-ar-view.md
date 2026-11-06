@@ -44,7 +44,7 @@ stops renewing. Trap calls are never included in the phone-guidance suppression 
 ## CarPlay policy
 
 Stock-format output is enabled with normal TBT, independent of the developer logging toggle.
-The window is 300 m for ordinary turns and 600 m for ramps, exits, keeps and highway changes,
+The window is 300 m for ordinary turns and 600 m for ramps and exits,
 inclusive, using the raw distance in metres to the current maneuver. These fixed thresholds
 approximate the observed stock urban onset of 150–375 m and highway onset of 580–600 m;
 CarPlay does not expose the stock road-dependent guide-window policy. A changed current
@@ -55,8 +55,10 @@ other junction angles and driving handedness. Turns round to 45 degrees (the bra
 equals the direction; 180 draws no line and is never sent). Exits send EXIT_RIGHT 17 at 90 or
 EXIT_LEFT 18 at 270, or 19 at 90 / 20 at 270 (exit after a lane change toward it; the name of
 20 is misleading) when CarPlay lane guidance shows the recommended lanes are not the lane on the
-exit side. Keeps and highway changes are Y splits: FORK_2 25 at 270 (route
-on the left branch) or 90 (right); FORK_3 26 draws nothing; a measured straight is no keep. Straight past one side road sends SERVICE_ROAD 23 at 270 (branch right) or 24 at 90 (branch
+exit side. Keeps and highway changes keep the projection icon and the lane frame: the keep side
+is only a lane recommendation (a drive showed a right then a left Y where one middle lane of
+five was recommended), and FORK_2 25 is never sent. Arrival maneuvers send 2 at 270 / 90
+(destination on the left / right) or ARRIVED 3; route state Arrived sends 3. Straight past one side road sends SERVICE_ROAD 23 at 270 (branch right) or 24 at 90 (branch
 left), which draw the main road straight on, only with a highway road name or instruction;
 otherwise TURN 13 at 0. U-turns use the Korean
 left loop by default. Roundabouts send 32 (counter-clockwise travel, right-hand traffic) or 33

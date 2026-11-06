@@ -13,9 +13,13 @@ public final class CpJunctionLifecycleTest {
         turns = new CpTurns(new android.content.Context(), cluster, null);
         turns.maneuver(maneuver(0, type, 0, 0, angle, "Expressway exit", 1000));
         turns.maneuver(maneuver(1, type, 0, 0, angle, "Expressway exit", 1000));
+        CpLaneDecoder.Lane[] three = new CpLaneDecoder.Lane[3];
+        for (int k = 0; k < 3; k++) three[k] = k < 2 ? new CpLaneDecoder.Lane(k, 0, new int[] {0}, 1000)
+                : new CpLaneDecoder.Lane(k, 2, new int[] {45}, 45);
+        turns.rawLanes(new CpLaneDecoder.Info(1, 0, three, 0));
     }
     static void distance(int meters) {
-        turns.routeGuidance(msg(0,U16,i(1),1,ENUM,i(1),10,U32,i(meters),13,U16,i(0),17,U16,i(3)));
+        turns.routeGuidance(msg(0,U16,i(1),1,ENUM,i(1),10,U32,i(meters),13,U16,i(0),16,U16,i(0),17,U16,i(3),18,9,i(1)));
     }
     static int pictures() {
         int count = 0;
@@ -83,6 +87,12 @@ public final class CpJunctionLifecycleTest {
         require(pictures() == 1, "late matching lane update selects independently of stock turn");
         turns.routeGuidance(msg(0,U16,i(1),18,9,i(0)));
         require(cluster.calls.contains(CLEAR), "hiding sole lane evidence clears picture");
+        // Lane guidance entries (17) are not lanes: without decoded lanes there is no picture.
+        cluster = new Cluster();
+        turns = new CpTurns(new android.content.Context(), cluster, null);
+        turns.maneuver(maneuver(0, 23, 0, 0, 45, "Expressway exit", 1000));
+        turns.routeGuidance(msg(0,U16,i(1),1,ENUM,i(1),10,U32,i(300),13,U16,i(0),17,U16,i(2)));
+        require(pictures() == 0, "lane guidance count is no lane count");
         System.out.println("CpJunctionLifecycleTest passed");
     }
 }

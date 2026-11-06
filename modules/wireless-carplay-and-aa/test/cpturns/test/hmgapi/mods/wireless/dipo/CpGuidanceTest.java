@@ -43,16 +43,17 @@ public final class CpGuidanceTest {
         require(CpGuidance.stock(combined)[0] == 17 && CpGuidance.stock(combined)[1] == 90, "right exit with another road");
         combined.type = 22; combined.exit = -45; combined.angles = new int[] {-90};
         require(CpGuidance.stock(combined)[0] == 18 && CpGuidance.stock(combined)[1] == 270, "left exit with another road");
-        mapping(13, null, 25, 270); mapping(52, null, 25, 270);
-        mapping(14, null, 25, 90); mapping(53, null, 25, 90); mapping(51, 30, 25, 90); mapping(51, -30, 25, 270);
-        require(CpGuidance.stock(m(14, 0)) == null, "measured straight is no keep");
-        require(CpGuidance.stock(m(51, null)) == null, "highway change without side");
-        require(CpGuidance.stock(m(51, 0)) == null, "highway change straight"); 
-        for (int type : new int[] {13, 52, 14, 53})
-            require(CpGuidance.stock(m(type, type == 13 || type == 52 ? 90 : -90)) == null,
-                    "contradictory keep/highway side " + type);
-        CpTurns.Maneuver fork = m(14, 30); fork.angles = new int[] {-40, 0};
-        require(CpGuidance.stock(fork)[0] == 25, "three-way fork never 26");
+        // Keeps and highway changes keep the projection icon whatever the lanes say.
+        CpLaneDecoder.Info five = new CpLaneDecoder.Info(1, 0, new CpLaneDecoder.Lane[] {
+            new CpLaneDecoder.Lane(0, 0, new int[] {0}, 1000), new CpLaneDecoder.Lane(1, 0, new int[] {0}, 1000),
+            new CpLaneDecoder.Lane(2, 0, new int[] {0}, 1000), new CpLaneDecoder.Lane(3, 2, new int[] {20}, 20),
+            new CpLaneDecoder.Lane(4, 0, new int[] {90}, 1000)}, 0);
+        require(CpGuidance.laneSide(five) == 0, "middle lanes");
+        for (int type : new int[] {13, 14, 51, 52, 53}) for (Integer angle : new Integer[] {null, -30, 30}) {
+            require(CpGuidance.stock(m(type, angle)) == null, "keep has no stock shape " + type);
+            require(CpGuidance.stock(m(type, angle), five) == null, "keep with lanes has no stock shape " + type);
+        }
+        mapping(12, null, 3, 0); mapping(10, null, 3, 0); mapping(24, null, 2, 270); mapping(25, null, 2, 90);
         mapping(3, 0, 13, 0); mapping(7, 180, 32, 180); mapping(28, -90, 32, 270);
         require(CpGuidance.stock(m(28, null)) == null, "roundabout ordinal is not an angle");
         require(CpGuidance.stock(m(2, -90)) == null, "contradictory direction fallback");
@@ -66,7 +67,7 @@ public final class CpGuidanceTest {
         for (int type = 0; type <= 53; type++) for (int angle = -180; angle <= 180; angle += 15) {
             int[] r = CpGuidance.stock(m(type, angle));
             require(r == null || r[0] != 26 && r[0] != 19 && r[0] != 20 && !(r[0] == 13 && r[1] == 180)
-                    && !(r[0] == 25 && r[1] != 90 && r[1] != 270), "never unverified shapes " + type + "/" + angle);
+                    && r[0] != 25, "never unverified shapes " + type + "/" + angle);
         }
         for (int n = 0; n <= 300; n++) {
             int level = CpGuidance.bar(n, 300);
@@ -129,6 +130,12 @@ public final class CpGuidanceTest {
                 require(!c.calls.contains(idle), "repeated stop keeps idle compass");
             }
         }
+        CpTurns split = new CpTurns(new android.content.Context(), c, null);
+        split.maneuver(maneuver(0, 12, 0, 0, 0, "", 100));
+        split.routeGuidance(msg(0,U16,i(1),1,ENUM,i(1),10,U32,i(100),13,U16,i(0)));
+        c.calls.clear();
+        split.routeGuidance(msg(0,U16,i(1),1,ENUM,i(2)));
+        require(c.calls.toString().contains("tbt 3 0 0.0"), "arrived flag");
         for (int state : new int[] {3, 5}) {
             t.routeGuidance(msg(0,U16,i(1),1,ENUM,i(state)));
             c.calls.clear(); t.disconnected();

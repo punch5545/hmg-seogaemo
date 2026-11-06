@@ -16,35 +16,25 @@ final class CpJunctions {
      * hasExit distinguishes a measured straight (0 degrees) from an absent angle;
      * hasSide describes traffic handedness, never the chosen branch.
      */
-    static int[] select(CpTurns.Maneuver current, CpTurns.Maneuver next,
-                        CpLaneDecoder.Info lanes, int laneCount) {
-        if (current == null || current.junction != 0 || !supported(current.type)) return null;
-        Evidence e = new Evidence(current, lanes, laneCount);
+    static int[] select(CpTurns.Maneuver current, CpTurns.Maneuver next, CpLaneDecoder.Info lanes) {
+        // Exits only. Keeps, forks and straight-on have no reliable picture: on the car a lane
+        // recommendation (one lane of five) drew Y splits that were not on the road.
+        if (current == null || current.junction != 0 || !offRamp(current.type)) return null;
+        Evidence e = new Evidence(current, lanes);
+        // Every picture draws a fixed number of lanes; without the phone's lanes at this
+        // maneuver the picture would show a road that isn't there (e.g. two lanes on a
+        // one-lane ramp). The route update's lane count is the number of lane guidance
+        // entries, not lanes, and is never used.
+        if (e.count == 0) return null;
         String text = text(current);
-        boolean exit = offRamp(current.type);
-        boolean fork = current.type == 13 || current.type == 14 || current.type >= 51;
-        boolean straight = current.type == 0 || current.type == 3 || current.type == 5;
-        boolean roadCue = highway(text);
-        boolean exitCue = contains(text, new String[] {"exit", "off ramp", "off-ramp", "출구", "진출", "나들목"});
-        // Names/instructions can corroborate a shallow ordinary turn, not convert
-        // an urban right-angle turn into a motorway junction.
-        boolean shallow = current.hasExit && valid(current.exit) && Math.abs(current.exit) <= 70;
-        boolean loopCue = contains(text, new String[] {"loop", "cloverleaf", "루프"});
-        if (!exit && !fork && !straight && !(roadCue && (shallow || loopCue) && e.split())) return null;
-        // Straight on: only on a highway passing a split; urban turn lanes never qualify.
-        if (straight && !(roadCue && (e.split() || exitCue))) return null;
-
         int routeSide = maneuverSide(current);
-        if (routeSide == 0 && !straight) {
-            routeSide = e.routeSide();
-            if (routeSide == 0) routeSide = textSide(text);
-        }
-        if (!straight && routeSide == 0) return null;
-        int chosen = straight ? 0 : routeSide;
-        int branchSide = straight ? e.branchSide() : routeSide;
-        if (branchSide == 0) branchSide = textSide(text);
-        if (branchSide == 0 && next != null && offRamp(next.type)) branchSide = maneuverSide(next);
-        if (branchSide == 0) return null;
+        if (routeSide == 0) routeSide = e.routeSide();
+        if (routeSide == 0) return null;
+        // Only when the phone recommends the lanes on the exit edge; a lane change still to
+        // come or a middle lane has no matching picture.
+        if (CpGuidance.laneSide(lanes) != routeSide) return null;
+        int chosen = routeSide, branchSide = routeSide;
+        boolean loopCue = contains(text, new String[] {"loop", "cloverleaf", "루프"});
 
         int family = EXIT;
         boolean noThrough = e.possible[1] == 0 && e.possible[0] > 0 && e.possible[2] > 0;
@@ -52,16 +42,15 @@ final class CpJunctions {
         boolean pocket = contains(text, new String[] {"pocket", "zig-zag", "zigzag", "포켓"});
         // Angles establish topology; textual shape words only refine a split
         // already supported by the maneuver/lanes. They are never decoded from B.
-        if (fork) family = FORK;
         if (noThrough) family = Y;
         if (fan && e.count >= 4) family = MULTI;
-        if (pocket && (noThrough || fork || e.split())) family = POCKET;
+        if (pocket && (noThrough || e.split())) family = POCKET;
         boolean hooksBack = current.hasExit && valid(current.exit) && current.exit >= 120
                 || e.maxRouteAngle >= 120;
-        if (chosen > 0 && (exit || exitCue) && hooksBack) family = LOOP;
-        if (loopCue && chosen > 0 && (exit || roadCue) && e.split()) family = LOOP;
+        if (chosen > 0 && hooksBack) family = LOOP;
+        if (loopCue && chosen > 0 && e.split()) family = LOOP;
         // There is no observed left-loop family. Do not mirror right-loop codes.
-        if (chosen < 0 && current.hasExit && current.exit <= -120 && !fork) return null;
+        if (chosen < 0 && current.hasExit && current.exit <= -120) return null;
 
         int best = Integer.MIN_VALUE, bestA = 0, bestB = 0;
         short[] pictures = CpJunctionTable.PICTURES, highlights = CpJunctionTable.HIGHLIGHTS;
@@ -71,16 +60,15 @@ final class CpJunctions {
             // Even lane_variant with a side has no established maneuver meaning.
             if (route == CpJunctionTable.ROUTE_LANE_VARIANT) continue;
             boolean through = route == CpJunctionTable.ROUTE_STRAIGHT || route == CpJunctionTable.ROUTE_MAIN_CURVE;
-            if (chosen == 0 ? !through : through || side != chosen) continue;
+            if (through || side != chosen) continue;
             int layoutFamily = family(layout);
             // Shape has priority over lane width; no semantically different fallback.
             if (family != layoutFamily) continue;
             int pictureSide = pictures[p + 3];
             if ((family == EXIT || family == FORK || family == LOOP) && pictureSide != branchSide) continue;
+            if (pictures[p + 2] != e.count) continue;
             int score = 100;
-            if (e.count > 0) score -= 18 * Math.abs(e.count - pictures[p + 2]);
             if (highlights[h + 4] != 0) score += 5;
-            if (family == FORK && chosen != 0 && route == CpJunctionTable.ROUTE_EXIT) score += 4;
             if ((family == Y || family == POCKET) &&
                     (route == CpJunctionTable.ROUTE_LEFT_BRANCH || route == CpJunctionTable.ROUTE_RIGHT_BRANCH)) score += 4;
             // Known stock pairs break otherwise unresolvable ties, not geometry.
@@ -88,21 +76,11 @@ final class CpJunctions {
             if (a == 10168) score += 2;
             // Two consecutive ramps weakly favor the second observed stock diagram.
             if (a == 10168 && next != null && offRamp(next.type) && sameRoad(current, next)) score += 2;
-            // main_curve is explicit in b_table; FollowRoad can use it when the
-            // highlighted through lanes themselves bend. No arbitrary B offsets.
-            if (chosen == 0 && route == CpJunctionTable.ROUTE_MAIN_CURVE)
-                score += current.type == 5 && e.curvedThrough ? 8 : -8;
             if (score > best) { best = score; bestA = a; bestB = highlights[h + 1]; }
         }
         return bestA == 0 ? null : new int[] {bestA, bestB, NONE};
     }
 
-    private static boolean supported(int type) {
-        return type == 0 || type == 1 || type == 2 || type == 3 || type == 5
-                || type == 8 || type == 9 || type == 13 || type == 14
-                || type == 22 || type == 23 || type == 49 || type == 50
-                || type == 51 || type == 52 || type == 53;
-    }
     /** Road name or instruction names a highway (shared with CpGuidance). */
     static boolean highwayCue(CpTurns.Maneuver m) { return highway(text(m)); }
     private static boolean offRamp(int type) { return type == 8 || type == 22 || type == 23; }
@@ -125,7 +103,7 @@ final class CpJunctions {
             default: return EXIT;
         }
     }
-    private static String text(CpTurns.Maneuver m) {
+    static String text(CpTurns.Maneuver m) {
         return ((m.description == null ? "" : m.description) + " "
                 + (m.afterRoad == null ? "" : m.afterRoad)).toLowerCase(Locale.US);
     }
@@ -136,11 +114,6 @@ final class CpJunctions {
     private static boolean highway(String text) {
         return contains(text, new String[] {"highway", "motorway", "expressway", "freeway",
                 "off-ramp", "off ramp", "interchange", "고속", "도시고속", "분기점", "나들목"});
-    }
-    private static int textSide(String text) {
-        boolean left = contains(text, new String[] {"left", "왼쪽", "좌측"});
-        boolean right = contains(text, new String[] {"right", "오른쪽", "우측"});
-        return left == right ? 0 : left ? -1 : 1;
     }
     private static boolean sameRoad(CpTurns.Maneuver a, CpTurns.Maneuver b) {
         return a.afterRoad != null && a.afterRoad.length() != 0 && a.afterRoad.equals(b.afterRoad);
@@ -154,10 +127,9 @@ final class CpJunctions {
         final int[] possible = new int[3], votes = new int[3];
         final boolean[] bearings = new boolean[25];
         int count, distinct, maxRouteAngle;
-        boolean curvedThrough;
-        Evidence(CpTurns.Maneuver m, CpLaneDecoder.Info info, int countHint) {
+        Evidence(CpTurns.Maneuver m, CpLaneDecoder.Info info) {
             int actual = info == null || info.lanes == null ? 0 : info.lanes.length;
-            count = actual > 0 ? actual : countHint >= 1 && countHint <= 8 ? countHint : 0;
+            count = actual;
             if (m.angles != null) for (int angle : m.angles) geometry(angle);
             if (m.hasExit) geometry(m.exit);
             if (actual == 0) return;
@@ -176,7 +148,6 @@ final class CpJunctions {
                     int dir = direction(lane.highlight);
                     votes[dir + 1] += weight * 3;
                     maxRouteAngle = Math.max(maxRouteAngle, lane.highlight);
-                    if (Math.abs(lane.highlight) > 15 && Math.abs(lane.highlight) <= 45) curvedThrough = true;
                 } else {
                     int directions = 0;
                     for (int n : local) if (n > 0) directions++;
@@ -197,10 +168,6 @@ final class CpJunctions {
         int routeSide() {
             return votes[0] > votes[2] && votes[0] > votes[1] ? -1
                     : votes[2] > votes[0] && votes[2] > votes[1] ? 1 : 0;
-        }
-        int branchSide() {
-            return possible[0] > 0 && possible[2] == 0 ? -1
-                    : possible[2] > 0 && possible[0] == 0 ? 1 : 0;
         }
     }
 }
