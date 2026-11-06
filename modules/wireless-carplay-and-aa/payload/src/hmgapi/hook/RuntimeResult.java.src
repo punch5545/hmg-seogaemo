@@ -61,7 +61,7 @@ public final class RuntimeResult {
         return out.toString();
     }
 
-    static synchronized void begin(File dir, String pkg, String process) {
+    public static synchronized void begin(File dir, String pkg, String process) {
         try {
             int pid = android.os.Process.myPid();
             String ticks = startTicks(text(new File("/proc/self/stat"), 8192));
@@ -79,8 +79,9 @@ public final class RuntimeResult {
             for (String key : new String[] {"payload_jar_sha256", "payload_loader_sha256", "gate.state", "gate.reason"})
                 if (inherited.containsKey(key)) values.put(key, inherited.get(key));
             if (!values.containsKey("payload_jar_sha256")) {
-                values.put("payload_jar_sha256", digest("/system/framework/hmg-seogaemo-wireless-hook.jar"));
-                values.put("payload_loader_sha256", digest("/system/lib/libhmg_seogaemo_wireless_hook.so"));
+                // The core hook host's engine jar and loader (the payload this process actually runs).
+                values.put("payload_jar_sha256", digest("/system/framework/hmg-seogaemo-hook.jar"));
+                values.put("payload_loader_sha256", digest("/system/lib/libhmg_seogaemo_hook.so"));
             }
             configure(dir, pid, ticks);
             publish();

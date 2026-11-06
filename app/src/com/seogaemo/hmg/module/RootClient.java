@@ -78,11 +78,6 @@ public final class RootClient {
         return invoke(ROOT + "module remove " + moduleId, WRITE_TIMEOUT_MS);
     }
 
-    /** Deletes the wireless module's two generated turn-by-turn observation files (fixed verb, no arguments). */
-    public static RootResult tbtReset() {
-        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root wireless-carplay-and-aa tbt-reset", WRITE_TIMEOUT_MS);
-    }
-
     public static RootResult rebootDevice() {
         return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root device reboot", READ_TIMEOUT_MS);
     }

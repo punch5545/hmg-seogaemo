@@ -21,10 +21,9 @@ reconcile of `module-runtime-contract.md`.
 Implemented: root runtime (P1: `lib/hsm.sh`, `core/hsm-module.sh`, `core/module.sh`, `core/hsm/`), app data
 layer (P2), `tools/hsm` (P5), core hook host (P3, host-tested only, see Core hook host), module screens and
 USB install UX (P6, see `ui-redesign.md`; on-car check pending).
-Bundled (P4): `skip-consent-screen`, `user-button-head-unit`, `user-button-shortcut`, `wireless-adb`,
-`wifi-client` (raw_shell, see Bundled modules). Not implemented: converting `wireless-carplay-and-aa` (needs the
-CarPlay migration to the core hook host), `hsm test`, `hsm logs`, CarPlay
-migration to the core host, the registry/store. `raw_shell` and `app_data_dir` are still refused.
+Bundled (P4): every module ships as a bundled package: `skip-consent-screen`, `user-button-head-unit`,
+`user-button-shortcut`, `wireless-adb`, `wifi-client`, `wireless-carplay-and-aa` (raw_shell, see Bundled modules);
+there are no built-in modules. Not implemented: `hsm test`, `hsm logs`, the registry/store. `raw_shell` and `app_data_dir` are still refused.
 
 ## Bundled modules (P4, owner decision 2026-11-06)
 
@@ -57,9 +56,17 @@ class, no Android resources and no `modules.list` entry.
   module (normal `module remove`) records `bundled-removed/<id>`. Adding it back from the app is not
   implemented yet.
 - `module list` reports `bundled` as the source; the app treats it like an installed package.
-- Converted so far: `skip-consent-screen`, `user-button-head-unit`, `user-button-shortcut` (all `raw_shell=1`
-  with their former root scripts). The user-button broadcast receiver is app code
-  (`com.seogaemo.hmg.UserButtonReceiver`), not module code.
+- All six former built-ins (`raw_shell=1` with their former root scripts). The user-button broadcast receiver is
+  app code (`com.seogaemo.hmg.UserButtonReceiver`), not module code. A bundled raw_shell package may declare
+  `hooks=1` (CarPlay): it registers with the core hook host through `sg_hook_register`.
+- The packer (`tools/package.py`) packs only `.hsm` members (`module.properties`, scripts, `ui.txt`,
+  `README.md`, `strings/*`, `files/*`); sources, build scripts and tests stay in the repository. Bundled
+  modules' declared `module.properties` is also copied to the package's `modules/<id>.properties` (the
+  shared-line and whole-file ownership checks read it there); the generated one is under `installed/`.
+- Compatibility entry: `modules.list`/`modules.graph` hold only `package-compat` (stub `modules/package-compat.sh`,
+  `exit 2`). Installs from 0.1.33 and older check an OTA payload with their own `lib/payload.sh`, which needs at
+  least one listed module with a script; the runtime never treats `package-compat` as a module
+  (`sg_module_list`, reconcile). New checks accept empty lists.
 
 ## Package
 
@@ -273,12 +280,16 @@ the core map; several modules can hook apps without each replacing `app_process`
 (bundled `hmgapi.hook` classes fail to link on Dalvik). Processes match the process name or package. The
 wrapper is derived from HMG-API (AGPL-3.0): keep headers and provenance in `UPSTREAM.md`.
 
-Implemented as a separate path (CarPlay unchanged and mutually exclusive); see `core/hook/`. Host
-tests cover install, shared wrapper, release after the last module and stock restore. The CarPlay migration
-is not done.
+See `core/hook/`. Host tests cover install, shared wrapper, release after the last module and stock restore.
+`wireless-carplay-and-aa` is a hook module of the same host (built-in, `hooks=1`), so hook modules and
+CarPlay share `app_process`.
 
-- Install generates `hooks=1`, `restart=head_unit`, and adds `wireless-carplay-and-aa` to `excludes` (both
-  replace `app_process`).
+- Install generates `hooks=1` and `restart=head_unit`.
+- Registration is the runtime API `sg_hook_register` (the `hook_apps` verb calls it).
+- Engine: the core jar holds the whole engine (`hmgapi.hook`, `hmgapi.engine`: hooks, points, native
+  patches, app parts, per-process `RuntimeResult`) built from the CarPlay payload sources, plus the core's
+  own `HmgApi`, `ModContext` and `HostStatus` (`core/hook/status`). Module jars hold only their own
+  packages.
 - Apply commits `$SG_DATA_ROOT/core/hook/mods/<id>/{hook.jar,entry,processes}` (module ledger), then
   `sg_core_hook_ensure` installs the wrapper, `libhmg_seogaemo_hook.so` and `hmg-seogaemo-hook.jar` under the
   ledger owner `modules/core-hook` (generated manifest `core/hook/core-hook.properties`, `known_stock` taken
@@ -297,23 +308,19 @@ where a missing ID disables that part and never crashes the app; the bounded per
 `runtime/<id>/p-<pid>-<start_ticks>.txt` (already used by `wireless-carplay-and-aa`) generalised so `status`
 reports every hooking module.
 
-The CarPlay path remains single-module: `payload/native/zygote.c` (`HOOKDIR` is the CarPlay
-module state directory; boot guard files `enable`, `enabled`, `starts`, `disable` live there);
-`payload/native/loader.c` (one fixed `JAR` `/system/framework/hmg-seogaemo-wireless-hook.jar`);
-`payload/src/hmgapi/hook/HmgApi.java.src` (one `ENTRY = new Wireless()`, gate on the CarPlay `enabled` file,
-runtime record under `runtime/wireless-carplay-and-aa`); `lib/common.sh`
-`sg_zygote_install|upgrade|foreign|guard_sweep` (fixed target paths; `/system/bin/app_process` owned by the
-CarPlay module in the ledger).
+CarPlay on the core host: entry `hmgapi.mods.wireless.Wireless` (zygote record under
+`runtime/wireless-carplay-and-aa`, `boot` points gate) for its five apps; app parts load from a
+world-readable copy `/system/framework/hmg-seogaemo-wireless-parts.jar` (apps cannot read the core's root-only
+copy).
 
-Planned target shape (not implemented): the core owns wrapper, loader, engine jar and guard state under
-`/data/nemesis/backup/hmg-seogaemo/core/hook/`; `hook_apps` asks the core to install the wrapper when the
-first mod appears and restore stock when the last goes, with its own ledger owner (`core-hook`).
-
-CarPlay migration (not done, the risky part): with CarPlay on, a package update must move ownership of
-`app_process`, the stock backup and the guard files from the module to `core-hook` without restoring stock in
-between. Plan: an upgrade journal like `zygote-upgrade`, applied by reconcile at boot, refusing (conflict,
-nothing changed) on any drift. Until run on the car with adb recovery ready, CarPlay keeps the current path
-and `hook_apps` stays refused at install on a car with CarPlay on.
+CarPlay migration from the self-installed wrapper (0.1.33 and earlier): on apply, a module that still holds
+its old `app_process` record is first restored exactly with `sg_revert_all` (old wrapper, loader, JAR, stock
+copy, guard files, properties, feature lines), then applied through the core host in the same call; a drift
+refuses with a conflict and nothing more changes. The running zygote stays on the old wrapper until restart,
+and status reports `pending-restart` while the old record exists. `scripts/postinstall.sh` runs this apply right
+after a USB install when CarPlay is on, and OTA runs reconcile at its end, so either update needs one restart;
+boot reconcile alone would run after zygote start and need a second. The old paths stay in the manifest's
+`owns_files` for this restore. Host-tested; on-car run pending.
 
 Expected shape of `wireless-carplay-and-aa` after conversion: three `set_prop`, `put_file`/`put_files` for
 the AAC library and recipe files, `if file_missing` + `put_file` for the three feature XMLs, three
@@ -351,7 +358,7 @@ hook host on; stock restore and uninstall exact.
 One block per line, drawn at NEMESIS scale with existing settings components. Without `ui.txt` the screen
 shows status, the on/off switch and the summary. Blocks: `status`; `toggle setting=K label=@s`;
 `choice setting=K label=@s`; `number setting=K label=@s`; `info @s`; `warning @s`; `value label=@s key=K`
-(shows `info.K` from the last status; replaces `infoRows`); `button name=N label=@s confirm=@s` (runs
+(shows `info.K` from the last status; replaces `infoRows`); `button name=N label=@s confirm=@s [danger=1]` (`danger=1`: confirm in the destructive style; runs
 `apply.sh` where `action_is N` is true); `enable module=ID label=@s` (normal enable plan for another module;
 replaces Java `ENABLE_MODULE`); `open screen=wifi_settings` (opens a stock screen from a fixed core list;
 replaces `OPEN_STOCK_WIFI_SETTINGS`). Unknown blocks refuse install. State-changing blocks go through

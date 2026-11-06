@@ -33,8 +33,13 @@ final class HmgApi {
     static final List<Loaded> LOADED = new ArrayList<Loaded>();
 
     private HmgApi() {}
-    static void i(String msg) { Log.i(TAG, msg); }
-    static void e(String msg, Throwable t) { RuntimeResult.put("last_error", msg + " " + t); Log.e(TAG, msg, t); }
+    static void i(String msg) { RuntimeResult.log("I", msg, null); Log.i(TAG, msg); }
+    static void e(String msg, Throwable t) {
+        HostStatus.put("last_error", msg + " " + t);
+        RuntimeResult.put("event.last_error", msg + " " + t);
+        RuntimeResult.log("E", msg, t);
+        Log.e(TAG, msg, t);
+    }
 
     static String read(File file, int limit) throws Exception {
         FileInputStream in = new FileInputStream(file);
@@ -54,13 +59,13 @@ final class HmgApi {
     }
 
     private static void gateOff(String reason) {
-        RuntimeResult.put("gate", "off: " + reason);
+        HostStatus.put("gate", "off: " + reason);
         i("hooks off: " + reason);
-        RuntimeResult.write();
+        HostStatus.write();
     }
 
     static void zygoteInit() {
-        RuntimeResult.put("gate", "initializing");
+        HostStatus.put("gate", "initializing");
         try {
             if (!new File(ROOT + "/modules/core-hook/enabled").isFile()) { gateOff("core hook host disabled"); return; }
             Class<?> prop = Class.forName("android.os.SystemProperties");
@@ -114,10 +119,10 @@ final class HmgApi {
                     }
                 }
             });
-            RuntimeResult.put("gate", "ready " + LOADED.size());
+            HostStatus.put("gate", "ready " + LOADED.size());
             i("core hook host ready with " + LOADED.size() + " module(s)");
         } catch (Throwable t) { e("core hook setup", t); gateOff("setup: " + t); return; }
-        RuntimeResult.write();
+        HostStatus.write();
     }
 
     private static void load(File dir) {
@@ -140,10 +145,10 @@ final class HmgApi {
             ModContext ctx = new ModContext(id);
             instance.zygoteInit(ctx);
             LOADED.add(new Loaded(ctx, instance, processes));
-            RuntimeResult.put("mod." + id, "loaded " + processes.size() + " process(es)");
+            HostStatus.put("mod." + id, "loaded " + processes.size() + " process(es)");
             i("loaded " + id + " (" + entry + ")");
         } catch (Throwable t) {
-            RuntimeResult.put("mod." + id, "failed: " + t);
+            HostStatus.put("mod." + id, "failed: " + t);
             e("load " + id, t);
         }
     }

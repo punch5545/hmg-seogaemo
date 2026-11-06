@@ -1,18 +1,20 @@
 #!/bin/sh
-# Modified by HMG-Seogaemo: build the single-car projection hook payload.
+# Modified by HMG-Seogaemo: build the wireless projection mod jar for the core hook host and
+# the AAC converter. The engine (hmgapi.hook, hmgapi.engine) ships in the core hook host.
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+ROOT=$(CDPATH= cd -- "$HERE/../../.." && pwd)
 SDK=${ANDROID_HOME:-$HOME/Library/Android/sdk}
 BT=${ANDROID_BUILD_TOOLS:-$SDK/build-tools/34.0.0}
 ANDROID_JAR=${ANDROID_JAR:-$SDK/platforms/android-19/android.jar}
 CLANG=${CLANG:-clang}
-OUT=$HERE/data
+OUT=$HERE/../files
 W=$(mktemp -d)
 trap 'rm -rf "$W"' EXIT
-mkdir -p "$OUT" "$W/classes" "$W/stubs" "$W/syslib" "$W/dex" "$W/source"
-"$CLANG" --target=armv7a-linux-gnueabi -mthumb -march=armv7-a -mfloat-abi=soft -Os -ffreestanding -fno-builtin -nostdlib -static -fno-stack-protector -fuse-ld=lld -Wl,-e,_start -Wl,--build-id=none -Wall -o "$OUT/app_process" "$HERE/native/zygote.c"
-CLANG=$CLANG sh "$HERE/native/syslib-stubs.sh" "$W/syslib"
-"$CLANG" --target=armv7a-linux-androideabi -mthumb -march=armv7-a -mfloat-abi=softfp -Os -fPIC -ffreestanding -fno-builtin -nostdlib -shared -fno-stack-protector -fuse-ld=lld -Wl,--hash-style=sysv -Wl,-z,defs -Wl,--build-id=none -Wl,-soname,libhmg_seogaemo_wireless_hook.so -o "$OUT/libhmg_seogaemo_wireless_hook.so" "$HERE/native/loader.c" "$W/syslib/libc.so" "$W/syslib/liblog.so" "$W/syslib/libdl.so"
+mkdir -p "$OUT" "$W/classes" "$W/stubs" "$W/dex" "$W/source"
+API=$ROOT/out/hook-sdk/hmg-seogaemo-hook-api.jar
+# make runs hook-build first; a direct run builds the SDK when it is missing.
+[ -f "$API" ] || CLANG=$CLANG sh "$ROOT/core/hook/build.sh"
 sh "$HERE/native/build.sh" "$OUT/libleafiaaac.so"
 find "$HERE/stubs" -name '*.java.src' -print | while IFS= read -r source; do
     rel=${source#"$HERE/stubs/"}; target="$W/source/stubs/${rel%.src}"
@@ -20,14 +22,14 @@ find "$HERE/stubs" -name '*.java.src' -print | while IFS= read -r source; do
 done
 find "$W/source/stubs" -name '*.java' -print > "$W/stubs.list"
 javac -source 1.7 -target 1.7 -bootclasspath "$ANDROID_JAR" -cp "$ANDROID_JAR" -d "$W/stubs" @"$W/stubs.list"
-find "$HERE/src" -name '*.java.src' -print | while IFS= read -r source; do
+find "$HERE/src/hmgapi/mods" -name '*.java.src' -print | while IFS= read -r source; do
     rel=${source#"$HERE/src/"}; target="$W/source/src/${rel%.src}"
     mkdir -p "${target%/*}"; cp "$source" "$target"
 done
 find "$W/source/src" -name '*.java' -print > "$W/sources.list"
-javac -source 1.7 -target 1.7 -bootclasspath "$ANDROID_JAR" -cp "$ANDROID_JAR:$W/stubs" -d "$W/classes" @"$W/sources.list"
-"$BT/d8" --release --min-api 19 --lib "$ANDROID_JAR" --classpath "$W/stubs" --output "$W/dex" $(find "$W/classes" -name '*.class' | sort)
+javac -nowarn -source 1.7 -target 1.7 -bootclasspath "$ANDROID_JAR" -cp "$ANDROID_JAR:$W/stubs:$API" -d "$W/classes" @"$W/sources.list"
+"$BT/d8" --release --min-api 19 --lib "$ANDROID_JAR" --classpath "$W/stubs" --classpath "$API" --output "$W/dex" $(find "$W/classes" -name '*.class' | sort)
 touch -t 198001010000 "$W/dex/classes.dex"
-rm -f "$OUT/hmg-seogaemo-wireless-hook.jar"
-(cd "$W/dex" && zip -q -X "$OUT/hmg-seogaemo-wireless-hook.jar" classes.dex)
-file "$OUT/app_process" "$OUT/libhmg_seogaemo_wireless_hook.so" "$OUT/libleafiaaac.so"
+rm -f "$OUT/wireless-mod.jar"
+(cd "$W/dex" && zip -q -X "$OUT/wireless-mod.jar" classes.dex)
+file "$OUT/libleafiaaac.so"

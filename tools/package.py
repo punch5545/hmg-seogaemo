@@ -34,12 +34,18 @@ def add_zip(path, files):
             archive.writestr(info, source if isinstance(source, bytes) else source.read_bytes())
 
 
+HSM_TOP = {"module.properties", "apply.sh", "check.sh", "module.sh", "status.sh", "ui.txt", "README.md"}
+
+
 def bundled_hsm(module, version):
     """A module in package form, packed like tools/hsm pack, with the package version filled in."""
     members = {}
     for path in sorted(module.rglob("*")):
         relative = path.relative_to(module).as_posix()
-        if not path.is_file() or path.name.startswith(".") or relative.startswith("test/") or relative == "hookpoints.required":
+        if not path.is_file() or path.name.startswith("."):
+            continue
+        # Only what an .hsm may contain (HmgSeogaemoHsmExtract.allowed); sources, build and tests stay out.
+        if not (relative in HSM_TOP or relative.startswith("files/") or re.fullmatch(r"strings/[a-z]{2}(-[A-Z]{2})?\.txt", relative)):
             continue
         data = path.read_bytes()
         if relative == "module.properties":

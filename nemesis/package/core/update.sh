@@ -128,7 +128,7 @@ if [ "$verb" = stage ]; then
     [ ! -e "$dest" ] || { echo 'version already staged' >&2; exit 1; }
     java_update extract "$root/incoming" "$installed" "$dest" || { rm -rf "$dest"; sg_update_dex_prune "$root/versions" || :; exit 1; }
     check_md5 "$dest" || { rm -rf "$dest"; sg_update_dex_prune "$root/versions" || :; exit 1; }
-    [ -s "$dest/modules.list" ] && [ -s "$dest/modules.graph" ] && [ -f "$dest/bin/install-apk.sh" ] && [ -f "$dest/bin/hmg-seogaemo-root" ] && [ -f "$dest/svc/reconcile.sh" ] || exit 1
+    [ -f "$dest/modules.list" ] && [ -f "$dest/modules.graph" ] && [ -f "$dest/bin/install-apk.sh" ] && [ -f "$dest/bin/hmg-seogaemo-root" ] && [ -f "$dest/svc/reconcile.sh" ] || exit 1
     sync
     sg_print "$version" > "$root/staged"
     echo 'phase=staged' > "$root/journal"
@@ -181,7 +181,7 @@ sg_print "$installed" > "$root/previous-version"
 echo 'phase=applying' > "$root/journal"
 sync
 switch_to "$new"
-if ! /system/bin/sh "$root/current/bin/install-apk.sh" || ! grep -Fxq "$version" "$root/current/VERSION" || ! [ -s "$root/current/modules.graph" ] || ! dumpsys package com.seogaemo.hmg | grep -Fq "versionName=$version" || ! HMG_SEOGAEMO_UPDATE_HEALTH=1 HMG_SEOGAEMO_PROJECTION_ROLLBACK_GUARD=1 /system/bin/sh "$root/current/svc/reconcile.sh"; then
+if ! /system/bin/sh "$root/current/bin/install-apk.sh" || ! grep -Fxq "$version" "$root/current/VERSION" || ! [ -f "$root/current/modules.graph" ] || ! dumpsys package com.seogaemo.hmg | grep -Fq "versionName=$version" || ! HMG_SEOGAEMO_UPDATE_HEALTH=1 HMG_SEOGAEMO_PROJECTION_ROLLBACK_GUARD=1 /system/bin/sh "$root/current/svc/reconcile.sh"; then
     auto_rollback || true
     exit 1
 fi

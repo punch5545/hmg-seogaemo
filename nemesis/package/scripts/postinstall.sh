@@ -46,5 +46,10 @@ if [ "$android_ready" -eq 1 ]; then
     if [ -d "$base/bundled" ]; then
         SG_DATA_ROOT=$state /system/bin/sh "$base/core/module.sh" install-bundled >> "$state/reconcile.log" 2>&1 < /dev/null || :
     fi
+    # CarPlay on from an older package moves to the core hook host now, so one restart finishes
+    # the update (boot reconcile runs after zygote start and would need a second one).
+    if [ "$(cat "$state/desired/wireless-carplay-and-aa" 2>/dev/null)" = on ]; then
+        /system/bin/sh "$base/bin/hmg-seogaemo-root" wireless-carplay-and-aa apply >> "$state/reconcile.log" 2>&1 < /dev/null || :
+    fi
 fi
 [ "$android_ready" -eq 1 ] || echo 'Android is not ready; APK retained for automatic installation when ready'

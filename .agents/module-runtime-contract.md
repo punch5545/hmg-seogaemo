@@ -8,7 +8,7 @@ Topic docs hold the rest: installable modules → [installable-modules.md](insta
 
 `hmg-seogaemo-root <id> apply|revert|status|precheck` runs `modules/<id>.sh <verb>` as root with:
 
-- `HMG_SEOGAEMO_BASE`: installed package root (contains `lib/`, `modules/`, `modules.list`, `modules.graph`).
+- `HMG_SEOGAEMO_BASE`: installed package root (contains `lib/`, `bundled/`, `modules/`, `modules.list`, `modules.graph`; the lists hold only the `package-compat` entry kept for older installs' OTA checks, see installable-modules.md).
 - `HMG_SEOGAEMO_MODULE_DIR`: `$HMG_SEOGAEMO_BASE/modules/<id>.d` = packaged copy of `modules/<id>/payload/`
   (extra files: jars, `.so`, XML, APK patches). Absent if the module has no payload.
 - `HMG_SEOGAEMO_STATE`: `/data/nemesis/backup/hmg-seogaemo/modules/<id>` (mode 0700, survives updates,
@@ -41,7 +41,8 @@ baseline on first touch, perform, verify, mark applied, append ledger; non-zero 
 | `sg_bind_mount <target> <payload-rel-src>` | non-persistent bind mount, recorded; reapplied by reconcile at boot |
 | `sg_service_restart <name>` | `stop`/`start` an init service (allow-listed per module in `module.properties` `services=`) |
 | `sg_service_call <service> <code>` | fixed Binder call, only if the exact `service:code` pair is listed in `service_calls=`; validates both arguments, enforces a 15-second timeout and records every attempted result in the ledger |
-| `sg_zygote_install <wrapper-rel-src> <loader-rel-src> <jar-rel-src>` | guarded transaction for `/system/bin/app_process`, its `app_process.hmg-seogaemo-stock` copy, the wireless loader and JAR, and `enable`/`enabled`/`starts`/`disable` state; all eight paths must be in `owns_files` |
+| `sg_zygote_install <wrapper-rel-src> <loader-rel-src> <jar-rel-src>` | guarded transaction for `/system/bin/app_process`, its `app_process.hmg-seogaemo-stock` copy, the loader and JAR, and `enable`/`enabled`/`starts`/`disable` state; all eight paths must be in `owns_files`. Only the core hook host (`sg_core_hook_ensure`) calls it now |
+| `sg_hook_register <jar-rel-src> <entry-class> <process>...` | register this module's hook jar with the core hook host (`$SG_DATA_ROOT/core/hook/mods/<id>/{hook.jar,entry,processes}`, ledgered as the module's files); a `hooks=1` manifest owns these three paths implicitly. Follow with `sg_core_hook_ensure`; after `sg_revert_all` call `sg_core_hook_release` |
 | `sg_dex_cache_track <system-jar> <app-package>` | track the Dalvik cache entry for an owned `/system/framework/*.jar` and the package's `app_hmg-seogaemo-wireless-dex` files; these two derived cache namespaces are the sole exception to explicit `owns_files` listing |
 | `sg_revert_all` | undo every change this module made, newest first, with the guarded restore rules below; clears baselines only after every item verified |
 

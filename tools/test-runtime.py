@@ -1948,10 +1948,10 @@ def test_projection_reader_vm(temp):
     state = base / 'state/modules/wireless-carplay-and-aa'
     payload = base / 'payload'
     target = base / 'target'
-    for directory in (state, payload / 'data', base / 'modules', target / 'system/bin'):
+    for directory in (state, payload / 'files', base / 'modules', target / 'system/bin'):
         directory.mkdir(parents=True)
     (base / 'modules/wireless-carplay-and-aa.properties').write_text('owns_files=/system/bin/app_process\n')
-    (payload / 'data/hmg-seogaemo-projection-runtime.jar').write_bytes(b'reader')
+    (payload / 'files/hmg-seogaemo-projection-runtime.jar').write_bytes(b'reader')
     process = target / 'system/bin/app_process.hmg-seogaemo-stock'
     script(process, '''
 set -eu

@@ -7,9 +7,9 @@ import java.util.Map;
 import java.util.TreeMap;
 
 /** Bounded key=value result of the zygote pass, written once to core/hook/status. */
-final class RuntimeResult {
+final class HostStatus {
     private static final Map<String, String> values = new TreeMap<String, String>();
-    private RuntimeResult() {}
+    private HostStatus() {}
 
     static synchronized void put(String key, String value) {
         if (values.size() < 64 || values.containsKey(key)) values.put(key, clean(value));

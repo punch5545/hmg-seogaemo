@@ -114,7 +114,7 @@ pf_native_libs() {
     pf_root=${SG_TARGET_ROOT:-}
     pf_known=
     pf_module=$(sg_module_dir "${HMG_SEOGAEMO_BASE:-}" wireless-carplay-and-aa 2>/dev/null)
-    for pf_rec in "$pf_module"/payload/recipes/*.recipe "$pf_module"/recipes/*.recipe; do
+    for pf_rec in "$pf_module"/files/recipes/*.recipe "$pf_module"/payload/recipes/*.recipe "$pf_module"/recipes/*.recipe; do
         [ -f "$pf_rec" ] || continue
         while IFS=' ' read -r pf_kw pf_a pf_b; do
             [ "$pf_kw" = native ] && pf_known="$pf_known $pf_a"

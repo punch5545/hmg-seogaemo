@@ -8,11 +8,11 @@ package hmgapi.hook;
  * is never found here, so the DexClassLoader under this one defines it from the mod's
  * jar, linked against the app.
  */
-final class AppPartLoader extends ClassLoader {
+public final class AppPartLoader extends ClassLoader {
     final String prefix;
     final ClassLoader mod, app;
 
-    AppPartLoader(String pkg, ClassLoader mod, ClassLoader app) {
+    public AppPartLoader(String pkg, ClassLoader mod, ClassLoader app) {
         super(mod);   // never asked (loadClass below decides); Dalvik refuses a null parent
         this.prefix = pkg + ".";
         this.mod = mod;

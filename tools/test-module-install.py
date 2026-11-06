@@ -226,7 +226,8 @@ def test_hook_host(car):
     car.root("module", "install", car.offer(hooker("hook-one", "com.android.settings")))
     generated = (car.data / "installed/hook-one.properties").read_text().splitlines()
     assert "hooks=1" in generated and "restart=head_unit" in generated, generated
-    assert "excludes=wireless-carplay-and-aa" in generated, generated
+    # Hook modules share the core host with CarPlay; no generated exclusion.
+    assert "excludes=" in generated and "excludes=wireless-carplay-and-aa" not in generated, generated
     assert any(line.startswith("owns_files=") and f"{mods}/hook-one/entry" in line for line in generated), generated
     out = car.root("hook-one", "apply")
     assert "state=pending-restart" in out and "restart=head_unit" in out, out
@@ -393,6 +394,10 @@ def test_converted_builtin(car):
         "wifi-client": ("raw_shell=1", "owns_props=persist.wifi.state",
                         "owns_files=/system/etc/permissions/android.hardware.wifi.xml",
                         "excludes=wireless-carplay-and-aa", "restart=head_unit"),
+        "wireless-carplay-and-aa": ("raw_shell=1", "hooks=1", "restart=head_unit",
+                                    "known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:33f798115689d1859e8d2159dc88e7dc",
+                                    "owns_lines.1=/system/onebin/neev_kr/featurexml.cfg:-/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml",
+                                    "owns_props=persist.ium.support,persist.sys.iap2.wifi,persist.iap2.iden.wireless"),
     }
     converted = sorted(p.parent.name for p in (ROOT / "modules").glob("*/module.properties")
                        if "\napi=" in "\n" + p.read_text())
@@ -404,6 +409,12 @@ def test_converted_builtin(car):
         (car.base / f"bundled/{module_id}.hsm").write_bytes(data)
         (car.base / f"bundled/{module_id}.sha256").write_text(hashlib.sha256(data).hexdigest())
     (car.data / "desired/skip-consent-screen").write_text("on")
+    # Updating from a package where CarPlay was a built-in that is on: its state stays and the
+    # first bundled install must not refuse it (it moves on its next apply).
+    (car.data / "desired/wireless-carplay-and-aa").write_text("on")
+    legacy = car.data / "modules/wireless-carplay-and-aa/file.0123456789abcdef0123456789abcdef"
+    legacy.mkdir(parents=True)
+    (legacy / "ready").write_text("")
     out = car.root("module", "install-bundled")
     listed = car.root("module", "list")
     for module_id in converted:

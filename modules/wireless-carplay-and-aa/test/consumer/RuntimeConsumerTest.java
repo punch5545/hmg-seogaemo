@@ -27,8 +27,8 @@ public final class RuntimeConsumerTest {
         put(path("proc/" + pid + "/status"), "Uid:\t" + uid + "\t" + uid + "\t" + uid + "\t" + uid + "\n");
         HmgSeogaemoProjectionRuntime r = reader();
         String s = "format=1\nboot=boot-two\npid=" + pid + "\nstart_ticks=900\nuid=" + uid + "\npackage=" + pkg + "\nprocess=" + pkg +
-            "\npayload_jar_sha256=" + r.digest(path("system/framework/hmg-seogaemo-wireless-hook.jar")) +
-            "\npayload_loader_sha256=" + r.digest(path("system/lib/libhmg_seogaemo_wireless_hook.so")) + "\ngate.state=ready\n";
+            "\npayload_jar_sha256=" + r.digest(path("system/framework/hmg-seogaemo-hook.jar")) +
+            "\npayload_loader_sha256=" + r.digest(path("system/lib/libhmg_seogaemo_hook.so")) + "\ngate.state=ready\n";
         if (i >= 0) for (String part : HmgSeogaemoProjectionRuntime.PARTS[i]) s += "part." + part + ".state=loaded\n";
         if (i == 0) for (String lib : new String[] {"libCarPlayCore.so", "libCarPlayAudio.so", "libCarPlayUtils.so"}) s += "native." + lib + ".state=applied\n";
         if (i == 2) s += "native.libautoreceiver_infobank.so.state=applied\n"; return s;
@@ -40,8 +40,8 @@ public final class RuntimeConsumerTest {
     static void check(boolean b, String message) { if (!b) throw new AssertionError(message); }
     public static void main(String[] args) throws Exception {
         root = new File(args[0]); runtime = path("state/runtime/wireless-carplay-and-aa"); runtime.mkdirs();
-        put(path("proc/sys/kernel/random/boot_id"), "boot-two\n"); put(path("system/framework/hmg-seogaemo-wireless-hook.jar"), "jar-A");
-        put(path("system/lib/libhmg_seogaemo_wireless_hook.so"), "loader-A"); expect("unknown", "zygote");
+        put(path("proc/sys/kernel/random/boot_id"), "boot-two\n"); put(path("system/framework/hmg-seogaemo-hook.jar"), "jar-A");
+        put(path("system/lib/libhmg_seogaemo_hook.so"), "loader-A"); expect("unknown", "zygote");
         for (int i = -1; i < 5; i++) put(record(i, 101 + i), contents(i, 101 + i)); expect("on", "ready");
         File dipo = record(0, 101); String ready = contents(0, 101);
         put(dipo, ready.replace("boot-two", "boot-one")); expect("unknown", "dipo");
@@ -56,8 +56,8 @@ public final class RuntimeConsumerTest {
         put(dipo, failed); expect("failed", "EACCES"); put(record(0, 201), contents(0, 201)); expect("failed", "EACCES");
         put(dipo, failed.replace("boot-two", "boot-one")); expect("on", "ready"); record(0, 201).delete(); put(dipo, ready);
         put(dipo, ready.replace("native.libCarPlayAudio.so.state=applied", "native.libCarPlayAudio.so.state=registered")); expect("unknown", "Audio");
-        put(dipo, ready); put(path("system/framework/hmg-seogaemo-wireless-hook.jar"), "jar-B"); expect("pending-restart", "generation");
-        put(path("system/framework/hmg-seogaemo-wireless-hook.jar"), "jar-A");
+        put(dipo, ready); put(path("system/framework/hmg-seogaemo-hook.jar"), "jar-B"); expect("pending-restart", "generation");
+        put(path("system/framework/hmg-seogaemo-hook.jar"), "jar-A");
         File gpm = record(2, 103); String gpmReady = contents(2, 103);
         put(gpm, gpmReady.replace("native.libautoreceiver_infobank.so.state=applied", "native.libautoreceiver_infobank.so.applicability=stock")); expect("on", "ready");
         File log = new File(dir(0), "p-101-900.log"), previous = new File(dir(0), "p-101-900.log.1");

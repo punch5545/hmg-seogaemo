@@ -47,7 +47,7 @@ printf 'id=zeta\nclass=com.example.Zeta\nversion=@VERSION@\nrequires_root=false\
 : > "$fixture/modules/zeta/src/com/example/Zeta.java"
 printf '<resources><string name="zeta_name">Zeta</string></resources>\n' > "$fixture/modules/zeta/res/values/strings.xml"
 PROJECT_ROOT="$fixture" VERSION_TOOL="$repo/tools/version.py" sh "$repo/tools/gen-modules.sh"
-printf 'alpha\nzeta\n' > "$scratch/expected-ids"
+printf 'alpha\nzeta\npackage-compat\n' > "$scratch/expected-ids"
 cmp "$scratch/expected-ids" "$fixture/out/package/modules.list"
 
 # The dependency wins over lexical order; one-sided exclusion becomes symmetric.
@@ -59,7 +59,7 @@ printf 'id=zed\nclass=com.example.Zed\nversion=@VERSION@\nrequires_root=false\n'
 : > "$fixture/modules/zed/src/com/example/Zed.java"
 printf 'depends=zed\n' >> "$fixture/modules/alpha/module.properties"
 PROJECT_ROOT="$fixture" sh "$repo/tools/gen-modules.sh"
-printf 'beta\nzed\nalpha\n' > "$scratch/expected-ids"
+printf 'beta\nzed\nalpha\npackage-compat\n' > "$scratch/expected-ids"
 cmp "$scratch/expected-ids" "$fixture/out/package/modules.list"
 grep -Fq 'alpha' "$fixture/out/package/modules.graph"
 grep -Fq 'zed' "$fixture/out/package/modules.graph"

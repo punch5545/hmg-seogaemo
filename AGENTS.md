@@ -55,7 +55,7 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
   Toolbox `mv` accepts no options. Full evidence: `.agents/android44-shell-audit.md`.
 - **Modules never mutate the system directly.** All writes go through the package API in
   `nemesis/package/lib/common.sh` (`sg_prop_set`, `sg_file_put`, `sg_file_replace_line`,
-  `sg_file_delete`, `sg_bind_mount`, `sg_service_restart`, `sg_zygote_install`,
+  `sg_file_delete`, `sg_bind_mount`, `sg_service_restart`, `sg_zygote_install`, `sg_hook_register`,
   `sg_dex_cache_track`, `sg_revert_all`), which validates ownership (`module.properties`
   `owns_props`/`owns_files`/`owns_lines.N`/`services`), baselines, writes, verifies and appends to the ledger.
   `sg_service_call` accepts only exact `service_calls=` pairs, times out, and records every call.
@@ -101,7 +101,7 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 | Path | What |
 |---|---|
 | `app/` | APK `com.seogaemo.hmg`: `ui/` (Features/Car/Settings tab screens: `FeaturesView`, `FeatureCard`, `LineIcon`, `OptionsList`, `ConfirmDialog`, `StepProgressDialog`, `Theme`; `ui/settings` page components), `module/` (registry, `ModuleManager`, `RootClient`, contract types), `core/update/` (OTA) |
-| `modules/<id>/` | one module = one dir: `module.properties`, `src/` (`com.seogaemo.hmg.modules.*`), `res/` (`<snake_id>_*` strings), `root/<id>.sh`, optional `payload/`, `build/build.sh`, `test/run.sh` |
+| `modules/<id>/` | one module = one dir in package form, shipped as `bundled/<id>.hsm`: `module.properties` (`api=1`, `raw_shell=1`), `module.sh`, `strings/{en,ko}.txt`, `ui.txt`, `files/` (payload); repository-only `build/build.sh`, `payload/` (sources), `test/run.sh` |
 | `nemesis/package/` | NEMESIS package `hmg-seogaemo`: `NEMESIS.data`, `bin/` (`hmg-seogaemo-root`, `open.sh`, `install-apk.sh`), `lib/common.sh`, `core/update.sh`, `scripts/` (stable hook wrappers), `svc/reconcile.sh` (boot-only), `svc/watcher.sh` (boot/screen_on watch dispatch, never apply/revert) |
 | `nemesis/usb/` | USB wrapper descriptor (`packages/hmg-seogaemo.zip`) |
 | `tools/` | module generator, packager, root-script lint, tests, `testlib/fakebin` (toolbox shims) |
@@ -109,8 +109,9 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 | `keys/` | OTA manifest public key only |
 | `.agents/` | design, contracts, research, per-module notes |
 
-The module list/graph is generated at build time from `modules/*/module.properties`; there is no
-hand-edited list. Current modules: `wifi-client` (excludes `wireless-carplay-and-aa`),
+Every module ships as a bundled `.hsm` package, installed on first install and removable; there are no
+built-in modules. The package's `modules.list`/`modules.graph` hold only the `package-compat` entry so
+installs from 0.1.33 and older accept an OTA payload; the runtime ignores it. Current modules: `wifi-client` (excludes `wireless-carplay-and-aa`),
 `wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`,
 `skip-consent-screen` (factory Binder call on boot and screen wake), and
 `user-button-shortcut` / `user-button-head-unit`.
@@ -186,8 +187,10 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 - The 18 v1.0.1 map additions have exact-stock host evidence and still need on-car reflection.
   Wireless Android Auto and cluster/HUD lane rendering have no car evidence; user-button
   reassertion after restart is unverified. Other feature claims require their own evidence.
-- `wireless-carplay-and-aa` replaces `/system/bin/app_process` (boot guard disables it after 3
-  quick restarts). Keep an adb recovery path ready.
+- The core hook host replaces `/system/bin/app_process` for every hook module, `wireless-carplay-and-aa`
+  included (boot guard disables it after 3 quick restarts). Keep an adb recovery path ready. CarPlay on the
+  host and the migration from its old self-installed wrapper are car-verified; turning CarPlay off on the
+  host (exact stock restore) is not yet.
 - `wifi-client` STA vs the CarPlay AP on one radio: treated as mutually exclusive; concurrency is
   unknown. `wifi-client` sets `persist.wifi.state=3` with the feature XML; no NEEV KOR system file
   names that property, and stock `HKMC_WifiSettings` gates its client menu on `android.hardware.wifi`.
