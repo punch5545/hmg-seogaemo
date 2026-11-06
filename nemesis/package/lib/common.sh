@@ -1568,6 +1568,7 @@ sg_core_hook_owned() {
 # builds, so no directory baseline names them). Only an empty directory that is an
 # ancestor of one of this module's owns_files is removed; one ledger row each.
 sg_owned_dirs_prune() (
+    set +f  # the emptiness check below globs; callers may run with noglob
     for sg_pd in "$@"; do
         case "$sg_pd" in /system/etc/hmg-seogaemo|/system/etc/hmg-seogaemo/*) ;; *) exit 2;; esac
         case "$sg_pd" in *..*|*//*) exit 2;; esac

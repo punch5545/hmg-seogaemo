@@ -2109,6 +2109,53 @@ esac
     assert (base / 'state/invoked').read_text().strip() == 'clear'
 
 
+def test_owned_dirs_prune(temp):
+    """sg_owned_dirs_prune removes only empty, owned directories under /system/etc/hmg-seogaemo."""
+    base = temp / "prune"
+    state = base / "data/modules/prune"
+    state.mkdir(parents=True)
+    (base / "modules").mkdir()
+    fake = base / "fake"
+    fake.mkdir()
+    script(fake / "nemesis", 'echo "$*" >> "$FAKE_REMOUNTS"\n')
+    root = base / "target"
+    assets = root / "system/etc/hmg-seogaemo"
+    (assets / "m/recipes").mkdir(parents=True)
+    (assets / "full").mkdir()
+    (assets / "full/x").write_text("kept")
+    (root / "system/etc/other").mkdir(parents=True)
+    (base / "modules/prune.properties").write_text(
+        "owns_files=/system/etc/hmg-seogaemo/m/recipes/a.recipe,/system/etc/hmg-seogaemo/full/x\n")
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"], FAKE_REMOUNTS=str(base / "remounts"),
+               SG_DATA_ROOT=str(base / "data"), HMG_SEOGAEMO_STATE=str(state), HMG_SEOGAEMO_BASE=str(base),
+               SG_TARGET_ROOT=str(root))
+    runner = base / "run-prune"
+    script(runner, f'''
+set -eu
+. "{ROOT / 'nemesis/package/lib/common.sh'}"
+for refused in /system/etc/other /system/etc/hmg-seogaemo/unowned /system/etc/hmg-seogaemo/m/../full; do
+    rc=0; sg_owned_dirs_prune "$refused" || rc=$?
+    [ "$rc" -eq 2 ] || exit 10
+done
+# Callers may run with noglob; a non-empty directory must still be kept.
+set -f
+sg_owned_dirs_prune /system/etc/hmg-seogaemo/full
+set +f
+sg_owned_dirs_prune /system/etc/hmg-seogaemo/m/recipes /system/etc/hmg-seogaemo/m /system/etc/hmg-seogaemo
+# Already gone: nothing to do.
+sg_owned_dirs_prune /system/etc/hmg-seogaemo/m/recipes /system/etc/hmg-seogaemo/m
+''')
+    run(runner, env=env)
+    assert not (assets / "m").exists()
+    assert (assets / "full/x").read_text() == "kept"
+    assert (root / "system/etc/other").is_dir()
+    rows = (base / "data/ledger/ledger.tsv").read_text().splitlines()[1:]
+    assert [r.split("\t")[1:4] for r in rows] == [
+        ["prune", "directory_prune", "/system/etc/hmg-seogaemo/m/recipes"],
+        ["prune", "directory_prune", "/system/etc/hmg-seogaemo/m"]], rows
+    assert (base / "remounts").read_text().splitlines() == ["remount rw", "remount ro"] * 2
+
+
 run_tests([
     test_toolbox_md5,
     test_file_key_failures,
@@ -2117,6 +2164,7 @@ run_tests([
     test_root,
     test_automatic_intent_lock,
     test_mutation_api_and_export,
+    test_owned_dirs_prune,
     test_service_call_api,
     test_reconcile,
     test_watch_dispatch,
