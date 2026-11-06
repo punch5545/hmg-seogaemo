@@ -413,14 +413,16 @@ def bundle_as(car, module_id, files):
 
 def test_replaces(car):
     # A package update renames a bundled module that is on: the new id takes over state without a write.
-    bundle_as(car, "old-raw", raw_package("old-raw", "persist.raw.demo"))
+    # Both own the same file, so the installer must not count the old module as a colliding owner.
+    owned = "owns_files=/system/etc/raw-demo.conf\n"
+    bundle_as(car, "old-raw", raw_package("old-raw", "persist.raw.demo", owned))
     car.root("module", "install-bundled")
     assert "state=on" in car.root("old-raw", "apply")
     assert car.prop("persist.raw.demo") == "on"
     (car.data / "settings/old-raw").mkdir(parents=True)
     (car.data / "settings/old-raw/mode").write_text("x")
     before = (car.data / "ledger/ledger.tsv").read_text().count("prop_set")
-    renamed = raw_package("new-raw", "persist.raw.demo", "replaces=old-raw\nkmods=x8188\nkmod.x8188=files/x.ko\n")
+    renamed = raw_package("new-raw", "persist.raw.demo", owned + "replaces=old-raw\nkmods=x8188\nkmod.x8188=files/x.ko\n")
     renamed["files/x.ko"] = "ko"
     # Different persistent targets: the old module stays and nothing moves.
     wider = dict(renamed, **{"module.properties": renamed["module.properties"].replace(
@@ -449,7 +451,7 @@ def test_replaces(car):
     # An interrupted takeover (journal written, state moved, old package still listed) finishes next time.
     car.root("module", "remove", "new-raw")
     (car.data / "bundled-removed/new-raw").unlink()
-    bundle_as(car, "old-raw", raw_package("old-raw", "persist.raw.demo"))
+    bundle_as(car, "old-raw", raw_package("old-raw", "persist.raw.demo", owned))
     car.root("module", "install-bundled")
     assert "state=on" in car.root("old-raw", "apply")
     (car.data / "migrate").mkdir(exist_ok=True)
@@ -465,7 +467,7 @@ def test_replaces(car):
     car.root("module", "remove", "new-raw")
     for name in ("new-raw", "old-raw"):
         (car.data / f"bundled-removed/{name}").unlink(missing_ok=True)
-    bundle_as(car, "old-raw", raw_package("old-raw", "persist.raw.demo"))
+    bundle_as(car, "old-raw", raw_package("old-raw", "persist.raw.demo", owned))
     car.root("module", "install-bundled")
     car.root("module", "remove", "old-raw")
     bundle_as(car, "new-raw", renamed)

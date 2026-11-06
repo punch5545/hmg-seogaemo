@@ -424,8 +424,11 @@ mi_check_ui() {
 mi_collides() {
     sg_transient_clash "$work.d/module.properties" "$mi_id" && return 0
     mi_old_ifs=$IFS
+    # A bundled module that takes over a renamed one (replaces=) owns the same targets by design.
+    mi_taken=
+    [ "$mi_mode" != bundled ] || mi_taken=$(mi_field replaces "$work.d/module.properties")
     for mi_other in $(sg_module_list "$base"); do
-        [ "$mi_other" != "$mi_id" ] || continue
+        [ "$mi_other" != "$mi_id" ] && [ "$mi_other" != "$mi_taken" ] || continue
         mi_other_props=$(sg_module_props "$base" "$mi_other")
         [ -f "$mi_other_props" ] || continue
         mi_other_files=,$(mi_field owns_files "$mi_other_props"),
