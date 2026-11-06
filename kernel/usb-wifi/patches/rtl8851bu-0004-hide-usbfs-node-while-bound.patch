@@ -1,0 +1,67 @@
+diff --git a/os_dep/linux/usb_intf.c b/os_dep/linux/usb_intf.c
+index 1159053..0d6e363 100755
+--- a/os_dep/linux/usb_intf.c
++++ b/os_dep/linux/usb_intf.c
+@@ -41,6 +41,7 @@ static int rtw_dev_resume(struct usb_interface *intf);
+ static int rtw_dev_probe(struct usb_interface *pusb_intf, const struct usb_device_id *pdid);
+ static void rtw_dev_remove(struct usb_interface *pusb_intf);
+ static void hmg_seogaemo_usb_disconnect(struct usb_interface *intf);
++static int hmg_seogaemo_usb_probe(struct usb_interface *intf, const struct usb_device_id *id);
+ 
+ static void rtw_dev_shutdown(
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0))
+@@ -223,7 +224,7 @@ struct rtw_usb_drv {
+ 
+ struct rtw_usb_drv usb_drv = {
+ 	.usbdrv.name = (char *)DRV_NAME,
+-	.usbdrv.probe = rtw_dev_probe,
++	.usbdrv.probe = hmg_seogaemo_usb_probe,
+ 	.usbdrv.disconnect = hmg_seogaemo_usb_disconnect,
+ 	.usbdrv.id_table = rtw_usb_id_tbl,
+ 	.usbdrv.suspend =  rtw_dev_suspend,
+@@ -1044,6 +1045,37 @@ static void rtw_dev_remove(struct usb_interface *pusb_intf)
+ 
+ }
+ 
++/*
++ * HMG-Seogaemo: the head unit's Android Auto stack opens every node under
++ * /dev/bus/usb and sends AOA vendor requests to it. usbfs passes vendor
++ * requests to ep0 even while a kernel driver owns the device. While this
++ * driver is bound, replay the device's "remove" uevent so ueventd deletes the
++ * usbfs node, and replay "add" when unbinding from a device that is still
++ * attached. The USB device itself stays registered.
++ */
++static bool hmg_seogaemo_hide_usbfs = true;
++module_param_named(hide_usbfs, hmg_seogaemo_hide_usbfs, bool, 0444);
++MODULE_PARM_DESC(hide_usbfs, "Hide the usbfs node of a bound dongle from userspace (default: Y)");
++
++static void hmg_seogaemo_usbfs_uevent(struct usb_interface *intf, enum kobject_action action)
++{
++	struct usb_device *udev = interface_to_usbdev(intf);
++
++	if (hmg_seogaemo_hide_usbfs && udev->state != USB_STATE_NOTATTACHED)
++		kobject_uevent(&udev->dev.kobj, action);
++}
++
++static int hmg_seogaemo_usb_probe(struct usb_interface *intf, const struct usb_device_id *id)
++{
++	int ret;
++
++	hmg_seogaemo_usbfs_uevent(intf, KOBJ_REMOVE);
++	ret = rtw_dev_probe(intf, id);
++	if (ret)
++		hmg_seogaemo_usbfs_uevent(intf, KOBJ_ADD);
++	return ret;
++}
++
+ /*
+  * HMG-Seogaemo: after a physical unplug the USB core has already marked the
+  * device NOTATTACHED when disconnect runs. Flag the device as surprise
+@@ -1058,6 +1090,7 @@ static void hmg_seogaemo_usb_disconnect(struct usb_interface *intf)
+ 	if (dvobj && interface_to_usbdev(intf)->state == USB_STATE_NOTATTACHED)
+ 		dev_set_surprise_removed(dvobj);
+ 	rtw_dev_remove(intf);
++	hmg_seogaemo_usbfs_uevent(intf, KOBJ_ADD);
+ }
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24))
+ extern int console_suspend_enabled;

@@ -1,0 +1,92 @@
+diff --git a/include/osdep_service_linux.h b/include/osdep_service_linux.h
+index 22140de..4879ef9 100755
+--- a/include/osdep_service_linux.h
++++ b/include/osdep_service_linux.h
+@@ -56,6 +56,25 @@
+ #include <linux/list.h>
+ #include <linux/vmalloc.h>
+ 
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 3, 0))
++/* HMG-Seogaemo: strscpy() arrived in Linux 4.3; same contract for 3.18. */
++static inline ssize_t strscpy(char *dest, const char *src, size_t count)
++{
++	size_t len;
++
++	if (count == 0)
++		return -E2BIG;
++	len = strnlen(src, count);
++	if (len == count) {
++		memcpy(dest, src, count - 1);
++		dest[count - 1] = '\0';
++		return -E2BIG;
++	}
++	memcpy(dest, src, len + 1);
++	return len;
++}
++#endif
++
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0))
+ #define del_timer_sync timer_delete_sync
+ #endif
+diff --git a/os_dep/osdep_service_linux.c b/os_dep/osdep_service_linux.c
+index b1bc4b1..c166b65 100644
+--- a/os_dep/osdep_service_linux.c
++++ b/os_dep/osdep_service_linux.c
+@@ -883,7 +883,9 @@ u16 rtw_warn_on_cnt;
+ void rtw_warn_on(bool condition){
+ 	if(condition){
+ 		WARN_ON(condition);
+-		ATOMIC_INC((ATOMIC_T *)&rtw_warn_on_cnt);
++		/* HMG-Seogaemo: a u16 is not an atomic_t; GCC 4.7 rejects the cast. */
++		if (rtw_warn_on_cnt < 0xffff)
++			rtw_warn_on_cnt++;
+ 	}
+ }
+ 
+diff --git a/phl/test/phl_dbg_cmd.c b/phl/test/phl_dbg_cmd.c
+index db7e4e2..5a5a46b 100644
+--- a/phl/test/phl_dbg_cmd.c
++++ b/phl/test/phl_dbg_cmd.c
+@@ -162,7 +162,10 @@ rtw_phl_dbg_core_cmd(struct phl_info_t *phl_info,
+ 	return RTW_PHL_STATUS_SUCCESS;
+ }
+ 
+-#ifdef CONFIG_PHL_TEST_SUITE
++/*
++ * HMG-Seogaemo: the hex parser is also used by phl_ps_dbg_cmd.c, which is
++ * built without CONFIG_PHL_TEST_SUITE (MP test mode off).
++ */
+ bool
+ _is_hex_digit(char ch_tmp)
+ {
+@@ -230,6 +233,7 @@ _get_hex_from_string(char *szstr, u32 *val)
+ 	return true;
+ }
+ 
++#ifdef CONFIG_PHL_TEST_SUITE
+ void
+ _phl_dbg_cmd_switch_chbw(struct phl_info_t *phl_info, char input[][MAX_ARGV],
+ 			 u32 input_num, char *output, u32 out_len)
+diff --git a/phl/test/phl_dbg_cmd.h b/phl/test/phl_dbg_cmd.h
+index b8a5c91..92636d9 100644
+--- a/phl/test/phl_dbg_cmd.h
++++ b/phl/test/phl_dbg_cmd.h
+@@ -51,6 +51,9 @@ struct phl_dbg_cmd_info {
+ enum rtw_phl_status
+ rtw_phl_dbg_core_cmd(struct phl_info_t *phl_info, struct rtw_proc_cmd *incmd, char *output, u32 out_len);
+ 
++bool
++_get_hex_from_string(char *szstr, u32 *val);
++
+ #ifdef CONFIG_PHL_TEST_SUITE
+ 
+ enum PHL_DBG_CMD_ID {
+@@ -174,8 +177,6 @@ rtw_phl_dbg_proc_cmd(struct phl_info_t *phl_info,
+ 		     struct rtw_proc_cmd *incmd,
+ 		     char *output,
+ 		     u32 out_len);
+-bool
+-_get_hex_from_string(char *szstr, u32 *val);
+ #else
+ 
+ #define rtw_phl_dbg_proc_cmd(_phl_info, _incmd, _output, _out_len) RTW_HAL_STATUS_SUCCESS

@@ -1,0 +1,44 @@
+diff --git a/os_dep/linux/usb_intf.c b/os_dep/linux/usb_intf.c
+index bec258f..15983d5 100644
+--- a/os_dep/linux/usb_intf.c
++++ b/os_dep/linux/usb_intf.c
+@@ -41,6 +41,7 @@ static int rtw_resume(struct usb_interface *intf);
+ 
+ static int rtw_drv_init(struct usb_interface *pusb_intf, const struct usb_device_id *pdid);
+ static void rtw_dev_remove(struct usb_interface *pusb_intf);
++static void hmg_seogaemo_usb_disconnect(struct usb_interface *intf);
+ 
+ static void rtw_dev_shutdown(struct device *dev)
+ {
+@@ -325,7 +326,7 @@ struct rtw_usb_drv {
+ struct rtw_usb_drv usb_drv = {
+ 	.usbdrv.name = (char *)DRV_NAME,
+ 	.usbdrv.probe = rtw_drv_init,
+-	.usbdrv.disconnect = rtw_dev_remove,
++	.usbdrv.disconnect = hmg_seogaemo_usb_disconnect,
+ 	.usbdrv.id_table = rtw_usb_id_tbl,
+ 	.usbdrv.suspend =  rtw_suspend,
+ 	.usbdrv.resume = rtw_resume,
+@@ -1617,6 +1618,22 @@ static void rtw_dev_remove(struct usb_interface *pusb_intf)
+ 	return;
+ 
+ }
++
++/*
++ * HMG-Seogaemo: after a physical unplug the USB core has already marked the
++ * device NOTATTACHED when disconnect runs. Flag the adapter as surprise
++ * removed before rtw_dev_remove() unregisters the net devices, so ndo_stop
++ * and the cfg80211 AP/STA teardown skip register I/O and command waits on
++ * hardware that is gone.
++ */
++static void hmg_seogaemo_usb_disconnect(struct usb_interface *intf)
++{
++	struct dvobj_priv *dvobj = usb_get_intfdata(intf);
++
++	if (dvobj && interface_to_usbdev(intf)->state == USB_STATE_NOTATTACHED)
++		rtw_set_surprise_removed(dvobj_get_primary_adapter(dvobj));
++	rtw_dev_remove(intf);
++}
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24))
+ extern int console_suspend_enabled;
+ #endif

@@ -95,3 +95,30 @@ including quick boot without a new boot ID/display transition. The shared watche
 reuses fixed screen_on dispatch on declared property drift; original product-bound
 baselines survive, and disable restores them even over drift. This uses no upstream
 hook code; see the module/runtime notes for policy and car verification limits.
+
+## USB Wi-Fi kernel drivers
+
+`kernel/usb-wifi/` builds two GPL-2.0 Realtek out-of-tree drivers for the Gen5W
+`3.18.24-tcc` kernels (tcc803x and tcc897x). Sources are fetched at build time at these
+pins and never vendored; our changes are the patches in `kernel/usb-wifi/patches/`.
+
+| Module | Chips | Source | Pinned commit |
+| --- | --- | --- | --- |
+| `88x2bu.ko` | RTL8812BU / RTL8822BU | [cilynx/rtl88x2bu](https://github.com/cilynx/rtl88x2bu) | `04ed7009bac4b235fe1880ba29e23159f49a6121` (2026-08-18) |
+| `8851bu.ko` | RTL8831BU / RTL8851BU | [fofajardo/rtl8851bu](https://github.com/fofajardo/rtl8851bu) | `9e37e7a1101316a05d5daede91549ea779b64539` (2026-09-07) |
+
+Kernel: kernel.org `linux-3.18.24.tar.xz` (sha256
+`ed54cf8c3ac6b95fc17b07b3a236bc42719c96fee08fe696cabfb5b8e07f8c1b`); compiler: AOSP
+`prebuilts/gcc/linux-x86/arm/arm-eabi-4.7` at `8b880805d454664b3eed11d0f053cdeafa1ff06e`
+(kitkat-release). Car facts (kernel version, vermagic, configs, toolchain choice and the
+behaviours the dongle needs) come from [GRT47/HKG_5W_USB_Wlan](https://github.com/GRT47/HKG_5W_USB_Wlan)
+at `2e9a74c`; that repository has no license, so only its two kernel `.config` dumps were
+taken as data (`kernel/usb-wifi/configs/PROVENANCE.md`). Its scripts and driver patches
+were not copied. To move a pin, change the commit in `kernel/usb-wifi/build.sh` and this
+table together, check that the patches still apply, and rebuild.
+
+The built modules ship in `modules/wifi/files/kmod/<platform>/` (bundled `wifi` package) with
+`files/kmod/SHA256SUMS` equal to the build's `out/SHA256SUMS`; their corresponding source is the
+pinned commits above plus our patches. `modules/wifi/files/usb-ids.txt` lists the device ids of
+the built chips, taken from each driver's `rtw_usb_id_tbl` at these pins. After a rebuild, copy
+the four `.ko` files and the sums together (the module test fails on any mismatch).
