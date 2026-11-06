@@ -25,8 +25,21 @@ covered. Our patches: `rtwlan%d` names, nl80211, no MP mode, unplug marks the de
 netdev teardown, and usbfs hiding (`hide_usbfs=1`: replays the device `remove` uevent so ueventd
 deletes `/dev/bus/usb/BBB/DDD` while bound, so Android Auto cannot send AOA requests). Not yet
 loaded on a car; the configs are third-party dumps not yet compared with our car's
-`/proc/config.gz`. Not ported: the reference's DHCP 67/1067 rewrite, extra 8851bu USB IDs and
-its `0bda:1a2b` CD-ROM mode switch.
+`/proc/config.gz`. Extra ids from our own patches: `0bda:b831` (8851bu) and `0bda:b81a`/`b820`/`b82b`
+(88x2bu). Not ported: the reference's DHCP 67/1067 rewrite, its other extra 8851bu ids and its
+`0bda:1a2b` CD-ROM mode switch.
+
+Tester car (2026-11-07 problem report, 0.1.36, tcc803x): the adapter was `0bda:b831` "802.11ax WLAN
+Adapter" (then unsupported). The car has `bcmdhd.ko`/firmware and `tcc.wifi.vendor=broadcom` but
+no chip: every bcmdhd power-up logs `failed to power up DHD generic adapter` and nothing appears on
+SDIO. `wifi` and the Car tab radio check now read that (the preflight `wifi_hw` evidence) as "no
+built-in radio", and `wifi` defaults the built-in role to off there.
+It also read `persist.wifi.state=3` after a Car tab cleanup and restart although
+`/data/property/persist.wifi.state` was absent before the cleanup, so the value comes from boot
+files or another package's init; the problem report now lists `persist.wifi` lines from
+`default.prop`, `build.prop`, `/data/local.prop`, `init*.rc` and `/system/etc` scripts. The
+leftover only blocks the built-in client role. The car has one user USB port (`4-1`), so a report
+exported from a USB stick misses the adapter unless a hub is used.
 
 ## Constraints
 

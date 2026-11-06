@@ -143,6 +143,11 @@ carplay or AndroidRuntime), `logs/nemesis.txt` (`nemesis log dump`, 128 KiB),
 `app/app-state.txt` (the app writes `files/report/app-state.txt` first: version, statuses it showed,
 recent failures) and `summary.txt`; the same redaction applies, and it works before any ledger
 exists. The app's Support page and every failure dialog offer it as 문제 보고용 내보내기.
+
+`/system` left read-write: when `remount ro` fails (EBUSY), `sg_remount_ro` once per boot appends
+to `$SG_DATA_ROOT/system-rw.log` the `/system` mount line and every process that still maps a
+deleted `/system` file or holds a `/system` file descriptor open for writing (`map|fd <pid> <comm>
+<path>`; capped at 64 KiB). Read-only. Every diagnostics export copies it to `logs/system-rw.log`.
 Read-only for the system; bounded size; refuses if no target. Exposed in Settings (Logs) as
 "Export changes to USB" and documented for adb:
 `adb shell /data/local/tmp/nemesis-d root -c '/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.
@@ -653,7 +658,13 @@ The stock hash ID is unchanged. Zygote still accepts the first two seal lines
 and checks exact identity and stock MD5s independently, allowing a previously
 verified projection map to load before boot reconciliation completes. Optional
 new points do not expand any module's required set.
-Map IDs include the complete published car metadata and layout; optional reflection failures prune `by_reference` too; generated verification preserves export layout, binds the filtered published result and selects the active generated map before historical directories. Real-JVM fixtures cover these paths, static/reference signatures, required failure, stock mismatch and boot changes. The 18 v1.0.1 additions: [car-mapping.md](car-mapping.md).
+The stock-guidance catalogue also exposes `framework.navigation_cluster.update_tbt_trap_info`
+(17 ints, argument 12 is barGraphLevel), `update_tbt_trap_info_new` (one
+`@framework.tbt_trap_info`), and `update_clu_data_new_14` (five ints), all returning void.
+`framework.tbt_trap_info` names NavigationCluster's NaviTbtTrapInfo; `.new` is
+its no-argument constructor and `.bar_graph_level` is its instance int field.
+These six optional IDs have exact-stock host evidence; on-car reflection is pending.
+Map IDs include the complete published car metadata and layout; optional reflection failures prune `by_reference` too; generated verification preserves export layout, binds the filtered published result and selects the active generated map before historical directories. Real-JVM fixtures cover these paths, static/reference signatures, required failure, stock mismatch and boot changes. The 18 v1.0.1 and six stock-guidance additions: [car-mapping.md](car-mapping.md).
 
 ## Java side
 - `RootClient.run(String moduleId, String verb)` → `RootResult` (state, restart, detail, exit code).

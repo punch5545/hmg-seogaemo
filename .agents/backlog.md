@@ -21,19 +21,38 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   incl. bitmasks at 0x43–0x50).
 - [ ] **TBT icons from firmware (ramps/roundabout); verify on car.** Icon 8 (none) and highway 160–165 are car-verified (`cluster-tbt-icons.md`). Firmware: highway entry/exit use 160–165 (not only 81/82/86), still to be used by `exactIcon`; roundabout has a main family (96/97/99/100/102/104/105/107) and an alternate-side family (192/193/195/196/198/200/201/203). Extending `exactIcon`/ramp/roundabout needs the phone-side driving-side/alt-side selector; verify against captured stock frames and drive logs first.
 - [ ] **Retire HU-side captures once firmware mapping is verified.** Lane frame (81 bytes), arrow codes and TBT icon/unit codes are being confirmed from stock libExSLNavi.so (`cluster-lane-frame.md`, `cluster-lane-arrows.md`, `cluster-tbt-icons.md`), so HU-side values no longer need reverse-engineering from observations. Plan: (1) next drive, check firmware values against captured stock `source=car-nav` 81-byte frames matched to real on-road lanes; (2) then stop the always-on `source=car-nav` capture (CarLaneCapture) or make it dev-mode-only. Keep the iAP2/phone-side records (`tbt-icons`, CarPlay `tbt-lanes`): what NAVER/Apple send is not in HU firmware and still needs field data for the maneuver/lane tables.
-- [ ] **Verify CarPlay lane glyph pairs, per-arrow status and lane distance on the car.** Implemented in `CpTurns` (`LaneGlyphs`, `laneValues`, `sendLaneDist`); host-tested only. Check on a drive with multi-direction lanes: pairs/triples draw as in [cluster-lane-arrows.md](cluster-lane-arrows.md), only the route arrow is blue, the distance box beside the strip tracks the turn distance and clears (`65535,15,15,0` is unverified) when lanes go away.
-- [ ] **Capture what drives the cluster AR route view / HUD hologram turn (stock nav).**
-  Owner saw (2026-11-06) stock navigation show an AR route view on the cluster and a
-  hologram left/right turn on the HUD (hologram mode) from ~300 m before a turn; CarPlay
-  guidance shows neither. Offline RE ([navi-ar-guidance.md](navi-ar-guidance.md)) found no
-  causal sink and no fixed 300 m; `updateCluDataNew_14` (Binder 71) is a stock-reachable
-  candidate but our guessed one-shot probes showed nothing and no stock call is in any log.
-  Next drive: stock navigation through left/right turns with
-  `adb logcat -v time -s ClusterService` keeping every `NaviCluster.*` line, passenger
-  noting AR/hologram onset/end against distance (500/300/100/0 m) and the HUD/cluster
-  modes. PE14 present at onset → replay stock values for CarPlay; absent → cluster/HUD
-  likely draws from ordinary TBT, compare stock vs CarPlay TBT/F2/distance calls.
-- [ ] **Lane distance box shows the TBT distance.** Car, 0.1.30: `updateRemainDis` gets the next-maneuver distance even when the lane strip is for an intermediate junction ([cluster-lane-frame.md](cluster-lane-frame.md) 1b). Proposed: send it only when the lane strip belongs to the current maneuver (a 0x5202 p12 link when the app sets one; otherwise the lane highlight angles agree with the maneuver direction), else the clear pattern; first check on the car that `65535,15,15,0` empties the box.
+- [ ] **Verify CarPlay lane output end-to-end on a drive.** Cluster side car-verified parked
+  2026-11-06 by frame injection (`tmp/lane-probe/step.sh`): white/blue/grey slots in one
+  lane, `updateRemainDis` 300 m / 1.2 km, an empty `0xF1` frame removes strip and box. Still open (needs real phone lane data): `CpTurns`
+  (`LaneGlyphs`, `laneValues`, `sendLaneDist`) turns NAVER/Apple lanes into the right
+  pairs/colours, only the route arrow is blue, the box tracks the turn distance.
+- [ ] **CarPlay altScreen (iOS-rendered cluster video) research record.** Kept separate
+  from the junction view: document altScreen (display type 111) declaration,
+  negotiation, stream format and what iOS renders, even if this cluster cannot
+  consume it, since another surface may. In progress (local):
+  `tmp/analysis/carplay-altscreen/` (sources: DiPlay `tmp/DiPlay-src`, offline dump).
+  Move lasting findings into a topic doc when done.
+- [ ] **Exit angle reset on partial 0x5202 updates (suspected bug).** `Maneuver.read()`
+  sets `exit = 0` / `hasExit = false` before parsing, so an update without optional p11
+  erases a cached exit angle (absent is now distinguishable from 0° via `hasExit`). Confirm
+  against tests/dispatch, then preserve the cached value. Raised independently by the 2026-11-06 external-project comparisons.
+- [ ] **Verify CarPlay stock-format guidance on a drive.** Implemented
+  ([cluster-ar-view.md](cluster-ar-view.md), [hud-hologram.md](hud-hologram.md),
+  [hud-junction-view.md](hud-junction-view.md)); the six guidance map points reflect on the car.
+  First drive (2026-11-07, 0.1.36): AR, hologram and junction pictures appear with the right
+  direction, but junction lane counts did not match the road (a two-lane picture on a one-lane
+  ramp), arrival showed no flag, and a five-lane split (1-3 straight, 4 overpass, 5 right) showed
+  a right Y then a left Y. Since then keeps send no stock shape, junction pictures are exits only
+  with exact lane counts and exit-edge recommended lanes, and arrival sends the flag.
+  Check next: exit junction pictures match the road (lane count, side) and appear often enough;
+  destination flag; route search 9 / 10 text (the phone may not send the Loading/Rerouting
+  states); 19/20 lane-change exits; the trap bar falls with distance and a real camera record
+  takes it over; clears after the maneuver, on reroute, guidance end and disconnect; idle compass
+  at the end; `stop()` does not race stock navigation
+  resuming its own guidance.
+- [ ] **Stock-format turns for Android Auto.** CarPlay only today: `CpGuidance`/`CpJunctions`
+  read CarPlay maneuver and 0x5204 lane geometry, while `AaTurns` gets a different callback
+  model. Needs an AA-side adapter to the same policy.
 - [ ] **Map app in observation keys.** Record the route-guidance SourceName (NAVER,
   Apple Maps, Kakao, …) with each observation; apps differ (angles, types).
 - [ ] **Status "unknown" with a second DiPO record.** `HmgSeogaemoProjectionRuntime`

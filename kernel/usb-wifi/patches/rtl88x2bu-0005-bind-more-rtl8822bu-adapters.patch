@@ -1,0 +1,11 @@
+diff --git a/os_dep/linux/usb_intf.c b/os_dep/linux/usb_intf.c
+--- a/os_dep/linux/usb_intf.c
++++ b/os_dep/linux/usb_intf.c
+@@ -238,3 +238,7 @@
+ 	{USB_DEVICE_AND_INTERFACE_INFO(USB_VENDER_ID_REALTEK, 0xB812, 0xff, 0xff, 0xff), .driver_info = RTL8822B}, /* Default ID for USB Single-function, WiFi only */
++	/*=== HMG-Seogaemo: other Realtek RTL8812BU/8822BU product ids sold in Korea (e.g. ipTIME A3000 family) ===*/
++	{USB_DEVICE_AND_INTERFACE_INFO(USB_VENDER_ID_REALTEK, 0xB81A, 0xff, 0xff, 0xff), .driver_info = RTL8822B},
++	{USB_DEVICE_AND_INTERFACE_INFO(USB_VENDER_ID_REALTEK, 0xB820, 0xff, 0xff, 0xff), .driver_info = RTL8822B},
++	{USB_DEVICE_AND_INTERFACE_INFO(USB_VENDER_ID_REALTEK, 0xB82B, 0xff, 0xff, 0xff), .driver_info = RTL8822B},
+ 	/*=== Customer ID ===*/
+ 	{USB_DEVICE_AND_INTERFACE_INFO(0x0846, 0x9055, 0xff, 0xff, 0xff), .driver_info = RTL8822B}, /* NeatGear A6150 - AC1200 Dual Band WiFi USB Mini Adapter */

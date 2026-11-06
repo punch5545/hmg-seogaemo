@@ -100,6 +100,7 @@ final class CpTurns {
         if (id == null) return;
         Update u = updates.get(id);
         if (u == null || u.state == 0) {
+            clearGuidance();
             activeId = null;
             return;
         }
@@ -280,7 +281,10 @@ final class CpTurns {
         while (laneInfos.size() > 16) laneInfos.remove(laneInfos.keySet().iterator().next());
         d("decoded lanes " + info.summary());
         Update u = updates.get(info.component);
-        if (activeId != null && activeId == info.component && u != null) selectLanes(info.component, u);
+        if (activeId != null && activeId == info.component && u != null) {
+            selectLanes(info.component, u);
+            updateJunction(info.component, u);
+        }
     }
 
     private void selectLanes(int component, Update u) {
@@ -547,6 +551,7 @@ final class CpTurns {
 
     /** route guidance stopped (DiPO e/u.nS: the car's navigation took turn-by-turn back, or state 0) */
     void stop() {
+        guidanceStarted = false;
         laneInfos.clear();
         activeId = null;
         hudBlank();
@@ -556,6 +561,9 @@ final class CpTurns {
 
     /** forget every component's state and maneuvers (DiPO e/u.nT) */
     void reset() {
+        clearGuidance();
+        lastProjection = 0;
+        guidanceStarted = false;
         laneInfos.clear();
         lastLane = null;
         activeId = null;
@@ -600,9 +608,21 @@ final class CpTurns {
             return;
         }
         activeId = id;
+        if (!guidanceStarted) {
+            // a junction picture stock navigation left before the phone took over must not persist
+            guidanceStarted = true;
+            cluster.junctionView(65535, 65535, 65535);
+        }
         selectLanes(id, u);
         lastSendAt = System.currentTimeMillis();
-        int[] list = u.list == null ? null : u.list.clone();
+        if (u.state == 3 || u.state == 5) {
+            clearGuidance();
+            if (lastHud != null) hudBlank();
+            cluster.tbtInfo(u.state == 3 ? 9 : 10, 0, 0f, 0f, 0, 0, 0, 0, 0);
+            clusterTurn = true;
+            return;
+        }
+        int[] list = u.list == null || u.list.length == 0 ? null : u.list.clone();
         float dist = 0f;
         if (u.nextStr != null && !u.nextStr.equals("")) {
             try {
@@ -624,6 +644,13 @@ final class CpTurns {
         LinkedHashMap<Integer, Maneuver> m = maneuvers.get(id);
         Maneuver x = m == null || list == null ? null : m.get(list[0]);
         if (x == null) {
+            boolean wasApproaching = approachComponent != null;
+            clearGuidance();
+            // Leave the AR view mid-route with the projection icon; the idle compass is only for stop/disconnect.
+            if (wasApproaching && lastProjection != 0) {
+                cluster.tbtInfo(lastProjection, 0, 0f, dist, 0, 0, unit, 0, 0);
+                clusterTurn = true;
+            }
             // the maneuver isn't here (yet): what is known still goes out, and the phone is asked to resend
             if (sample("tn-drop2", u.state + "|" + (m == null) + "|" + (list == null) + "|" + (list == null ? -1 : list[0]))) d("turn without maneuver: comp=" + id + " state=" + u.state + " maneuvers=" + (m == null ? "none" : String.valueOf(m.size())) + " list=" + arr(list) + " (known comps=" + maneuvers.keySet() + ")");
             sendHudDist(dist, unit);
@@ -645,13 +672,70 @@ final class CpTurns {
             essential("first turn() push: rg#" + rgCount + ", " + (System.currentTimeMillis() - firstRgAt) + " ms after the first RouteGuidanceUpdate");
         }
         if (sample("tn", id + "|" + icon + "|" + u.state + "|" + list[0])) d("turn comp=" + id + " state=" + u.state + " index=" + list[0] + " type=" + x.type + " side=" + x.side + " junction=" + x.junction + " exit=" + x.exit + " -> icon " + icon + " dist=" + dist + " unit=" + unit);
-        cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);
+        lastProjection = icon;
+        CpLaneDecoder.Info shownLanes = u.lanesShown ? laneInfos.get(laneKey(id, u.laneIndex)) : null;
+        int[] stock = u.state == 2 ? CpGuidance.ARRIVED.clone()
+                : CpGuidance.approach(u, x) ? CpGuidance.stock(x, shownLanes) : null;
+        if (stock == null || u.state == 2) clearApproach();
+        else {
+            if (approachComponent != null && (!approachComponent.equals(id) || approachIndex != x.index)) clearApproach();
+            approachComponent = id;
+            approachIndex = x.index;
+            Dipo.approach(true, CpGuidance.bar(u.distNext, CpGuidance.window(x.type)));
+        }
+        cluster.tbtInfo(stock == null ? icon : stock[0], 0, stock == null ? 0f : stock[1], dist, 0, 0, unit, 0, 0);
         clusterTurn = true;
+        updateJunction(id, u);
         sendHud(icon, id, u);
         sendHudDist(dist, unit);
         sendLaneDist(dist, unit);
         sendTrip(u);
         sendAhead(id, u);
+    }
+
+    /** a guidance session has sent its initial junction clear */
+    private boolean guidanceStarted;
+    /** projection icon of the last turn sent, resent when the AR window closes without a maneuver */
+    private int lastProjection;
+    private Integer approachComponent;
+    private int approachIndex;
+
+    private Integer junctionComponent;
+    private int junctionIndex;
+    private int[] junction;
+
+    private void updateJunction(int component, Update u) {
+        LinkedHashMap<Integer, Maneuver> known = maneuvers.get(component);
+        int[] list = u.list;
+        Maneuver current = known == null || list == null || list.length == 0 ? null : known.get(list[0]);
+        if (!CpGuidance.approach(u, current)) { clearJunction(); return; }
+        Maneuver next = list.length > 1 ? known.get(list[1]) : null;
+        CpLaneDecoder.Info lanes = u.lanesShown ? laneInfos.get(laneKey(component, u.laneIndex)) : null;
+        int[] selected = CpJunctions.select(current, next, lanes);
+        if (selected == null) { clearJunction(); return; }
+        if (junctionComponent != null && (junctionComponent != component || junctionIndex != current.index)) clearJunction();
+        if (!java.util.Arrays.equals(junction, selected)) cluster.junctionView(selected[0], selected[1], selected[2]);
+        junction = selected;
+        junctionComponent = component;
+        junctionIndex = current.index;
+    }
+
+    private void clearJunction() {
+        if (junction == null) return;
+        junction = null;
+        junctionComponent = null;
+        cluster.junctionView(65535, 65535, 65535);
+    }
+
+    private void clearGuidance() {
+        clearApproach();
+        clearJunction();
+    }
+
+    private void clearApproach() {
+        if (approachComponent == null) return;
+        approachComponent = null;
+        Dipo.approach(false, 0);
     }
 
     private long resendAt;
@@ -1052,6 +1136,7 @@ final class CpTurns {
 
     /** HUD list and extras cleared (the build's sendHudBlank) */
     void hudBlank() {
+        clearGuidance();
         lastLane = null;
         clearLaneDist();
         cluster.tbtSubInfo2C(0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -1197,7 +1282,7 @@ final class CpTurns {
         String road, destination, distLeftStr, nextStr, sourceName;
         long eta, timeLeft;
         int[] list;
-        boolean visible, lanesShown, supports;
+        boolean visible, lanesShown, supports, hasDistance;
 
         /** as DiPO: a component id of 0 or less starts with nothing set (not even the defaults) */
         Update(int id, Iap2NotiMsg msg) {
@@ -1217,6 +1302,7 @@ final class CpTurns {
             distLeftStr = "";
             distLeftUnits = 0;
             distNext = 0;
+            hasDistance = false;
             nextStr = "";
             nextUnits = 0;
             list = null;
@@ -1233,6 +1319,8 @@ final class CpTurns {
         void read(int id, Iap2NotiMsg msg) {
             Iap2NotiMsg.Iap2ObjGroup g = msg == null ? null : msg.getItemGroup();
             if (g == null) return;
+            int oldFirst = list == null || list.length == 0 ? -1 : list[0];
+            boolean freshDistance = false;
             for (int k = 0; k < g.getItemCnt(); k++) {
                 Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(k);
                 if (it == null) continue;
@@ -1263,7 +1351,7 @@ final class CpTurns {
                         int[] v = n > 0 ? it.getItemIntArray() : null;
                         if (v == null) break;
                         if (item == 7) distLeft = v[0];
-                        else if (item == 10) distNext = v[0];
+                        else if (item == 10 && v.length > 0) { distNext = v[0]; hasDistance = true; freshDistance = true; }
                         break;
                     }
                     case 3:
@@ -1307,6 +1395,9 @@ final class CpTurns {
                     }
                 }
             }
+            int first = list == null || list.length == 0 ? -1 : list[0];
+            if (first != oldFirst && !freshDistance) hasDistance = false;
+            if (state == 0 || state == 2 || state == 3 || state == 5) hasDistance = false;
         }
     }
 
@@ -1315,6 +1406,7 @@ final class CpTurns {
         int index, type, distance, distUnits, side, junction, exit, linkedLane;
         String description, afterRoad, distStr;
         int[] angles;
+        boolean hasExit, hasSide;
 
         Maneuver(int index, int id, Iap2NotiMsg msg) {
             if (msg == null) return;
@@ -1334,6 +1426,8 @@ final class CpTurns {
             junction = 0;
             angles = null;
             exit = 0;
+            hasExit = false;
+            hasSide = false;
             linkedLane = 0;
         }
 
@@ -1342,6 +1436,7 @@ final class CpTurns {
             Iap2NotiMsg.Iap2ObjGroup g = msg.getItemGroup();
             this.index = index;
             exit = 0;
+            hasExit = false;
             for (int k = 0; k < g.getItemCnt(); k++) {
                 Iap2NotiMsg.Iap2ObjItem it = g.getObjItem(k);
                 if (it == null) continue;
@@ -1360,6 +1455,7 @@ final class CpTurns {
                             }
                         } else if (item == 11 && v != null) {
                             exit = v[0];
+                            hasExit = true;
                         }
                         break;
                     }
@@ -1379,7 +1475,7 @@ final class CpTurns {
                         switch (item) {
                             case 3: type = v[0]; break;
                             case 7: distUnits = v[0]; break;
-                            case 8: side = v[0]; break;
+                            case 8: side = v[0]; hasSide = true; break;
                             case 9: junction = v[0]; break;
                         }
                         break;

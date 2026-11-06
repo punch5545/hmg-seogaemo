@@ -179,9 +179,97 @@
           "/system/app/Iap2ServerApp.odex": "a672fd0e0070414f2eb70a2807117a6f",
           "/system/framework/automotive.odex": "c76b8209ef171739b177eb14e8df61dd"
         }
+      },
+      {
+        "date": "2026-11-07",
+        "points": {
+          "framework.navigation_cluster.update_clu_data_new_14": {
+            "class": "com.hkmc.cluster.NavigationCluster",
+            "member": {
+              "method": "updateCluDataNew_14",
+              "params": [
+                "int",
+                "int",
+                "int",
+                "int",
+                "int"
+              ],
+              "ret": "void",
+              "static": false
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          },
+          "framework.navigation_cluster.update_tbt_trap_info": {
+            "class": "com.hkmc.cluster.NavigationCluster",
+            "member": {
+              "method": "updateTBTTrapInfo",
+              "params": [
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int"
+              ],
+              "ret": "void",
+              "static": false
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          },
+          "framework.navigation_cluster.update_tbt_trap_info_new": {
+            "class": "com.hkmc.cluster.NavigationCluster",
+            "member": {
+              "method": "updateTBTTrapInfoNew",
+              "params": [
+                "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo"
+              ],
+              "ret": "void",
+              "static": false
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          },
+          "framework.tbt_trap_info": {
+            "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo",
+            "member": {
+              "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo"
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          },
+          "framework.tbt_trap_info.bar_graph_level": {
+            "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo",
+            "member": {
+              "field": "barGraphLevel",
+              "static": false,
+              "type": "int"
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          },
+          "framework.tbt_trap_info.new": {
+            "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo",
+            "member": {
+              "ctor": []
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          }
+        },
+        "source": "kor-stock-dex-scan",
+        "stock_files": {
+          "/system/framework/automotive.odex": "c76b8209ef171739b177eb14e8df61dd"
+        }
       }
     ],
-    "points_sha256": "9b4e30f7e36107e22ec4da2cec3ed8963861935728ebad7a3258e7195443b385"
+    "points_sha256": "01269c109fc01c55d0b000e65252f12c052a549012bbc3ff8336aa136736f1cd"
   },
   "physical_features": [
     {

@@ -55,6 +55,9 @@ sg_print NEEV.KOR.0000.V039.001.260902 > "$work/product"
 cat > "$work/base/lib/common.sh" <<'EOF'
 . "$HMG_SEOGAEMO_TEST_COMMON"
 sg_log() { :; }
+# Daemon start/stop polls and the scan wait keep their retry counts; each step is
+# shortened (mksh's builtin sleep cannot be replaced through PATH).
+sleep() { /bin/sleep 0.25; }
 sg_snapshot() {
     name=${1##*/}
     if [ ! -e "$HMG_SEOGAEMO_STATE/$name.saved" ] && [ ! -e "$HMG_SEOGAEMO_STATE/$name.absent" ]; then
@@ -131,6 +134,11 @@ cat > "$work/bin/setprop" <<'EOF'
 . "$HMG_SEOGAEMO_TEST_COMMON"
 [ "$1" = persist.wifi.state ] || { echo "unexpected setprop $1" >&2; exit 1; }
 sg_print "$2" > "$TEST_WORK/props/$1"
+EOF
+cat > "$work/bin/dmesg" <<'EOF'
+#!/bin/sh
+. "$HMG_SEOGAEMO_TEST_COMMON"
+cat "$TEST_WORK/dmesg" 2>/dev/null || :
 EOF
 cat > "$work/bin/pm" <<'EOF'
 #!/bin/sh
@@ -258,7 +266,7 @@ for tool in cat cmp cp dd grep rm mkdir mv chmod ls date sleep; do
 done
 ln -s "$repo/tools/testlib/fakebin/md5" "$work/allowed/md5"
 ln -s "$python" "$work/allowed/python3"
-for tool in getprop setprop pm ifconfig netcfg; do
+for tool in getprop setprop pm ifconfig netcfg dmesg; do
     ln -s "$work/bin/$tool" "$work/allowed/$tool"
 done
 for tool in awk sed tail head cut tr wc sort uniq xargs find stat readlink sha256sum sha1sum tar unzip busybox toybox; do
@@ -326,6 +334,7 @@ sg_print WRONG.KOR.260902 > "$work/product"
 fails apply; assert_state incompatible
 fails precheck; assert_state incompatible
 sg_print NEEV.KOR.0000.V039.001.260902 > "$work/product"
+roles client off
 for file in bcmdhd.ko fw_bcmdhd.bin; do
     mv "$work/system/wifi/$file" "$work/$file.saved"
     for verb in precheck apply; do fails "$verb"; assert_state incompatible; done
@@ -361,6 +370,21 @@ for verb in status precheck apply; do fails "$verb"; assert_state conflict; done
 sg_print "<permissions/>" > "$xml"
 for verb in status precheck apply; do fails "$verb"; assert_state conflict; done
 rm "$xml"
+# Leftovers only block the built-in client role.
+roles off off
+sg_print "3" > "$work/props/persist.wifi.state"
+run status; assert_state off
+run precheck; assert_state off
+# Driver and firmware without the chip: every bcmdhd power-up fails, so the radio is absent, the
+# unset built-in role defaults to off and an explicit client role is refused.
+rm "$data/settings/wifi/builtin_role" "$data/settings/wifi/usb_role"
+sg_print '<4>[  130.388800] failed to power up DHD generic adapter, max retry reached**' > "$work/dmesg"
+run status; assert_state off; assert_line info.builtin_present=0; assert_line info.builtin_role=off
+run precheck; assert_state off
+roles client off
+for verb in precheck apply; do fails "$verb"; assert_state incompatible; done
+: > "$work/dmesg"
+: > "$work/props/persist.wifi.state"
 
 sg_print "running" > "$work/hostapd"
 run precheck; assert_line warn.carplay_active=1
@@ -468,7 +492,7 @@ fails action other; [ ! -s "$work/output" ]
 # Unplug and replug: the screen_on watch brings the client back.
 wpa=$(daemon_pid usb-wpa)
 kill "$wpa"
-while [ -d "$work/proc/$wpa" ]; do sleep 1; done
+while [ -d "$work/proc/$wpa" ]; do sleep 0.1; done
 fails status; assert_state failed
 run watch screen_on; assert_state on
 [ "$(daemon_pid usb-wpa)" != "$wpa" ]

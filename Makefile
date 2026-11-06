@@ -65,47 +65,23 @@ verify-dist:
 	python3 tools/package.py verify --aapt $(BT)/aapt
 
 TEST_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
-TESTS := test-root-shells test-other
-.PHONY: test-all test-other test-module-install test-maps test-python test-java $(TESTS)
+.PHONY: test-suites test-dist test-java
 
-test: export PATH := $(CURDIR)/tools/testlib/fakebin:$(PATH)
+# One pool for every suite (tools/run-tests.py): root/module suites on mksh (plus a
+# /bin/sh smoke set), host checks and test-java. TESTS_ONLY=word,... selects tasks.
 test:
 	$(MAKE) -j$(TEST_JOBS) package
-	$(MAKE) $(if $(findstring output-sync,$(.FEATURES)),-O) -j$(TEST_JOBS) test-all
+	$(MAKE) test-suites
 
-test-all: $(TESTS)
+# The suites alone, on the package already in out/ (never rebuilds or re-signs it).
+test-suites: export PATH := $(CURDIR)/tools/testlib/fakebin:$(PATH)
+test-suites:
+	python3 tools/run-tests.py --aapt $(BT)/aapt --jobs $(TEST_JOBS) $(if $(TESTS_ONLY),--only $(TESTS_ONLY))
 
-# Two branches in parallel: the sharded root suites (CPUs-1 workers) and everything else (one chain).
-test-other:
-	$(MAKE) -j1 test-module-install test-maps test-python test-java
-
-test-root-shells:
-	python3 tools/test-root-shells.py --aapt $(BT)/aapt
-
-test-module-install:
-	python3 tools/test-module-install.py
-	python3 tools/test-foreign.py
-
-test-maps:
-	python3 tools/validate-maps.py all
-	python3 tools/test-validate-maps.py
-	python3 tools/test-map-evidence.py
-	python3 tools/test-map-scanner.py
-	python3 tools/test-map-verification.py
-	python3 tools/test-map-car.py
-	./tools/verify-map maps/hyundai/ioniq5/kor/260902
-
-test-python:
-	python3 tools/test-confirm-routing.py
-	sh tools/test-gen-modules.sh
-	python3 tools/test-android44-shell.py
-	python3 tools/lint-android44-shell.py
-	python3 tools/lint-module-root.py
-	python3 tools/lint-names.py
-	python3 tools/test-hsm.py
-	python3 tools/test-hsm-cli.py
-	python3 tools/test-update.py
-	python3 tools/test-module-switch.py
+# Suites that read the completed package: the release workflow runs these on the
+# release-signed build when CI already passed the full suite on the same commit.
+test-dist:
+	$(MAKE) test-suites TESTS_ONLY=test-package.py,test-entry-dispatch.py
 
 # Each Java test compiles only the app classes it needs, against Java 7 source/target.
 JAVAC7 := javac -encoding UTF-8 -source 7 -target 7

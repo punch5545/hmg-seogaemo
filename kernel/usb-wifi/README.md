@@ -77,6 +77,10 @@ The script fails unless, for every module:
    before 4.3, a plain counter where upstream casts a `u16` to `atomic_t`, and
    the hex parser kept outside `CONFIG_PHL_TEST_SUITE` because the
    power-save debug commands use it with MP mode off.
+6. Extra USB ids: `bind-rtl8831bu-adapters` (8851bu, `0bda:b831`, an AX900
+   adapter seen on a tester's car) and `bind-more-rtl8822bu-adapters`
+   (88x2bu patch 5, Realtek `0bda:b81a`, `b820`, `b82b`, e.g. the ipTIME A3000
+   family). `0bda:b832` is left out: upstream already lists it for RTL8852B.
 
 DHCP port translation stays out of the drivers.
 

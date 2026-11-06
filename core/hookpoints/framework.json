@@ -1,5 +1,5 @@
 {
-  "_origin": "Follows HMG-API core/hookpoints/framework.json@4fab437; 2026-11-04 additions only: d120037",
+  "_origin": "Follows HMG-API core/hookpoints/framework.json@4fab437; 2026-11-04 additions only: d120037; 2026-11-07 stock-guidance additions independently derived from NEEV KOR automotive.odex",
   "files": [
     "/system/framework/framework.odex",
     "/system/framework/core.odex",
@@ -1221,6 +1221,23 @@
       "owner": "framework.navigation_cluster",
       "type": "ctor"
     },
+    "framework.navigation_cluster.update_clu_data_new_14": {
+      "about": "HUD junction view: picture, first/second highlight, lane, color",
+      "match": {
+        "class_member": false,
+        "name": "updateCluDataNew_14",
+        "parameters": [
+          "int",
+          "int",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
     "framework.navigation_cluster.update_lane_info": {
       "about": "lanes to the cluster/HUD as raw bytes (Android Auto's lane format)",
       "match": {
@@ -1361,6 +1378,48 @@
           "float",
           "int",
           "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tbt_trap_info": {
+      "about": "stock trap/speed-camera data and AR vertical bar; argument 12 is barGraphLevel (0..100)",
+      "match": {
+        "class_member": false,
+        "name": "updateTBTTrapInfo",
+        "parameters": [
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int",
+          "int"
+        ],
+        "returns": "void"
+      },
+      "owner": "framework.navigation_cluster",
+      "type": "method"
+    },
+    "framework.navigation_cluster.update_tbt_trap_info_new": {
+      "about": "stock trap object including speed-camera data and AR vertical bar",
+      "match": {
+        "class_member": false,
+        "name": "updateTBTTrapInfoNew",
+        "parameters": [
+          "@framework.tbt_trap_info"
         ],
         "returns": "void"
       },
@@ -1729,6 +1788,30 @@
       },
       "owner": "framework.system_service_stub",
       "type": "method"
+    },
+    "framework.tbt_trap_info": {
+      "about": "stock Parcelable trap data; clone through Parcelable to preserve camera and speed fields without mapping each field",
+      "match": {
+        "name": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo"
+      },
+      "type": "class"
+    },
+    "framework.tbt_trap_info.bar_graph_level": {
+      "about": "AR vertical bar level (0..100)",
+      "match": {
+        "class_member": false,
+        "name": "barGraphLevel",
+        "type": "int"
+      },
+      "owner": "framework.tbt_trap_info",
+      "type": "field"
+    },
+    "framework.tbt_trap_info.new": {
+      "match": {
+        "parameters": []
+      },
+      "owner": "framework.tbt_trap_info",
+      "type": "ctor"
     },
     "framework.turn_list": {
       "about": "one upcoming turn in the cluster's turn list",

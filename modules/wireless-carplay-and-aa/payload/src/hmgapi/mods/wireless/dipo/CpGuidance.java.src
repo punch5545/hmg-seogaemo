@@ -1,0 +1,110 @@
+// HMG-Seogaemo: independently implemented stock guidance policy.
+package hmgapi.mods.wireless.dipo;
+
+/** Pure policy; display units never determine the approach window. */
+final class CpGuidance {
+    static final int TURN_WINDOW_M = 300, HIGHWAY_WINDOW_M = 600;
+
+    static boolean highway(int type) {
+        return type == 8 || type == 9 || type == 13 || type == 14
+                || type == 22 || type == 23 || type >= 51 && type <= 53;
+    }
+
+    static int window(int type) { return highway(type) ? HIGHWAY_WINDOW_M : TURN_WINDOW_M; }
+
+    static boolean approach(CpTurns.Update u, CpTurns.Maneuver m) {
+        return m != null && u.state != 0 && u.state != 2 && u.state != 3 && u.state != 5
+                && u.hasDistance && u.distNext >= 0 && u.distNext <= window(m.type);
+    }
+
+    static int bar(int meters, int window) {
+        return Math.max(0, Math.min(100, Math.round(meters * 100f / window)));
+    }
+
+    static int direction(int angle) {
+        return ((Math.round(angle / 45f) * 45) % 360 + 360) % 360;
+    }
+
+    static int[] stock(CpTurns.Maneuver m) { return stock(m, null); }
+
+    /** ARRIVED 3: the flag on the destination ring, car-verified. */
+    static final int[] ARRIVED = {3, 0};
+
+    static boolean arrival(int type) {
+        return type == 10 || type == 12 || type == 24 || type == 25 || type == 27;
+    }
+
+    /** Lanes recommended at the maneuver touch only the left (-1) or right (1) edge, only
+     * middle lanes (0, a branch between two others), or tell nothing (2). Lane 0 is leftmost. */
+    static int laneSide(CpLaneDecoder.Info info) {
+        if (info == null || info.lanes == null || info.lanes.length < 2) return 2;
+        CpLaneDecoder.Lane[] l = info.lanes;
+        boolean any = false;
+        for (CpLaneDecoder.Lane lane : l) any |= lane != null && lane.status != 0;
+        if (!any) return 2;
+        boolean left = l[0] != null && l[0].status != 0, right = l[l.length - 1] != null && l[l.length - 1].status != 0;
+        return left == right ? (left ? 2 : 0) : left ? -1 : 1;
+    }
+
+    /**
+     * A lane change toward the exit is needed: lanes are known (lane 0 leftmost), some are
+     * recommended, and the edge lane on the exit side is not.
+     */
+    static boolean laneChange(CpLaneDecoder.Info info, int side) {
+        if (info == null || info.lanes == null || info.lanes.length < 2) return false;
+        boolean any = false;
+        for (CpLaneDecoder.Lane l : info.lanes) any |= l != null && l.status != 0;
+        CpLaneDecoder.Lane edge = info.lanes[side > 0 ? info.lanes.length - 1 : 0];
+        return any && edge != null && edge.status == 0;
+    }
+
+    /** {DisplayType, direction}, or null when the available geometry is ambiguous. */
+    static int[] stock(CpTurns.Maneuver m, CpLaneDecoder.Info lanes) {
+        if (m.hasExit && (m.exit < -180 || m.exit > 180)) return null;
+        int t = m.type, a = m.hasExit ? direction(m.exit) : -1;
+        if (t == 4 || t == 18 || t == 26) return new int[] {31, m.side == 1 ? 90 : 270};
+        if (t == 6 || t == 7 || t == 19 || t >= 28 && t <= 46) {
+            // 32 = counter-clockwise travel (right-hand traffic), 33 = clockwise (left-hand); the
+            // direction is the exit's clock position. Ordinal exit numbers are not positions.
+            return a < 0 ? null : new int[] {m.side == 1 ? 33 : 32, a};
+        }
+        if (m.junction == 1) return null;
+        boolean left = t == 1 || t == 20 || t == 47 || t == 49;
+        boolean right = t == 2 || t == 21 || t == 48 || t == 50;
+        if (left || right) {
+            if (a < 0) a = left ? (t == 47 ? 225 : t == 49 ? 315 : 270)
+                    : (t == 48 ? 135 : t == 50 ? 45 : 90);
+            if (left && (a < 225 || a > 315) || right && (a < 45 || a > 135)) return null;
+            return new int[] {13, a};
+        }
+        if (t == 8 || t == 9 || t == 22 || t == 23) {
+            int side = t == 22 ? -1 : t == 23 ? 1 : a < 0 || a == 0 || a == 180 ? 0 : a > 180 ? -1 : 1;
+            if (side == 0) return null;
+            if (m.hasExit && (side < 0 && a > 0 && a < 180 || side > 0 && a > 180)) return null;
+            // 19 at 90 / 20 at 270 draw the exit after a lane change toward it (car-verified; the
+            // name EXIT_RIGHT_COMBI_2 of 20 is misleading); otherwise the plain exit 17 / 18.
+            if (laneChange(lanes, side)) return side > 0 ? new int[] {19, 90} : new int[] {20, 270};
+            return side > 0 ? new int[] {17, 90} : new int[] {18, 270};
+        }
+        // Keeps and highway changes keep the projection icon and the lane frame: the phone's
+        // keep side is a lane recommendation, and a Y split (FORK_2 25) drawn from it showed
+        // splits that were not on the road (car drive 2026-11-07).
+        if (arrival(t)) {
+            // the stock destination arrow: 2 at 90 / 270 points at the side of the road
+            int side = t == 24 ? -1 : t == 25 ? 1 : 0;
+            return side == 0 ? ARRIVED.clone() : new int[] {2, side < 0 ? 270 : 90};
+        }
+        if (t == 3 || t == 5) {
+            if (a > 0) return null;
+            if (m.angles != null && m.angles.length == 1 && CpJunctions.highwayCue(m)) {
+                int other = m.angles[0];
+                // SERVICE_ROAD 23/24 draw the main road straight on; 17/18 with the opposite
+                // direction draw no route (car photo review).
+                if (other > 15 && other < 165) return new int[] {23, 270};
+                if (other < -15 && other > -165) return new int[] {24, 90};
+            }
+            return new int[] {13, 0};
+        }
+        return null;
+    }
+}

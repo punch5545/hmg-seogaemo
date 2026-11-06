@@ -77,8 +77,11 @@ pf_wifi_radio() {
 # that the bundled drivers bind (the wifi module's files/usb-ids.txt, read from sysfs ids).
 pf_wifi_radios() {
     pf_root=${SG_TARGET_ROOT:-}
+    # Driver and firmware ship even without the chip; failed power-ups with nothing on SDIO mean none.
     if [ "$(getprop tcc.wifi.vendor)" = broadcom ] && [ -s "$pf_root/system/wifi/bcmdhd.ko" ] &&
-            [ -s "$pf_root/system/wifi/fw_bcmdhd.bin" ]; then
+            [ -s "$pf_root/system/wifi/fw_bcmdhd.bin" ] &&
+            { [ "$(pf_count_entries "${SG_SDIO_DIR:-/sys/bus/sdio/devices}" '*')" -gt 0 ] ||
+                [ "$(pf_dmesg_count 'failed to power up DHD generic adapter')" -eq 0 ]; }; then
         pf_line wifi_builtin ok observed 'Built-in Wi-Fi present (Broadcom)'
     else
         pf_line wifi_builtin warn observed 'No built-in Wi-Fi; Wi-Fi needs a USB adapter'

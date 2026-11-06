@@ -197,6 +197,15 @@ public final class Dipo {
         log("CarPlay: turn-by-turn to the cluster (HMG-API's route guidance listener)");
     }
 
+    /** Bounded bar lease; the navigation process retains the stock camera fields. */
+    static void approach(boolean active, int bar) {
+        Intent i = new Intent("hmg_seogaemo.CARPLAY_APPROACH");
+        i.setPackage("com.mnsoft.navi");
+        i.putExtra("active", active);
+        i.putExtra("bar", Math.max(0, Math.min(100, bar)));
+        app.context.sendBroadcast(i);
+    }
+
     static void post(Runnable r) {
         final Runnable run = r;
         turnsHandler.post(new Runnable() {

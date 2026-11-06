@@ -1,0 +1,44 @@
+name: Build tools
+description: JDK 17, the Android API 19 platform, mksh and the LLVM 18 toolchain.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+      with:
+        distribution: temurin
+        java-version: '17'
+    # The runner ships build-tools 34.0.0 but not the API 19 platform (12 s to download),
+    # and the mksh download from the Ubuntu mirror varies from 1 to 20 s. Keep both cached.
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          /usr/local/lib/android/sdk/platforms/android-19
+          ~/.cache/hmg-seogaemo-debs
+        key: build-tools-${{ runner.os }}-android-19-mksh-v1
+    - name: Install mksh and select LLVM 18
+      shell: bash
+      run: |
+        set -euo pipefail
+        debs=~/.cache/hmg-seogaemo-debs
+        if ! compgen -G "$debs/mksh_*.deb" > /dev/null; then
+          mkdir -p "$debs"
+          sudo apt-get update -qq
+          (cd "$debs" && apt-get download mksh)
+        fi
+        sudo dpkg -i "$debs"/mksh_*.deb
+        # clang-18 and lld-18 are preinstalled; the clang/lld metapackages only add the
+        # unversioned names (core/hook/build.sh calls clang with -fuse-ld=lld).
+        if [ -x /usr/lib/llvm-18/bin/clang ] && [ -x /usr/lib/llvm-18/bin/ld.lld ]; then
+          echo /usr/lib/llvm-18/bin >> "$GITHUB_PATH"
+        else
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends clang lld
+        fi
+    - name: Install Android API 19 tools
+      # Use the runner's preinstalled SDK (setup-android@v3 fails installing the removed 'tools' package).
+      shell: bash
+      run: |
+        if [ ! -f "$ANDROID_HOME/platforms/android-19/android.jar" ] || [ ! -d "$ANDROID_HOME/build-tools/34.0.0" ]; then
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install 'platforms;android-19' 'build-tools;34.0.0'
+        fi
