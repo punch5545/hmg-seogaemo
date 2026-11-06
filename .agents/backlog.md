@@ -77,8 +77,6 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   `core/hook/mods/` and `modules/core-hook/{module.log,assets-repaired-boot}` remain; clean up.
 - [ ] Installed-module status prints `info.desired=off` twice (runner + dispatcher).
 - [ ] `tools/hsm pack` without `--out` writes to `./dist/` (not gitignored); default to `out/`.
-- [ ] Migrate CarPlay onto the core host (plan in `installable-modules.md` Core hook host).
-  Until then CarPlay and hook modules exclude each other.
 
 ## 2. Older open items
 
