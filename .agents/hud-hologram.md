@@ -26,8 +26,8 @@ Dataset: `datasets/hud-hologram-tbt/` (local, gitignored): photos per `DisplayTy
 per-row shapes in `classify.csv` (second-pass review: `classify-reviewed.csv`, `review.md`),
 overview in `summary.md`.
 
-CarPlay sends stock types through CpGuidance inside the approach window documented in
-[cluster-ar-view.md](cluster-ar-view.md). Outside it, or with ambiguous geometry, the flat
+CarPlay sends stock types through CpGuidance, Android Auto through AaGuidance, inside the
+approach window documented in [cluster-ar-view.md](cluster-ar-view.md). Outside it, or with ambiguous geometry, the flat
 projection icon remains. The F2 HUD turn list and its periodic refresh retain the existing
 projection format; hologram output comes from the main TBT call. The module leaves the
 owner's HUD display mode unchanged.

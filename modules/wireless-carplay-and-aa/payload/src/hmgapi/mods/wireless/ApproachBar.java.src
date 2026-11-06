@@ -1,0 +1,19 @@
+// HMG-Seogaemo: approach-bar lease for the stock trap-bar overlay. SPDX-License-Identifier: AGPL-3.0-or-later
+package hmgapi.mods.wireless;
+
+import android.content.Context;
+import android.content.Intent;
+
+/** Asks the navigation process's CpTrapOverlay to show (or give back) the AR view's bar. */
+final class ApproachBar {
+    private ApproachBar() {}
+
+    static void send(Context c, boolean active, int bar) {
+        if (c == null) return;
+        Intent i = new Intent(CpTrapOverlay.ACTION);
+        i.setPackage("com.mnsoft.navi");
+        i.putExtra("active", active);
+        i.putExtra("bar", Math.max(0, Math.min(100, bar)));
+        c.sendBroadcast(i);
+    }
+}

@@ -72,6 +72,22 @@ Rerouting send stock types 9 and 10. The HUD F2 list retains its projection icon
 
 The classified car sweep is in local, gitignored dataset `datasets/cluster-ar-tbt/`: `summary.md`, per-row `classify.csv`, second-pass review in `classify-reviewed.csv` and `review.md`.
 
+## Android Auto policy
+
+`AaTurns` uses our `AaGuidance` with the CarPlay windows (300 m; 600 m for on/off ramps, forks and
+merges), the raw distance in metres, and a fresh distance after the next turn changes. Android
+Auto sends an event and a side, no junction geometry and no exit angle for turns, so the
+directions are fixed: turns 13 at 45/90/135 (right) or 315/270/225 (left); straight on and an
+unsided name change 13 at 0; U-turn 31 at 270 (90 when the phone says right); on/off ramps 17
+at 90 / 18 at 270 (no lane recommendation to pick 19 / 20); roundabout enter-and-exit 32 with
+the exit's clock position from the phone's exit angle (180 − angle, counter-clockwise from the
+entry), right-hand traffic only; destination 2 at 90 / 270 by side, otherwise ARRIVED 3. Forks,
+merges, sideless turns, depart, ferries and unknown keep the projection icon. Stock types go out
+with sideStreet 0 (65535 would draw a road in every direction); icons keep 65535. Rerouting
+(status 3) sends 10 and holds turns until the next turn or active status. GPM sends the bar
+lease (`ApproachBar`, renewed every second) to the same `CpTrapOverlay`. Not yet seen on a
+drive; reference: HMG-API PR #75 (US Ioniq 5, its own window and bar).
+
 ## Reading the state
 
 `ClusterService` does not log `updateTBTInfo`; `dumpsys com.hkmc.micom.cluster` ("TBT Info",

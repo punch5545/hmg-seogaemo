@@ -50,9 +50,12 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   takes it over; clears after the maneuver, on reroute, guidance end and disconnect; idle compass
   at the end; `stop()` does not race stock navigation
   resuming its own guidance.
-- [ ] **Stock-format turns for Android Auto.** CarPlay only today: `CpGuidance`/`CpJunctions`
-  read CarPlay maneuver and 0x5204 lane geometry, while `AaTurns` gets a different callback
-  model. Needs an AA-side adapter to the same policy.
+- [ ] **Verify Android Auto stock-format turns on a drive.** `AaGuidance` (policy in
+  [cluster-ar-view.md](cluster-ar-view.md#android-auto-policy)): AR view and hologram near turns,
+  U-turns, exits and roundabouts with the right direction; the bar falls with distance and gives
+  the stock bar back; 10 during rerouting clears on the new route; destination side / flag.
+  Still CarPlay only: HUD junction pictures and lane-change exits 19 / 20 (AA lanes carry no
+  recommendation we decode yet).
 - [ ] **Map app in observation keys.** Record the route-guidance SourceName (NAVER,
   Apple Maps, Kakao, …) with each observation; apps differ (angles, types).
 - [ ] **Status "unknown" with a second DiPO record.** `HmgSeogaemoProjectionRuntime`

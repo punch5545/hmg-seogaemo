@@ -1,4 +1,4 @@
-// Modified by HMG-Seogaemo: removed HMG-API projection event integration.
+// Modified by HMG-Seogaemo: removed HMG-API projection event integration; stock-format turns (AaGuidance).
 package hmgapi.mods.wireless;
 
 import android.content.Context;
@@ -27,6 +27,10 @@ import hmgapi.hook.Cluster;
  * distance flags 0x200 (a turn ahead, index in bits 10-11) and 0x100 (remaining trip:
  * meters, seconds, unit, 0x800 + point << 12).
  *
+ * Near a maneuver the main display gets the stock Navigation.DisplayType format (AaGuidance,
+ * the same policy as CarPlay's): the cluster AR view, the HUD hologram and the bar beside the
+ * AR view (ApproachBar). The HUD turn list keeps the projection icons.
+ *
  * Everything runs on one thread (the handler's), in the order the callbacks came.
  */
 final class AaTurns {
@@ -50,12 +54,28 @@ final class AaTurns {
             unitTick();
         }
     };
+    /** renews the approach bar's lease (3500 ms in the navigation process) */
+    final Runnable renew = new Runnable() {
+        @Override
+        public void run() {
+            if (approachBar < 0) return;
+            ApproachBar.send(context, true, approachBar);
+            handler.postDelayed(this, RENEW_MS);
+        }
+    };
+    static final long RENEW_MS = 1000;
 
     // the next turn
     int event, turnSide, turnAngle, turnNumber, displayType, direction, unit;
     String road;
     float distance;
     boolean navLive;
+    /** metres to the next turn, -1 until a distance for this turn came */
+    int meters = -1;
+    /** the phone is rerouting: the cluster shows RECALC_ROUTE 10 until a turn or active status */
+    boolean rerouting;
+    /** the approach bar sent last (0..100), -1 when off */
+    int approachBar = -1;
     // destination and the remaining trip
     String destName;
     int estPoint;
@@ -119,6 +139,9 @@ final class AaTurns {
         }
         hudFresh = false;
         boolean first = road == null;
+        // a changed maneuver needs a fresh distance before the approach window opens
+        if (ev != event || side != turnSide || angle != turnAngle || !String.valueOf(str).equals(String.valueOf(road))) meters = -1;
+        rerouting = false;
         event = ev;
         road = str;
         turnSide = side;
@@ -193,9 +216,17 @@ final class AaTurns {
     void status(int s) {
         if (s == 1 || s == 3) {   // active, rerouting
             navLive = true;
+            if (s == 1) {
+                rerouting = false;
+            } else if (!rerouting) {
+                rerouting = true;
+                setApproach(-1);
+                cluster.tbtInfo(10, 0, 0f, 0f, 0, 0, 0, 0, 0);
+            }
             return;
         }
         handler.removeCallbacks(tick);
+        rerouting = false;
         destName = null;
         navLive = false;
         tripMeters = -1;
@@ -212,33 +243,62 @@ final class AaTurns {
         turnAngle = 0;
         turnNumber = 0;
         unit = 0;
+        meters = -1;
         displayType = 0;
         direction = 0;
+        rerouting = false;
+        setApproach(-1);
     }
 
     /** The connection ended: clear what we showed, if a route was on. */
     void end() {
         handler.removeCallbacks(tick);
         if (navLive) status(2);
+        setApproach(-1);
     }
 
     // ---- the next turn
 
     void sendTurn() {
-        if (!navLive) return;
+        if (!navLive || rerouting) return;
         int bar = 32, barErr = 0;
+        int[] stock = null;
         if (distance < 0f) {
             bar = 254;
             barErr = -2;
             if (displayType < 64) displayType = 2;
+        } else if (AaGuidance.approach(event, meters)) {
+            stock = AaGuidance.stock(event, turnSide, turnAngle);
         }
-        cluster.tbtInfo(displayType, 65535, direction, distance, 0, 0, unit, bar, barErr);
+        if (stock == null) {
+            setApproach(-1);
+            cluster.tbtInfo(displayType, 65535, direction, distance, 0, 0, unit, bar, barErr);
+        } else {
+            setApproach(AaGuidance.bar(meters, AaGuidance.window(event)));
+            // stock types draw side streets from sideStreet (65535: a road every way); stock sends 0
+            cluster.tbtInfo(stock[0], 0, stock[1], distance, 0, 0, unit, 0, 0);
+        }
         sendHudList();
         sendHudDistance();
     }
 
+    /** The approach bar: 0..100 shows it (renewed while on), -1 gives the stock bar back. */
+    void setApproach(int bar) {
+        if (bar == approachBar) return;
+        boolean was = approachBar >= 0;
+        approachBar = bar;
+        handler.removeCallbacks(renew);
+        if (bar < 0) {
+            if (was) ApproachBar.send(context, false, 0);
+            return;
+        }
+        ApproachBar.send(context, true, bar);
+        handler.postDelayed(renew, RENEW_MS);
+    }
+
     /** Distance to the next turn, in the owner's unit (Settings) where the phone's differs. */
     void setDistance(int meters, int e3, int u) {
+        this.meters = meters;
         int usm = Car.distanceUnit(context);
         if (meters >= 0) {
             if (usm == Car.DISTANCE_KM) {
@@ -448,6 +508,7 @@ final class AaTurns {
 
     /** Clears the turn, the remaining trip, the destination and the HUD. */
     void release() {
+        setApproach(-1);
         destName = "";
         sendDestName();
         destName = null;

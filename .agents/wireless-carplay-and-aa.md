@@ -131,7 +131,7 @@ No direct `cp`, `mv`, `rm`, `setprop`, remount, service restart, or cache deleti
 
 Copied HMG-API paths (destinations relative to this module's `payload/`):
 
-- `mods/wireless-carplay-aa/src/hmgapi/mods/wireless/{Wireless,AaTurns}.java`, `dipo/{Bridge,CpTurns,Dipo}.java` → `src/hmgapi/mods/wireless/` as `.java.src`; `AaTurns` drops an HMG-API-only projection event.
+- `mods/wireless-carplay-aa/src/hmgapi/mods/wireless/{Wireless,AaTurns}.java`, `dipo/{Bridge,CpTurns,Dipo}.java` → `src/hmgapi/mods/wireless/` as `.java.src`; `AaTurns` drops an HMG-API-only projection event and adds stock-format turns (our `AaGuidance`, `ApproachBar`).
 - `core/runtime/java/hmgapi/hook/{Bridge,Hooks,Points,LoadedApp,MethodHook,ModEntry,ModContext,NativePatch,Car,Cluster,AppPartLoader}.java` → `src/hmgapi/hook/` as `.java.src`; four are trimmed, and new `HmgApi.java` replaces the generic loader.
 - `core/runtime/java/hmgapi/engine/MemRecipe.java` → `src/hmgapi/engine/` as `.java.src`, unchanged.
 - `core/loader/loader.c`, `core/zygote/zygote.c`, `core/loader/syslib-stubs.sh` → `native/`, modified for HMG-Seogaemo paths and without `hmgapid` spawning.
@@ -186,9 +186,11 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
   hologram; outside it, or with ambiguous geometry, the projection icon stays. Loading /
   rerouting send stock types 9 / 10. `CpTrapOverlay` (navigation process) lays the approach bar
   over the latest real stock trap record under a 3.5 s lease renewed by DiPO. `CpJunctions`
-  picks the HUD junction view from the generated `CpJunctionTable`. Details:
+  picks the HUD junction view from the generated `CpJunctionTable`. Android Auto: `AaTurns`
+  applies the same windows through our `AaGuidance` (event + side; no junction pictures) and
+  renews the bar lease through `ApproachBar` from GPM. Details:
   [cluster-ar-view.md](cluster-ar-view.md), [hud-hologram.md](hud-hologram.md),
-  [hud-junction-view.md](hud-junction-view.md). Android Auto keeps projection icons.
+  [hud-junction-view.md](hud-junction-view.md).
 - **Lane guidance (our own raw 0x5204 decoder).** Bridge forwards CarPlay-channel bytes unchanged,
   then feeds the bounded, Android-free CpLaneDecoder and posts decoded data through Dipo.post
   to the TBT handler. Link/control messages may be split or coalesced; link/header checksums,
