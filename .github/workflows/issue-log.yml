@@ -1,0 +1,20 @@
+name: Issue report log
+# Decodes the packed app log from the app's issue QR code into a readable comment.
+on:
+  issues:
+    types: [opened, edited]
+permissions:
+  issues: write
+jobs:
+  decode:
+    if: contains(github.event.issue.body, 'HSR1.')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: tools/decode-issue-log.py
+          sparse-checkout-cone-mode: false
+      - run: python3 tools/decode-issue-log.py --github-comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

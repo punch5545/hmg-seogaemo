@@ -202,7 +202,7 @@
     <string name="mapping_export_usb">USB로 내보내기</string>
     <string name="mapping_export_usb_note">maps 폴더만 저장</string>
     <string name="issue_qr_map">GitHub 이슈로 매핑 보내기</string>
-    <string name="issue_qr_hint">휴대전화 카메라로 찍으면 내용이 미리 채워진 GitHub 이슈가 열립니다. 펌웨어 식별자, 버전, 매핑·모듈 상태와 최근 앱 오류만 담겨 있습니다. 문제를 설명하고, 개인정보를 지운 USB 내보내기 폴더를 휴대전화나 컴퓨터에서 첨부해 주세요.</string>
+    <string name="issue_qr_hint">휴대전화 카메라로 찍으면 내용이 미리 채워진 GitHub 이슈가 열립니다. 펌웨어 식별자, 버전, 매핑·모듈 상태와 개인정보를 가린 로그 요약이 담겨 있습니다. 문제를 설명하고, 개인정보를 지운 USB 내보내기 폴더를 휴대전화나 컴퓨터에서 첨부해 주세요.</string>
     <string name="issue_qr_map_hint">휴대전화 카메라로 찍으면 이 펌웨어용 GitHub 이슈가 미리 채워져 열립니다. 내보낸 maps 폴더를 압축해 휴대전화나 컴퓨터에서 첨부해 주세요.</string>
     <string name="stock_restore">순정 상태로 되돌리기</string>
     <string name="stock_uninstall">HMG-Seogaemo 제거</string>

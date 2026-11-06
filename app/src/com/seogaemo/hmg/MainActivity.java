@@ -1295,10 +1295,11 @@ public final class MainActivity extends Activity {
                 writeAppState();
                 new Thread(new Runnable() { public void run() {
                     final RootResult result = RootClient.exportReport(true);
+                    final RootResult digest = issue ? RootClient.reportDigest() : null;
                     runOnUiThread(new Runnable() { public void run() {
                         dialog.dismiss();
                         // The issue still opens without a USB drive; the QR carries the summary and logs.
-                        if (issue) showIssueQr(false, exportMessage(result));
+                        if (issue) showIssueQr(false, exportMessage(result), digest);
                         else ConfirmDialog.showResult(MainActivity.this, getString(R.string.report_export),
                                 result.exitCode == 0 ? getString(R.string.report_done, exportMessage(result))
                                         : exportMessage(result), getString(R.string.close));
@@ -1312,7 +1313,7 @@ public final class MainActivity extends Activity {
      * Read-only QR code for a prefilled GitHub issue (problem report or new firmware map). It carries only
      * firmware ids, versions and map/module states; the exported folder is attached from the phone or a PC.
      */
-    private void showIssueQr(boolean mapIssue, String exported) {
+    private void showIssueQr(boolean mapIssue, String exported, RootResult digest) {
         String product = systemProperty("ro.build.product");
         String onebin = systemProperty("ro.mobis.onebindir");
         String versions = "app " + installedVersion();
@@ -1340,19 +1341,26 @@ public final class MainActivity extends Activity {
                 if (status.exitCode != 0 || !"on".equals(status.state) && !"off".equals(status.state))
                     modules.append(" (").append(shorten(status.detail, 60)).append(')');
             }
-            // Detail last: IssueLink cuts the final field to the QR budget. Newest errors first.
-            StringBuilder logs = new StringBuilder("android=").append(Build.VERSION.RELEASE)
-                    .append(" locale=").append(describeLocale());
+            // Packed log, most important first: IssueLink keeps the leading lines that fit the QR.
+            StringBuilder logs = new StringBuilder("# app ").append(installedVersion()).append(" android=")
+                    .append(Build.VERSION.RELEASE).append(" locale=").append(describeLocale());
             if (foreignStatus != null) logs.append(" foreign=").append(foreignStatus.info.get("count"));
+            if (exported != null) logs.append("\nexport: ").append(exported);
+            if (!recentErrors.isEmpty()) logs.append("\n# app errors");
             for (java.util.Iterator<String> it = recentErrors.descendingIterator(); it.hasNext(); )
-                logs.append('\n').append(shorten(it.next(), 160));
-            link = IssueLink.build(IssueLink.TEMPLATE_BUG, null, 950, "product", product, "onebin", onebin,
-                    "versions", versions, "map-status", map.toString(), "modules", modules.toString(),
-                    "app-log", logs.toString());
+                logs.append('\n').append(shorten(it.next(), 200));
+            if (digest == null || digest.exitCode != 0)
+                logs.append("\n# root digest unavailable: ").append(digest == null ? "-" : digest.detail);
+            else for (String key : new java.util.TreeSet<String>(digest.info.keySet()))
+                if (key.startsWith("log_")) logs.append('\n').append(digest.info.get(key));
+            link = IssueLink.build(IssueLink.TEMPLATE_BUG, null, 990, "product", product, "onebin", onebin,
+                    "versions", versions, "map-status", map.toString(), "modules", modules.toString());
+            link = IssueLink.withLog(link, "app-log", logs.toString(), 990);
         }
         LinearLayout body = horizontal();
         body.setGravity(Gravity.CENTER_VERTICAL);
-        body.addView(new QrView(this, QrCode.encode(link)), new LinearLayout.LayoutParams(dp(250), dp(250)));
+        final View qr = new QrView(this, QrCode.encode(link));
+        body.addView(qr, new LinearLayout.LayoutParams(dp(250), dp(250)));
         String guide = getString(mapIssue ? R.string.issue_qr_map_hint : R.string.issue_qr_hint);
         TextView hint = text(exported == null ? guide : exported + "\n\n" + guide, 19, WHITE, sans);
         hint.setLineSpacing(dp(4), 1f);
@@ -1361,6 +1369,16 @@ public final class MainActivity extends Activity {
         body.addView(hint, hintParams);
         ConfirmDialog.showResultView(this, getString(mapIssue ? R.string.issue_qr_map : R.string.report_issue),
                 body, getString(R.string.close));
+        // The dialog body scrolls; a QR taller than the room the window leaves would be cut off and
+        // unreadable, so shrink it once the real height is known.
+        final LinearLayout measured = body;
+        body.post(new Runnable() { public void run() {
+            View viewport = (View) measured.getParent();
+            int overflow = viewport == null ? 0 : measured.getHeight() - viewport.getHeight();
+            if (overflow <= 0) return;
+            int side = Math.max(dp(160), qr.getHeight() - overflow);
+            qr.setLayoutParams(new LinearLayout.LayoutParams(side, side));
+        } });
     }
 
     private static String shorten(String value, int max) {
@@ -2549,7 +2567,7 @@ public final class MainActivity extends Activity {
                                 confirmMapExport();
                             } }, null);
                 } else if (outcome.exitCode == 0 && "issue".equals(verb)) {
-                    showIssueQr(true, mapResult);
+                    showIssueQr(true, mapResult, null);
                 } else ConfirmDialog.showResult(MainActivity.this, getString("run".equals(verb)
                         ? R.string.mapping_run : R.string.mapping_export), mapResult, getString(R.string.close));
                 resumeUpdateWhenReady();

@@ -17,6 +17,7 @@ case "$1" in
     map) case "$#:$2" in 2:status|2:run|2:verify|2:export) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     recorder) case "$#:$2" in 2:status|2:enable|2:disable|2:tick) ;; *) refuse 2 failed 'Invalid command';; esac ;;
     preflight) [ "$#:$2" = 2:run ] || refuse 2 failed 'Invalid command' ;;
+    report) [ "$#:$2" = 2:digest ] || refuse 2 failed 'Invalid command' ;;
     foreign) case "$#:$2" in 2:status) ;;
             3:clean) case "$3" in ''|*[!a-z0-9-]*) refuse 2 failed 'Invalid command';; esac ;;
             *) refuse 2 failed 'Invalid command';; esac ;;
@@ -159,7 +160,7 @@ if [ "$1" = map ]; then
     export SG_DATA_ROOT
     exec /system/bin/sh "$base/core/hmg-seogaemo-map.sh" "$2"
 fi
-if [ "$1" = recorder ] || [ "$1" = preflight ]; then
+if [ "$1" = recorder ] || [ "$1" = preflight ] || [ "$1" = report ]; then
     # Read-only reports (fixed verbs, no arguments): see .agents/reports-recorder.md.
     export SG_DATA_ROOT
     exec /system/bin/sh "$base/core/recorder.sh" "$1" "$2"

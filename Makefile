@@ -101,7 +101,8 @@ test-java:
 	$(JAVAC7) -d out/java-test/wifi $(APPSRC)/module/WifiNetwork.java tools/WifiNetworkTest.java
 	java -cp out/java-test/wifi com.seogaemo.hmg.module.WifiNetworkTest
 	$(JAVAC7) -d out/java-test/qr $(APPSRC)/ui/QrCode.java $(APPSRC)/core/IssueLink.java tools/QrCodeTest.java
-	java -cp out/java-test/qr QrCodeTest tools/fixtures/qr
+	java -cp out/java-test/qr QrCodeTest tools/fixtures/qr out/java-test/qr
+	python3 tools/test-decode-issue-log.py out/java-test/qr/packed.txt
 
 clean:
 	rm -rf out
