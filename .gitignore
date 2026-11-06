@@ -1,6 +1,7 @@
 /tmp/
 app/build/
 /out/
+/kernel/usb-wifi/out/
 AGENTS.local.md
 CLAUDE.local.md
 .claude/worktrees/

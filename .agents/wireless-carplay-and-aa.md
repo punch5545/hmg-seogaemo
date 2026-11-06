@@ -8,6 +8,11 @@ hooks through the core hook host (`hooks=1`). The record reset is the `ui.txt` b
 the `tbt-reset` verb stays for 0.1.31 apps. Updates from the built-in or the old self-installed wrapper: see
 `installable-modules.md` (Core hook host, Bundled modules).
 
+Hotspot: the module starts one only through DiPO's `setWifiApEnabledForConnectivity` (stock `wlan0`, car-verified). When the
+`wifi` module publishes a USB CarPlay hotspot (`radio=usb`, read once in the zygote), DiPO skips that call and part
+`usb_hotspot` gives the iAP2 server and GPM the adapter's credentials and interface; `status` reports
+`info.hotspot_radio`. Rules: contract "Peer info"; details and open car checks: [external-wifi.md](external-wifi.md).
+
 Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902`, onebin `neev_kr` (`ro.mobis.onebindir`), Android 4.4.2. Owner confirms HMG-API 1.0.0-beta.5 with its mapping and wireless mod worked on this car (hotspot and wireless CarPlay). The pre-install Car Report at `tmp/car-reports/car-report-neev-kor-260902-20261102-2115.json` has 324 mapped points, 12 by reference, one unrelated ThemeSettings point missing. Its `map.status=none` and `wifi_chip=false` are pre-install observations, not a negation of the owner's working test.
 
 ## Dependencies and port choice
@@ -75,7 +80,7 @@ Declared hook points and their exact resolved members on this car:
 
 The three exact feature removal lines use `owns_lines.1` through `.3`;
 `featurexml.cfg` is not whole-file owned. Runtime composition retains any other
-module's distinct line patches on revert. The `wifi-client` exclusion remains
+module's distinct line patches on revert. The `wifi` built-in client exclusion remains
 for the shared STA/AP radio; shared-file safety is enforced independently.
 
 The package API must baseline each owned path before writing it, record applied bytes and metadata, bind baselines to `ro.build.product`, and verify exact restoration. `sg_revert_all` must preflight **all** targets for drift before the first restore write, refuse if any changed externally, retain baselines/ledger, and abort uninstall. Reapply/update must never replace the first baseline.

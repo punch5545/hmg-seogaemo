@@ -76,7 +76,6 @@ Only these four production lines carry `# android44-shell: allow -- <specific re
 | --- | --- |
 | `nemesis/package/lib/common.sh`, `sg_service_call` | Dynamic service binary defaults to fixed `/system/bin/service`; environment override is the host-test seam |
 | `modules/skip-consent-screen/root/skip-consent-screen.sh`, factory check | Same service binary seam, fixed `check` invocation |
-| `modules/wifi-client/root/wifi-client.sh`, projection check | Dynamic package root resolves to the fixed `bin/hmg-seogaemo-root` dispatcher with `wireless-carplay-and-aa status` |
 | `modules/wireless-carplay-and-aa/module.sh`, mapping check | Same package dispatcher with fixed `map status` |
 
 ## Validation and remaining device checks

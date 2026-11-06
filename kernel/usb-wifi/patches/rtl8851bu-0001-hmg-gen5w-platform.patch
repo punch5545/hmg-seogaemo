@@ -1,0 +1,50 @@
+diff --git a/Makefile b/Makefile
+index 34144ea..17cb4de 100644
+--- a/Makefile
++++ b/Makefile
+@@ -58,15 +58,15 @@ CONFIG_PCI_HCI = n
+ CONFIG_SDIO_HCI = n
+ CONFIG_GSPI_HCI = n
+ ########################## Features ###########################
+-CONFIG_MP_INCLUDED = y
++CONFIG_MP_INCLUDED = n
+ CONFIG_CONCURRENT_MODE = y
+ CONFIG_POWER_SAVE = y
+ CONFIG_BTC = y
+ CONFIG_WAPI_SUPPORT = n
+-CONFIG_EFUSE_CONFIG_FILE = y
++CONFIG_EFUSE_CONFIG_FILE = n
+ CONFIG_EXT_CLK = n
+ CONFIG_TRAFFIC_PROTECT = n
+-CONFIG_LOAD_PHY_PARA_FROM_FILE = y
++CONFIG_LOAD_PHY_PARA_FROM_FILE = n
+ # Remember to set CONFIG_FILE_FWIMG when set CONFIG_FILE_FWIMG to y,
+ # or driver will fail on ifconfig up because can't find firmware file
+ CONFIG_FILE_FWIMG = n
+@@ -226,7 +226,8 @@ CONFIG_LAYER2_ROAMING = y
+ CONFIG_ROAMING_FLAG = 0x3
+ 
+ ###################### Platform Related #######################
+-CONFIG_PLATFORM_I386_PC = y
++CONFIG_PLATFORM_I386_PC = n
++CONFIG_PLATFORM_HMG_GEN5W = y
+ CONFIG_PLATFORM_RTL8198D = n
+ CONFIG_PLATFORM_ANDROID_X86 = n
+ CONFIG_PLATFORM_ANDROID_INTEL_X86 = n
+diff --git a/platform/hmg_gen5w.mk b/platform/hmg_gen5w.mk
+new file mode 100644
+index 0000000..0f3c5d1
+--- /dev/null
++++ b/platform/hmg_gen5w.mk
+@@ -0,0 +1,11 @@
++# HMG-Seogaemo: Hyundai/Kia/Genesis Gen5W head units (Telechips tcc803x and
++# tcc897x, little-endian ARMv7, Linux 3.18.24-tcc). hostapd and
++# wpa_supplicant drive the dongle through nl80211.
++ifeq ($(CONFIG_PLATFORM_HMG_GEN5W), y)
++EXTRA_CFLAGS += -DCONFIG_LITTLE_ENDIAN
++EXTRA_CFLAGS += -DCONFIG_IOCTL_CFG80211 -DRTW_USE_CFG80211_STA_EVENT
++EXTRA_CFLAGS += -DCONFIG_RADIO_WORK
++# GCC 4.7 predates SOURCE_DATE_EPOCH; pin the build stamp for reproducible objects.
++EXTRA_CFLAGS += -Wno-builtin-macro-redefined -D__DATE__=\"HMG-Seogaemo\" -D__TIME__=\"pinned\"
++_PLATFORM_FILES += platform/platform_ops.o
++endif

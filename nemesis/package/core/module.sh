@@ -166,10 +166,16 @@ mi_check_props() {
                 hsm_setting_decl "${mi_val%%:*}" && hsm_setting_valid "$hsm_sdefault" ;;
             icon) case "$mi_val" in box|wifi|phone|terminal|car|gear|display|speaker|camera|map|power|key|skip|button|link|bolt) ;; *) false;; esac ;;
             raw_shell) [ "$mi_mode" = bundled ] && [ "$mi_val" = 1 ] || mi_fail "HSM-E202 raw_shell is allowed only for modules bundled with HMG-Seogaemo" ;;
+            replaces)
+                [ "$mi_mode" = bundled ] || mi_fail "HSM-E203 module.properties: unknown key $mi_key"
+                hsm_ok_id "$mi_val" && [ "$mi_val" != "$(mi_field id "$mi_props")" ] ;;
             hooks) [ "$mi_mode" = bundled ] && [ "$mi_val" = 1 ] && mi_raw "$mi_pkg" || mi_fail "HSM-E203 module.properties: unknown key $mi_key" ;;
             owns_props|reassert_props|owns_files|owns_generated_dirs|services|service_calls|restore|owns_lines.[1-9]|owns_lines.[1-9][0-9])
                 [ "$mi_mode" = bundled ] || mi_fail "HSM-E203 module.properties: unknown key $mi_key"
                 mi_check_owned "$mi_key" "$mi_val" ;;
+            kmods|daemons|owns_ifaces|kmod.*|kmod_params.*|daemon.*|net_rules.*)
+                [ "$mi_mode" = bundled ] || mi_fail "HSM-E203 module.properties: unknown key $mi_key"
+                sg_transient_decl_ok "$mi_key" "$mi_val" ;;
             *) mi_fail "HSM-E203 module.properties: unknown key $mi_key" ;;
         esac || mi_fail "HSM-E204 module.properties: bad value for $mi_key"
     done < "$mi_props"
@@ -233,9 +239,82 @@ mi_declared_touched() {
     done < "$1/module.properties"
 }
 
+# Persistent ownership (stock files, properties, lines, services, hooks) of a generated manifest.
+mi_persistent() {
+    grep -E '^(owns_props|reassert_props|owns_files|owns_generated_dirs|services|service_calls|restore|hooks|owns_lines\.[0-9]+)=' "$1" 2>/dev/null
+}
+
+# replaces=<old>: a renamed bundled module takes over the old module's desired state, settings,
+# baselines and applied records without touching the system. Both must touch exactly the same
+# persistent targets; the old module must be bundled and must not share text lines (shared-line
+# patches are keyed by module id). migrate/<new> journals the takeover so an interrupted run
+# finishes on the next bundled check. An old module the owner removed keeps the new one removed.
+mi_replaces_prepare() {
+    mi_migrating=0
+    mi_old=$(mi_field replaces "$work.d/module.properties")
+    [ "$mi_mode" = bundled ] && [ -n "$mi_old" ] || return 0
+    mi_journal=$SG_DATA_ROOT/migrate/$mi_id
+    if [ ! -f "$mi_journal" ]; then
+        if [ ! -f "$installed/$mi_old.properties" ]; then
+            if [ -f "$SG_DATA_ROOT/bundled-removed/$mi_old" ] && [ ! -d "$installed/$mi_id" ]; then
+                mkdir -p "$SG_DATA_ROOT/bundled-removed" && : > "$SG_DATA_ROOT/bundled-removed/$mi_id" ||
+                    mi_fail 'Could not record module removal'
+                sg_status off none "$mi_old was removed by the owner; $mi_id stays removed"
+                exit 0
+            fi
+            return 0
+        fi
+        [ ! -d "$installed/$mi_id" ] || mi_conflict "$mi_id and $mi_old are both installed"
+        [ "$(mi_field source "$installed/$mi_old.properties")" = bundled ] || mi_conflict "$mi_old is not bundled"
+        ! grep -q '^owns_lines\.' "$installed/$mi_old.properties" || mi_conflict "$mi_old shares text lines"
+        [ "$(mi_persistent "$installed/$mi_old.properties")" = "$(mi_persistent "$work.properties")" ] ||
+            mi_conflict "$mi_id does not touch the same targets as $mi_old"
+        for mi_area in modules desired settings restart-cleanup peer; do
+            [ ! -e "$SG_DATA_ROOT/$mi_area/$mi_id" ] || mi_conflict "$mi_id already has $mi_area state"
+        done
+        mkdir -p "$SG_DATA_ROOT/migrate" && sg_write "$mi_old" > "$mi_journal" ||
+            mi_fail 'Could not record module takeover'
+    fi
+    [ "$(cat "$mi_journal")" = "$mi_old" ] || mi_fail 'Module takeover journal damaged'
+    for mi_area in modules desired settings restart-cleanup peer; do
+        if [ -e "$SG_DATA_ROOT/$mi_area/$mi_old" ] && [ ! -e "$SG_DATA_ROOT/$mi_area/$mi_id" ]; then
+            mv "$SG_DATA_ROOT/$mi_area/$mi_old" "$SG_DATA_ROOT/$mi_area/$mi_id" || mi_fail 'Could not move module state'
+        fi
+    done
+    mi_migrating=1
+}
+
+# After the new module is published: it takes the old one's catalog position, the old
+# package is dropped, and the ledger records the takeover under the new id.
+mi_replaces_finish() {
+    [ "$mi_migrating" -eq 1 ] || return 0
+    : > "$SG_DATA_ROOT/installed.list.tmp.$$" || mi_fail 'Could not update module list'
+    mi_placed=0
+    for mi_other in $(cat "$SG_DATA_ROOT/installed.list" 2>/dev/null); do
+        [ "$mi_other" != "$mi_old" ] || mi_other=$mi_id
+        if [ "$mi_other" = "$mi_id" ]; then
+            [ "$mi_placed" -eq 0 ] || continue
+            mi_placed=1
+        fi
+        sg_print "$mi_other" >> "$SG_DATA_ROOT/installed.list.tmp.$$" || mi_fail 'Could not update module list'
+    done
+    mv "$SG_DATA_ROOT/installed.list.tmp.$$" "$SG_DATA_ROOT/installed.list" || mi_fail 'Could not update module list'
+    rm -rf "$installed/$mi_old" "$installed/$mi_old.properties" "$installed/$mi_old.hookpoints" ||
+        mi_fail "Could not remove $mi_old"
+    mi_graph || mi_fail 'Could not update module list'
+    (HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$mi_id; sg_ledger module_takeover "$mi_old" "" "" "" ok) ||
+        mi_fail 'Could not record module takeover'
+    rm -f "$SG_DATA_ROOT/migrate/$mi_id"
+    sg_log "$mi_id took over $mi_old" || :
+}
+
 # Ownership lines of a generated manifest, compared before replacing a bundled module that is on.
 mi_ownership() {
-    grep -E '^(owns_props|reassert_props|owns_files|owns_generated_dirs|services|service_calls|restore|hooks|owns_lines\.[0-9]+)=' "$1" 2>/dev/null
+    grep -E '^(owns_props|reassert_props|owns_files|owns_generated_dirs|services|service_calls|restore|hooks|owns_lines\.[0-9]+|kmods|daemons|owns_ifaces|kmod\.[^=]*|kmod_params\.[^=]*|daemon\.[^=]*|net_rules\.[0-9]+)=' "$1" 2>/dev/null
+}
+# Transient declarations (kernel modules, daemons, network rules, interfaces) copied verbatim.
+mi_transient() {
+    grep -E '^(kmods|daemons|owns_ifaces|kmod\.[^=]*|kmod_params\.[^=]*|daemon\.[^=]*|net_rules\.[0-9]+)=' "$1" 2>/dev/null || :
 }
 
 # describe must fit the app's 8 KiB root output (two string files, ui.txt and
@@ -332,9 +411,9 @@ mi_check_ui() {
                 setting=*) hsm_setting_decl "${mi_arg#setting=}" ;;
                 label=@*|confirm=@*) hsm_ok_string "${mi_arg#*=}" ;;
                 @*) hsm_ok_string "$mi_arg" ;;
-                key=*|name=*) hsm_ok_name "${mi_arg#*=}" ;;
+                key=*|name=*|when=*) hsm_ok_name "${mi_arg#*=}" ;;
                 module=*) hsm_ok_id "${mi_arg#module=}" ;;
-                screen=*) [ "${mi_arg#screen=}" = wifi_settings ] ;;
+                screen=*) case "${mi_arg#screen=}" in wifi_settings|wifi_networks) ;; *) false;; esac ;;
                 danger=1) [ "$mi_block" = button ] ;;
                 *) false ;;
             esac || { hsm_error 112 "bad argument for $mi_block"; exit 2; }
@@ -343,6 +422,7 @@ mi_check_ui() {
 }
 
 mi_collides() {
+    sg_transient_clash "$work.d/module.properties" "$mi_id" && return 0
     mi_old_ifs=$IFS
     for mi_other in $(sg_module_list "$base"); do
         [ "$mi_other" != "$mi_id" ] || continue
@@ -395,6 +475,7 @@ mi_generate() {
             "service_calls=$mi_calls"
         [ "$mi_hooks" -eq 0 ] || sg_print hooks=1
         [ -z "$mi_bundle_md5" ] || sg_print "bundle_sha256=$mi_bundle_md5"
+        mi_transient "$mi_src"
         if [ "$mi_rawshell" -eq 1 ]; then
             sg_print raw_shell=1
             mi_v=$(mi_field owns_generated_dirs "$mi_src"); [ -z "$mi_v" ] || sg_print "owns_generated_dirs=$mi_v"
@@ -495,6 +576,7 @@ mi_install_file() {
     fi
     if mi_other=$(mi_collides); then mi_conflict "Changes the same file or line as $mi_other"; fi
     mi_generate
+    mi_replaces_prepare
     if [ -d "$installed/$mi_id" ]; then
         if [ "$(cat "$SG_DATA_ROOT/desired/$mi_id" 2>/dev/null)" = on ] ||
             (HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$mi_id; sg_restore_material); then
@@ -516,6 +598,7 @@ mi_install_file() {
     grep -Fxq "$mi_id" "$SG_DATA_ROOT/installed.list" 2>/dev/null ||
         sg_print "$mi_id" >> "$SG_DATA_ROOT/installed.list" || mi_fail 'Could not record module'
     mi_graph || mi_fail 'Could not record module'
+    mi_replaces_finish
     sg_ledger module_install "$mi_id" "" "" "" ok || :
     sg_status on none "Installed $mi_id $(mi_field version "$installed/$mi_id.properties")"
 }
@@ -534,7 +617,8 @@ mi_install_bundled() {
         mi_sum=$(cat "$bundled/$mi_bid.sha256" 2>/dev/null)
         case "$mi_sum" in ????????????????????????????????????????????????????????????????) ;; *) continue;; esac
         case "$mi_sum" in *[!0-9a-f]*) continue;; esac
-        if [ -f "$installed/$mi_bid.properties" ] && [ "$(mi_field bundle_sha256 "$installed/$mi_bid.properties")" = "$mi_sum" ]; then
+        if [ -f "$installed/$mi_bid.properties" ] && [ "$(mi_field bundle_sha256 "$installed/$mi_bid.properties")" = "$mi_sum" ] &&
+                [ ! -f "$SG_DATA_ROOT/migrate/$mi_bid" ]; then
             continue
         fi
         mi_any=1

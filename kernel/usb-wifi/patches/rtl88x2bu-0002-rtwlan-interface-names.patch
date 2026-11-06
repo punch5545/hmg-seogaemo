@@ -1,0 +1,31 @@
+diff --git a/os_dep/linux/os_intfs.c b/os_dep/linux/os_intfs.c
+index 811c450..83f304e 100644
+--- a/os_dep/linux/os_intfs.c
++++ b/os_dep/linux/os_intfs.c
+@@ -468,14 +468,15 @@ int rtw_nm = 1;/*noise monitor*/
+ module_param(rtw_nm, int, 0644);
+ #endif
+ 
+-char *ifname = "wlan%d";
++/* HMG-Seogaemo: rtwlan%d keeps the stock wlan0 of the head unit untouched. */
++char *ifname = "rtwlan%d";
+ module_param(ifname, charp, 0644);
+ MODULE_PARM_DESC(ifname, "The default name to allocate for first interface");
+ 
+ #ifdef CONFIG_PLATFORM_ANDROID
+ 	char *if2name = "p2p%d";
+ #else /* CONFIG_PLATFORM_ANDROID */
+-	char *if2name = "wlan%d";
++	char *if2name = "rtwlan%d";
+ #endif /* CONFIG_PLATFORM_ANDROID */
+ module_param(if2name, charp, 0644);
+ MODULE_PARM_DESC(if2name, "The default name to allocate for second interface");
+@@ -3434,7 +3435,7 @@ int rtw_os_ndevs_register(struct dvobj_priv *dvobj)
+ 			else if (adapter->iface_id == IFACE_ID1)
+ 				name = regsty->if2name;
+ 			else
+-				name = "wlan%d";
++				name = "rtwlan%d";
+ 
+ 			status = rtw_os_ndev_register(adapter, name);
+ 

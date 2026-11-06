@@ -39,9 +39,10 @@ def main():
     # private temporary paths, including two invocations of the same module.
     suites = ("test-diagnostics.py", "test-runtime.py", "test-line-ownership.py", "test-stock.py",
               "test-reconcile-map.py", "test-package.py", "test-entry-dispatch.py",
-              "test-map-root.py", "test-recorder.py")
+              "test-map-root.py", "test-recorder.py", "test-transient.py")
     # Suites built on testlib.run_tests are sharded into one task per test function.
-    sharded = {"test-runtime.py", "test-line-ownership.py", "test-stock.py", "test-reconcile-map.py", "test-recorder.py"}
+    sharded = {"test-runtime.py", "test-line-ownership.py", "test-stock.py", "test-reconcile-map.py", "test-recorder.py",
+               "test-transient.py"}
     tasks = deque()
     for suite in suites:
         path = str(ROOT / "tools" / suite)

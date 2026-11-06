@@ -47,17 +47,17 @@ public final class AppGuardsTest {
     }
 
     private static void restoreSteps() {
-        List<String> ids = Arrays.asList("wifi-client", "wireless-carplay-and-aa", "wireless-adb");
+        List<String> ids = Arrays.asList("wifi", "wireless-carplay-and-aa", "wireless-adb");
         List<RootResult> observed = Arrays.asList(
                 result("on", "none", 0, "desired", "on"),
                 result("off", "none", 0, "desired", "off"),
                 result("off", "none", 0));
         List<RestoreGate.Step> steps = RestoreGate.steps("wireless-carplay-and-aa,", ids, observed);
         check(steps.size() == 2, "one off, one on");
-        check("wifi-client".equals(steps.get(0).id) && !steps.get(0).enable, "turn-offs come first");
+        check("wifi".equals(steps.get(0).id) && !steps.get(0).enable, "turn-offs come first");
         check("wireless-carplay-and-aa".equals(steps.get(1).id) && steps.get(1).enable, "saved module turns on");
         check(RestoreGate.touchesBootProcess(steps), "CarPlay change is flagged");
-        List<RestoreGate.Step> adb = RestoreGate.steps("wifi-client,", ids, observed);
+        List<RestoreGate.Step> adb = RestoreGate.steps("wifi,", ids, observed);
         check(adb.isEmpty(), "already as saved needs no step");
         check(!RestoreGate.touchesBootProcess(adb), "no CarPlay flag without a CarPlay step");
         check(RestoreGate.steps("", ids, observed).size() == 1, "empty saved list only turns off");
@@ -81,9 +81,9 @@ public final class AppGuardsTest {
         RootResult noStock = result("off", "none", 0);
         List<RootResult> quiet = Arrays.asList(result("on", "none", 0, "desired", "on"), result("off", "none", 0));
         check(RestoreGate.decide(noStock, quiet) == RestoreGate.Decision.PROCEED, "clean state proceeds");
-        check(RestoreGate.decide(result("conflict", "none", 3, "module_wifi_client", "conflict"), quiet)
+        check(RestoreGate.decide(result("conflict", "none", 3, "module_wifi", "conflict"), quiet)
                 == RestoreGate.Decision.PAUSED, "stock conflict pauses");
-        check(RestoreGate.decide(result("off", "none", 0, "module_wifi_client", "reverted"), quiet)
+        check(RestoreGate.decide(result("off", "none", 0, "module_wifi", "reverted"), quiet)
                 == RestoreGate.Decision.PAUSED, "recorded stock restore pauses");
         check(RestoreGate.decide(result("off", "none", 0, "paused", "1"), quiet)
                 == RestoreGate.Decision.PAUSED, "explicit paused flag pauses");

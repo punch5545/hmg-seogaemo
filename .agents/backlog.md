@@ -75,11 +75,11 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   when the app polls during the boot re-apply's adbd restart (about 70 s after boot):
   `wireless-adb.sh` status reports `failed` while `init.svc.adbd` is not `running`, and
   the app never re-polls. Report a transient "applying" state and re-poll in the app.
-- [ ] (With the UI/UX redesign) Switching wifi-client -> CarPlay from the CarPlay row
+- [ ] (With the UI/UX redesign) Switching Wi-Fi (built-in client) -> CarPlay from the CarPlay row
   refuses with "ADB state unknown" until the Wireless ADB screen has been opened once.
   The plan/precheck uses a stale or unknown wireless-adb status instead of polling it;
   refresh dependents before planning.
-- [ ] On-car checks not yet done: wifi-client disable exact restore (+restart);
+- [ ] On-car checks not yet done: wifi-client -> wifi takeover after a USB and an OTA update; USB adapter roles (driver load, client, hotspot); wifi built-in client disable exact restore (+restart);
   both user buttons after restart and after visiting stock settings
   (`user-button-shortcut.md`); full NEMESIS uninstall leaves the unit byte-identical
   (`stock-restore.md`); QuickBoot/ignition-only cycle behaviour (`boot-lifecycle.md`).

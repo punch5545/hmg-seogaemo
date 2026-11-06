@@ -68,6 +68,10 @@ assert "restoreConfirmMessage(steps)" in restore  # lists modules and the boot-p
 assert restore.index("ConfirmDialog.show") < restore.index("restoreModules()")
 assert "RestoreGate.decide" in method("offerModuleRestore")
 assert "confirmModuleRestore(steps)" in method("offerModuleRestore")
+join = method("confirmWifiJoin")
+assert join.index("ConfirmDialog.showView") < join.index('RootClient.moduleAction(feature.id, "wifi_join")')
+assert "dialog.setReady(" in join and "confirmed.showProgress()" in join
+assert "confirmWifiJoin(feature, chosen[0])" in method("showWifiNetworks")
 assert "setCanceledOnTouchOutside(false)" in dialog
 assert "confirm.setEnabled(false)" in dialog
 assert "cancel.requestFocus()" in dialog

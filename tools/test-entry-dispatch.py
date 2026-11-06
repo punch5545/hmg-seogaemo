@@ -18,10 +18,10 @@ with tempfile.TemporaryDirectory() as tmp:
     current.parent.mkdir(parents=True)
     # Minimal complete runtime; binary contents are irrelevant to routing fixtures.
     (stable / 'modules').mkdir()
-    (stable / 'modules.list').write_text('wifi-client\n')
-    (stable / 'modules.graph').write_text('wifi-client	depends=	excludes=\n')
-    (stable / 'modules/wifi-client.properties').write_text('id=wifi-client\n')
-    (stable / 'modules/wifi-client.sh').write_text(
+    (stable / 'modules.list').write_text('wifi\n')
+    (stable / 'modules.graph').write_text('wifi	depends=	excludes=\n')
+    (stable / 'modules/wifi.properties').write_text('id=wifi\n')
+    (stable / 'modules/wifi.sh').write_text(
         'echo stable-module >> "$CALLS"; echo state=off; echo restart=none\n')
     for member in ('VERSION', 'app/hmg-seogaemo.apk', 'core/map/hmg-seogaemo-mapper.jar'):
         target = stable / member
@@ -44,12 +44,12 @@ with tempfile.TemporaryDirectory() as tmp:
     for entry in entries:
         target = selected / entry
         target.write_text('echo selected\nfor arg do echo "arg=$arg"; done\n')
-        args = ('wifi-client', 'revert') if entry.endswith('hmg-seogaemo-root') else ()
+        args = ('wifi', 'revert') if entry.endswith('hmg-seogaemo-root') else ()
         result = run(stable / entry, *args)
         assert result.returncode == 0 and result.stdout.startswith('selected\n'), (entry, result)
     dispatcher = stable / entries[0]
     for args in [(), ('device', 'bad'), ('stock', 'restore', 'extra'),
-                 ('map', 'shell'), ('bad/path', 'status'), ('wifi-client', 'watch', 'bad')]:
+                 ('map', 'shell'), ('bad/path', 'status'), ('wifi', 'watch', 'bad')]:
         result = run(dispatcher, *args)
         assert result.returncode == 2 and 'selected' not in result.stdout
     # Fixed recovery routes never execute a selected dispatcher or selected hook.
@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory() as tmp:
     recovery()
     # Each damaged selection leaves recovery and read-only module queries usable.
     for member, damage in [('lib/common.sh', None), ('bin/hmg-seogaemo-root', ''),
-            ('bin/hmg-seogaemo-root', 'if then\n'), ('modules/wifi-client.sh', None),
+            ('bin/hmg-seogaemo-root', 'if then\n'), ('modules/wifi.sh', None),
             ('core/map/hmg-seogaemo-mapper.jar', '')]:
         target = selected / member
         saved = target.read_bytes()
@@ -82,10 +82,10 @@ with tempfile.TemporaryDirectory() as tmp:
         else: target.write_text(damage)
         recovery()
         for verb in ('status', 'precheck'):
-            assert 'state=off' in run(dispatcher, 'wifi-client', verb).stdout
+            assert 'state=off' in run(dispatcher, 'wifi', verb).stdout
         before = calls.read_bytes()
-        for args in [('wifi-client', 'apply'), ('wifi-client', 'revert'),
-                     ('wifi-client', 'watch', 'boot'), ('map', 'run'), ('map', 'verify'),
+        for args in [('wifi', 'apply'), ('wifi', 'revert'),
+                     ('wifi', 'watch', 'boot'), ('map', 'run'), ('map', 'verify'),
                      ('map', 'export')]:
             result = run(dispatcher, *args)
             assert result.returncode == 1 and 'state=failed' in result.stdout, result
@@ -96,23 +96,23 @@ with tempfile.TemporaryDirectory() as tmp:
     (selected / entries[0]).write_text(
         'echo selected-failure >> "$CALLS"; echo state=failed; echo restart=none; exit 1\n')
     calls.write_text('')
-    result = run(dispatcher, 'wifi-client', 'apply')
+    result = run(dispatcher, 'wifi', 'apply')
     assert result.returncode == 1 and calls.read_text() == 'selected-failure\n', result
     (stable / 'core/stock.sh').write_text(original_stock)
     # Canonical aliases and a real selected entry must not recurse.
     current.unlink()
     current.symlink_to(stable, target_is_directory=True)
-    assert 'state=off' in run(dispatcher, 'wifi-client', 'status').stdout
+    assert 'state=off' in run(dispatcher, 'wifi', 'status').stdout
     shutil.copytree(stable, selected, dirs_exist_ok=True)
     (selected / 'NEMESIS.data').unlink()  # OTA archives omit the descriptor.
     current.unlink()
     current.symlink_to(selected, target_is_directory=True)
-    assert 'state=off' in run(dispatcher, 'wifi-client', 'status').stdout
-    assert 'state=off' in run(selected / entries[0], 'wifi-client', 'status').stdout
+    assert 'state=off' in run(dispatcher, 'wifi', 'status').stdout
+    assert 'state=off' in run(selected / entries[0], 'wifi', 'status').stdout
     assert 'state=off' in run(selected / entries[0], 'update', 'rollback').stdout
     current.unlink()
     current.symlink_to(root / 'missing')
-    assert 'state=off' in run(dispatcher, 'wifi-client', 'status').stdout
+    assert 'state=off' in run(dispatcher, 'wifi', 'status').stdout
     # USB repair must execute the fresh tree even with a stale OTA selection.
     current.unlink()
     current.symlink_to(selected, target_is_directory=True)

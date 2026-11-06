@@ -111,7 +111,7 @@ test-python:
 JAVAC7 := javac -encoding UTF-8 -source 7 -target 7
 APPSRC := app/src/com/seogaemo/hmg
 test-java:
-	rm -rf out/java-test && mkdir -p out/java-test/planner out/java-test/tile out/java-test/trust out/java-test/guards out/java-test/installed
+	rm -rf out/java-test && mkdir -p out/java-test/planner out/java-test/tile out/java-test/trust out/java-test/guards out/java-test/installed out/java-test/wifi
 	$(JAVAC7) -d out/java-test/planner $(addprefix $(APPSRC)/module/,ModulePlan.java ModulePlanner.java Warning.java) tools/ModulePlannerTest.java
 	java -cp out/java-test/planner ModulePlannerTest
 	$(JAVAC7) -d out/java-test/tile $(addprefix $(APPSRC)/module/,HomeTile.java HomeTileCatalog.java ModuleAction.java) tools/HomeTileCatalogTest.java
@@ -122,6 +122,8 @@ test-java:
 	java -cp out/java-test/guards AppGuardsTest
 	$(JAVAC7) -d out/java-test/installed $(addprefix $(APPSRC)/module/,InstalledModule.java RootResult.java RootClient.java ModuleRegistry.java Module.java ModuleAction.java InfoRow.java HomeTile.java Warning.java ModuleStatus.java ModulePlan.java ModulePlanner.java) $(APPSRC)/ui/settings/SettingsPage.java tools/InstalledModuleTest.java
 	java -cp out/java-test/installed com.seogaemo.hmg.module.InstalledModuleTest
+	$(JAVAC7) -d out/java-test/wifi $(APPSRC)/module/WifiNetwork.java tools/WifiNetworkTest.java
+	java -cp out/java-test/wifi com.seogaemo.hmg.module.WifiNetworkTest
 
 clean:
 	rm -rf out

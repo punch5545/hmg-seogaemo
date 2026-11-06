@@ -41,6 +41,7 @@ import com.seogaemo.hmg.module.RestoreGate;
 import com.seogaemo.hmg.module.RootClient;
 import com.seogaemo.hmg.module.RootResult;
 import com.seogaemo.hmg.module.Warning;
+import com.seogaemo.hmg.module.WifiNetwork;
 import com.seogaemo.hmg.ui.ConfirmDialog;
 import com.seogaemo.hmg.ui.settings.ReportsSection;
 import com.seogaemo.hmg.ui.Feature;
@@ -252,7 +253,7 @@ public final class MainActivity extends Activity {
                 SharedPreferences resume = getSharedPreferences("update", MODE_PRIVATE);
                 boolean rebooted = !resume.contains("boot") || ModuleResume.restarted(
                         resume.getString("boot", ""), ModuleResume.bootId());
-                ready = rebooted && ModuleResume.ready(RootClient.run("wifi-client", "status"),
+                ready = rebooted && ModuleResume.ready(RootClient.run("wifi", "status"),
                         new UpdateClient(MainActivity.this).hasUsableNetwork());
             } catch (Exception ignored) { }
             final boolean canResume = ready;
@@ -914,9 +915,12 @@ public final class MainActivity extends Activity {
         return cached == null ? setting.defaultValue : cached;
     }
 
-    private String settingDisplay(Module.Setting setting, String value) {
+    /** A choice value shows the module's choice_<setting>_<value> string when it has one. */
+    private String settingDisplay(Feature feature, Module.Setting setting, String value) {
         if (setting.type == Module.SettingType.BOOLEAN) return getString("on".equals(value) ? R.string.on : R.string.off);
-        return value;
+        String named = feature.installed == null ? null
+                : feature.installed.strings.get("choice_" + setting.key + "_" + value);
+        return named == null ? value : named;
     }
 
     private void renderUiBlock(OptionsList rows, final Feature feature, RootResult result, String block) {
@@ -927,6 +931,9 @@ public final class MainActivity extends Activity {
         final InstalledModule installed = feature.installed;
         final String label = arguments.containsKey("label") ? installed.text(arguments.get("label")) : "";
         if ("status".equals(type)) return;
+        // when=<key> shows the block only while the last status reports info.<key>=1 (e.g. a radio is present).
+        String when = arguments.get("when");
+        if (when != null && (result == null || !"1".equals(result.info.get(when)))) return;
         // info text goes behind 도움말 and value rows into the developer-only diagnostics (finishOptions),
         // so 옵션 holds only what the user can change, as for built-in modules.
         if ("info".equals(type) || "value".equals(type)) return;
@@ -936,7 +943,7 @@ public final class MainActivity extends Activity {
             final Module.Setting setting = declaredSetting(installed, arguments.get("setting"));
             if (setting == null) return;
             final String current = settingValue(feature, setting);
-            rows.addValue(label, settingDisplay(setting, current), true, new View.OnClickListener() {
+            rows.addValue(label, settingDisplay(feature, setting, current), true, new View.OnClickListener() {
                 public void onClick(View view) {
                     if (setting.type == Module.SettingType.BOOLEAN)
                         confirmSetting(feature, setting, label, "on".equals(current) ? "off" : "on");
@@ -963,12 +970,16 @@ public final class MainActivity extends Activity {
             rows.addLink(getString(R.string.option_open_wifi_settings), new View.OnClickListener() {
                 public void onClick(View view) { openWifiSettings(); }
             });
+        } else if ("open".equals(type) && "wifi_networks".equals(arguments.get("screen"))) {
+            rows.addLink(getString(R.string.wifi_networks_open), new View.OnClickListener() {
+                public void onClick(View view) { showWifiNetworks(feature); }
+            });
         }
     }
 
     private void confirmSetting(final Feature feature, final Module.Setting setting, String label, final String value) {
         if (moduleWorking || modulePlanning || stockBusy) return;
-        String display = settingDisplay(setting, value);
+        String display = settingDisplay(feature, setting, value);
         ConfirmDialog.show(this, getString(R.string.option_set_confirm, label, display),
                 getString(R.string.option_set_note), getString(R.string.apply), getString(R.string.cancel), false,
                 new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { applySetting(feature, setting, value, dialog); } },
@@ -983,7 +994,7 @@ public final class MainActivity extends Activity {
         for (final String value : setting.allowedValues) {
             LinearLayout row = horizontal();
             row.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
-            row.addView(text(settingDisplay(setting, value), 22, WHITE, medium), new LinearLayout.LayoutParams(0, -1, 1));
+            row.addView(text(settingDisplay(feature, setting, value), 22, WHITE, medium), new LinearLayout.LayoutParams(0, -1, 1));
             TextView marker = text(getString(value.equals(current) ? R.string.radio_selected : R.string.radio_unselected),
                     28, value.equals(current) ? BLUE : MUTED, sans);
             marker.setGravity(Gravity.CENTER);
@@ -1143,6 +1154,146 @@ public final class MainActivity extends Activity {
         } catch (java.io.IOException error) {
             Log.w("HMG-Seogaemo", "Could not write app state for the report", error);
         }
+    }
+
+    /** USB Wi-Fi networks from the wifi module's scan; a row is picked, then the join is confirmed. */
+    private void showWifiNetworks(final Feature feature) {
+        if (moduleWorking || modulePlanning || stockBusy) return;
+        final LinearLayout holder = vertical();
+        LinearLayout loading = horizontal();
+        loading.setGravity(Gravity.CENTER);
+        loading.addView(new android.widget.ProgressBar(this), new LinearLayout.LayoutParams(dp(40), dp(40)));
+        holder.addView(loading, new LinearLayout.LayoutParams(-1, dp(120)));
+        final WifiNetwork[] chosen = {null};
+        final boolean[] closed = {false};
+        final ConfirmDialog dialog = ConfirmDialog.showView(this, getString(R.string.wifi_networks_title), holder,
+                getString(R.string.wifi_next), getString(R.string.cancel), false, new ConfirmDialog.Action() {
+                    public void run(ConfirmDialog picked) {
+                        closed[0] = true;
+                        picked.dismiss();
+                        confirmWifiJoin(feature, chosen[0]);
+                    }
+                }, new Runnable() { public void run() { closed[0] = true; } });
+        if (dialog == null) return;
+        dialog.setReady(false);
+        new Thread(new Runnable() { public void run() {
+            final RootResult result = RootClient.moduleAction(feature.id, "wifi_scan");
+            runOnUiThread(new Runnable() { public void run() {
+                if (closed[0] || isFinishing()) return;
+                if (result.exitCode != 0) {
+                    closed[0] = true;
+                    dialog.dismiss();
+                    showFailure(getString(R.string.module_result_failed), result.detail);
+                    return;
+                }
+                holder.removeAllViews();
+                final List<WifiNetwork> options = new ArrayList<WifiNetwork>(WifiNetwork.parse(result.info));
+                options.add(null); // typed by hand: hidden networks, or a unit without wpa_cli
+                final List<TextView> markers = new ArrayList<TextView>();
+                for (int i = 0; i < options.size(); i++) {
+                    final int index = i;
+                    WifiNetwork network = options.get(i);
+                    LinearLayout row = horizontal();
+                    row.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
+                    row.addView(text(network == null ? getString(R.string.wifi_network_other) : network.name,
+                            22, WHITE, medium), new LinearLayout.LayoutParams(0, -1, 1));
+                    TextView marker = text(getString(R.string.radio_unselected), 28, MUTED, sans);
+                    marker.setGravity(Gravity.CENTER);
+                    row.addView(marker, new LinearLayout.LayoutParams(dp(60), -1));
+                    markers.add(marker);
+                    row.setOnClickListener(new View.OnClickListener() {
+                        public void onClick(View view) {
+                            chosen[0] = options.get(index);
+                            for (int m = 0; m < markers.size(); m++) {
+                                markers.get(m).setText(getString(m == index ? R.string.radio_selected : R.string.radio_unselected));
+                                markers.get(m).setTextColor(m == index ? BLUE : MUTED);
+                            }
+                            dialog.setReady(true);
+                        }
+                    });
+                    holder.addView(row, new LinearLayout.LayoutParams(-1, dp(Theme.ACTION_HEIGHT)));
+                    divider(holder, false);
+                }
+            } });
+        } }, "hmg-seogaemo-wifi-scan").start();
+    }
+
+    private android.widget.EditText wifiField(String hint, boolean secret) {
+        android.widget.EditText field = new android.widget.EditText(this);
+        field.setHint(hint);
+        field.setSingleLine(true);
+        field.setTextSize(22 * Theme.TEXT_SCALE);
+        field.setTextColor(WHITE);
+        field.setHintTextColor(MUTED);
+        field.setBackgroundDrawable(shape(RAISED, HAIRLINE, Theme.BUTTON_RADIUS));
+        field.setPadding(dp(SettingsUi.MD), 0, dp(SettingsUi.MD), 0);
+        field.setInputType(android.text.InputType.TYPE_CLASS_TEXT | (secret
+                ? android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD : 0));
+        return field;
+    }
+
+    /** Name (typed network only) and passphrase; the confirm writes the join request and runs wifi_join. */
+    private void confirmWifiJoin(final Feature feature, final WifiNetwork network) {
+        if (moduleWorking || modulePlanning || stockBusy) return;
+        LinearLayout form = vertical();
+        final android.widget.EditText name = network == null ? wifiField(getString(R.string.wifi_network_name), false) : null;
+        final android.widget.EditText password = network == null || network.needsPassword()
+                ? wifiField(getString(R.string.wifi_network_password), true) : null;
+        for (android.widget.EditText field : new android.widget.EditText[] {name, password}) {
+            if (field == null) continue;
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(Theme.ACTION_HEIGHT));
+            params.bottomMargin = dp(SettingsUi.MD);
+            form.addView(field, params);
+        }
+        if (password == null) form.addView(text(getString(R.string.wifi_network_open), 20, MUTED, sans),
+                new LinearLayout.LayoutParams(-1, -2));
+        final ConfirmDialog dialog = ConfirmDialog.showView(this,
+                network == null ? getString(R.string.wifi_network_other) : network.name, form,
+                getString(R.string.wifi_connect), getString(R.string.cancel), false, new ConfirmDialog.Action() {
+            public void run(final ConfirmDialog confirmed) {
+                moduleWorking = true;
+                confirmed.showProgress();
+                final byte[] ssid = network == null ? WifiNetwork.bytes(name.getText().toString()) : network.ssid;
+                final String passphrase = password == null ? "" : password.getText().toString();
+                new Thread(new Runnable() { public void run() {
+                    File request = new File(new File(getFilesDir(), "wifi"), "usb-join");
+                    RootResult result;
+                    try {
+                        request.getParentFile().mkdirs();
+                        OutputStream out = new FileOutputStream(request);
+                        try { out.write(WifiNetwork.bytes(WifiNetwork.request(ssid, passphrase))); }
+                        finally { out.close(); }
+                        result = RootClient.moduleAction(feature.id, "wifi_join");
+                    } catch (Exception error) {
+                        result = new RootResult("failed", "none", error.getClass().getSimpleName(), 1, null);
+                    } finally {
+                        request.delete(); // holds the derived key; root has already copied it
+                    }
+                    final RootResult outcome = result;
+                    runOnUiThread(new Runnable() { public void run() {
+                        moduleWorking = false;
+                        confirmed.dismiss();
+                        if (outcome.exitCode == 0) refreshAfterOperation();
+                        else showFailure(getString(R.string.module_result_failed), outcome.detail);
+                    } });
+                } }, "hmg-seogaemo-wifi-join").start();
+            }
+        }, null);
+        if (dialog == null) return;
+        final Runnable check = new Runnable() { public void run() {
+            boolean ready = (name == null || WifiNetwork.validName(name.getText().toString())) &&
+                    (password == null || (network == null && password.length() == 0) ||
+                            WifiNetwork.validPassphrase(password.getText().toString()));
+            dialog.setReady(ready);
+        } };
+        android.text.TextWatcher watcher = new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            public void onTextChanged(CharSequence s, int start, int before, int count) { }
+            public void afterTextChanged(android.text.Editable s) { check.run(); }
+        };
+        if (name != null) name.addTextChangedListener(watcher);
+        if (password != null) password.addTextChangedListener(watcher);
+        check.run();
     }
 
     private void confirmAction(final Feature feature, final String name, final String label, String question,
@@ -1565,7 +1716,7 @@ public final class MainActivity extends Activity {
             if (part.length < 4) continue;
             String label = part[0].startsWith("lib_") ? getString(R.string.car_check_libs)
                     : part[0].startsWith("module_") ? getString(R.string.car_check_modules)
-                    : ReportsSection.title(this, part[0]);
+                    : ReportsSection.title(this, part[0]) + radioDetail(part);
             String known = levels.get(label);
             if (known == null || checkRank(part[1]) > checkRank(known)) levels.put(label, part[1]);
         }
@@ -1585,6 +1736,18 @@ public final class MainActivity extends Activity {
                     rank == 3 ? Theme.ERROR : rank == 2 ? Theme.WARNING : rank == 1 ? MUTED : BLUE, label);
             shown++;
         }
+    }
+
+    /** Built-in Wi-Fi present or not; the USB adapter's model, or none / not supported. */
+    private String radioDetail(String[] check) {
+        if ("wifi_builtin".equals(check[0]))
+            return ": " + getString("ok".equals(check[1]) ? R.string.car_check_present : R.string.car_check_absent);
+        if (!"wifi_usb".equals(check[0])) return "";
+        if ("ok".equals(check[1])) {
+            int end = check[3].indexOf(" (");
+            return ": " + (end > 0 ? check[3].substring(0, end) : check[3]);
+        }
+        return ": " + getString(check[3].startsWith("USB device") ? R.string.car_check_unsupported : R.string.car_check_absent);
     }
 
     private void addCheckRow(LinearLayout column, String icon, int color, String label) {
@@ -2341,7 +2504,7 @@ public final class MainActivity extends Activity {
             final UpdateClient client = new UpdateClient(this);
             if (!client.hasUsableNetwork()) {
                 if (dialog != null) dialog.dismiss();
-                Feature wifi = feature("wifi-client");
+                Feature wifi = feature("wifi");
                 if (wifi != null) prepareModuleChange(wifi, true, true);
                 return;
             }

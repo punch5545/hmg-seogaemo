@@ -160,6 +160,8 @@ sg_zygote_foreign() {
 }
 # Stale wrapper guard state handling is exercised by tools/test-runtime.py.
 sg_zygote_guard_sweep() { [ ! -f "$HMG_SEOGAEMO_STATE/guard-sweep-fails" ]; }
+# The real peer reader, on the fake root's data directory.
+sg_peer_info() ( SG_DATA_ROOT=$SG_WIRELESS_TEST_ROOT$SG_DATA_ROOT; . "$HMG_SEOGAEMO_TEST_COMMON"; sg_peer_info "$@" )
 sg_status() { sg_print "state=$1" "restart=$2" "detail=${3:-}"; case "$1" in conflict) return 3;; incompatible) return 4;; failed) return 1;; esac; }
 SH
 cat > "$T/bin/getprop" <<'SH'
@@ -223,6 +225,43 @@ grep -q '^state=conflict$' "$T/output" || fail owner-state
 rm -f "$T/state/owner-hmgapi"
 run precheck || fail precheck
 grep -q '^state=off$' "$T/output" || fail precheck-state
+# The CarPlay hotspot the wifi module publishes (peer info), read-only, and its built-in client conflict.
+DATA=$T/root$SG_DATA_ROOT
+publish() { mkdir -p "$DATA/peer"; sg_print "$@" > "$DATA/peer/wifi"; }
+wifi_set() { mkdir -p "$DATA/settings/wifi"; sg_write "$2" > "$DATA/settings/wifi/$1"; }
+radio() { run status || fail "hotspot-status-$2"; grep -q "^info.hotspot_radio=$1\$" "$T/output" || fail "hotspot-radio-$2"; }
+radio none no-stock-radio
+sg_write broadcom > "$T/props/tcc.wifi.vendor"
+mkdir -p "$T/root/system/wifi"
+sg_print ko > "$T/root/system/wifi/bcmdhd.ko"; sg_print fw > "$T/root/system/wifi/fw_bcmdhd.bin"
+radio builtin stock-radio
+publish radio=usb interface=rtwlan0 ip=192.168.50.1 ssid=HMG-Seogaemo-6f1d passphrase=secret-pass-1 channel=36 ready=1
+radio usb usb-published
+grep -q 'secret-pass-1' "$T/output" && fail passphrase-in-status
+publish radio=none interface= ip= ssid= passphrase= channel= ready=0
+radio none builtin-client
+wifi_set builtin_role off
+radio builtin builtin-unused
+publish radio=builtin interface=wlan0 ip=192.168.0.1 ssid= passphrase= channel= ready=stock
+radio builtin builtin-published
+# wifi on, built-in client, no USB hotspot: precheck warns (the app plan turns wifi off first), apply refuses.
+mkdir -p "$DATA/desired"; sg_write on > "$DATA/desired/wifi"
+wifi_set builtin_role client
+publish radio=none interface= ip= ssid= passphrase= channel= ready=0
+run precheck || fail client-precheck
+grep -q '^warn.wifi_client=1$' "$T/output" && grep -q '^state=off$' "$T/output" || fail client-precheck-warning
+run apply && fail client-apply-accepted
+grep -q '^state=conflict$' "$T/output" && grep -q 'needs a hotspot' "$T/output" || fail client-apply-state
+[ ! -e "$T/state/ops.list" ] && [ "$(cat "$T/props/persist.ium.support")" = stock ] || fail client-apply-mutated
+wifi_set usb_role carplay_ap
+publish radio=usb interface=rtwlan0 ip=192.168.50.1 ssid=HMG-Seogaemo-6f1d passphrase=secret-pass-1 channel=36 ready=1
+run precheck || fail usb-precheck
+grep -q '^warn.wifi_client=' "$T/output" && fail usb-precheck-warning
+sg_write off > "$DATA/desired/wifi"; wifi_set usb_role off
+publish radio=none interface= ip= ssid= passphrase= channel= ready=0
+run precheck || fail wifi-off-precheck
+grep -q '^warn.wifi_client=' "$T/output" && fail wifi-off-precheck-warning
+rm -rf "$DATA/peer" "$DATA/settings" "$DATA/desired"
 # An app_process swap with no ownership record is refused everywhere, untouched.
 touch "$T/state/foreign"
 for verb in precheck apply status revert; do
@@ -400,4 +439,5 @@ sh "$HERE/test/runtime/run.sh" > "$T/runtime.out" 2>&1 || { cat "$T/runtime.out"
 sh "$HERE/test/consumer/run.sh" > "$T/consumer.out" 2>&1 || { cat "$T/consumer.out"; fail consumer; }
 sh "$HERE/test/cpturns/run.sh" > "$T/cpturns.out" 2>&1 || { cat "$T/cpturns.out"; fail cpturns; }
 sh "$HERE/test/carlanes/run.sh"
+sh "$HERE/test/usbhotspot/run.sh"
 sg_print "ok wireless-carplay-and-aa toolbox parse, guards, rollback, drift refusal, exact revert"

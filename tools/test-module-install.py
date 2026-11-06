@@ -379,6 +379,90 @@ def test_bundled(car):
     assert "raw-demo" not in car.root("module", "list")
 
 
+def raw_package(module_id, props, extra=""):
+    return {"module.properties": f"id={module_id}\nversion=1.0.0\napi=1\ncars=NEEV.KOR.*.260902\nraw_shell=1\n"
+                                  f"owns_props={props}\n{extra}",
+            "module.sh": RAW["module.sh"].replace("persist.raw.demo", props),
+            "strings/en.txt": "name=Raw\nsummary=Bundled raw module\n"}
+
+
+def bundle_as(car, module_id, files):
+    (car.base / "bundled").mkdir(exist_ok=True)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, text in files.items():
+            archive.writestr(name, text)
+    for old in (car.base / "bundled").iterdir():
+        old.unlink()
+    (car.base / f"bundled/{module_id}.hsm").write_bytes(buffer.getvalue())
+    (car.base / f"bundled/{module_id}.sha256").write_text(hashlib.sha256(buffer.getvalue()).hexdigest())
+
+
+def test_replaces(car):
+    # A package update renames a bundled module that is on: the new id takes over state without a write.
+    bundle_as(car, "old-raw", raw_package("old-raw", "persist.raw.demo"))
+    car.root("module", "install-bundled")
+    assert "state=on" in car.root("old-raw", "apply")
+    assert car.prop("persist.raw.demo") == "on"
+    (car.data / "settings/old-raw").mkdir(parents=True)
+    (car.data / "settings/old-raw/mode").write_text("x")
+    before = (car.data / "ledger/ledger.tsv").read_text().count("prop_set")
+    renamed = raw_package("new-raw", "persist.raw.demo", "replaces=old-raw\nkmods=x8188\nkmod.x8188=files/x.ko\n")
+    renamed["files/x.ko"] = "ko"
+    # Different persistent targets: the old module stays and nothing moves.
+    wider = dict(renamed, **{"module.properties": renamed["module.properties"].replace(
+        "owns_props=persist.raw.demo", "owns_props=persist.raw.demo,persist.raw.more")})
+    bundle_as(car, "new-raw", wider)
+    assert "does not touch the same targets" in car.root("module", "install-bundled")
+    assert "old-raw,1.0.0,bundled" in car.root("module", "list") and (car.data / "modules/old-raw").is_dir()
+    assert not (car.data / "migrate/new-raw").exists()
+    bundle_as(car, "new-raw", renamed)
+    out = car.root("module", "install-bundled")
+    listed = car.root("module", "list")
+    assert "new-raw,1.0.0,bundled" in listed and "old-raw" not in listed, (out, listed)
+    assert (car.data / "installed.list").read_text().split() == ["new-raw"]
+    assert not (car.data / "installed/old-raw").exists() and not (car.data / "installed/old-raw.properties").exists()
+    assert (car.data / "desired/new-raw").read_text() == "on" and not (car.data / "desired/old-raw").exists()
+    assert (car.data / "settings/new-raw/mode").read_text() == "x"
+    assert (car.data / "modules/new-raw/prop.persist.raw.demo").is_dir() and not (car.data / "modules/old-raw").exists()
+    assert not (car.data / "migrate/new-raw").exists()
+    ledger = (car.data / "ledger/ledger.tsv").read_text()
+    assert "\tnew-raw\tmodule_takeover\told-raw\t" in ledger and ledger.count("prop_set") == before
+    assert car.prop("persist.raw.demo") == "on"
+    assert "state=on" in car.root("new-raw", "status")
+    # The taken-over baseline restores stock exactly.
+    assert "state=off" in car.root("new-raw", "revert")
+    assert car.prop("persist.raw.demo") != "on"
+    # An interrupted takeover (journal written, state moved, old package still listed) finishes next time.
+    car.root("module", "remove", "new-raw")
+    (car.data / "bundled-removed/new-raw").unlink()
+    bundle_as(car, "old-raw", raw_package("old-raw", "persist.raw.demo"))
+    car.root("module", "install-bundled")
+    assert "state=on" in car.root("old-raw", "apply")
+    (car.data / "migrate").mkdir(exist_ok=True)
+    (car.data / "migrate/new-raw").write_text("old-raw")
+    (car.data / "modules/old-raw").rename(car.data / "modules/new-raw")
+    bundle_as(car, "new-raw", renamed)
+    car.root("module", "install-bundled")
+    assert "new-raw,1.0.0,bundled" in car.root("module", "list")
+    assert not (car.data / "migrate/new-raw").exists() and not (car.data / "installed/old-raw").exists()
+    assert "state=on" in car.root("new-raw", "status")
+    assert "state=off" in car.root("new-raw", "revert")
+    # An old module the owner removed keeps its successor removed.
+    car.root("module", "remove", "new-raw")
+    for name in ("new-raw", "old-raw"):
+        (car.data / f"bundled-removed/{name}").unlink(missing_ok=True)
+    bundle_as(car, "old-raw", raw_package("old-raw", "persist.raw.demo"))
+    car.root("module", "install-bundled")
+    car.root("module", "remove", "old-raw")
+    bundle_as(car, "new-raw", renamed)
+    assert "stays removed" in car.root("module", "install-bundled")
+    assert "new-raw" not in car.root("module", "list") and (car.data / "bundled-removed/new-raw").is_file()
+    # Only a bundled package may declare replaces=.
+    direct = variant(**{"module.properties": SAMPLE["module.properties"] + "replaces=old-raw\n"})
+    assert "HSM-E203" in car.root("module", "install", car.offer(direct), code=1)
+
+
 def test_converted_builtin(car):
     # Every converted module packs, installs as bundled, keeps its touched list and runs its own root script.
     sys.path.insert(0, str(ROOT / "tools"))
@@ -391,9 +475,10 @@ def test_converted_builtin(car):
                                  "reassert_props=persist.sys.key.swrccustom", "watch=boot,screen_on", "restart=none"),
         "wireless-adb": ("raw_shell=1", "owns_props=persist.service.adb.tcp.enable,persist.adb.tcp.port",
                          "services=adbd", "restart=adbd"),
-        "wifi-client": ("raw_shell=1", "owns_props=persist.wifi.state",
-                        "owns_files=/system/etc/permissions/android.hardware.wifi.xml",
-                        "excludes=wireless-carplay-and-aa", "restart=head_unit"),
+        "wifi": ("raw_shell=1", "owns_props=persist.wifi.state",
+                 "owns_files=/system/etc/permissions/android.hardware.wifi.xml",
+                 "excludes=", "restart=head_unit", "kmods=88x2bu,8851bu", "owns_ifaces=rtwlan*",
+                 "watch=boot,screen_on"),
         "wireless-carplay-and-aa": ("raw_shell=1", "hooks=1", "restart=head_unit",
                                     "known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:33f798115689d1859e8d2159dc88e7dc",
                                     "owns_lines.1=/system/onebin/neev_kr/featurexml.cfg:-/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml",
@@ -476,7 +561,8 @@ def test_installed_shared_line(car):
 
 def main():
     for test in (test_install_validation, test_lifecycle, test_reconcile_reapplies, test_hook_host, test_usb_import,
-                 test_button_action, test_bundled, test_converted_builtin, test_installed_shared_line):
+                 test_button_action, test_bundled, test_replaces, test_converted_builtin,
+                 test_installed_shared_line):
         with tempfile.TemporaryDirectory() as directory:
             test(Car(Path(directory).resolve()))
     print("installed module tests passed")

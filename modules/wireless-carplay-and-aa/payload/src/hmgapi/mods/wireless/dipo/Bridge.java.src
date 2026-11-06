@@ -1,4 +1,5 @@
 package hmgapi.mods.wireless.dipo;
+// Modified by HMG-Seogaemo: no stock hotspot start while the wifi module runs the USB CarPlay hotspot.
 
 import android.bluetooth.BluetoothDevice;
 import android.content.Context;
@@ -18,6 +19,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 
 import hmgapi.hook.Points;
+import hmgapi.mods.wireless.UsbHotspot;
 
 /**
  * Wireless CarPlay's Bluetooth bridge, in DiPO (from the bridge build, com.ev6.cpwl).
@@ -491,8 +493,16 @@ final class Bridge {
         }
     }
 
-    /** the head unit's hotspot in mode 2 (for connectivity), which wireless CarPlay joins */
+    /**
+     * the head unit's hotspot in mode 2 (for connectivity), which wireless CarPlay joins. This is the only
+     * place the module starts a hotspot; with the USB CarPlay hotspot (zygote snapshot) the wifi module
+     * already runs hostapd on the adapter, so the stock wlan0 AP stays off and the attach goes on.
+     */
     static void ensureHotspot(Context c) {
+        if (UsbHotspot.active()) {
+            log("USB hotspot " + UsbHotspot.iface() + " in use, stock hotspot not started");
+            return;
+        }
         try {
             Object wifi = c.getSystemService(Context.WIFI_SERVICE);
             if (wifi == null) return;

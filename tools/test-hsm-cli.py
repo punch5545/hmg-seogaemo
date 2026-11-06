@@ -36,7 +36,7 @@ def main():
         (module / "files/wifi.xml").write_text("<permissions/>\n")
         apply.write_text(original + f"put_file {wifi} files/wifi.xml\n")
         out = hsm("validate", "demo-mod", cwd=work, code=3)
-        assert "wifi-client" in out, out
+        assert "same file or line as wifi" in out, out
 
         apply.write_text(original)
         out = hsm("validate", "demo-mod", "--product", "OTHER.CAR", cwd=work, code=4)

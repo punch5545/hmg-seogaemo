@@ -1,3 +1,4 @@
 button name=tbt_reset label=@tbt_reset confirm=@tbt_reset_confirm danger=1
 value label=@tbt_inexact key=tbt_inexact
 value label=@tbt_blank key=tbt_blank
+value label=@hotspot_radio key=hotspot_radio

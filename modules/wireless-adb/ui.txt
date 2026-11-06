@@ -1,4 +1,4 @@
-enable module=wifi-client label=@connect_other_wifi
+enable module=wifi label=@connect_other_wifi
 value label=@effective_port key=effective_port
 value label=@daemon_state key=adbd_state
 value label=@hotspot_ssid key=hotspot_ssid

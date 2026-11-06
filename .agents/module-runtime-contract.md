@@ -27,7 +27,9 @@ Module scripts may only *read* directly (`getprop`, `cat`, `ls`, `grep`, `pm lis
 `ifconfig`/`netcfg`, `ps`, `dumpsys`). `make test` lints module root scripts and fails on direct
 mutations: `setprop`, `mount`/`umount`, `cp`, `mv`, `rm`, `dd`, `ln`, `chmod`, `chown`, `sed -i`,
 output redirection to absolute paths outside `$HMG_SEOGAEMO_STATE`, `nemesis remount`,
-`pm install|uninstall|enable|disable`, `settings put`, `start`/`stop`, `iptables`, `am`.
+`pm install|uninstall|enable|disable`, `settings put`, `start`/`stop`, `iptables`, `ip6tables`,
+`ip addr|link|rule|route|...`, `insmod`, `rmmod`, `modprobe`, `kill`, `nohup`, `am`, and the
+runtime-internal `sg_tool_*` and transient revert helpers.
 
 Mutation API (each call: validate target against the module's `owns_props`/`owns_files`/`owns_lines.N`,
 baseline on first touch, perform, verify, mark applied, append ledger; non-zero on failure):
@@ -45,10 +47,19 @@ baseline on first touch, perform, verify, mark applied, append ledger; non-zero 
 | `sg_owned_dirs_prune <dir>...` | remove empty directories under `/system/etc/hmg-seogaemo` that are ancestors of this module's `owns_files` and that an earlier build left without a directory baseline; one ledger row each |
 | `sg_hook_register <jar-rel-src> <entry-class> <process>...` | register this module's hook jar with the core hook host (`$SG_DATA_ROOT/core/hook/mods/<id>/{hook.jar,entry,processes}`, ledgered as the module's files); a `hooks=1` manifest owns these three paths implicitly. Follow with `sg_core_hook_ensure`; after `sg_revert_all` call `sg_core_hook_release` |
 | `sg_dex_cache_track <system-jar> <app-package>` | track the Dalvik cache entry for an owned `/system/framework/*.jar` and the package's `app_hmg-seogaemo-wireless-dex` files; these two derived cache namespaces are the sole exception to explicit `owns_files` listing |
+| `sg_kmod_load <name>` | load a payload kernel module listed in `kmods=` (see [Transient effects](#transient-effects)) |
+| `sg_daemon_start <name>` | start the fixed `daemon.<name>=` command detached; idempotent while it runs |
+| `sg_net_rule <n>` | insert the exact `net_rules.<n>=` iptables rule or `ip rule` once per boot |
+| `sg_iface_addr <iface> <a.b.c.d/prefix>` | add an IPv4 address to an interface matching `owns_ifaces=` and bring its link up |
+| `sg_revert_transient` | undo only this module's transient effects, newest first, and drop them from `changes`; files and properties stay applied |
+| `sg_daemon_restart <name>` | stop our running `daemon.<name>` (if any) and start it again, e.g. after rewriting its state-directory config |
+| `sg_peer_publish [key=value...]` | replace this module's published facts (see [Peer info](#peer-info)); no argument removes them |
 | `sg_revert_all` | undo every change this module made, newest first, with the guarded restore rules below; clears baselines only after every item verified |
 
 Read/report helpers: `sg_log <msg>`, `sg_owner_present <name>` (`nemesis-adb-tcp`, `hmgapi`,
-`leafia`, `local-hkmc-factory82`), `sg_applied <path|key>` (0 if our applied state is current), `sg_status <state> <restart> [detail]`.
+`leafia`, `local-hkmc-factory82`), `sg_applied <path|key>` (0 if our applied state is current), `sg_status <state> <restart> [detail]`,
+`sg_kmod_loaded <name>` and `sg_daemon_running <name>` (0 while our effect of this boot is live),
+`sg_peer_info <module> <key>` (a value another module published).
 `sg_print <line>...` writes each argument literally with a newline; `sg_write <text>`
 writes exactly one argument without adding a newline. Both preserve backslashes and
 option-looking text. They use mksh `print -r --` / `print -rn --`; host POSIX sh
@@ -75,7 +86,9 @@ next kernel boot, status is `pending-restart`, `restart=head_unit`, with
 state through the root dispatcher. The UI treats `info.desired=off` as off for
 toggle planning and explicitly tells the owner in the confirmation dialog that
 disabling requires a head-unit restart to restore stock behavior. This class
-must not own persistent stock-file or property changes.
+must not own persistent stock-file or property changes. The transient APIs
+below are allowed with it; a module that uses only them reverts exactly and
+needs no `restore=reboot`.
 
 **Change ledger.** `/data/nemesis/backup/hmg-seogaemo/ledger/` holds an append-only `ledger.tsv`
 (`time, module, op, target, before-ref, after-ref, result`) plus, per change, the original bytes
@@ -115,11 +128,11 @@ the full artifact list: `tmp/overlap-inventory.md` (2026-11-06, upstream source 
   `hmgapi`, `projection.cardata` before `wireless.carplay.aa`), or `/data/hmgapi/uninstall.sh`
   for a standalone HMG-API, then reports `pending-restart`/`head_unit`. `delete` removes only
   the catalogue paths. Every step is a ledger row (`foreign_remove`/`foreign_delete`).
-  `hmgapi-wifi` (`delete`, overlaps `wifi-client`): with no HMG-API installed and no wifi-client
-  record, `android.hardware.wifi.xml` byte-identical to the wifi-client payload and/or
+  `hmgapi-wifi` (`delete`, overlaps `wifi`): with no HMG-API installed and no `wifi` record (or
+  `wifi-client`, its id before the takeover), `android.hardware.wifi.xml` byte-identical to the `wifi` payload and/or
   `persist.wifi.state=3` are HMG-API Wi-Fi client leftovers (NEEV KOR stock has neither; seen on a
   migrated car 2026-11-06). Clean backs up the XML, deletes it under remount, clears the property
-  and its `/data/property` file, then requires a restart. wifi-client reports these leftovers as
+  and its `/data/property` file, then requires a restart. `wifi` reports these leftovers as
   `conflict` pointing to the Car tab.
   `report` items are refused. Calling `nemesis uninstall` from our root verb is unverified on
   the car. The app shows the findings on the Car tab and cleans them only after a confirm.
@@ -157,6 +170,131 @@ Module tests (`modules/<id>/test/*.sh`, run by `make test`) use a fake `common.s
 `getprop`/`setprop`/file roots under a temp dir; they never touch the host system.
 
 Status strings are ASCII; `sg_clean` preserves ASCII semicolons in detail text.
+
+## Transient effects
+
+Kernel modules, daemons, network rules and interface addresses vanish at a head-unit restart.
+They never baseline a file or property and are not bound to `ro.build.product`: each record in
+the module state directory starts with the boot id (`/proc/sys/kernel/random/boot_id`) it was
+made in. A record from an earlier boot is stale: nothing of it is left to undo, it never makes a
+live effect ours, and the next apply creates the effect again. Boot reconcile re-runs apply while
+desired on; there is no separate reapply pass (an unplugged dongle must not fail the dispatcher).
+Every call validates its arguments and the manifest declaration, refuses a declaration that
+another module claims (any module in the catalogue, enabled or not), records itself in
+`changes` before acting, and appends a ledger row. Return codes: 2 undeclared or invalid,
+3 conflict, 4 incompatible (kernel release), 1 failure.
+
+Manifest keys (each value checked at build time by `tools/module-ownership.py`, at package
+install by `core/module.sh` through `sg_transient_decl_ok`, and again at call time; only
+packages bundled with HMG-Seogaemo may declare them):
+
+| Key | Value |
+|---|---|
+| `kmods=<name>[,<name>]` | kernel module names `[a-z0-9][a-z0-9_]*`; two modules never declare the same name |
+| `kmod.<name>.<platform>=` / `kmod.<name>=` | payload-relative `.ko`; `<platform>` is `getprop ro.board.platform` (e.g. `tcc803x`, `tcc897x`), the plain key is the fallback; every listed name needs one |
+| `kmod_params.<name>=` | up to 16 space-separated `key=value` (`key` `[a-zA-Z_][a-zA-Z0-9_]*`, value `[a-zA-Z0-9_.,:+-]+`) |
+| `daemons=<name>[,<name>]` | daemon names `[a-z0-9][a-z0-9_-]*`, each with one `daemon.<name>=` |
+| `daemon.<name>=` | `/system/bin/<x>`, `/system/xbin/<x>` or `@payload@/<rel>`, then up to 15 tokens of `[a-zA-Z0-9_./:=,+@!-]`; `@payload@` / `@state@` (once per token, followed by nothing or `/...`) expand to `HMG_SEOGAEMO_MODULE_DIR` / `HMG_SEOGAEMO_STATE`; no other `@`; two modules never declare the same command |
+| `net_rules.<n>=` | `n` `[1-9][0-9]{0,3}`; `iptables [-t nat|mangle|filter] <chain> <rule spec>` (no command or table options in the spec, no `--modprobe`) or `ip rule <selector and action>` (no `add`/`del`/`flush`/`show`, no options); same token charset without `@`; two modules never declare the same rule |
+| `owns_ifaces=<glob>[,<glob>]` | interface names or `*` globs `[a-z0-9][a-z0-9_.*-]*` (e.g. `rtwlan*`); globs of two modules never overlap |
+
+No value may contain `*`, `?`, `[`, tabs or newlines except interface globs; values are split
+on spaces as argv, never evaluated. Tools are fixed absolute paths `/system/bin/insmod`,
+`rmmod`, `iptables`, `ip`.
+
+- `sg_kmod_load <name>`: refuses (3) when `/proc/modules` lists the name without a current
+  record of ours; requires the `.ko` to contain `vermagic=<osrelease> ` (read with `grep -a`;
+  otherwise 4); records, `insmod <ko> <params>`, verifies `/proc/modules`; ledger `kmod_load`.
+  Revert: `rmmod` only while loaded and recorded this boot, verified gone; ledger
+  `kmod_unload` (`absent` when nothing was left).
+- `sg_daemon_start <name>`: executable must be a regular non-symlink file; starts
+  `( exec argv ) </dev/null >>daemon.<name>.log 2>&1 &` (log emptied at a start beyond 64 KiB),
+  records boot id and PID plus the expected `/proc/<pid>/cmdline` bytes (each argument followed
+  by NUL; the executable must not rewrite its argv, so payload shell scripts do not qualify),
+  then waits up to 5 seconds for an exact match, else kills that PID and fails. Running means
+  current record, live PID and identical cmdline. Revert: TERM, up to 5 seconds, then KILL and
+  another 5 seconds, only while it still matches; a reused PID is never signalled; ledger
+  `daemon_start` / `daemon_stop`.
+- `sg_net_rule <n>`: Android 4.4 iptables cannot be trusted to have `-C`, so the boot-bound
+  record says whether the rule is ours: inserted once per boot (`-t <table> -I <chain> ...` or
+  `ip rule add ...`), the exact applied text stored in the record. A current record with a
+  different manifest rule conflicts. Revert deletes the stored text (`-D` / `ip rule del`);
+  if that fails within the same boot someone else changed the table: conflict (3), record kept,
+  a restart clears it. Ledger `net_rule_add` / `net_rule_del`.
+- `sg_iface_addr <iface> <a.b.c.d/prefix>`: the interface must match `owns_ifaces` and exist in
+  `/sys/class/net`; an address already present without our current record conflicts. Records
+  whether the link was down (`flags` IFF_UP clear), runs `ip addr add`, and `ip link set up` if
+  it was down; verifies via `ip addr show`. Revert removes only that address and sets the link
+  down only if we brought it up; a missing interface (unplugged dongle) or stale record is
+  success. Ledger `iface_addr_add` / `iface_addr_del`.
+
+`daemon.<name>=/system/...` executables are looked up below `HMG_SEOGAEMO_TOOL_ROOT` when set (the host-test seam of
+the `sg_tool_*` wrappers); on the unit it is unset.
+
+`sg_revert_transient` undoes `kmod`, `daemon`, `net` and `addr` records like `sg_revert_all` and rewrites `changes`
+after each item, keeping persistent kinds. A module backs out a failed transient step with it without restoring
+stock files.
+
+Restore preflight applies the `ro.build.product` guard only when the module holds persistent
+material (property, file, line, bind, dex or directory records) or a build marker; transient
+records alone never need it, so a firmware update cannot strand them.
+
+## Peer info
+
+A module publishes facts for other modules with `sg_peer_publish key=value...`: the whole set replaces
+`<data root>/peer/<module id>` (directory 0700, root only). Keys `[a-z][a-z0-9_]*`; values must survive `sg_clean`
+unchanged (letters, digits, space and `();.,:_/+=-`), else 2. No argument removes the file. Readers call
+`sg_peer_info <module id> <key>` (prints the value; 1 when not published, 2 on a bad argument). Peer files are not
+restore material and are not exported.
+
+The `wifi` module publishes the active CarPlay hotspot on apply, watch and revert (removed on revert):
+
+| Key | Value |
+| --- | --- |
+| `radio` | `usb`, `builtin` or `none` |
+| `interface` | `rtwlan0` (usb), `wlan0` (builtin), empty |
+| `ip` | `192.168.50.1` (usb), `192.168.0.1` (builtin), empty |
+| `ssid`, `passphrase` | the generated USB hotspot credentials; empty for builtin (Android's `WifiManager` config) |
+| `channel` | `36` (usb), empty |
+| `ready` | `1` while hostapd and dnsmasq run this boot, `0` otherwise, `stock` when Android runs the built-in hotspot |
+
+Hooks in system-uid processes cannot read `<data root>`. A consumer either copies what its hooks need from its
+root script, or (`wireless-carplay-and-aa`) reads the peer file once in its zygote entry, which still runs as root
+before apps fork, and keeps the values only in its own loader's statics (never in properties or app-readable files);
+such a snapshot follows a role change after the next head-unit restart.
+
+`wireless-carplay-and-aa` consumes it as follows:
+
+- It starts a hotspot only through DiPO's `WifiManager.setWifiApEnabledForConnectivity` call (its Bluetooth bridge,
+  `ensureHotspot`). With `radio=usb` in the zygote snapshot (valid `interface`, `ip`, `ssid`, `passphrase`; `ready` is
+  ignored because the zygote starts before this boot's reconcile) that call is skipped and the hook part
+  `usb_hotspot` (no map points; runtime record `part.usb_hotspot`) loads in `com.tcc.iap2server` and
+  `com.google.android.projection.sink`. Anything else, including a missing or unreadable file, is the stock path.
+- `status` prints `info.hotspot_radio=usb|builtin|none`: `usb` for a published USB hotspot; `none` for `radio=none`
+  with `wifi` setting `builtin_role=client`; otherwise `builtin` when the stock Broadcom radio exists
+  (`tcc.wifi.vendor=broadcom`, non-empty `bcmdhd.ko` and `fw_bcmdhd.bin`), else `none`.
+- `apply` refuses (conflict) while `wifi` is desired on with `builtin_role=client`, `usb_role` not `carplay_ap` and no
+  published `radio=usb` (the root-side `ModuleManager.hotspotConflict`); `precheck` only prints `warn.wifi_client=1`,
+  because the app's plan turns `wifi` off before that apply. It reads `wifi`'s `desired` and `settings` files,
+  read-only, as `wifi` reads the CarPlay desired state.
+
+## Settings check and module takeover
+
+`hmg-seogaemo-root <id> set <key> <value>` first runs `module.sh setting-ok <key> <value>` for a bundled `raw_shell`
+module (read-only). Exit 0 or 2 (no such check) saves the value; any other exit refuses with `state=conflict` and the
+module's detail, so a value that clashes with another setting is never saved.
+
+`replaces=<old id>` (bundled packages only) renames a bundled module. When the bundled check installs the new id and
+`installed/<old>.properties` exists, the old package must be bundled, must not own lines, and its generated persistent
+ownership (`owns_props`, `reassert_props`, `owns_files`, `owns_generated_dirs`, `services`, `service_calls`, `restore`,
+`hooks`, `owns_lines.*`) must equal the new one's; otherwise conflict and the old module stays. The takeover writes
+`<data root>/migrate/<new>` (journal: old id), moves `modules/`, `desired/`, `settings/`, `restart-cleanup/` and
+`peer/` entries from the old id to the new one, publishes the new package in the old one's catalog position, deletes
+the old package and appends a `module_takeover` ledger row (module = new id, target = old id). It never writes the
+system: baselines and applied records move with the state directory and keep their meaning because the targets are
+identical. An interrupted takeover finishes at the next bundled check (the journal also forces it). If the owner had
+removed the old module (`bundled-removed/<old>`), the new one is recorded as removed too. Earlier ledger rows keep the
+old id.
 
 ## Module shells keep globbing on
 
@@ -233,16 +371,17 @@ Ledger `line_patch`/`line_revert` rows reference exact old/new line text files;
 `line_compose` references before/after file bytes with toolbox MD5 hashes, product
 and stock metadata. Ordinary ledger export includes these records.
 
-Wi-Fi client and wireless projection claim different `featurexml.cfg` lines. Their
-mutual exclusion remains because STA and AP share a radio; file safety is
-independent of that exclusion.
+The `wifi` module (built-in client role) and wireless projection never claim the same
+`featurexml.cfg` line. Their exclusion is functional and role-dependent (the built-in
+radio cannot be a client and serve the stock hotspot), see [wifi.md](wifi.md); file
+safety is independent of it.
 
 ## Ownership of work areas
 
 | Area | Owner worktree |
 |---|---|
 | `app/src/com/seogaemo/hmg/module/` (RootClient, ModuleManager, RootBackedModule), `nemesis/package/lib/common.sh`, `hmg-seogaemo-root` dependency/exclusion enforcement, payload packaging in `Makefile`, generic module rows in Settings UI | module runtime |
-| `modules/wifi-client/**` | wifi-client |
+| `modules/wifi/**` | wifi |
 | `modules/wireless-adb/**` | wireless-adb |
 | `modules/wireless-carplay-and-aa/**` | wireless-carplay-and-aa |
 | `app/src/com/seogaemo/hmg/core/update/**`, `nemesis/package/core/update.sh`, the `update` verb in `hmg-seogaemo-root`, `.github/workflows/release.yml` OTA parts | updater |
@@ -526,7 +665,7 @@ Map IDs include the complete published car metadata and layout; optional reflect
 - `ModuleManager.plan(String id, boolean enable)` → `ModulePlan` (ordered enable/disable list incl.
   dependencies, dependents and exclusions, for the confirmation dialog); `ModuleManager.execute(ModulePlan)`.
   `ModuleManager.requestEnable(String id, String resumeIntent)` persists an intent that survives the
-  head-unit reboot (used by the updater for `wifi-client`).
+  head-unit reboot (used by the updater for `wifi`).
 - Generic Settings rows (toggle, observed state, restart banner, confirmation dialog) are built by
   the runtime from module metadata. Modules do not edit UI code.
 - Every module write, including `ENABLE_MODULE` from a declarative Settings action or Home tile,
@@ -571,7 +710,7 @@ Map IDs include the complete published car metadata and layout; optional reflect
   `statusHeader()` + `infoRows()` + `notes()` + `actions()`, so declarative modules need no code.
 - Components follow `ui-guidelines.md` (NEMESIS-scale rows, EN/KO).
 
-Pane/precheck decisions per module live in [wifi-client.md](wifi-client.md) and [wireless-adb.md](wireless-adb.md). Strings: modules add only `<snake_id>_*` resources in their own `res/values{,-ko}/strings.xml`.
+Pane/precheck decisions per module live in [wifi.md](wifi.md) and [wireless-adb.md](wireless-adb.md). Strings: modules add only `<snake_id>_*` resources in their own `res/values{,-ko}/strings.xml`.
 
 ## Restore-on-uninstall guarantees (owner priority)
 

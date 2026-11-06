@@ -56,9 +56,11 @@ public final class ModuleManager {
         Set<String> related = ModulePlanner.related(id, order, dependencies, exclusions);
         Set<String> on = new HashSet<String>();
         Set<String> desired = new HashSet<String>();
+        RootResult wifi = null;
         for (String candidate : order) {
             boolean linked = related.contains(candidate);
             RootResult status = readStatus(candidate, linked);
+            if (WIFI.equals(candidate)) wifi = status;
             if (status.desiredEnabled()) desired.add(candidate);
             if (!readable(status)) {
                 // Only modules linked by depends/excludes take part in this plan, so an unrelated
@@ -70,7 +72,36 @@ public final class ModuleManager {
                     ("pending-restart".equals(status.state) && !"off".equals(status.info.get("desired"))))
                 on.add(candidate);
         }
-        return ModulePlanner.plan(id, enable, order, dependencies, exclusions, on, desired);
+        ModulePlan plan = ModulePlanner.plan(id, enable, order, dependencies, exclusions, on, desired);
+        String other = hotspotConflict(id, enable, wifi, on);
+        if (other == null) return plan;
+        // Turn the other module (and its dependents) off first, then follow the requested plan.
+        ModulePlan off = ModulePlanner.plan(other, false, order, dependencies, exclusions, on, desired);
+        List<ModulePlan.Step> steps = new ArrayList<ModulePlan.Step>(off.steps);
+        for (ModulePlan.Step step : plan.steps) {
+            boolean planned = false;
+            for (ModulePlan.Step existing : steps) planned |= existing.id.equals(step.id);
+            if (!planned) steps.add(step);
+        }
+        List<Warning> warnings = new ArrayList<Warning>(off.warnings);
+        warnings.addAll(plan.warnings);
+        return new ModulePlan(steps, warnings);
+    }
+
+    static final String WIFI = "wifi";
+    static final String CARPLAY = "wireless-carplay-and-aa";
+
+    /**
+     * Wi-Fi with the built-in radio as a client (and no USB CarPlay hotspot) leaves wireless CarPlay
+     * without a hotspot: enabling either one turns the other off, as the former wifi-client exclusion did.
+     * The roles come from the wifi status (info.builtin_role, info.usb_role).
+     */
+    public static String hotspotConflict(String id, boolean enable, RootResult wifi, Set<String> on) {
+        if (!enable || wifi == null || !"client".equals(wifi.info.get("builtin_role")) ||
+                "carplay_ap".equals(wifi.info.get("usb_role"))) return null;
+        if (WIFI.equals(id) && on.contains(CARPLAY)) return CARPLAY;
+        if (CARPLAY.equals(id) && on.contains(WIFI)) return WIFI;
+        return null;
     }
 
     public RootResult execute(ModulePlan plan) { return execute(plan, null); }
