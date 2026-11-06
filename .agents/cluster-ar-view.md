@@ -34,7 +34,9 @@ fields. CarPlay captures the latest real stock call in the navigation process an
 only the bar during an approach lease. Both the 17-int and object-record paths preserve the
 camera, speed-limit and toll values. While the captured record reports an active camera,
 trap, warning zone or toll gate (any of those fields other than 0 / -1) the stock bar passes
-through unchanged. With no captured stock record it sends no trap record. The trap points
+through unchanged. Stock navigation sends trap info only on change (often once per route), so
+with no captured stock record the bar rides on a neutral record (all fields 0, overSpeedAlarm 3
+as stock sends when idle), restored to bar 0 at the end. The trap points
 are optional for the module: without them only the bar is off.
 Leaving the window restores the latest stock bar; a 3500 ms lease also restores it if DiPO
 stops renewing. Trap calls are never included in the phone-guidance suppression list.
@@ -51,9 +53,10 @@ maneuver needs a fresh distance. Unknown distance cannot open the window.
 The independently implemented CpGuidance policy uses maneuver type, explicit exit angle,
 other junction angles and driving handedness. Turns round to 45 degrees (the branch angle
 equals the direction; 180 draws no line and is never sent). Exits send EXIT_RIGHT 17 at 90 or
-EXIT_LEFT 18 at 270; 19/20 are not used (20 draws a left-side exit on this cluster). Keeps and highway changes send EXIT_LEFT 18 at 270 to the left
-and FORK_2 25 at 90 to the right (FORK_2 draws only at 90, FORK_3 26 draws nothing); a measured
-straight is no keep. Straight past one side road sends SERVICE_ROAD 23 at 270 (branch right) or 24 at 90 (branch
+EXIT_LEFT 18 at 270, or 19 at 90 / 20 at 270 (exit after a lane change toward it; the name of
+20 is misleading) when CarPlay lane guidance shows the recommended lanes are not the lane on the
+exit side. Keeps and highway changes are Y splits: FORK_2 25 at 270 (route
+on the left branch) or 90 (right); FORK_3 26 draws nothing; a measured straight is no keep. Straight past one side road sends SERVICE_ROAD 23 at 270 (branch right) or 24 at 90 (branch
 left), which draw the main road straight on, only with a highway road name or instruction;
 otherwise TURN 13 at 0. U-turns use the Korean
 left loop by default. Roundabouts send 32 (counter-clockwise travel, right-hand traffic) or 33

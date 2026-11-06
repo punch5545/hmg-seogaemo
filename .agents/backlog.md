@@ -42,8 +42,8 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   reflection. Check: AR view / hologram open at 300 m (urban) and 600 m (ramps) and fall back to
   the flat icon after the maneuver; 45° turns, exits, forks, U-turn (left loop) and roundabout
   shapes; route search 9 / 10 text; the trap bar falls with distance and real camera/limit data
-  survives it (and whether stock navigation sends any trap record while CarPlay guides; without
-  one no bar is drawn); junction pictures on highway exits/forks match the road and clear after
+  survives it (on a calm road the bar rides on a neutral record; check that it shows and that a
+  real camera record arriving mid-window takes over); 19/20 lane-change exits while driving; junction pictures on highway exits/forks match the road and clear after
   the maneuver, on reroute, guidance end and disconnect; a stock picture left before CarPlay
   starts is cleared; idle compass at the end; HUD F2 list. Also check that `stop()` does not race
   stock navigation resuming its own guidance (our idle/junction clear landing after stock's
