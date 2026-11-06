@@ -46,8 +46,8 @@ def run():
         with zipfile.ZipFile(stage / name, "w") as archive:
             archive.writestr("VERSION", version + "\n")
             archive.writestr("app/hmg-seogaemo.apk", b"apk")
-            archive.writestr("modules.list", "wifi-client\n")
-            archive.writestr("modules.graph", "wifi-client\tdepends=\texcludes=\n")
+            archive.writestr("modules.list", "wifi\n")
+            archive.writestr("modules.graph", "wifi\tdepends=\texcludes=\n")
         manifest = stage / f"hmg-seogaemo-{version}-manifest.json"
         signature = stage / (manifest.name + ".sig")
 

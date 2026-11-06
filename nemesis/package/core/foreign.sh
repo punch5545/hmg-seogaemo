@@ -36,14 +36,17 @@ hmgapi_residue() {
     done
     grep -q '^# HMGAPI_HOOK begin' "$sys/system/etc/install-recovery.sh" "$sys/system/etc/qb_runtime.sh" 2>/dev/null
 }
-# HMG-API's Wi-Fi client mod writes the same feature XML and persist.wifi.state=3 as our wifi-client.
-# Once HMG-API is gone they stay behind with no wifi-client record, and wifi-client refuses to touch them.
+# HMG-API's Wi-Fi client mod writes the same feature XML and persist.wifi.state=3 as our wifi module
+# (built-in client role). Once HMG-API is gone they stay behind with no wifi record, and wifi refuses
+# to touch them. Records are also looked up under wifi-client, the module's id before 0.1.33, until
+# the bundled check hands them over (core/module.sh replaces=).
 wifi_xml=$sys/system/etc/permissions/android.hardware.wifi.xml
 wifi_prop=${SG_PROPERTY_ROOT:-/data/property}/persist.wifi.state
-# MD5 of wifi-client's files/android.hardware.wifi.xml (the bundled module may be removed).
+# MD5 of the wifi module's files/android.hardware.wifi.xml (the bundled module may be removed).
 wifi_ref_md5=81d3142ca5e8586c25d0b3cab196b9a7
 wifi_recorded() {
-    for fg_rec in "$SG_DATA_ROOT"/modules/wifi-client/file.*/applied "$SG_DATA_ROOT"/modules/wifi-client/prop.*/applied; do
+    for fg_rec in "$SG_DATA_ROOT"/modules/wifi/file.*/applied "$SG_DATA_ROOT"/modules/wifi/prop.*/applied \
+        "$SG_DATA_ROOT"/modules/wifi-client/file.*/applied "$SG_DATA_ROOT"/modules/wifi-client/prop.*/applied; do
         [ -e "$fg_rec" ] && return 0
     done
     return 1
@@ -110,11 +113,11 @@ scan() {
 overlap() {
     case "$1" in
         pkg-hmgapi-mods|pkg-hmgapi|hmgapi-standalone|pkg-leafia)
-            sg_print wireless-carplay-and-aa wifi-client wireless-adb user-button-head-unit user-button-shortcut ;;
+            sg_print wireless-carplay-and-aa wifi wifi-client wireless-adb user-button-head-unit user-button-shortcut ;;
         pkg-adb-tcp) sg_print wireless-adb wireless-carplay-and-aa ;;
-        pkg-wireless-projection|pkg-carplay-session) sg_print wireless-carplay-and-aa wifi-client ;;
+        pkg-wireless-projection|pkg-carplay-session) sg_print wireless-carplay-and-aa wifi wifi-client ;;
         pkg-vr-gates) sg_print wireless-carplay-and-aa ;;
-        hmgapi-wifi) sg_print wifi-client ;;
+        hmgapi-wifi) sg_print wifi wifi-client ;;
         pkg-factory82) sg_print skip-consent-screen ;;
     esac
 }

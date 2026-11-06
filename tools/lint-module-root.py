@@ -7,11 +7,13 @@ import sys
 
 BAD = re.compile(
     r"(?<![\w])(?:setprop|mount|umount|cp|mv|rm|dd|ln|chmod|chown|"
-    r"start|stop|iptables|am|tee|"
+    r"start|stop|iptables|ip6tables|insmod|rmmod|modprobe|kill|nohup|am|tee|"
+    r"sg_tool_\w+|sg_net_rule_exec|sg_kmod_revert|sg_daemon_revert|sg_net_rule_revert|sg_iface_addr_revert|"
     r"sg_prop_baseline|sg_prop_restore|sg_file_baseline|sg_file_mark_applied|"
     r"sg_file_restore|sg_remount|sg_remount_ro|sg_mkdir_target|sg_baseline_clear|"
     r"sg_dir_ensure|sg_dirs_revert|sg_export_public)\b|"
     r"\bsed\s+-i\b|\bnemesis\s+remount\b|"
+    r"(?<![\w.$-])ip\s+(?:-\S+\s+)*(?:addr|address|link|rule|route|neigh|tunnel|tuntap)\b|"
     r"\bpm\s+(?:install|uninstall|enable|disable)\b|\bsettings\s+put\b")
 # Module shells keep globbing on: the runtime's state globs must never silently match nothing.
 # A word split may turn it off for one statement: `set -f; set -- $x; set +f`.

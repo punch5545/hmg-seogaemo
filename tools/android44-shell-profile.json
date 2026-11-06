@@ -712,6 +712,31 @@
       },
       "double_dash": true,
       "source": "system/core/toolbox/readlink.c (getopt nfqs; -f uses realpath)"
+    },
+    "insmod": {
+      "short": {},
+      "source": "system/core/toolbox/insmod.c (insmod <file> [params...]; no options)"
+    },
+    "rmmod": {
+      "short": {},
+      "source": "system/core/toolbox/rmmod.c (rmmod <name>; no options)"
+    },
+    "iptables": {
+      "short": {
+        "t": 1,
+        "I": 1,
+        "D": 1
+      },
+      "source": "external/iptables 1.4.x (reviewed subset: -t table, -I/-D chain; no -C check assumed)"
+    },
+    "ip": {
+      "short": {},
+      "subcommands": [
+        "rule",
+        "addr",
+        "link"
+      ],
+      "source": "external/iproute2 (reviewed subset: rule add|del, addr add|del|show, link set)"
     }
   },
   "absolute_paths": {
@@ -758,7 +783,11 @@
     "/system/bin/wpa_cli": "wpa_cli",
     "/system/bin/app_process": "app_process",
     "/system/xbin/nemesis": "nemesis",
-    "/system/bin/readlink": "readlink"
+    "/system/bin/readlink": "readlink",
+    "/system/bin/insmod": "insmod",
+    "/system/bin/rmmod": "rmmod",
+    "/system/bin/iptables": "iptables",
+    "/system/bin/ip": "ip"
   },
   "mksh": {
     "version": "R43 2013/02/19",

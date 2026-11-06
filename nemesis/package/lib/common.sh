@@ -238,7 +238,17 @@ sg_restore_preflight() { sg_glob_on _sg_restore_preflight "$@"; }
 _sg_restore_preflight() {
     sg_dirs_preflight || return 3
     sg_line_preflight || return 3
-    sg_check_build || { sg_restore_conflict 'build preflight: ro.build.product missing or changed'; return 3; }
+    # Transient records are bound to the boot, not the build: only persistent
+    # material needs the firmware guard.
+    sg_persistent=0
+    for sg_check in "$HMG_SEOGAEMO_STATE"/prop.*/ready "$HMG_SEOGAEMO_STATE"/file.*/ready \
+        "$HMG_SEOGAEMO_STATE"/line.*/ready "$HMG_SEOGAEMO_STATE"/bind.* "$HMG_SEOGAEMO_STATE"/dex.cache \
+        "$HMG_SEOGAEMO_STATE"/dir.* "$HMG_SEOGAEMO_STATE"/dir-order; do
+        [ ! -f "$sg_check" ] || sg_persistent=1
+    done
+    if [ "$sg_persistent" -eq 1 ] || [ -f "$HMG_SEOGAEMO_STATE/build" ]; then
+        sg_check_build || { sg_restore_conflict 'build preflight: ro.build.product missing or changed'; return 3; }
+    fi
     for sg_check in "$HMG_SEOGAEMO_STATE"/prop.*/ready; do
         [ -f "$sg_check" ] || continue
         sg_dir=${sg_check%/ready}
@@ -1204,6 +1214,601 @@ sg_service_call_this_boot() {
 sg_service_call_ok_this_boot() {
     sg_service_call_this_boot && [ "$(cat "$HMG_SEOGAEMO_STATE/last-call-result" 2>/dev/null)" = ok ]
 }
+# Transient effects: kernel modules, background daemons, network rules and
+# interface addresses. A head-unit restart removes all of them. Every record
+# starts with the boot id it was made in; a record from an earlier boot is
+# stale (nothing of it is left to undo) and the next apply makes the effect again.
+# Fixed system tools; HMG_SEOGAEMO_TOOL_ROOT exists only as a host-test seam.
+sg_tool_insmod() { "${HMG_SEOGAEMO_TOOL_ROOT:-}/system/bin/insmod" "$@"; } # android44-shell: allow -- fixed /system/bin/insmod; the prefix is a host-test seam
+sg_tool_rmmod() { "${HMG_SEOGAEMO_TOOL_ROOT:-}/system/bin/rmmod" "$@"; } # android44-shell: allow -- fixed /system/bin/rmmod; the prefix is a host-test seam
+sg_tool_iptables() { "${HMG_SEOGAEMO_TOOL_ROOT:-}/system/bin/iptables" "$@"; } # android44-shell: allow -- fixed /system/bin/iptables; the prefix is a host-test seam
+sg_tool_ip() { "${HMG_SEOGAEMO_TOOL_ROOT:-}/system/bin/ip" "$@"; } # android44-shell: allow -- fixed /system/bin/ip; the prefix is a host-test seam
+sg_boot_id() {
+    sg_bi=$(cat "${SG_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}" 2>/dev/null) || return 1
+    case "$sg_bi" in ''|*[!a-zA-Z0-9-]*) return 1;; esac
+    [ "${#sg_bi}" -le 64 ] && sg_write "$sg_bi"
+}
+# Exact manifest key of the calling module (last wins, empty when absent).
+sg_manifest_value() {
+    sg_mv_file=$(sg_manifest_file) || return 2
+    sg_module_field "$sg_mv_file" "$1"
+}
+sg_tr_kmod_name() { case "$1" in ''|[!a-z0-9]*|*[!a-z0-9_]*) return 1;; esac; [ "${#1}" -le 55 ]; }
+sg_tr_daemon_name() { case "$1" in ''|[!a-z0-9]*|*[!a-z0-9_-]*) return 1;; esac; [ "${#1}" -le 32 ]; }
+sg_tr_iface_name() { case "$1" in ''|[!a-zA-Z0-9]*|*[!a-zA-Z0-9_.-]*) return 1;; esac; [ "${#1}" -le 15 ]; }
+sg_tr_iface_glob() { case "$1" in ''|[!a-z0-9]*|*[!a-z0-9_.*-]*) return 1;; esac; [ "${#1}" -le 15 ]; }
+sg_tr_ko() {
+    case "$1" in /*|*..*|*//*|*[!a-zA-Z0-9_./-]*) return 1;; *?.ko) return 0;; esac
+    return 1
+}
+# A word list that is split unquoted: no glob characters, tabs or newlines.
+sg_tr_split_ok() {
+    case "$1" in ''|*'*'*|*'?'*|*'['*|*'	'*|*'
+'*) return 1;; esac
+    [ "${#1}" -le 200 ]
+}
+sg_tr_token() { case "$1" in ''|*[!a-zA-Z0-9_./:=,+@!-]*) return 1;; esac; }
+sg_tr_addr() {
+    case "$1" in */*) ;; *) return 1;; esac
+    sg_ta_ip=${1%/*}
+    case "${1#*/}" in [0-9]|[1-2][0-9]|3[0-2]) ;; *) return 1;; esac
+    case "$sg_ta_ip" in ''|*[!0-9.]*|.*|*.|*..*) return 1;; esac
+    sg_ta_ifs=$IFS; IFS=.
+    set -- $sg_ta_ip
+    IFS=$sg_ta_ifs
+    [ "$#" -eq 4 ] || return 1
+    for sg_ta_octet do
+        case "$sg_ta_octet" in [0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]) ;; *) return 1;; esac
+    done
+}
+sg_tr_kmod_params() (
+    sg_tr_split_ok "$1" || exit 1
+    set -- $1
+    [ "$#" -le 16 ] || exit 1
+    for token do
+        key=${token%%=*}; value=${token#*=}
+        [ "$key" != "$token" ] || exit 1
+        case "$key" in ''|[!a-zA-Z_]*|*[!a-zA-Z0-9_]*) exit 1;; esac
+        case "$value" in ''|*[!a-zA-Z0-9_.,:+-]*) exit 1;; esac
+    done
+)
+# "<executable> <args>": /system/bin/<x>, /system/xbin/<x> or @payload@/<rel>, then
+# fixed tokens in which only @payload@ or @state@ (once, followed by nothing or /...) expand.
+sg_tr_daemon_spec() (
+    sg_tr_split_ok "$1" || exit 1
+    set -- $1
+    [ "$#" -le 16 ] || exit 1
+    case "$1" in
+        /system/bin/?*|/system/xbin/?*)
+            case "${1#/system/*bin/}" in .*|*[!a-zA-Z0-9_.-]*) exit 1;; esac ;;
+        @payload@/?*)
+            prefix=@payload@/
+            case "${1#"$prefix"}" in /*|*..*|*//*|*[!a-zA-Z0-9_./-]*) exit 1;; esac ;;
+        *) exit 1 ;;
+    esac
+    shift
+    for token do
+        sg_tr_token "$token" || exit 1
+        case "$token" in *@*)
+            after=${token#*@}
+            case "$after" in *@*) ;; *) exit 1;; esac
+            case "${after%%@*}" in payload|state) ;; *) exit 1;; esac
+            case "${after#*@}" in *@*) exit 1;; ''|/*) ;; *) exit 1;; esac ;;
+        esac
+    done
+)
+# "iptables [-t nat|mangle|filter] <chain> <rule spec>" (the runtime inserts with -I and
+# deletes with -D) or "ip rule <selector and action>" (ip rule add / ip rule del).
+sg_tr_net_rule() (
+    sg_tr_split_ok "$1" || exit 1
+    set -- $1
+    [ "$#" -le 32 ] || exit 1
+    for token do
+        sg_tr_token "$token" || exit 1
+        case "$token" in *@*) exit 1;; esac
+    done
+    case "$1" in
+        iptables)
+            shift
+            if [ "${1:-}" = -t ]; then
+                case "${2:-}" in nat|mangle|filter) ;; *) exit 1;; esac
+                shift 2
+            fi
+            case "${1:-}" in ''|-*|*[!a-zA-Z0-9_-]*) exit 1;; esac
+            shift
+            [ "$#" -ge 1 ] || exit 1
+            for token do
+                case "$token" in
+                    -[ACDEFILNPRSVXZht]*|--append*|--check*|--delete*|--insert*|--replace*|--list*|--flush*|--zero*|--new-chain*|--policy*|--rename-chain*|--table*|--help*|--version*|--modprobe*) exit 1 ;;
+                esac
+            done ;;
+        ip)
+            [ "${2:-}" = rule ] || exit 1
+            shift 2
+            [ "$#" -ge 1 ] || exit 1
+            for token do
+                case "$token" in add|del|delete|flush|list|lst|show|save|restore|help|-*) exit 1;; esac
+            done ;;
+        *) exit 1 ;;
+    esac
+)
+# One manifest declaration; shared by the runtime calls and package installation.
+sg_transient_decl_ok() (
+    set -f
+    key=$1; value=$2
+    case "$key" in
+        kmods|daemons|owns_ifaces)
+            case "$value" in ''|,*|*,|*,,*) exit 1;; esac
+            IFS=,
+            set -- $value
+            for item do
+                case "$key" in
+                    kmods) sg_tr_kmod_name "$item" ;;
+                    daemons) sg_tr_daemon_name "$item" ;;
+                    *) sg_tr_iface_glob "$item" ;;
+                esac || exit 1
+            done ;;
+        kmod.*)
+            rest=${key#kmod.}; name=${rest%%.*}; platform=${rest#"$name"}
+            sg_tr_kmod_name "$name" || exit 1
+            case "$platform" in '') ;; .*) case "${platform#.}" in ''|*[!a-z0-9_]*) exit 1;; esac ;; *) exit 1;; esac
+            sg_tr_ko "$value" ;;
+        kmod_params.*) sg_tr_kmod_name "${key#kmod_params.}" && sg_tr_kmod_params "$value" ;;
+        daemon.*) sg_tr_daemon_name "${key#daemon.}" && sg_tr_daemon_spec "$value" ;;
+        net_rules.*)
+            n=${key#net_rules.}
+            case "$n" in ''|0*|*[!0-9]*) exit 1;; esac
+            [ "${#n}" -le 4 ] && sg_tr_net_rule "$value" ;;
+        *) exit 1 ;;
+    esac
+)
+sg_glob_overlap() {
+    [ "$1" = "$2" ] && return 0
+    case "$1" in $2) return 0;; esac
+    case "$2" in $1) return 0;; esac
+    return 1
+}
+# Prints the first other module whose manifest declares the same kernel module
+# (kmod), the same daemon command (daemon), the same network rule (net) or an
+# overlapping interface (iface: a name or glob). Like owns_files, any declared
+# module counts, enabled or not.
+sg_transient_owner() (
+    set -f
+    kind=$1; value=$2; self=${3:-${HMG_SEOGAEMO_STATE##*/}}
+    for other in $(sg_module_list "$HMG_SEOGAEMO_BASE"); do
+        [ "$other" != "$self" ] || continue
+        props=$(sg_module_props "$HMG_SEOGAEMO_BASE" "$other")
+        [ -f "$props" ] || continue
+        while IFS='=' read -r key item; do
+            hit=1
+            case "$kind:$key" in
+                kmod:kmods|iface:owns_ifaces)
+                    old=$IFS; IFS=,
+                    set -- $item
+                    IFS=$old
+                    for entry do
+                        if [ "$kind" = kmod ]; then [ "$entry" != "$value" ] || hit=0
+                        elif sg_glob_overlap "$entry" "$value"; then hit=0; fi
+                    done ;;
+                daemon:daemon.*|net:net_rules.*) [ "$item" != "$value" ] || hit=0 ;;
+            esac
+            [ "$hit" -ne 0 ] || { sg_print "$other"; exit 0; }
+        done < "$props"
+    done
+    exit 1
+)
+# Package installation: prints the first other module that clashes with any
+# transient declaration of manifest $1 (module id $2).
+sg_transient_clash() (
+    set -f
+    manifest=$1; self=$2
+    while IFS='=' read -r key value; do
+        case "$key" in
+            kmods|owns_ifaces)
+                kind=kmod; [ "$key" = kmods ] || kind=iface
+                old=$IFS; IFS=,
+                set -- $value
+                IFS=$old
+                for item do sg_transient_owner "$kind" "$item" "$self" && exit 0; done ;;
+            daemon.*) sg_transient_owner daemon "$value" "$self" && exit 0 ;;
+            net_rules.*) sg_transient_owner net "$value" "$self" && exit 0 ;;
+        esac
+    done < "$manifest"
+    exit 1
+)
+sg_tr_current() {
+    [ -f "$1" ] || return 1
+    sg_tc_now=$(sg_boot_id) || return 1
+    sg_tc_saved=
+    { IFS= read -r sg_tc_saved; } < "$1" 2>/dev/null || :
+    [ "$sg_tc_saved" = "$sg_tc_now" ]
+}
+sg_tr_record() {
+    sg_tr_path=$1; shift
+    sg_print "$@" > "$sg_tr_path.tmp.$$" && mv "$sg_tr_path.tmp.$$" "$sg_tr_path"
+}
+# Ledger row whose before/after references hold one line of description each.
+sg_tr_ledger() {
+    sg_tl_before=$HMG_SEOGAEMO_STATE/transient.before.$$
+    sg_tl_after=$HMG_SEOGAEMO_STATE/transient.after.$$
+    sg_print "$(sg_clean "$3")" > "$sg_tl_before" && sg_print "$(sg_clean "$4")" > "$sg_tl_after" || return 1
+    sg_ledger "$1" "$2" "$sg_tl_before" "$sg_tl_after" "" "${5:-ok}"; sg_tl_rc=$?
+    rm -f "$sg_tl_before" "$sg_tl_after"
+    return "$sg_tl_rc"
+}
+sg_kmod_present() {
+    [ -f "${SG_PROC_ROOT:-/proc}/modules" ] || return 1
+    while read -r sg_kp_name sg_kp_rest; do
+        [ "$sg_kp_name" != "$1" ] || return 0
+    done < "${SG_PROC_ROOT:-/proc}/modules"
+    return 1
+}
+# Read-only: 0 when kernel module $1 is loaded and was loaded by this module this boot.
+sg_kmod_loaded() {
+    sg_tr_kmod_name "$1" || return 2
+    sg_tr_current "$HMG_SEOGAEMO_STATE/kmod.$1" && sg_kmod_present "$1"
+}
+# Loads payload kernel module $1 (kmods=, kmod.<name>.<ro.board.platform>= or
+# kmod.<name>=, optional kmod_params.<name>=). 2 undeclared, 3 loaded by someone
+# else or claimed by another module, 4 built for another kernel release.
+sg_kmod_load() {
+    [ "$#" -eq 1 ] && sg_tr_kmod_name "$1" || return 2
+    sg_validate kmods "$1" || return 2
+    if sg_transient_owner kmod "$1" >/dev/null; then return 3; fi
+    sg_ready || return 1
+    sg_km_record=$HMG_SEOGAEMO_STATE/kmod.$1
+    if sg_kmod_present "$1"; then
+        sg_tr_current "$sg_km_record" && return 0
+        sg_log "conflict: kernel module $1 is already loaded and not ours" || :
+        return 3
+    fi
+    sg_km_platform=$(getprop ro.board.platform) || sg_km_platform=
+    case "$sg_km_platform" in *[!a-z0-9_]*) sg_km_platform=;; esac
+    sg_km_ko=
+    if [ -n "$sg_km_platform" ]; then sg_km_ko=$(sg_manifest_value "kmod.$1.$sg_km_platform") || return 2; fi
+    [ -n "$sg_km_ko" ] || sg_km_ko=$(sg_manifest_value "kmod.$1") || return 2
+    sg_tr_ko "$sg_km_ko" && sg_payload "$sg_km_ko" || return 2
+    sg_km_file=$sg_source
+    sg_km_params=$(sg_manifest_value "kmod_params.$1") || return 2
+    [ -z "$sg_km_params" ] || sg_tr_kmod_params "$sg_km_params" || return 2
+    sg_km_release=$(cat "${SG_PROC_ROOT:-/proc}/sys/kernel/osrelease") || return 1
+    case "$sg_km_release" in ''|*[!a-zA-Z0-9._+-]*) return 1;; esac
+    # The .ko's modinfo holds "vermagic=<release> <flags>"; toolbox has no modinfo.
+    if ! grep -a -F -q "vermagic=$sg_km_release " "$sg_km_file"; then
+        sg_log "incompatible: kernel module $1 was not built for $sg_km_release" || :
+        return 4
+    fi
+    sg_km_boot=$(sg_boot_id) || return 1
+    # Record first: an interrupted load is still found and unloaded by revert.
+    sg_tr_record "$sg_km_record" "$sg_km_boot" "$sg_km_ko" "$sg_km_params" || return 1
+    sg_changed kmod "$1" || return 1
+    if ! sg_tool_insmod "$sg_km_file" $sg_km_params; then
+        rm -f "$sg_km_record"
+        sg_tr_ledger kmod_load "$1" absent "insmod $sg_km_ko $sg_km_params" failed || :
+        return 1
+    fi
+    sg_kmod_present "$1" || { sg_log "kernel module $1 missing after insmod" || :; return 1; }
+    sg_tr_ledger kmod_load "$1" absent "loaded $sg_km_ko $sg_km_params"
+}
+sg_kmod_revert() {
+    sg_km_record=$HMG_SEOGAEMO_STATE/kmod.$1
+    [ -f "$sg_km_record" ] || return 0
+    if sg_tr_current "$sg_km_record" && sg_kmod_present "$1"; then
+        sg_tool_rmmod "$1" || { sg_log "could not unload kernel module $1" || :; return 1; }
+        ! sg_kmod_present "$1" || return 1
+        sg_tr_ledger kmod_unload "$1" loaded absent || return 1
+    else
+        sg_tr_ledger kmod_unload "$1" 'not loaded in this boot' absent absent || return 1
+    fi
+    rm -f "$sg_km_record"
+}
+sg_daemon_expand() (
+    set -f
+    out=
+    for token in $1; do
+        case "$token" in *@*)
+            lead=${token%%@*}; after=${token#*@}; rest=${after#*@}
+            case "${after%%@*}" in
+                payload) value=$HMG_SEOGAEMO_MODULE_DIR ;;
+                state) value=$HMG_SEOGAEMO_STATE ;;
+                *) exit 2 ;;
+            esac
+            case "$value" in /?*) ;; *) exit 2;; esac
+            case "$value" in *[!a-zA-Z0-9_./+-]*) exit 2;; esac
+            token=$lead$value$rest ;;
+        esac
+        out="$out${out:+ }$token"
+    done
+    sg_write "$out"
+)
+# Read-only: 0 while daemon $1 started by this module this boot still runs with
+# exactly its recorded command line (a reused PID does not count).
+sg_daemon_running() {
+    sg_tr_daemon_name "$1" || return 2
+    sg_dr_record=$HMG_SEOGAEMO_STATE/daemon.$1
+    sg_tr_current "$sg_dr_record" || return 1
+    sg_dr_pid=
+    { IFS= read -r sg_dr_boot; IFS= read -r sg_dr_pid; } < "$sg_dr_record" 2>/dev/null || :
+    case "$sg_dr_pid" in ''|*[!0-9]*) return 1;; esac
+    [ "$sg_dr_pid" -gt 1 ] && kill -0 "$sg_dr_pid" 2>/dev/null &&
+        sg_equal "$sg_dr_record.cmdline" "${SG_PROC_ROOT:-/proc}/$sg_dr_pid/cmdline"
+}
+# Starts daemon.<name> (listed in daemons=) detached: stdin /dev/null, output
+# appended to daemon.<name>.log in the state directory (emptied at a start once
+# it exceeds 64 KiB). Idempotent while it runs.
+sg_daemon_start() {
+    [ "$#" -eq 1 ] && sg_tr_daemon_name "$1" || return 2
+    sg_validate daemons "$1" || return 2
+    sg_dm_name=$1
+    sg_dm_spec=$(sg_manifest_value "daemon.$sg_dm_name") || return 2
+    [ -n "$sg_dm_spec" ] && sg_tr_daemon_spec "$sg_dm_spec" || return 2
+    if sg_transient_owner daemon "$sg_dm_spec" >/dev/null; then return 3; fi
+    sg_dm_line=$(sg_daemon_expand "$sg_dm_spec") || return 2
+    sg_ready || return 1
+    sg_dm_record=$HMG_SEOGAEMO_STATE/daemon.$sg_dm_name
+    ! sg_daemon_running "$sg_dm_name" || return 0
+    sg_dm_boot=$(sg_boot_id) || return 1
+    set -- $sg_dm_line
+    case "$1" in
+        /system/*)
+            sg_path_safe "$1" || return 3
+            # HMG_SEOGAEMO_TOOL_ROOT is the host-test seam of the sg_tool_* wrappers.
+            sg_dm_exec=${HMG_SEOGAEMO_TOOL_ROOT:-}$1
+            shift
+            set -- "$sg_dm_exec" "$@" ;;
+        *) sg_payload "${1#"$HMG_SEOGAEMO_MODULE_DIR/"}" || return 2 ;;
+    esac
+    [ -f "$1" ] && [ ! -L "$1" ] || return 1
+    # Expected /proc/<pid>/cmdline: every argument followed by one NUL byte.
+    : > "$sg_dm_record.cmdline.tmp.$$" || return 1
+    for sg_dm_arg do
+        { sg_write "$sg_dm_arg" && dd if=/dev/zero bs=1 count=1 2>/dev/null; } >> "$sg_dm_record.cmdline.tmp.$$" || return 1
+    done
+    mv "$sg_dm_record.cmdline.tmp.$$" "$sg_dm_record.cmdline" || return 1
+    sg_dm_log=$HMG_SEOGAEMO_STATE/daemon.$sg_dm_name.log
+    if [ -f "$sg_dm_log" ] && [ "$(sg_file_size "$sg_dm_log")" -gt 65536 ]; then : > "$sg_dm_log" || return 1; fi
+    ( exec "$@" ) < /dev/null >> "$sg_dm_log" 2>&1 & # android44-shell: allow -- argv is the manifest daemon.<name> command checked by sg_tr_daemon_spec
+    sg_dm_pid=$!
+    sg_tr_record "$sg_dm_record" "$sg_dm_boot" "$sg_dm_pid" || return 1
+    sg_changed daemon "$sg_dm_name" || return 1
+    sg_dm_wait=0
+    while ! sg_daemon_running "$sg_dm_name" && [ "$sg_dm_wait" -lt 5 ]; do
+        sleep 1
+        sg_dm_wait=$((sg_dm_wait + 1))
+    done
+    if ! sg_daemon_running "$sg_dm_name"; then
+        kill -9 "$sg_dm_pid" 2>/dev/null || :
+        rm -f "$sg_dm_record"
+        sg_tr_ledger daemon_start "$sg_dm_name" stopped "$sg_dm_line" failed || :
+        return 1
+    fi
+    sg_tr_ledger daemon_start "$sg_dm_name" stopped "pid $sg_dm_pid: $sg_dm_line"
+}
+sg_daemon_revert() {
+    sg_dm_record=$HMG_SEOGAEMO_STATE/daemon.$1
+    [ -f "$sg_dm_record" ] || return 0
+    if sg_daemon_running "$1"; then
+        sg_dm_pid=$sg_dr_pid
+        kill -TERM "$sg_dm_pid" 2>/dev/null || :
+        sg_dm_wait=0
+        while sg_daemon_running "$1" && [ "$sg_dm_wait" -lt 5 ]; do
+            sleep 1
+            sg_dm_wait=$((sg_dm_wait + 1))
+        done
+        if sg_daemon_running "$1"; then
+            kill -9 "$sg_dm_pid" 2>/dev/null || :
+            sg_dm_wait=0
+            while sg_daemon_running "$1" && [ "$sg_dm_wait" -lt 5 ]; do
+                sleep 1
+                sg_dm_wait=$((sg_dm_wait + 1))
+            done
+            ! sg_daemon_running "$1" || { sg_log "daemon $1 did not stop" || :; return 1; }
+        fi
+        sg_tr_ledger daemon_stop "$1" "pid $sg_dm_pid" stopped || return 1
+    else
+        sg_tr_ledger daemon_stop "$1" 'not running' stopped absent || return 1
+    fi
+    rm -f "$sg_dm_record" "$sg_dm_record.cmdline"
+}
+sg_net_rule_exec() {
+    sg_ne_op=$1
+    set -- $2
+    case "$1" in
+        iptables)
+            shift
+            sg_ne_table=filter
+            if [ "$1" = -t ]; then sg_ne_table=$2; shift 2; fi
+            sg_ne_chain=$1; shift
+            if [ "$sg_ne_op" = add ]; then sg_tool_iptables -t "$sg_ne_table" -I "$sg_ne_chain" "$@"
+            else sg_tool_iptables -t "$sg_ne_table" -D "$sg_ne_chain" "$@"; fi ;;
+        ip)
+            shift 2
+            if [ "$sg_ne_op" = add ]; then sg_tool_ip rule add "$@"; else sg_tool_ip rule del "$@"; fi ;;
+        *) return 2 ;;
+    esac
+}
+# Adds net_rules.<n> once per boot. Android 4.4 iptables has no reliable check (-C),
+# so the boot-bound record, not the rule table, says whether the rule is ours.
+sg_net_rule() {
+    [ "$#" -eq 1 ] || return 2
+    case "$1" in ''|0*|*[!0-9]*) return 2;; esac
+    sg_nr_spec=$(sg_manifest_value "net_rules.$1") || return 2
+    [ -n "$sg_nr_spec" ] && sg_tr_net_rule "$sg_nr_spec" || return 2
+    if sg_transient_owner net "$sg_nr_spec" >/dev/null; then return 3; fi
+    sg_ready || return 1
+    sg_nr_record=$HMG_SEOGAEMO_STATE/net.$1
+    if sg_tr_current "$sg_nr_record"; then
+        { IFS= read -r sg_nr_boot; IFS= read -r sg_nr_saved; } < "$sg_nr_record" || return 1
+        [ "$sg_nr_saved" = "$sg_nr_spec" ] && return 0
+        sg_log "conflict: network rule $1 changed while applied" || :
+        return 3
+    fi
+    sg_nr_boot=$(sg_boot_id) || return 1
+    sg_tr_record "$sg_nr_record" "$sg_nr_boot" "$sg_nr_spec" || return 1
+    sg_changed net "$1" || return 1
+    if ! sg_net_rule_exec add "$sg_nr_spec"; then
+        rm -f "$sg_nr_record"
+        sg_tr_ledger net_rule_add "$1" absent "$sg_nr_spec" failed || :
+        return 1
+    fi
+    sg_tr_ledger net_rule_add "$1" absent "$sg_nr_spec"
+}
+sg_net_rule_revert() {
+    sg_nr_record=$HMG_SEOGAEMO_STATE/net.$1
+    [ -f "$sg_nr_record" ] || return 0
+    sg_nr_saved=
+    { IFS= read -r sg_nr_boot; IFS= read -r sg_nr_saved; } < "$sg_nr_record" 2>/dev/null || :
+    if sg_tr_current "$sg_nr_record"; then
+        sg_tr_net_rule "$sg_nr_saved" || return 3
+        # Gone in the same boot means someone else changed the table: keep the record.
+        sg_net_rule_exec del "$sg_nr_saved" || { sg_restore_conflict "network rule $1 is no longer present"; return 3; }
+        sg_tr_ledger net_rule_del "$1" "$sg_nr_saved" absent || return 1
+    else
+        sg_tr_ledger net_rule_del "$1" "$sg_nr_saved (earlier boot)" absent absent || return 1
+    fi
+    rm -f "$sg_nr_record"
+}
+sg_iface_owned() (
+    set -f
+    list=$(sg_manifest_value owns_ifaces) || exit 2
+    IFS=,
+    for glob in $list; do
+        sg_tr_iface_glob "$glob" || continue
+        case "$1" in $glob) exit 0;; esac
+    done
+    exit 1
+)
+sg_iface_has_addr() {
+    sg_ih_out=$(sg_tool_ip addr show dev "$1" 2>/dev/null) || return 1
+    while read -r sg_ih_kind sg_ih_addr sg_ih_rest; do
+        [ "$sg_ih_kind" = inet ] && [ "$sg_ih_addr" = "$2" ] && return 0
+    done <<EOF
+$sg_ih_out
+EOF
+    return 1
+}
+sg_iface_record() { sg_write "$HMG_SEOGAEMO_STATE/addr.$1@${2%/*}-${2#*/}"; }
+# Adds IPv4 address $2 (a.b.c.d/prefix) to interface $1, which must match an
+# owns_ifaces= glob, and sets the link up if it was down.
+sg_iface_addr() {
+    [ "$#" -eq 2 ] && sg_tr_iface_name "$1" && sg_tr_addr "$2" || return 2
+    sg_iface_owned "$1" || return 2
+    if sg_transient_owner iface "$1" >/dev/null; then return 3; fi
+    sg_ready || return 1
+    sg_ia_record=$(sg_iface_record "$1" "$2")
+    sg_ia_sys=${SG_SYS_NET_ROOT:-/sys/class/net}/$1
+    [ -d "$sg_ia_sys" ] || return 1
+    if sg_tr_current "$sg_ia_record"; then
+        sg_iface_has_addr "$1" "$2" && return 0
+    elif sg_iface_has_addr "$1" "$2"; then
+        sg_log "conflict: $1 already has $2" || :
+        return 3
+    fi
+    sg_ia_flags=$(cat "$sg_ia_sys/flags") || return 1
+    case "$sg_ia_flags" in 0x*) ;; *) return 1;; esac
+    sg_ia_up=0
+    case "$sg_ia_flags" in *[13579bdfBDF]) sg_ia_up=1;; esac
+    sg_ia_brought=0
+    if [ -f "$sg_ia_record" ] && sg_tr_current "$sg_ia_record"; then
+        { read -r sg_ia_b; read -r sg_ia_i; read -r sg_ia_a; read -r sg_ia_brought; } < "$sg_ia_record" || return 1
+    fi
+    [ "$sg_ia_up" -eq 1 ] || sg_ia_brought=1
+    sg_ia_boot=$(sg_boot_id) || return 1
+    sg_tr_record "$sg_ia_record" "$sg_ia_boot" "$1" "$2" "$sg_ia_brought" || return 1
+    sg_changed addr "$1@$2" || return 1
+    sg_tool_ip addr add "$2" dev "$1" || {
+        sg_tr_ledger iface_addr_add "$1" absent "$2" failed || :
+        return 1
+    }
+    if [ "$sg_ia_up" -eq 0 ]; then sg_tool_ip link set "$1" up || return 1; fi
+    sg_iface_has_addr "$1" "$2" || return 1
+    sg_tr_ledger iface_addr_add "$1" absent "$2 link-up-by-us=$sg_ia_brought"
+}
+sg_iface_addr_revert() {
+    sg_ia_record=$(sg_iface_record "$1" "$2")
+    [ -f "$sg_ia_record" ] || return 0
+    sg_ia_brought=0
+    { read -r sg_ia_b; read -r sg_ia_i; read -r sg_ia_a; read -r sg_ia_brought; } < "$sg_ia_record" 2>/dev/null || :
+    if sg_tr_current "$sg_ia_record" && [ -d "${SG_SYS_NET_ROOT:-/sys/class/net}/$1" ]; then
+        sg_ia_result=absent
+        if sg_iface_has_addr "$1" "$2"; then
+            sg_tool_ip addr del "$2" dev "$1" && ! sg_iface_has_addr "$1" "$2" || return 1
+            sg_ia_result=ok
+        fi
+        if [ "$sg_ia_brought" = 1 ]; then sg_tool_ip link set "$1" down || return 1; fi
+        sg_tr_ledger iface_addr_del "$1" "$2 link-up-by-us=$sg_ia_brought" absent "$sg_ia_result" || return 1
+    else
+        sg_tr_ledger iface_addr_del "$1" "$2 (earlier boot or interface gone)" absent absent || return 1
+    fi
+    rm -f "$sg_ia_record"
+}
+# Undoes only this module's transient effects (kernel modules, daemons, network
+# rules, interface addresses), newest first, and drops them from changes. Files
+# and properties stay applied, so a module can back out a failed transient step
+# without restoring stock files. Return codes as sg_revert_all.
+sg_revert_transient() {
+    [ "$#" -eq 0 ] && [ -n "$HMG_SEOGAEMO_STATE" ] || return 2
+    sg_rt_changes=$HMG_SEOGAEMO_STATE/changes
+    [ -f "$sg_rt_changes" ] || return 0
+    sg_rt_reverse=
+    while IFS='	' read -r sg_rt_kind sg_rt_target; do
+        sg_rt_reverse="$sg_rt_kind:$sg_rt_target $sg_rt_reverse"
+    done < "$sg_rt_changes"
+    for sg_rt_item in $sg_rt_reverse; do
+        sg_rt_kind=${sg_rt_item%%:*}; sg_rt_target=${sg_rt_item#*:}
+        case "$sg_rt_kind" in
+            kmod) sg_kmod_revert "$sg_rt_target" ;;
+            daemon) sg_daemon_revert "$sg_rt_target" ;;
+            net) sg_net_rule_revert "$sg_rt_target" ;;
+            addr) sg_iface_addr_revert "${sg_rt_target%%@*}" "${sg_rt_target#*@}" ;;
+            *) continue ;;
+        esac || return $?
+        # Persist progress after each item; persistent kinds keep their lines.
+        : > "$sg_rt_changes.tmp.$$" || return 1
+        while IFS= read -r sg_rt_line; do
+            [ "$sg_rt_line" = "$sg_rt_kind	$sg_rt_target" ] || sg_print "$sg_rt_line" >> "$sg_rt_changes.tmp.$$" || return 1
+        done < "$sg_rt_changes"
+        mv "$sg_rt_changes.tmp.$$" "$sg_rt_changes" || return 1
+    done
+    # Only transient kinds were left: nothing persistent depends on the file.
+    [ -s "$sg_rt_changes" ] || rm -f "$sg_rt_changes"
+}
+# Stops our running daemon.<name> (if any) and starts it again, e.g. after the
+# module rewrote its configuration in the state directory.
+sg_daemon_restart() {
+    [ "$#" -eq 1 ] && sg_tr_daemon_name "$1" || return 2
+    sg_validate daemons "$1" || return 2
+    sg_daemon_revert "$1" || return $?
+    sg_daemon_start "$1"
+}
+# Facts a module publishes for other modules (root side only): one key=value file
+# per module in <data root>/peer/<id>, replaced as a whole. No argument removes it.
+# Keys [a-z][a-z0-9_]*, values limited to the sg_clean character set.
+sg_peer_publish() {
+    sg_pp_id=${HMG_SEOGAEMO_STATE##*/}
+    case "$sg_pp_id" in ''|*[!a-z0-9-]*) return 2;; esac
+    for sg_pp_pair do
+        case "$sg_pp_pair" in [a-z]*=*) ;; *) return 2;; esac
+        case "${sg_pp_pair%%=*}" in *[!a-z0-9_]*) return 2;; esac
+        sg_pp_value=${sg_pp_pair#*=}
+        [ "$(sg_clean "$sg_pp_value")" = "$sg_pp_value" ] || return 2
+    done
+    sg_pp_dir=$SG_DATA_ROOT/peer
+    if [ "$#" -eq 0 ]; then rm -f "$sg_pp_dir/$sg_pp_id"; return; fi
+    mkdir -p "$sg_pp_dir" && chmod 700 "$sg_pp_dir" || return 1
+    sg_print "$@" > "$sg_pp_dir/$sg_pp_id.tmp.$$" && mv "$sg_pp_dir/$sg_pp_id.tmp.$$" "$sg_pp_dir/$sg_pp_id"
+}
+# Prints value <key> published by module <id>; 1 when not published.
+sg_peer_info() {
+    [ "$#" -eq 2 ] || return 2
+    case "$1" in ''|*[!a-z0-9-]*) return 2;; esac
+    case "$2" in ''|[!a-z]*|*[!a-z0-9_]*) return 2;; esac
+    [ -f "$SG_DATA_ROOT/peer/$1" ] || return 1
+    while IFS= read -r sg_pi_line; do
+        case "$sg_pi_line" in "$2="*) sg_print "${sg_pi_line#*=}"; return 0;; esac
+    done < "$SG_DATA_ROOT/peer/$1"
+    return 1
+}
 sg_applied() {
     sg_check_build || return 3
     case "$1" in
@@ -1632,6 +2237,10 @@ sg_revert_all_run() {
         sg_kind=${sg_item%%:*}; sg_target=${sg_item#*:}
         sg_revert_before=$HMG_SEOGAEMO_STATE/revert-before.$$
         case "$sg_kind" in
+            kmod) sg_kmod_revert "$sg_target" || return $? ;;
+            daemon) sg_daemon_revert "$sg_target" || return $? ;;
+            net) sg_net_rule_revert "$sg_target" || return $? ;;
+            addr) sg_iface_addr_revert "${sg_target%%@*}" "${sg_target#*@}" || return $? ;;
             prop)
                 sg_saved=$HMG_SEOGAEMO_STATE/prop.$sg_target
                 if sg_prop_drift_allowed "$sg_target"; then

@@ -139,8 +139,8 @@
     <string name="update_check">Check for updates</string>
     <string name="update_check_confirm">Connect to GitHub, check for an update, and download it if available? This may take a while.</string>
     <string name="update_rollback">Roll back</string>
-    <string name="update_wifi_required">Updates need Wi-Fi. Enabling Wi-Fi client interrupts wireless CarPlay and requires a head-unit restart. Continue?</string>
-    <string name="update_enable_wifi">Enable Wi-Fi client</string>
+    <string name="update_wifi_required">Updates need Wi-Fi. Turning on Wi-Fi as a client interrupts wireless CarPlay and requires a head-unit restart. Continue?</string>
+    <string name="update_enable_wifi">Turn on Wi-Fi</string>
     <string name="update_resume_after_restart">The update check will resume when Wi-Fi client is ready and a Wi-Fi or Ethernet network is connected. Restart the head unit first if requested, then open HMG-Seogaemo.</string>
     <string name="module_result_complete">Module changes complete</string>
     <string name="module_result_failed">Module changes could not be completed</string>
@@ -258,4 +258,17 @@
     <string name="car_check_libs">Native libraries</string>
     <string name="car_check_modules">Module checks</string>
     <string name="car_check_more">%1$d more OK</string>
+    <string name="car_check_present">present</string>
+    <string name="car_check_absent">none</string>
+    <string name="car_check_unsupported">not supported</string>
+    <string name="reports_check_wifi_builtin">Built-in Wi-Fi</string>
+    <string name="reports_check_wifi_usb">USB Wi-Fi</string>
+    <string name="wifi_networks_open">Choose network</string>
+    <string name="wifi_networks_title">USB Wi-Fi network</string>
+    <string name="wifi_network_other">Other network</string>
+    <string name="wifi_network_name">Network name</string>
+    <string name="wifi_network_password">Password</string>
+    <string name="wifi_network_open">No password</string>
+    <string name="wifi_next">Next</string>
+    <string name="wifi_connect">Connect</string>
 </resources>

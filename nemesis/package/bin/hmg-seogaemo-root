@@ -283,6 +283,18 @@ if [ "$2" = set ]; then
     ! sg_module_builtin "$base" "$1" || refuse 2 failed 'Invalid command'
     . "$base/lib/hsm.sh"
     hsm_setting_decl "$3" && hsm_setting_valid "$4" || refuse 2 failed 'Invalid setting value'
+    # A bundled raw_shell module may refuse a value that clashes with its other settings
+    # (read-only setting-ok verb; exit 2 means the module has no such check).
+    if grep -Fxq raw_shell=1 "$manifest"; then
+        setting_check=$(/system/bin/sh "$script" setting-ok "$3" "$4" 2>&1)
+        case $? in 0|2) ;; *)
+            setting_detail=
+            while IFS='=' read -r field value; do [ "$field" != detail ] || setting_detail=$value; done <<EOF
+$setting_check
+EOF
+            refuse 3 conflict "${setting_detail:-Setting not allowed}" ;;
+        esac
+    fi
     settings=$SG_DATA_ROOT/settings/$1
     mkdir -p "$settings" && chmod 700 "$SG_DATA_ROOT/settings" "$settings" &&
         sg_write "$4" > "$settings/$3.tmp.$$" && mv "$settings/$3.tmp.$$" "$settings/$3" ||

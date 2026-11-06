@@ -73,6 +73,38 @@ pf_wifi_radio() {
     esac
 }
 
+# Radios the wifi module can use: the stock built-in client capability, and a USB adapter
+# that the bundled drivers bind (the wifi module's files/usb-ids.txt, read from sysfs ids).
+pf_wifi_radios() {
+    pf_root=${SG_TARGET_ROOT:-}
+    if [ "$(getprop tcc.wifi.vendor)" = broadcom ] && [ -s "$pf_root/system/wifi/bcmdhd.ko" ] &&
+            [ -s "$pf_root/system/wifi/fw_bcmdhd.bin" ]; then
+        pf_line wifi_builtin ok observed 'Built-in Wi-Fi present (Broadcom)'
+    else
+        pf_line wifi_builtin warn observed 'No built-in Wi-Fi; Wi-Fi needs a USB adapter'
+    fi
+    pf_table=$(sg_module_dir "${HMG_SEOGAEMO_BASE:-}" wifi 2>/dev/null)/files/usb-ids.txt
+    pf_other=
+    for pf_dev in "${SG_USB_DEVICES_DIR:-/sys/bus/usb/devices}"/*; do
+        [ -f "$pf_dev/idVendor" ] && [ -f "$pf_dev/idProduct" ] || continue
+        pf_vid=$(cat "$pf_dev/idVendor" 2>/dev/null); pf_pid=$(cat "$pf_dev/idProduct" 2>/dev/null)
+        if [ -f "$pf_table" ]; then
+            while read -r pf_v pf_p pf_mod pf_model; do
+                [ "$pf_v:$pf_p" = "$pf_vid:$pf_pid" ] || continue
+                pf_line wifi_usb ok observed "$(pf_text "$pf_model ($pf_vid:$pf_pid, driver $pf_mod) is supported")"
+                return 0
+            done < "$pf_table"
+        fi
+        # Realtek parts the bundled drivers do not bind (hubs and card readers share the vendor).
+        [ "$pf_vid" != 0bda ] || pf_other=$pf_vid:$pf_pid
+    done
+    if [ -n "$pf_other" ]; then
+        pf_line wifi_usb unknown observed "USB device $(pf_text "$pf_other") is not a supported Wi-Fi adapter"
+    else
+        pf_line wifi_usb unknown observed 'No supported USB Wi-Fi adapter connected'
+    fi
+}
+
 # Other packages: one catalogue, core/foreign.sh. The check only reports; cleaning is the Car tab's.
 pf_conflicts() {
     pf_cf_out=$(SG_SYSTEM_ROOT=${SG_TARGET_ROOT:-} /system/bin/sh "${HMG_SEOGAEMO_BASE:-}/core/foreign.sh" status 2>/dev/null)
@@ -182,6 +214,7 @@ hmg_seogaemo_preflight() {
     pf_conflicts
     pf_wifi_hardware
     pf_wifi_radio
+    pf_wifi_radios
     pf_native_libs
     pf_modules
 }

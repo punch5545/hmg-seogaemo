@@ -95,23 +95,26 @@ def main():
         out = root("foreign", "status")
         assert "info.count=2" in out, out
 
-        # HMG-API's Wi-Fi client leftovers: identical feature XML and persist.wifi.state=3, no wifi-client record.
+        # HMG-API's Wi-Fi client leftovers: identical feature XML and persist.wifi.state=3, no wifi record.
         (temp / "property").mkdir()
-        payload = (ROOT / "modules/wifi-client/files/android.hardware.wifi.xml").read_bytes()
+        payload = (ROOT / "modules/wifi/files/android.hardware.wifi.xml").read_bytes()
         xml = system / "system/etc/permissions/android.hardware.wifi.xml"
         xml.parent.mkdir(parents=True)
         xml.write_bytes(payload)
         (temp / "property/persist.wifi.state").write_text("3")
-        record = data / "modules/wifi-client/prop.persist.wifi.state"
-        record.mkdir(parents=True)
-        (record / "applied").write_text("3")
-        assert "hmgapi-wifi" not in root("foreign", "status")
-        shutil.rmtree(data / "modules/wifi-client")
+        # Our own records count under the module id and, until the bundled check hands them over,
+        # under the id it had before (wifi-client).
+        for module_id in ("wifi", "wifi-client"):
+            record = data / f"modules/{module_id}/prop.persist.wifi.state"
+            record.mkdir(parents=True)
+            (record / "applied").write_text("3")
+            assert "hmgapi-wifi" not in root("foreign", "status")
+            shutil.rmtree(data / f"modules/{module_id}")
         assert "hmgapi-wifi,delete" in root("foreign", "status")
         (data / "desired").mkdir(exist_ok=True)
-        (data / "desired/wifi-client").write_text("on")
-        assert "Turn off wifi-client first" in root("foreign", "clean", "hmgapi-wifi", code=3)
-        (data / "desired/wifi-client").write_text("off")
+        (data / "desired/wifi").write_text("on")
+        assert "Turn off wifi first" in root("foreign", "clean", "hmgapi-wifi", code=3)
+        (data / "desired/wifi").write_text("off")
         assert "state=pending-restart" in root("foreign", "clean", "hmgapi-wifi")
         assert not xml.exists() and not (temp / "property/persist.wifi.state").exists()
         assert "remount rw" in calls.read_text()

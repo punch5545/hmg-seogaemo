@@ -22,7 +22,7 @@ Implemented: root runtime (P1: `lib/hsm.sh`, `core/hsm-module.sh`, `core/module.
 layer (P2), `tools/hsm` (P5), core hook host (P3, host-tested only, see Core hook host), module screens and
 USB install UX (P6, see `ui-redesign.md`; on-car check pending).
 Bundled (P4): `skip-consent-screen`, `user-button-head-unit`, `user-button-shortcut`, `wireless-adb`,
-`wifi-client` (raw_shell, see Bundled modules). Not implemented: converting `wireless-carplay-and-aa` (needs the
+`wifi` (raw_shell, formerly `wifi-client`; see Bundled modules). Not implemented: converting `wireless-carplay-and-aa` (needs the
 CarPlay migration to the core hook host), `hsm test`, `hsm logs`, CarPlay
 migration to the core host, the registry/store. `raw_shell` and `app_data_dir` are still refused.
 
@@ -50,9 +50,10 @@ class, no Android resources and no `modules.list` entry.
   version: nothing. Other version: replaced in place, even while on, only when the generated ownership keys
   are identical; otherwise the old copy stays and the reason is logged. The state directory, desired state
   and settings are keyed by ID, so a module that was on as a built-in stays on after conversion.
-- `wifi-client` declares `not_with=wireless-carplay-and-aa`; the CarPlay built-in no longer lists it, and the
-  dispatcher and app planner apply exclusions in both directions. Foreign cleanup recognises the HMG-API Wi-Fi
-  XML by its MD5, so it works after `wifi-client` is removed.
+- `wifi` (formerly `wifi-client`, taken over with `replaces=wifi-client`, see the runtime contract) has no static
+  exclusion: its built-in client role excludes wireless CarPlay through `setting-ok`/apply and the app planner
+  ([wifi.md](wifi.md)). Foreign cleanup recognises the HMG-API Wi-Fi XML by its MD5, so it works after `wifi` is
+  removed.
 - IDs of bundled packages are reserved: a direct install with such an ID is refused. Removing a bundled
   module (normal `module remove`) records `bundled-removed/<id>`. Adding it back from the app is not
   implemented yet.
@@ -100,6 +101,7 @@ limits and writes only into the staging extraction directory.
 | `hookpoints` | member name of a text file of stable IDs | | `hookpoints.required` |
 | `setting.N` | `key:type:default` | types `toggle`, `choice(a\|b\|...)`, `number(min..max)` | `Module.settings()` |
 | `raw_shell` | `1` | see Restricted scripts | |
+| `replaces` | module ID | bundled packages only: take over a renamed bundled module's state (runtime contract, "Settings check and module takeover") | |
 | `icon` | one of `box`, `wifi`, `phone`, `terminal`, `car`, `gear`, `display`, `speaker`, `camera`, `map`, `power`, `key`, `skip`, `button`, `link`, `bolt` | app-drawn line icon on the module card and detail panel; default `box`; modules cannot ship images | `icon` |
 
 Example (`wireless-carplay-and-aa`, design sketch): `id`, `version=1.0.0`, `api=1`, `cars=NEEV.KOR.*.260902`,
@@ -188,7 +190,7 @@ confirm.
 
 Layers (owner decision):
 1. Automatic from the touched list; nothing to write.
-2. `uses=<resource>:<mode>,...`. `wireless-carplay-and-aa` declares `wifi.radio:ap`, `wifi-client` declares
+2. `uses=<resource>:<mode>,...`. `wireless-carplay-and-aa` declares `wifi.radio:ap`, `wifi` declares
    `wifi.radio:sta`, and neither names the other.
 3. Optional `check.sh` with read-only checks plus `uses_on`; e.g. `if uses_on wifi:sta; then block @need_wifi_free; fi`.
 
@@ -256,7 +258,7 @@ Current modules' `uses` (proposed):
 | Module | `uses` |
 | --- | --- |
 | `wireless-carplay-and-aa` | `wifi.radio:ap,projection.carplay:wireless,projection.androidauto:wireless,system.app_process:only,system.feature` |
-| `wifi-client` | `wifi.radio:sta,system.feature` |
+| `wifi` | `wifi.radio:sta,system.feature` (built-in client role; USB roles use `rtwlan*`) |
 | `wireless-adb` | `adbd:tcp` |
 | `skip-consent-screen` | `ui.consent,vehicle.factory` |
 | `user-button-shortcut` | `input.keys.steering,input.keys.custom` |
@@ -350,11 +352,13 @@ hook host on; stock restore and uninstall exact.
 
 One block per line, drawn at NEMESIS scale with existing settings components. Without `ui.txt` the screen
 shows status, the on/off switch and the summary. Blocks: `status`; `toggle setting=K label=@s`;
-`choice setting=K label=@s`; `number setting=K label=@s`; `info @s`; `warning @s`; `value label=@s key=K`
+`choice setting=K label=@s` (a value shows string `choice_K_<value>` when the module has one); `number setting=K label=@s`; `info @s`; `warning @s`; `value label=@s key=K`
 (shows `info.K` from the last status; replaces `infoRows`); `button name=N label=@s confirm=@s` (runs
 `apply.sh` where `action_is N` is true); `enable module=ID label=@s` (normal enable plan for another module;
 replaces Java `ENABLE_MODULE`); `open screen=wifi_settings` (opens a stock screen from a fixed core list;
-replaces `OPEN_STOCK_WIFI_SETTINGS`). Unknown blocks refuse install. State-changing blocks go through
+replaces `OPEN_STOCK_WIFI_SETTINGS`; `open screen=wifi_networks` opens the app's USB Wi-Fi network picker, which runs the
+module's `wifi_scan` and `wifi_join` actions). Any block may add `when=K`: it is shown only while the last status
+reports `info.K=1`. Unknown blocks refuse install. State-changing blocks go through
 `ui.ConfirmDialog`. No Java from modules in API 1, so the app process stays free of third-party code. Home
 tiles (`Module.homeTiles`) are dropped: no module uses them and the Home redesign does not need them.
 
@@ -437,7 +441,7 @@ generated ownership; `tools/test-hsm-cli.py` covers it. Host CLI design (Python,
 - `hsm new <id>` writes a working module, an `AGENTS.md` for AI assistants, and a test; one example module
   per complexity level, so an AI assistant can write a valid module from a description.
 - `hsm validate` checks properties, verbs, product globs, shell lint, strings and touched-list collisions
-  with machine-readable errors (`HSM-E012 apply.sh:4: set_prop target persist.sys.x is owned by wifi-client`).
+  with machine-readable errors (`HSM-E012 apply.sh:4: set_prop target persist.sys.x is owned by wifi`).
 - `hsm pack`, `hsm push --adb <ip>`.
 - Design, not implemented: `hsm test` (apply, status, revert and exact-restore check against fakebin and the stock file
   snapshot from `maps/`, once per branch setting combination; on host only safe for property-only modules
@@ -453,7 +457,7 @@ Each phase lands as its own commits, each passing `make test`; built-ins keep wo
   done except screens. P3 core hook host: see above.
 - P4 convert built-ins, lowest risk first: `skip-consent-screen`; `user-button-head-unit`,
   `user-button-shortcut`; `wireless-adb` (its "connect another Wi-Fi" action becomes an `enable` block);
-  `wifi-client`; `wireless-carplay-and-aa` (native build stays in this repository). Each conversion deletes
+  `wifi` (was `wifi-client`); `wireless-carplay-and-aa` (native build stays in this repository). Each conversion deletes
   that module's Java class and keeps its `test/run.sh` green. After the last, remove `gen-modules.sh` and the
   compile-time registry.
 - P6 install UX: developer mode, install from USB, adb or repository URL, the review screen, remove. Registry

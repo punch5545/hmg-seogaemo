@@ -37,9 +37,9 @@ public class Context {
 'com/seogaemo/hmg/module/ModuleRegistry.java': '''package com.seogaemo.hmg.module;
 public class ModuleRegistry {
  public static boolean refreshInstalled(String locale){return true;}
- public static String[] orderedIds(){return new String[]{"wifi-client","wireless-carplay-and-aa"};}
+ public static String[] orderedIds(){return new String[]{"wifi","wireless-carplay-and-aa"};}
  public static String[] depends(String id){for(String s:orderedIds())if(s.equals(id))return new String[0];throw new IllegalArgumentException(id);}
- public static String[] excludes(String id){return new String[]{id.equals("wifi-client")?"wireless-carplay-and-aa":"wifi-client"};}
+ public static String[] excludes(String id){return new String[]{id.equals("wifi")?"wireless-carplay-and-aa":"wifi"};}
 }''',
 'com/seogaemo/hmg/module/RootClient.java': '''package com.seogaemo.hmg.module;
 import java.util.*;import java.io.*;
@@ -77,10 +77,20 @@ public class SwitchTest {
   plan(ModulePlanner.plan("base",false,order,deps,exc,none,desired),"-dependent -base ");
   plan(ModulePlanner.plan("base",true,order,deps,exc,none,desired),"+base ");
   plan(ModulePlanner.plan("base",true,order,deps,exc,desired,none),"+base ");
+  Set<String> carplayOn=new HashSet<String>(Arrays.asList("wireless-carplay-and-aa")),wifiOn=new HashSet<String>(Arrays.asList("wifi"));
+  Map<String,String> roles=new HashMap<String,String>();roles.put("info.builtin_role","client");roles.put("info.usb_role","off");
+  RootResult station=new RootResult("off","none","",0,roles);
+  check("wireless-carplay-and-aa".equals(ModuleManager.hotspotConflict("wifi",true,station,carplayOn)),"built-in client kept CarPlay on");
+  check("wifi".equals(ModuleManager.hotspotConflict("wireless-carplay-and-aa",true,station,wifiOn)),"CarPlay kept built-in client on");
+  check(ModuleManager.hotspotConflict("wifi",false,station,carplayOn)==null,"disable planned an exclusion");
+  roles.put("info.usb_role","carplay_ap");
+  check(ModuleManager.hotspotConflict("wifi",true,new RootResult("off","none","",0,roles),carplayOn)==null,"USB hotspot not honoured");
+  roles.put("info.builtin_role","off");roles.put("info.usb_role","client");
+  check(ModuleManager.hotspotConflict("wireless-carplay-and-aa",true,new RootResult("on","none","",0,roles),wifiOn)==null,"USB-only client blocked CarPlay");
   ModuleManager manager=new ModuleManager();
   RootResult pending=RootClient.status("pending-restart","head_unit","off",0);
   RootClient.fixture=true;RootClient.next=pending;
-  ModulePlan steps=new ModulePlan(Arrays.asList(new ModulePlan.Step("wifi-client",false),new ModulePlan.Step("wireless-carplay-and-aa",true)),Collections.<Warning>emptyList());
+  ModulePlan steps=new ModulePlan(Arrays.asList(new ModulePlan.Step("wifi",false),new ModulePlan.Step("wireless-carplay-and-aa",true)),Collections.<Warning>emptyList());
   RootResult result=manager.execute(steps);
   check(RootClient.operation==2,"pending success stopped execution");
   check(result.outcomes.size()==2 && result.restart.equals("head_unit"),"missing outcomes/restart");
@@ -103,25 +113,25 @@ public class SwitchTest {
   check(!ModuleResume.ready(RootClient.status("off","none","on",0),true),"resumed drifted module");
   check(!ModuleResume.ready(RootClient.status("on","none","off",0),true),"resumed disabled intent");
   android.content.Context context=new android.content.Context();RootClient.next=RootClient.status("pending-restart","head_unit","on",0);
-  new ModuleManager(context).requestEnable("wifi-client","update-check");
+  new ModuleManager(context).requestEnable("wifi","update-check");
   check("update-check".equals(context.saved.get("intent")),"pending restart lost resume preference");
-  RootClient.next=failure;new ModuleManager(context).requestEnable("wifi-client","update-check");
+  RootClient.next=failure;new ModuleManager(context).requestEnable("wifi","update-check");
   check(context.saved.isEmpty(),"failure left runnable resume");
   RootClient.fixture=false;
   String data=System.getenv("SG_DATA_ROOT");
   RootResult stale=RootClient.run("wireless-carplay-and-aa","status");
   check(stale.state.equals("off") && stale.desiredEnabled(),"dispatcher missing desired=on on OFF status: "+stale.info);
-  ModulePlan actual=manager.plan("wifi-client",true);
-  plan(actual,"-wireless-carplay-and-aa +wifi-client ");
+  ModulePlan actual=manager.plan("wifi",true);
+  plan(actual,"-wireless-carplay-and-aa +wifi ");
   result=manager.execute(actual);
   check(result.exitCode==0 && result.restart.equals("head_unit") && result.outcomes.size()==2,"real pending revert prevented Wi-Fi apply");
   check(result.outcomes.get(0).result.state.equals("pending-restart"),"pending revert fixture not exercised");
   check(!RootClient.run("wireless-carplay-and-aa","status").desiredEnabled(),"CarPlay desired ON survived switch");
-  check(RootClient.run("wifi-client","status").desiredEnabled(),"Wi-Fi desired ON not saved");
+  check(RootClient.run("wifi","status").desiredEnabled(),"Wi-Fi desired ON not saved");
   check(!new java.io.File(data+"/stock/paused").exists(),"explicit Wi-Fi apply did not resume paused dispatch");
-  write(data+"/desired/wifi-client","off");write(data+"/desired/wireless-carplay-and-aa","on");
+  write(data+"/desired/wifi","off");write(data+"/desired/wireless-carplay-and-aa","on");
   write(data+"/fail-wifi","1");
-  result=manager.execute(manager.plan("wifi-client",true));
+  result=manager.execute(manager.plan("wifi",true));
   check(result.exitCode==3 && result.state.equals("conflict") && result.restart.equals("head_unit"),"real later failure lost restart");
   check(result.outcomes.size()==2 && result.outcomes.get(0).result.exitCode==0,"lost successful revert receipt");
   System.out.println("module switch/resume Java + real dispatcher: OK");
@@ -140,11 +150,11 @@ with tempfile.TemporaryDirectory(prefix='hmg-seogaemo-switch-') as folder:
     (base / 'state/stock/paused').write_text('failed stock restore')
     copy_shell_script(args.dispatcher, base / 'bin/hmg-seogaemo-root')
     copy_shell_script(ROOT / 'nemesis/package/lib/common.sh', base / 'lib/common.sh')
-    (base / 'modules.list').write_text('wifi-client\nwireless-carplay-and-aa\n')
+    (base / 'modules.list').write_text('wifi\nwireless-carplay-and-aa\n')
     (base / 'modules.graph').write_text(
-        'wifi-client\tdepends=\texcludes=wireless-carplay-and-aa\n'
-        'wireless-carplay-and-aa\tdepends=\texcludes=wifi-client\n')
-    for module in ('wifi-client', 'wireless-carplay-and-aa'):
+        'wifi\tdepends=\texcludes=wireless-carplay-and-aa\n'
+        'wireless-carplay-and-aa\tdepends=\texcludes=wifi\n')
+    for module in ('wifi', 'wireless-carplay-and-aa'):
         (base / 'modules' / (module + '.properties')).write_text('id=' + module + '\n')
         (base / 'modules' / (module + '.sh')).write_text('''case "$1" in
 status) echo state=off; echo restart=none;;
@@ -180,7 +190,7 @@ esac
 sg_commit_file "$HMG_SEOGAEMO_BASE/stock-file" "$HMG_SEOGAEMO_BASE/module-bytes" '' ''
 ''')
     (base / 'state/desired/wireless-carplay-and-aa').write_text('on')
-    (base / 'state/desired/wifi-client').write_text('off')
+    (base / 'state/desired/wifi').write_text('off')
     classes = temp / 'classes'
     classes.mkdir()
     java = ROOT / 'app/src/com/seogaemo/hmg/module'

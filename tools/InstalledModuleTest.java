@@ -8,9 +8,9 @@ import java.util.Set;
 
 final class GeneratedModules {
     static final Module[] ALL = new Module[0];
-    static final String[] IDS = {"wifi-client", "wireless-carplay-and-aa"};
+    static final String[] IDS = {"wifi", "wireless-carplay-and-aa"};
     static final String[][] DEPENDS = {{}, {}};
-    static final String[][] EXCLUDES = {{"wireless-carplay-and-aa"}, {"wifi-client"}};
+    static final String[][] EXCLUDES = {{"wireless-carplay-and-aa"}, {"wifi"}};
 }
 
 public class InstalledModuleTest {
@@ -41,7 +41,7 @@ public class InstalledModuleTest {
     public static void main(String[] args) {
         InstalledModule sample = InstalledModule.parse("sample", describe(
                 "info.version=1.0.0", "info.source=direct", "info.restart=head_unit", "info.restore=exact", "info.icon=wifi",
-                "info.depends=", "info.excludes=wifi-client", "info.uses=wifi.radio:ap,audio.out",
+                "info.depends=", "info.excludes=wifi", "info.uses=wifi.radio:ap,audio.out",
                 "info.setting_1=audio:toggle:off", "info.setting_2=mode:choice(fast|safe):safe",
                 "info.setting_10=level:number(1..5):3", "info.setting_3=bad:choice(a|b):c",
                 "info.ui_2=toggle setting=audio label=@audio", "info.ui_10=info @how", "info.ui_1=status",
@@ -49,7 +49,7 @@ public class InstalledModuleTest {
         check(sample != null, "valid description rejected");
         check(sample.version.equals("1.0.0") && sample.restart.equals("head_unit") && !sample.rebootRestore, "manifest");
         check(Arrays.equals(sample.uses, new String[] {"wifi.radio:ap", "audio.out"}), "uses");
-        check(sample.depends.length == 0 && Arrays.equals(sample.excludes, new String[] {"wifi-client"}), "relations");
+        check(sample.depends.length == 0 && Arrays.equals(sample.excludes, new String[] {"wifi"}), "relations");
         check(sample.settings.size() == 3, "invalid setting kept: " + sample.settings.size());
         check(sample.settings.get(0).type == Module.SettingType.BOOLEAN, "toggle");
         check(sample.settings.get(1).type == Module.SettingType.CHOICE &&
@@ -75,17 +75,17 @@ public class InstalledModuleTest {
         check(RootClient.moduleInstall("../x").exitCode == 1, "bad digest");
         check(RootClient.run("x; rm -rf /", "status").exitCode == 1, "shell in id");
 
-        check(Arrays.equals(ModuleRegistry.orderedIds(), new String[] {"wifi-client", "wireless-carplay-and-aa"}), "built-ins only");
+        check(Arrays.equals(ModuleRegistry.orderedIds(), new String[] {"wifi", "wireless-carplay-and-aa"}), "built-ins only");
         InstalledModule dependent = InstalledModule.parse("addon", describe("info.version=0.1.0", "info.depends=sample"));
         ModuleRegistry.setInstalled(Arrays.asList(sample, dependent));
         check(Arrays.equals(ModuleRegistry.orderedIds(),
-                new String[] {"wifi-client", "wireless-carplay-and-aa", "sample", "addon"}), "installed order");
+                new String[] {"wifi", "wireless-carplay-and-aa", "sample", "addon"}), "installed order");
         check(Arrays.equals(ModuleRegistry.depends("addon"), new String[] {"sample"}), "installed depends");
-        check(Arrays.asList(ModuleRegistry.excludes("wifi-client")).contains("sample"), "reverse exclusion missing");
-        check(Arrays.asList(ModuleRegistry.excludes("wifi-client")).contains("wireless-carplay-and-aa"), "built-in exclusion lost");
+        check(Arrays.asList(ModuleRegistry.excludes("wifi")).contains("sample"), "reverse exclusion missing");
+        check(Arrays.asList(ModuleRegistry.excludes("wifi")).contains("wireless-carplay-and-aa"), "built-in exclusion lost");
 
         Set<String> on = new HashSet<String>(Arrays.asList("sample", "addon"));
-        check(plan("wifi-client", true, on).equals("-addon -sample +wifi-client"), plan("wifi-client", true, on));
+        check(plan("wifi", true, on).equals("-addon -sample +wifi"), plan("wifi", true, on));
         check(plan("addon", true, new HashSet<String>()).equals("+sample +addon"), plan("addon", true, new HashSet<String>()));
         check(plan("sample", false, on).equals("-addon -sample"), plan("sample", false, on));
         System.out.println("InstalledModuleTest ok");

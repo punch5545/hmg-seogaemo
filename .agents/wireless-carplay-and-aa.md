@@ -69,7 +69,7 @@ Declared hook points and their exact resolved members on this car:
 
 The three exact feature removal lines use `owns_lines.1` through `.3`;
 `featurexml.cfg` is not whole-file owned. Runtime composition retains any other
-module's distinct line patches on revert. The `wifi-client` exclusion remains
+module's distinct line patches on revert. The `wifi` built-in client exclusion remains
 for the shared STA/AP radio; shared-file safety is enforced independently.
 
 The package API must baseline each owned path before writing it, record applied bytes and metadata, bind baselines to `ro.build.product`, and verify exact restoration. `sg_revert_all` must preflight **all** targets for drift before the first restore write, refuse if any changed externally, retain baselines/ledger, and abort uninstall. Reapply/update must never replace the first baseline.

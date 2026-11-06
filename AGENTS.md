@@ -38,7 +38,7 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 - onebin `neev_kr`, Android 4.4.2 (API 19, Dalvik), Telechips, display 1920x720 hdpi (density 1.5).
 - Owner-verified: HMG-API's car map + wireless mod gave a working hotspot + wireless CarPlay on this
   car; the stock firmware has no Wi-Fi client menu.
-- Car-verified: wireless CarPlay music, Siri and calls/mic; `wifi-client` STA (adb over a router);
+- Car-verified: wireless CarPlay music, Siri and calls/mic; built-in Wi-Fi STA (as `wifi-client`, now `wifi`; adb over a router);
   user-button shortcut; boot reconcile and readiness status; 324/324 original map points reflect (2026-11-03).
 
 ## Hard rules
@@ -110,13 +110,14 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 | `.agents/` | design, contracts, research, per-module notes |
 
 The module list/graph is generated at build time from `modules/*/module.properties`; there is no
-hand-edited list. Current modules: `wifi-client` (excludes `wireless-carplay-and-aa`),
+hand-edited list. Current modules: `wifi` (formerly `wifi-client`; one role per radio, built-in or USB
+adapter; the built-in client role excludes `wireless-carplay-and-aa`),
 `wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`,
 `skip-consent-screen` (factory Binder call on boot and screen wake), and
 `user-button-shortcut` / `user-button-head-unit`.
-`wireless-carplay-and-aa` claims `featurexml.cfg` stock lines; `wifi-client` owns only
+`wireless-carplay-and-aa` claims `featurexml.cfg` stock lines; `wifi` owns only
 `android.hardware.wifi.xml` and `persist.wifi.state` (the NEEV KOR `featurexml.cfg` has no Wi-Fi
-removal line, verified on the car). Their exclusion is for STA versus AP on one radio.
+removal line, verified on the car) plus transient USB adapter effects. Their exclusion is for STA versus AP on one radio.
 Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, baselines, ledger).
 
 ## Car mapping
@@ -177,7 +178,7 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   root). Export the change ledger:
   `adb shell /data/local/tmp/nemesis-d root -c '/data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`
   then `adb pull /data/local/tmp/hmg-seogaemo-export/`. The app's Logs page exports to USB.
-- Test modules one at a time, lowest risk first (`wireless-adb` → `wifi-client` →
+- Test modules one at a time, lowest risk first (`wireless-adb` → `wifi` →
   `wireless-carplay-and-aa`), keep adb reachable, export the ledger before and after, and verify
   revert restores the exact originals before moving on.
 
@@ -188,11 +189,11 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   reassertion after restart is unverified. Other feature claims require their own evidence.
 - `wireless-carplay-and-aa` replaces `/system/bin/app_process` (boot guard disables it after 3
   quick restarts). Keep an adb recovery path ready.
-- `wifi-client` STA vs the CarPlay AP on one radio: treated as mutually exclusive; concurrency is
-  unknown. `wifi-client` sets `persist.wifi.state=3` with the feature XML; no NEEV KOR system file
+- `wifi` built-in STA vs the CarPlay AP on one radio: treated as mutually exclusive; concurrency is
+  unknown. The USB adapter roles and the wifi-client takeover are unverified on a car. `wifi` (built-in client) sets `persist.wifi.state=3` with the feature XML; no NEEV KOR system file
   names that property, and stock `HKMC_WifiSettings` gates its client menu on `android.hardware.wifi`.
 - OTA: TLS 1.2 to GitHub on 4.4 with bundled roots (`update_roots.pem`), the reboot/resume flow
-  through `wifi-client`, and rollback are untested on a car.
+  through `wifi`, and rollback are untested on a car.
 - An official firmware OTA while modules are applied makes restores conflict by design.
 - Removing only the APK (not via NEMESIS) skips the uninstall hook; reconcile must clean up.
 

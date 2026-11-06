@@ -8,7 +8,7 @@ only the NEMESIS package installer.
 
 ## Owner decisions
 
-- Telematics modem must **not** be used for updates: only `wifi-client` (or USB stick fallback).
+- Telematics modem must **not** be used for updates: only the `wifi` module as a client (or USB stick fallback).
 - CarPlay interruption and extra reboots during an update are accepted.
 - Avoid NEMESIS as much as possible: APK, module scripts, root payload, module graph and CA bundle are updated by
   HMG-Seogaemo itself. NEMESIS hook/service entry scripts stay thin, stable wrappers that only dispatch into the versioned

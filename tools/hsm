@@ -125,7 +125,8 @@ def validate(module_dir, product):
         print(f"ok {module_id} {field(module_dir, 'version')} ({len(data)} bytes)")
         for line in manifest:
             key, _, value = line.partition("=")
-            if value and (key.startswith("owns_") or key in ("services", "service_calls", "reassert_props", "restore")):
+            if value and (key.startswith(("owns_", "kmod", "daemon", "net_rules.")) or
+                          key in ("services", "service_calls", "reassert_props", "restore")):
                 print(f"  {key}={value}")
         return 0
 

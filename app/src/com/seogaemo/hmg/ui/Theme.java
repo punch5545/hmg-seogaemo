@@ -14,7 +14,7 @@ import com.seogaemo.hmg.ui.settings.SettingsUi;
 
 /** Colour tokens and the framework-view primitives every screen is built from (ui-guidelines.md). */
 public final class Theme {
-    static final float TEXT_SCALE = 0.86f;
+    public static final float TEXT_SCALE = 0.86f;
     public static final int CANVAS = 0xFF111111;
     public static final int SURFACE = 0xFF171717;
     public static final int RAISED = 0xFF202020;

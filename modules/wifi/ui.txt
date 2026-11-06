@@ -1,0 +1,9 @@
+choice setting=builtin_role label=@builtin_role when=builtin_present
+choice setting=usb_role label=@usb_role when=usb_present
+open screen=wifi_networks when=usb_client
+open screen=wifi_settings when=builtin_client
+value label=@client_ip key=client_ip
+value label=@usb_model key=usb_model
+value label=@usb_ip key=usb_ip
+value label=@ap_ssid key=ap_ssid
+info @note

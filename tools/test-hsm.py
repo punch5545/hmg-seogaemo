@@ -108,7 +108,7 @@ def test_errors(temp):
     cases = [
         ("bogus x\n", 110, 1),
         ('set_prop a "b\n', 102, 1),
-        ("if module_on wifi-client; then\n", 105, 1),
+        ("if module_on wifi; then\n", 105, 1),
         ("if car_is X; then\nelse\nelse\nfi\n", 105, 3),
         ("if car_is X; then\nelse\nelif car_is Y; then\nfi\n", 105, 3),
         ("block @busy\n", 113, 1),
@@ -196,14 +196,14 @@ def test_check_and_status(temp):
     pkg = module(temp, {"check.sh": check, "status.sh": status})
     free = walk(temp, pkg, "check.sh", "check", "run")
     assert free.returncode == 0 and free.stdout.splitlines() == ["warn=@busy", "warn=@busy"], free
-    other = temp / "base/modules/wifi-client.properties"
+    other = temp / "base/modules/wifi.properties"
     other.parent.mkdir(parents=True)
-    other.write_text("id=wifi-client\nuses=wifi.radio:sta,system.feature\n")
+    other.write_text("id=wifi\nuses=wifi.radio:sta,system.feature\n")
     (temp / "data/desired").mkdir(parents=True, exist_ok=True)
-    (temp / "data/desired/wifi-client").write_text("on")
+    (temp / "data/desired/wifi").write_text("on")
     blocked = walk(temp, pkg, "check.sh", "check", "run")
     assert blocked.returncode == 3 and blocked.stdout.splitlines() == ["warn=@busy", "block=@wifi"], blocked
-    (temp / "data/desired/wifi-client").write_text("off")
+    (temp / "data/desired/wifi").write_text("off")
     assert walk(temp, pkg, "check.sh", "check", "run").returncode == 0
     shown = walk(temp, pkg, "status.sh", "status", "run", settings={"mode": "fast"}, extra={"HSM_ACTION": "reconnect"})
     assert shown.returncode == 0 and shown.stdout.splitlines() == ["info.mode=fast", "info.live=live-value", "fail=@busy"], shown
