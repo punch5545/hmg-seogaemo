@@ -26,7 +26,13 @@ jobs:
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           version="$(python3 tools/version.py)"
-          test "$tag" = "v$version"
+          # vX.Y.Z, or a beta vX.Y.Z-beta.N (published as a prerelease, which OTA's
+          # releases/latest never offers)
+          case "$tag" in
+            "v$version") ;;
+            "v$version"-beta.[1-9]|"v$version"-beta.[1-9][0-9]) ;;
+            *) echo "tag $tag does not match VERSION $version"; exit 1;;
+          esac
           : "${RELEASE_KEYSTORE_B64:?missing release keystore}"
           : "${RELEASE_KEYSTORE_PASSWORD:?missing keystore password}"
           : "${RELEASE_KEY_ALIAS:?missing keystore alias}"
@@ -77,7 +83,9 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           lists="$(mktemp -d)"
           trap 'rm -rf "$lists"' EXIT
-          gh release create "$tag" --draft --verify-tag out/dist/*
+          prerelease=
+          case "$tag" in *-beta.*) prerelease=--prerelease;; esac
+          gh release create "$tag" --draft $prerelease --verify-tag out/dist/*
           find out/dist -maxdepth 1 -type f -printf '%f\n' | sort > "$lists/expected-assets"
           gh release view "$tag" --json assets --jq '.assets[].name' | sort > "$lists/uploaded-assets"
           diff -u "$lists/expected-assets" "$lists/uploaded-assets"
