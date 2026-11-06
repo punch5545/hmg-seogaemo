@@ -1564,6 +1564,30 @@ sg_core_hook_owned() {
     sg_ch_key=$(sg_file_key "${SG_TARGET_ROOT:-}/system/bin/app_process") || return 1
     [ -f "$SG_DATA_ROOT/modules/core-hook/file.$sg_ch_key/ready" ]
 }
+# Removes our own empty directories under /system/etc/hmg-seogaemo (left by earlier
+# builds, so no directory baseline names them). Only an empty directory that is an
+# ancestor of one of this module's owns_files is removed; one ledger row each.
+sg_owned_dirs_prune() (
+    for sg_pd in "$@"; do
+        case "$sg_pd" in /system/etc/hmg-seogaemo|/system/etc/hmg-seogaemo/*) ;; *) exit 2;; esac
+        case "$sg_pd" in *..*|*//*) exit 2;; esac
+        sg_pd_ok=0
+        sg_manifest=$(sg_manifest_file) || exit 2
+        while IFS='=' read -r sg_pd_key sg_pd_val; do
+            [ "$sg_pd_key" = owns_files ] || continue
+            case ",$sg_pd_val" in *,"$sg_pd"/*) sg_pd_ok=1;; esac
+        done < "$sg_manifest"
+        [ "$sg_pd_ok" -eq 1 ] || exit 2
+        sg_pd_t=${SG_TARGET_ROOT:-}$sg_pd
+        [ -d "$sg_pd_t" ] && [ ! -L "$sg_pd_t" ] || continue
+        for sg_pd_x in "$sg_pd_t"/* "$sg_pd_t"/.[!.]*; do [ ! -e "$sg_pd_x" ] || continue 2; done
+        sg_remount rw || exit 1
+        rmdir "$sg_pd_t"; sg_pd_rc=$?
+        sg_remount_ro
+        [ "$sg_pd_rc" -eq 0 ] || exit 1
+        sg_ledger directory_prune "$sg_pd" "" "" "" ok || exit 1
+    done
+)
 # Registers the module's hook jar with the core hook host: the payload jar, its ModEntry class and
 # the processes (names or packages) it hooks. sg_core_hook_ensure installs the wrapper afterwards.
 sg_hook_register() {

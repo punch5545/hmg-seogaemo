@@ -123,6 +123,7 @@ sg_core_hook_ensure() {
     [ "${SG_FAIL_ZYGOTE:-0}" != 1 ] || return 1
     touch "$HMG_SEOGAEMO_STATE/core-hook"
 }
+sg_owned_dirs_prune() { for d in "$@"; do rmdir "$SG_WIRELESS_TEST_ROOT$d" 2>/dev/null || :; done; }
 sg_core_hook_owned() { [ -f "$HMG_SEOGAEMO_STATE/core-hook" ]; }
 sg_core_hook_release() {
     ! sg_applied "$SG_DATA_ROOT/core/hook/mods/${HMG_SEOGAEMO_STATE##*/}/entry" || return 0
@@ -383,6 +384,7 @@ run revert || fail legacy-revert
 cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail legacy-exact-feature-restore
 [ "$(cat "$T/props/persist.ium.support")" = stock ] || fail legacy-exact-prop-restore
 [ ! -e "$T/state/core-hook" ] || fail legacy-hook-host-not-released
+[ ! -e "$T/root/system/etc/hmg-seogaemo" ] || fail empty-asset-dirs-left
 sg_print "boot-five" > "$T/root/proc/sys/kernel/random/boot_id"
 # The app's ui.txt button and older apps' fixed verb both reach the record reset; nothing else is accepted.
 run action tbt_reset && grep -q 'records reset' "$T/output" || fail action-tbt-reset

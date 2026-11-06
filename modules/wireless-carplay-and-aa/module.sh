@@ -166,6 +166,8 @@ revert() {
     # An interrupted apply can have feature/property changes without the hook registration.
     sg_revert_all || { conflict 'restore blocked by drift; ledger retained'; return 3; }
     sg_core_hook_release || { conflict 'app hook host restore blocked; backup retained'; return 3; }
+    # Empty asset directories that an earlier build left without a baseline.
+    sg_owned_dirs_prune "$ASSET/recipes" "$ASSET" /system/etc/hmg-seogaemo || sg_log 'empty asset directories kept' || :
     cleanup_runtime || return $?
     if [ "$on" -eq 1 ]; then
         sg_restart_required || :
