@@ -12,6 +12,8 @@ public final class RootClient {
     static final long READ_TIMEOUT_MS = 30000L;
     static final long STOCK_STATUS_TIMEOUT_MS = 30000L;
     static final long STOCK_TIMEOUT_MS = 180000L;
+    /** Thousands of ledger files need copying, diagnostics, sync and USB verification. */
+    static final long EXPORT_TIMEOUT_MS = 600000L;
 
     private RootClient() { }
 
@@ -84,7 +86,7 @@ public final class RootClient {
     }
 
     public static RootResult exportUsb() {
-        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb", WRITE_TIMEOUT_MS);
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb", EXPORT_TIMEOUT_MS);
     }
 
     public static RootResult stock(String verb) {
@@ -102,7 +104,8 @@ public final class RootClient {
         if (!("status".equals(verb) || "run".equals(verb) ||
                 "verify".equals(verb) || "export".equals(verb))) return failure("invalid map verb");
         String command = "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root map " + verb;
-        return invoke(command, "run".equals(verb) ? 600000 : "verify".equals(verb) ? 180000 : 30000);
+        return invoke(command, "export".equals(verb) ? EXPORT_TIMEOUT_MS :
+                "run".equals(verb) ? 600000 : "verify".equals(verb) ? 180000 : 30000);
     }
 
     private static RootResult invoke(String command, long timeoutMs) {

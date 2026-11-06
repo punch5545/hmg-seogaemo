@@ -412,6 +412,15 @@ The app shows "it is safe to remove the USB" (`export_usb_done`, KO "USB를 빼�
 only for `info.export_safe=usb`. The check compares sizes the kernel reports; it cannot
 prove the medium, so the instruction to the owner is still to wait for the dialog.
 
+The app allows 10 minutes for ordinary USB export and `map export`, including
+copying, diagnostics, manifest creation, sync and verification. These operations
+must not use the 150-second module-write or 30-second map-status deadline. On
+2026-11-06, each v0.1.30 USB export contained 1,798 files and took 145 seconds
+from its destination timestamp to MANIFEST's modification time, before the USB
+verification pass. The 150-second app deadline could expire while the daemon
+continued exporting. Evidence: `tmp/car-reports/usb-20261106/`. The longer deadline
+is covered off-car; completion of the fixed build still needs car verification.
+
 ## Diagnostic export
 
 Ordinary USB/adb exports add diagnostics through lib/diagnostics.sh. Collection
