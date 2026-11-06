@@ -215,7 +215,7 @@ The new catalogue additions require on-car reflection; existing module requireme
 | framework.mode_manager_service.intercept_key_queueing | method | com.hkmc.micom.ModeManagerService.interceptKeyBeforeQueueing | yes | — |
 | framework.navigation_cluster | class | com.hkmc.cluster.NavigationCluster | yes | wireless-carplay-and-aa |
 | framework.navigation_cluster.new | ctor | com.hkmc.cluster.NavigationCluster.<init> | yes | wireless-carplay-and-aa |
-| framework.navigation_cluster.update_clu_data_new_14 | method | com.hkmc.cluster.NavigationCluster.updateCluDataNew_14 | not recorded | — |
+| framework.navigation_cluster.update_clu_data_new_14 | method | com.hkmc.cluster.NavigationCluster.updateCluDataNew_14 | not recorded | wireless-carplay-and-aa |
 | framework.navigation_cluster.update_lane_info | method | com.hkmc.cluster.NavigationCluster.updateLaneInfo | yes | wireless-carplay-and-aa |
 | framework.navigation_cluster.update_remain_dis | method | com.hkmc.cluster.NavigationCluster.updateRemainDis | yes | wireless-carplay-and-aa |
 | framework.navigation_cluster.update_tbt_info | method | com.hkmc.cluster.NavigationCluster.updateTBTInfo | yes | wireless-carplay-and-aa |

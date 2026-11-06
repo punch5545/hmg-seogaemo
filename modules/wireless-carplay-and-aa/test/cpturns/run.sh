@@ -8,6 +8,8 @@ mkdir -p "$T/src/hmgapi/mods/wireless/dipo" "$T/src/com/tcc/iap2" "$T/out"
 cp "$PAY/src/hmgapi/mods/wireless/dipo/CpTurns.java.src" "$T/src/hmgapi/mods/wireless/dipo/CpTurns.java"
 cp "$PAY/src/hmgapi/mods/wireless/dipo/CpLaneDecoder.java.src" "$T/src/hmgapi/mods/wireless/dipo/CpLaneDecoder.java"
 cp "$PAY/src/hmgapi/mods/wireless/dipo/CpGuidance.java.src" "$T/src/hmgapi/mods/wireless/dipo/CpGuidance.java"
+cp "$PAY/src/hmgapi/mods/wireless/dipo/CpJunctions.java.src" "$T/src/hmgapi/mods/wireless/dipo/CpJunctions.java"
+cp "$PAY/src/hmgapi/mods/wireless/dipo/CpJunctionTable.java.src" "$T/src/hmgapi/mods/wireless/dipo/CpJunctionTable.java"
 cp "$PAY/stubs/com/tcc/iap2/Iap2NotiMsg.java.src" "$T/src/com/tcc/iap2/Iap2NotiMsg.java"
 javac --release 8 -Xlint:-options -nowarn -d "$T/out" \
     $(find "$HERE/stubs" "$HERE/test" "$HERE/aaturns/stubs" -name '*.java') $(find "$T/src" -name '*.java')
@@ -15,3 +17,5 @@ java -cp "$T/out" hmgapi.mods.wireless.dipo.CpTurnsTest
 
 java -cp "$T/out" hmgapi.mods.wireless.dipo.CpLaneDecoderTest
 java -cp "$T/out" hmgapi.mods.wireless.dipo.CpGuidanceTest
+java -cp "$T/out" hmgapi.mods.wireless.dipo.CpJunctionsTest
+java -cp "$T/out" hmgapi.mods.wireless.dipo.CpJunctionLifecycleTest

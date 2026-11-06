@@ -100,7 +100,7 @@ final class CpTurns {
         if (id == null) return;
         Update u = updates.get(id);
         if (u == null || u.state == 0) {
-            clearApproach();
+            clearGuidance();
             activeId = null;
             return;
         }
@@ -281,7 +281,10 @@ final class CpTurns {
         while (laneInfos.size() > 16) laneInfos.remove(laneInfos.keySet().iterator().next());
         d("decoded lanes " + info.summary());
         Update u = updates.get(info.component);
-        if (activeId != null && activeId == info.component && u != null) selectLanes(info.component, u);
+        if (activeId != null && activeId == info.component && u != null) {
+            selectLanes(info.component, u);
+            updateJunction(info.component, u);
+        }
     }
 
     private void selectLanes(int component, Update u) {
@@ -557,7 +560,7 @@ final class CpTurns {
 
     /** forget every component's state and maneuvers (DiPO e/u.nT) */
     void reset() {
-        clearApproach();
+        clearGuidance();
         laneInfos.clear();
         lastLane = null;
         activeId = null;
@@ -605,7 +608,7 @@ final class CpTurns {
         selectLanes(id, u);
         lastSendAt = System.currentTimeMillis();
         if (u.state == 3 || u.state == 5) {
-            clearApproach();
+            clearGuidance();
             if (lastHud != null) hudBlank();
             cluster.tbtInfo(u.state == 3 ? 9 : 10, 0, 0f, 0f, 0, 0, 0, 0, 0);
             clusterTurn = true;
@@ -634,7 +637,7 @@ final class CpTurns {
         Maneuver x = m == null || list == null ? null : m.get(list[0]);
         if (x == null) {
             boolean wasApproaching = approachComponent != null;
-            clearApproach();
+            clearGuidance();
             if (wasApproaching) clusterIdle();
             // the maneuver isn't here (yet): what is known still goes out, and the phone is asked to resend
             if (sample("tn-drop2", u.state + "|" + (m == null) + "|" + (list == null) + "|" + (list == null ? -1 : list[0]))) d("turn without maneuver: comp=" + id + " state=" + u.state + " maneuvers=" + (m == null ? "none" : String.valueOf(m.size())) + " list=" + arr(list) + " (known comps=" + maneuvers.keySet() + ")");
@@ -667,6 +670,7 @@ final class CpTurns {
         }
         cluster.tbtInfo(stock == null ? icon : stock[0], 0, stock == null ? 0f : stock[1], dist, 0, 0, unit, 0, 0);
         clusterTurn = true;
+        updateJunction(id, u);
         sendHud(icon, id, u);
         sendHudDist(dist, unit);
         sendLaneDist(dist, unit);
@@ -676,6 +680,38 @@ final class CpTurns {
 
     private Integer approachComponent;
     private int approachIndex;
+
+    private Integer junctionComponent;
+    private int junctionIndex;
+    private int[] junction;
+
+    private void updateJunction(int component, Update u) {
+        LinkedHashMap<Integer, Maneuver> known = maneuvers.get(component);
+        int[] list = u.list;
+        Maneuver current = known == null || list == null || list.length == 0 ? null : known.get(list[0]);
+        if (!CpGuidance.approach(u, current)) { clearJunction(); return; }
+        Maneuver next = list.length > 1 ? known.get(list[1]) : null;
+        CpLaneDecoder.Info lanes = u.lanesShown ? laneInfos.get(laneKey(component, u.laneIndex)) : null;
+        int[] selected = CpJunctions.select(current, next, lanes, u.laneCount);
+        if (selected == null) { clearJunction(); return; }
+        if (junctionComponent != null && (junctionComponent != component || junctionIndex != current.index)) clearJunction();
+        if (!java.util.Arrays.equals(junction, selected)) cluster.junctionView(selected[0], selected[1], selected[2]);
+        junction = selected;
+        junctionComponent = component;
+        junctionIndex = current.index;
+    }
+
+    private void clearJunction() {
+        if (junction == null) return;
+        junction = null;
+        junctionComponent = null;
+        cluster.junctionView(65535, 65535, 65535);
+    }
+
+    private void clearGuidance() {
+        clearApproach();
+        clearJunction();
+    }
 
     private void clearApproach() {
         if (approachComponent == null) return;
@@ -1081,7 +1117,7 @@ final class CpTurns {
 
     /** HUD list and extras cleared (the build's sendHudBlank) */
     void hudBlank() {
-        clearApproach();
+        clearGuidance();
         lastLane = null;
         clearLaneDist();
         cluster.tbtSubInfo2C(0, 0, 0, 0, 0, 0, 0, 0, 0);

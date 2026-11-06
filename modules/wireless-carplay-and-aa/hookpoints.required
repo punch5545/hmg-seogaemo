@@ -61,6 +61,7 @@ framework.gpm_manager.is_vr
 framework.gpm_manager.new
 framework.navigation_cluster
 framework.navigation_cluster.new
+framework.navigation_cluster.update_clu_data_new_14
 framework.navigation_cluster.update_lane_info
 framework.navigation_cluster.update_remain_dis
 framework.navigation_cluster.update_tbt_info
