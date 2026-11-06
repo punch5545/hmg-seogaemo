@@ -25,7 +25,7 @@ Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (p
 | [android44-shell-audit.md](android44-shell-audit.md) | Pinned KitKat toolbox/mksh evidence, lint boundaries, waivers. |
 | [ui-guidelines.md](ui-guidelines.md) | Display tokens, touch sizes, single-panel decision, API 19 notes. |
 | [ui-redesign.md](ui-redesign.md) | Approved app redesign: Modules/Car/Settings tabs, card and detail behaviour, Add/USB install, module-provided UI. |
-| [ci-upstream-tracking.md](ci-upstream-tracking.md) | CI timing, shell-suite parallelism, workflow pins, upstream review. |
+| [ci-upstream-tracking.md](ci-upstream-tracking.md) | CI timing, test runner and shell policy, workflows (release reuses CI), pins, upstream review. |
 | [backlog.md](backlog.md) | Open on-car checks and planned work; delete items when done. |
 
 ## Modules
