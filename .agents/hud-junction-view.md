@@ -61,8 +61,11 @@ recompute the selection. Unchanged pictures are not resent. A changed maneuver o
 clears the old picture even if the replacement selects the same codes. Window exit, missing
 current maneuver, loading/rerouting, arrival, route end, source change, stop and disconnect
 all clear with three 65535 values. Junction clearing and trap-bar restoration precede the
-final idle compass at stop/disconnect. Stock navigation PE14 writes are suppressed during
-phone guidance, alongside its ordinary TBT writes; camera/trap calls continue normally.
+final idle compass at stop/disconnect. Each CarPlay guidance session first sends one clear,
+so a picture stock navigation left behind cannot persist. Stock navigation PE14 pictures are
+suppressed during phone guidance, alongside its ordinary TBT writes, but its own clears
+(A 65535, or A 0 with B 65535) pass; camera/trap calls continue normally. The PE14 point is
+optional for the module: without it the junction view is off and CarPlay runs.
 
 ## Tools (local)
 

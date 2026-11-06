@@ -32,7 +32,10 @@ The bar beside the AR view is `updateTBTTrapInfo` (17 ints, 12th = `barGraphLeve
 `updateTBTTrapInfoNew`, 0..100 (100 full). The same call carries speed-camera, limit and toll
 fields. CarPlay captures the latest real stock call in the navigation process and replaces
 only the bar during an approach lease. Both the 17-int and object-record paths preserve the
-camera, speed-limit and toll values. With no captured stock record it sends no trap record.
+camera, speed-limit and toll values. While the captured record reports an active camera,
+trap, warning zone or toll gate (any of those fields other than 0 / -1) the stock bar passes
+through unchanged. With no captured stock record it sends no trap record. The trap points
+are optional for the module: without them only the bar is off.
 Leaving the window restores the latest stock bar; a 3500 ms lease also restores it if DiPO
 stops renewing. Trap calls are never included in the phone-guidance suppression list.
 
@@ -46,10 +49,15 @@ CarPlay does not expose the stock road-dependent guide-window policy. A changed 
 maneuver needs a fresh distance. Unknown distance cannot open the window.
 
 The independently implemented CpGuidance policy uses maneuver type, explicit exit angle,
-other junction angles and driving handedness. It rounds turn geometry to 45 degrees, chooses
-the correct exit branch or straight-past-exit direction, and uses the Korean left-loop U-turn
-by default. Roundabout positions require an explicit exit angle; ordinal exit numbers do not
-provide an angular position. Ambiguous or contradictory geometry retains the projection icon.
+other junction angles and driving handedness. Turns round to 45 degrees. Exits send the branch
+side (17/19 at 90, 18/20 at 270). Keeps and highway changes send EXIT_LEFT 18 at 270 to the left
+and FORK_2 25 at 90 to the right (FORK_2 draws only at 90, FORK_3 26 draws nothing); a measured
+straight is no keep. Straight past one side road uses the exit picture with the route straight
+only with a highway road name or instruction, otherwise TURN 13 at 0. U-turns use the Korean
+left loop by default. Roundabout positions require an explicit exit angle; ordinal exit numbers
+do not provide an angular position. Ambiguous or contradictory geometry retains the projection
+icon. When the next maneuver is not known yet the projection icon is resent; the idle compass
+is only for stop and disconnect.
 The bar decreases linearly from 100 at entry to 0 at the maneuver. Route states Loading and
 Rerouting send stock types 9 and 10. The HUD F2 list retains its projection icon format.
 

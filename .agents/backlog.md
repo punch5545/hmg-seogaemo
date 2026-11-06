@@ -44,7 +44,10 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   shapes; route search 9 / 10 text; the trap bar falls with distance and real camera/limit data
   survives it (and whether stock navigation sends any trap record while CarPlay guides; without
   one no bar is drawn); junction pictures on highway exits/forks match the road and clear after
-  the maneuver, on reroute, guidance end and disconnect; idle compass at the end; HUD F2 list.
+  the maneuver, on reroute, guidance end and disconnect; a stock picture left before CarPlay
+  starts is cleared; idle compass at the end; HUD F2 list. Also check that `stop()` does not race
+  stock navigation resuming its own guidance (our idle/junction clear landing after stock's
+  first calls).
 - [ ] **Stock-format turns for Android Auto.** CarPlay only today: `CpGuidance`/`CpJunctions`
   read CarPlay maneuver and 0x5204 lane geometry, while `AaTurns` gets a different callback
   model. Needs an AA-side adapter to the same policy.

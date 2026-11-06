@@ -17,7 +17,8 @@ from the cluster AR view ([cluster-ar-view.md](cluster-ar-view.md)) and the HUD 
 ## Shapes per type
 
 - Only turn, exit and fork types draw a hologram: TURN 13 (shape follows the direction),
-  EXIT_RIGHT 17 / EXIT_LEFT 18, combined exits 19/20, FORK_2 25, FORK_3 26.
+  EXIT_RIGHT 17 / EXIT_LEFT 18, combined exits 19/20, FORK_2 25, FORK_3 26 (the cluster AR
+  view draws FORK_2 only at 90 and FORK_3 not at all, so CarPlay never sends 26).
 - U-turn and roundabout types draw no hologram; ARRIVED 3 shows a flag; 9 / 10 show the route
   search text.
 
