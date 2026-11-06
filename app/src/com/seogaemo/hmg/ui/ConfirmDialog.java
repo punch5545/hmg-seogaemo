@@ -53,7 +53,14 @@ public final class ConfirmDialog extends Dialog {
         panel.addView(heading, new LinearLayout.LayoutParams(-1, -2));
 
         if (content != null || (message != null && message.length() > 0)) {
-            ScrollView scroll = new ScrollView(activity);
+            // A long body (diagnostics) scrolls inside the dialog so the buttons stay on screen.
+            final int maxBody = Math.max(dp(activity, 120),
+                    activity.getResources().getDisplayMetrics().heightPixels - dp(activity, 260));
+            ScrollView scroll = new ScrollView(activity) {
+                @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                    super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(maxBody, MeasureSpec.AT_MOST));
+                }
+            };
             if (content != null) scroll.addView(content);
             else {
                 TextView body = label(activity, message, 20, WHITE, false);

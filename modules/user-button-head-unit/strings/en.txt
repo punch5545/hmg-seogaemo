@@ -1,7 +1,0 @@
-name=Head-unit user button
-summary=Open HMG-Seogaemo with the head-unit user button.
-assignment=The button opens HMG-Seogaemo instead of its current function.
-note_override=While on, this also overrides the function chosen in the stock button settings.
-note_restore=Turning it off restores the original function exactly.
-on_result=The head-unit user button opens HMG-Seogaemo.
-off_result=The original button assignment is restored.
