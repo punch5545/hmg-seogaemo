@@ -57,7 +57,7 @@ if sg_file_mark_applied /owned; then exit 1; fi
 
 def fake_ownership(fake):
     for name in ("ls", "chown"):
-        script(fake / name, f'exec {sys.executable} "{ROOT / "tools/testlib/fake-ownership.py"}" {name} "$@"\n')
+        script(fake / name, f'exec /bin/sh "{ROOT / "tools/testlib/fake-ownership.sh"}" {name} "$@"\n')
     script(fake / "nemesis", "exit 0\n")
 
 

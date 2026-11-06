@@ -216,7 +216,7 @@ def test_hook_host(car):
         (data / name).write_bytes(body)
     fake = Path(car.env["PATH"].split(":")[1])
     for name in ("ls", "chown"):
-        script(fake / name, f'exec {sys.executable} "{ROOT / "tools/testlib/fake-ownership.py"}" {name} "$@"\n')
+        script(fake / name, f'exec /bin/sh "{ROOT / "tools/testlib/fake-ownership.sh"}" {name} "$@"\n')
     script(fake / "nemesis", "exit 0\n")
     car.env.update(SG_TARGET_ROOT=str(target), FAKE_OWNERS=str(car.temp / "owners.json"))
     extras = [target / "system/bin/app_process.hmg-seogaemo-stock", target / "system/lib/libhmg_seogaemo_hook.so",
@@ -536,7 +536,7 @@ def test_installed_shared_line(car):
     shared.write_bytes(stock)
     fake = Path(car.env["PATH"].split(":")[1])
     for name in ("ls", "chown"):
-        script(fake / name, f'exec {sys.executable} "{ROOT / "tools/testlib/fake-ownership.py"}" {name} "$@"\n')
+        script(fake / name, f'exec /bin/sh "{ROOT / "tools/testlib/fake-ownership.sh"}" {name} "$@"\n')
     script(fake / "nemesis", "exit 0\n")
     car.env.update(FAKE_OWNERS=str(car.temp / "owners.json"))
 
