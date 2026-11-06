@@ -1,0 +1,77 @@
+package hmgapi.mods.wireless.dipo;
+// HMG-Seogaemo: the stock Phone Projection switch between the bridge's wireless CarPlay and Android Auto.
+
+/**
+ * Phone Projection's choice between CarPlay and Android Auto, for the bridge's wireless CarPlay.
+ *
+ * The stock Phone Projection app asks PPService to connect or disconnect a phone's projection
+ * (connectPP/disconnectPP: type 1 CarPlay, 2 Android Auto; transfer 1 wireless) and PPService
+ * passes it to every registered listener. On these cars only GPM listens: DiPO has no listener,
+ * so a request to drop CarPlay or to start Android Auto never reaches the bridge's CarPlay.
+ * GPM then answers the Android phone's start request with STATUS_PROJECTION_ALREADY_STARTED
+ * while DiPO's status is above 0, which it stays from the bridged iPhone's first iAP2 session.
+ *
+ * Here: Android Auto chosen, or CarPlay disconnected, stops the bridged session and holds that
+ * iPhone off (no automatic reconnect). CarPlay chosen again releases it, and so does the iPhone's
+ * next Bluetooth connection after its link went down (the next drive).
+ */
+final class ProjectionSwitch {
+    static final int TYPE_CARPLAY = 1, TYPE_ANDROID_AUTO = 2, TRANSFER_WIRELESS = 1;
+    /** what the bridge does with a request: nothing, stop its session, or connect the iPhone again */
+    static final int IGNORE = 0, STOP = 1, RESUME = 2;
+
+    private String held;
+    private boolean heldGone, stopping;
+
+    /**
+     * A connectPP (connect) or disconnectPP from Phone Projection. iphone: the bridge's iPhone
+     * (null: none); active: a bridged iAP2 or CarPlay session is up.
+     */
+    synchronized int request(boolean connect, int type, int transfer, String iphone, boolean active) {
+        if (transfer != TRANSFER_WIRELESS) return IGNORE;
+        if ((connect && type == TYPE_ANDROID_AUTO) || (!connect && type == TYPE_CARPLAY)) {
+            if (!active || iphone == null) return IGNORE;
+            held = iphone;
+            heldGone = false;
+            stopping = true;
+            return STOP;
+        }
+        if (connect && type == TYPE_CARPLAY && held != null) {
+            held = null;
+            heldGone = false;
+            return RESUME;
+        }
+        return IGNORE;
+    }
+
+    /** the held iPhone (null: none) */
+    synchronized String held() {
+        return held;
+    }
+
+    synchronized boolean isHeld(String addr) {
+        return addr != null && addr.equalsIgnoreCase(held);
+    }
+
+    /** a stop was asked and the session hasn't ended yet: DiPO must see the bridge's sessions end */
+    synchronized boolean stopping() {
+        return stopping;
+    }
+
+    synchronized void sessionEnded() {
+        stopping = false;
+    }
+
+    /** the held iPhone's Bluetooth link (or its SPP) went down */
+    synchronized void linkDown(String addr) {
+        if (isHeld(addr)) heldGone = true;
+    }
+
+    /** the iPhone connected over Bluetooth: true when that ends its hold (it went away first) */
+    synchronized boolean connected(String addr) {
+        if (!isHeld(addr) || !heldGone) return false;
+        held = null;
+        heldGone = false;
+        return true;
+    }
+}

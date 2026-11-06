@@ -71,6 +71,16 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
 - [ ] Guard test: no new `hmgapi/mods` class may extend/implement a `hmgapi/hook` type
   other than `MethodHook` (dexdump check in the module test).
 
+- [ ] **CarPlay → Android Auto switch (on car).** With a registered iPhone in wireless CarPlay
+  and an Android phone paired, choose Android Auto in Phone Projection / Device Connections. Check
+  logcat `HMG-Seogaemo-Wireless` for `Phone Projection connect type=2 transfer=1: stopping`, DiPO's
+  `setDipoStatus() mDiPOStatus : 0` and CarPlay closing, then GPM `[HU >> MD] Sent STATUS_SUCCESS`
+  rather than `STATUS_PROJECTION_ALREADY_STARTED`. Also confirm that the iPhone stays off while
+  Android Auto runs and that choosing CarPlay again reconnects it. After the next drive, the iPhone
+  should connect by itself. Check whether Phone Projection sends `connectPP` type 2 automatically
+  when the Android phone's Bluetooth connects, because that decides the two-phone behavior. See
+  `wireless-carplay-and-aa.md` § Switching.
+
 ## 1b. Core hook host and installable modules
 
 - [ ] **Finish the on-car check of the core hook host** (`core/hook/`, contract "Core hook host").
