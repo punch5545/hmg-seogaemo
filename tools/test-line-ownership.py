@@ -141,6 +141,39 @@ def conflicts(root):
     f.apply('a', 'alpha', 'A', 3)
 
 
+def installed_owners(root):
+    """A user-added .hsm keeps its manifest only under installed/; it shares and conflicts like any module."""
+    def install(f, module, text):
+        (f.root / 'data/installed').mkdir(exist_ok=True)
+        (f.root / f'data/installed/{module}.properties').write_text(text)
+        with (f.root / 'data/installed.list').open('a') as listed:
+            listed.write(module + '\n')
+    f = Fixture(root / 'installed-share')
+    (f.root / 'modules.list').write_text('package-compat\na\n')
+    (f.root / 'modules/b.properties').unlink()
+    install(f, 'b', f'owns_lines.1={f.target}:beta\n')
+    f.apply('a', 'alpha', 'A')
+    f.apply('b', 'beta', 'B')
+    assert f.target.read_bytes() == b'A\nB\nkeep\n'
+    f.run('b', 'sg_revert_all')
+    assert f.target.read_bytes() == b'A\nbeta\nkeep\n'
+    f.run('a', 'sg_revert_all')
+    f.restored()
+    f = Fixture(root / 'installed-same-line')
+    install(f, 'c', f'owns_lines.1={f.target}:alpha\n')
+    (f.root / 'data/desired/c').write_text('on')
+    f.apply('a', 'alpha', 'A', 3)
+    assert f.target.read_bytes() == f.stock
+    f = Fixture(root / 'installed-whole')
+    install(f, 'c', f'owns_files={f.target}\n')
+    f.apply('a', 'alpha', 'A', 3)
+    (f.root / 'payload').mkdir()
+    (f.root / 'payload/new').write_text('whole')
+    f.env['HMG_SEOGAEMO_MODULE_DIR'] = str(f.root / 'payload')
+    f.run('c', f'sg_file_put {f.target} new', 3)
+    assert f.target.read_bytes() == f.stock
+
+
 def recovery(root):
     for phase in ('copy', 'rename', 'audit'):
         f = Fixture(root / ('failure-' + phase))
@@ -240,4 +273,4 @@ def lifecycle(root):
     # preuninstall delegates to core/stock.sh; see tools/test-stock.py.
 
 
-run_tests([sharing, conflicts, recovery, literals, audit_records, lifecycle], 'line ownership tests passed')
+run_tests([sharing, conflicts, installed_owners, recovery, literals, audit_records, lifecycle], 'line ownership tests passed')
