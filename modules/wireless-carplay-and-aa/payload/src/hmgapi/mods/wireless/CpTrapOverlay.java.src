@@ -1,0 +1,272 @@
+// HMG-Seogaemo stock trap-bar overlay. SPDX-License-Identifier: AGPL-3.0-or-later
+package hmgapi.mods.wireless;
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import hmgapi.hook.LoadedApp;
+import hmgapi.hook.MethodHook;
+import hmgapi.hook.ModContext;
+import hmgapi.hook.Points;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+
+/** Navigation-process lease over ONLY the bar in the latest real stock trap record. */
+public final class CpTrapOverlay {
+    public static final String ACTION = "hmg_seogaemo.CARPLAY_APPROACH";
+    private static final String NAVIGATION = "com.mnsoft.navi";
+    private static final String TRAP = "framework.navigation_cluster.update_tbt_trap_info";
+    private static final String TRAP_NEW = TRAP + "_new";
+    private static final String RECORD = "framework.tbt_trap_info";
+    private static final long LEASE_MS = 3500L;
+    private static final int BAR_INDEX = 11;
+    /** 17-int arguments that report a camera, trap, warning zone or toll gate (stock parameter names). */
+    private static final int[] CAMERA_ARGS = { 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 13 };
+    private static final java.util.List<String> CAMERA_FIELDS = java.util.Arrays.asList("fixedSpeed",
+            "mobileSpeed", "overSpeedAlarm", "redlineSpeed", "nonSpeed", "warningZone", "warningZone2",
+            "warningZone3", "warningZone4", "curveWarning", "mergeWarning", "tollGate", "displayTG",
+            "busSpeed", "cameraSafetyAlert");
+    private static final long ERROR_LOG_MS = 30000L;
+    private static CpTrapOverlay installed;
+
+    private final ModContext mod;
+    private final Context context;
+    /** NavigationCluster for the neutral record, made on first use */
+    private Object cluster;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Method legacy, modern;
+    private final Constructor<?> constructor;
+    private final Class<?> recordClass;
+    private final Field[] fields;
+    private final Field barField;
+    private final boolean[] cameraField;
+    private long errorLoggedAt = -ERROR_LOG_MS;
+    // Reflection re-enters our hook. Also bypass nested legacy calls from the New implementation.
+    private final ThreadLocal<Boolean> replaying = new ThreadLocal<Boolean>();
+    private Snapshot latest;
+    private boolean active, overlaid;
+    private int bar;
+    private long expiresAt;
+
+    private final Runnable expiry = new Runnable() {
+        @Override public void run() {
+            synchronized (CpTrapOverlay.this) {
+                if (!active) return;
+                long remaining = expiresAt - SystemClock.elapsedRealtime();
+                if (remaining > 0) { handler.postDelayed(this, remaining); return; }
+                active = false;
+                restore();
+            }
+        }
+    };
+
+    /** Call once from Wireless.navigation, after its existing tbt setting/point gate. */
+    public static synchronized void install(ModContext mod, LoadedApp app) {
+        if (!NAVIGATION.equals(app.packageName) || app.context == null || installed != null) return;
+        // Optional points: a reflection failure turns off only the approach bar.
+        String absent = Points.missing(TRAP, TRAP_NEW, RECORD, RECORD + ".new", RECORD + ".bar_graph_level");
+        if (absent.length() != 0) {
+            mod.log("CarPlay: approach bar off, optional points not mapped: " + absent);
+            return;
+        }
+        try {
+            final CpTrapOverlay overlay = new CpTrapOverlay(mod, app.context);
+            overlay.hook(mod, TRAP, false);
+            overlay.hook(mod, TRAP_NEW, true);
+            app.context.registerReceiver(new BroadcastReceiver() {
+                @Override public void onReceive(Context context, Intent intent) {
+                    // Senders must use Intent.setPackage(NAVIGATION); ignore implicit broadcasts.
+                    if (intent == null || !ACTION.equals(intent.getAction())
+                            || !NAVIGATION.equals(intent.getPackage())) return;
+                    overlay.approach(intent.getBooleanExtra("active", false),
+                            intent.getIntExtra("bar", -1));
+                }
+            }, new IntentFilter(ACTION));
+            installed = overlay;
+            mod.log("CarPlay: stock trap-bar overlay installed in " + app.processName);
+        } catch (Throwable t) {
+            mod.error("CarPlay stock trap-bar overlay installation", t);
+        }
+    }
+
+    private CpTrapOverlay(ModContext mod, Context context) throws Exception {
+        this.mod = mod;
+        this.context = context;
+        legacy = Points.method(null, TRAP);
+        modern = Points.method(null, TRAP_NEW);
+        recordClass = Points.cls(null, RECORD);
+        constructor = Points.ctor(null, RECORD + ".new");
+        barField = Points.field(null, RECORD + ".bar_graph_level");
+        Class<?>[] oldParams = legacy.getParameterTypes();
+        if (oldParams.length != 17) throw new IllegalArgumentException("expected 17 trap ints");
+        for (Class<?> type : oldParams)
+            if (type != int.class) throw new IllegalArgumentException("expected trap int");
+        Class<?>[] newParams = modern.getParameterTypes();
+        if (newParams.length != 1 || newParams[0] != recordClass)
+            throw new IllegalArgumentException("expected mapped trap argument");
+        ArrayList<Field> ints = new ArrayList<Field>();
+        for (Field f : recordClass.getFields()) {
+            if (Modifier.isStatic(f.getModifiers())) continue;
+            if (f.getType() != int.class || Modifier.isFinal(f.getModifiers()))
+                throw new IllegalArgumentException("trap record must contain mutable public ints only");
+            ints.add(f);
+        }
+        if (!ints.contains(barField) || constructor.getParameterTypes().length != 0
+                || constructor.getDeclaringClass() != recordClass)
+            throw new IllegalArgumentException("invalid mapped trap record");
+        fields = ints.toArray(new Field[ints.size()]);
+        cameraField = new boolean[fields.length];
+        for (int i = 0; i < fields.length; i++) cameraField[i] = CAMERA_FIELDS.contains(fields[i].getName());
+    }
+
+    private void hook(ModContext context, String id, final boolean isNew) {
+        context.hook(null, id, new MethodHook() {
+            @Override protected void beforeHookedMethod(Param p) {
+                if (Boolean.TRUE.equals(replaying.get())) return;
+                // Serialize capture AND delivery with broadcasts: a replay cannot race a newer camera.
+                synchronized (CpTrapOverlay.this) {
+                    Object[] forwarded;
+                    boolean apply;
+                    try {
+                        latest = capture(p.thisObject, p.args, isNew);
+                        if (active && SystemClock.elapsedRealtime() >= expiresAt) {
+                            active = false;
+                            handler.removeCallbacks(expiry);
+                        }
+                        // An active camera/trap owns the bar: stock passes through unchanged.
+                        apply = active && !latest.camera;
+                        forwarded = apply ? latest.arguments(true, bar) : p.args;
+                    } catch (Throwable t) {
+                        latest = null;
+                        overlaid = false;
+                        error("CarPlay: cannot copy stock trap record; passing stock through", t);
+                        return;
+                    }
+                    try {
+                        Object result = invoke(isNew ? modern : legacy, p.thisObject, forwarded);
+                        overlaid = apply;
+                        p.setResult(result);
+                    } catch (Throwable t) {
+                        p.setThrowable(t);
+                    }
+                }
+            }
+        });
+    }
+
+    private Snapshot capture(Object target, Object[] args, boolean isNew) throws Exception {
+        if (!isNew) {
+            if (args.length != 17) throw new IllegalArgumentException("expected 17 trap ints");
+            int[] values = new int[17];
+            for (int i = 0; i < values.length; i++) values[i] = ((Integer) args[i]).intValue();
+            boolean camera = false;
+            for (int i : CAMERA_ARGS) camera |= active(values[i]);
+            return new Snapshot(target, false, values, camera);
+        }
+        if (args.length != 1 || !recordClass.isInstance(args[0]))
+            throw new IllegalArgumentException("expected stock trap object");
+        int[] values = new int[fields.length];
+        boolean camera = false;
+        for (int i = 0; i < values.length; i++) {
+            values[i] = fields[i].getInt(args[0]);
+            camera |= cameraField[i] && active(values[i]);
+        }
+        return new Snapshot(target, true, values, camera);
+    }
+
+    private synchronized void approach(boolean requested, int level) {
+        if (requested && (level < 0 || level > 100)) return;
+        handler.removeCallbacks(expiry);
+        if (!requested) {
+            active = false;
+            restore();
+            return;
+        }
+        boolean changed = !active || bar != level;
+        active = true;
+        bar = level;
+        expiresAt = SystemClock.elapsedRealtime() + LEASE_MS;
+        handler.postDelayed(expiry, LEASE_MS);
+        if (latest != null && latest.camera) restore();
+        else if (changed || !overlaid) replay(true);
+    }
+
+    /** 0 and -1 are the stock "none" values. */
+    private static boolean active(int value) { return value != 0 && value != -1; }
+
+    /** One log line per 30 s: a record the stock method keeps rejecting must not flood the log. */
+    private void error(String what, Throwable t) {
+        long now = SystemClock.elapsedRealtime();
+        if (now - errorLoggedAt < ERROR_LOG_MS) return;
+        errorLoggedAt = now;
+        mod.error(what, t);
+    }
+
+    private void restore() {
+        if (overlaid) replay(false);
+    }
+
+    /**
+     * The latest stock record, or a neutral one: stock navigation sends trap info only on change,
+     * so a calm road may have none. Neutral = no camera/speed/toll (all 0), overSpeedAlarm 3 as
+     * stock sends when idle.
+     */
+    private Snapshot base() throws Exception {
+        if (latest != null) return latest;
+        if (cluster == null) cluster = Points.newInstance(null, "framework.navigation_cluster.new", context);
+        int[] values = new int[17];
+        values[2] = 3;
+        return new Snapshot(cluster, false, values, false);
+    }
+
+    private void replay(boolean overlay) {
+        try {
+            Snapshot s = base();
+            invoke(s.isNew ? modern : legacy, s.target, s.arguments(overlay, bar));
+            overlaid = overlay;
+        } catch (Throwable t) {
+            error("CarPlay: stock trap-bar replay", t);
+        }
+    }
+
+    private Object invoke(Method method, Object target, Object[] args) throws Throwable {
+        replaying.set(Boolean.TRUE);
+        try {
+            return method.invoke(target, args);
+        } catch (InvocationTargetException t) {
+            throw t.getCause();
+        } finally {
+            replaying.remove();
+        }
+    }
+
+    /** Saved primitive values have no aliases to a mutable stock object or hook argument array. */
+    private final class Snapshot {
+        final Object target;
+        final boolean isNew, camera;
+        private final int[] values;
+        Snapshot(Object target, boolean isNew, int[] values, boolean camera) {
+            this.target = target; this.isNew = isNew; this.values = values; this.camera = camera;
+        }
+        Object[] arguments(boolean overlay, int level) throws Exception {
+            if (!isNew) {
+                Object[] args = new Object[values.length];
+                for (int i = 0; i < values.length; i++) args[i] = Integer.valueOf(values[i]);
+                if (overlay) args[BAR_INDEX] = Integer.valueOf(level);
+                return args;
+            }
+            Object record = constructor.newInstance();
+            for (int i = 0; i < values.length; i++) fields[i].setInt(record, values[i]);
+            if (overlay) barField.setInt(record, level);
+            return new Object[] { record };
+        }
+    }
+}

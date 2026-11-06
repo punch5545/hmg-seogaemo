@@ -31,7 +31,7 @@ The `hmgapi.*` Java namespaces remain internally to preserve the mod's app-part 
 
 ## Exact car map and firmware guards
 
-The map is `maps/hyundai/ioniq5/kor/260902/{map.json,car.json}` in the core package. It contains 324 resolved point names and all 18 stock-file MD5s reported for this car. The module declares 120 point IDs, including owner classes and supporting fields, in `hookpoints.required`. Root precheck requires `map status` to report a verified core map. The zygote loader reads the package API's active pointer under `/data/nemesis/backup/hmg-seogaemo/car-maps/`, checks the exact product, onebin, Android version, boot verification seal, and all map stock MD5s, then loads the published verified entries. The module has no private payload map and installs no map into `/system`. The report has no whole-file hash for `app_process`, `featurexml.cfg`, or native libraries. Native recipes still verify their own byte regions. HMG-API's Dalvik offsets were proven on US EV6; on-car KOR validation remains necessary.
+The map is `maps/hyundai/ioniq5/kor/260902/{map.json,car.json}` in the core package. It contains 348 resolved point names and all 18 stock-file MD5s reported for this car; the original 324 have on-car reflection evidence and the 24 additions have host evidence only (see car-mapping.md). The module declares 120 point IDs, including owner classes and supporting fields, in `hookpoints.required`. Root precheck requires `map status` to report a verified core map. The zygote loader reads the package API's active pointer under `/data/nemesis/backup/hmg-seogaemo/car-maps/`, checks the exact product, onebin, Android version, boot verification seal, and all map stock MD5s, then loads the published verified entries. The module has no private payload map and installs no map into `/system`. The report has no whole-file hash for `app_process`, `featurexml.cfg`, or native libraries. Native recipes still verify their own byte regions. HMG-API's Dalvik offsets were proven on US EV6; on-car KOR validation remains necessary.
 
 Declared hook points and their exact resolved members on this car:
 
@@ -51,6 +51,10 @@ Declared hook points and their exact resolved members on this car:
 | `framework.navigation_cluster.update_tp_turn_list` | `com.hkmc.cluster.NavigationCluster.updateTPTurnList` |
 | `framework.navigation_cluster.update_tp_turn_list_new` | `com.hkmc.cluster.NavigationCluster.updateTPTurnListNew` |
 | `framework.navigation_cluster.update_tp_lane_info` | `com.hkmc.cluster.NavigationCluster.updateTPLaneInfo` |
+| `framework.navigation_cluster.update_tbt_trap_info` (optional) | `com.hkmc.cluster.NavigationCluster.updateTBTTrapInfo` |
+| `framework.navigation_cluster.update_tbt_trap_info_new` (optional) | `com.hkmc.cluster.NavigationCluster.updateTBTTrapInfoNew` |
+| `framework.navigation_cluster.update_clu_data_new_14` (optional) | `com.hkmc.cluster.NavigationCluster.updateCluDataNew_14` |
+| `framework.tbt_trap_info` (`.new`, `.bar_graph_level`) (optional) | `com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo` |
 | `iap2.init_info.check_supports_features` | `com.tcc.iap2server.Iap2InitInformationMsg.checkSupportsFeatures` |
 | `iap2.service.on_create` | `com.tcc.iap2server.Iap2Service.onCreate` |
 | `iap2.service_receiver.on_receive` | `com.tcc.iap2server.Iap2Service$1.onReceive` |
@@ -74,7 +78,7 @@ Declared hook points and their exact resolved members on this car:
 | `dipo.iap2.bt_address` | `com.daudio.app.dipo.e.b.K` |
 | `dipo.bt.set_carplay_bt_address` | `com.daudio.app.dipo.f.c.o` |
 
-`Car`, `Cluster`, and `NativePatch` consume supporting framework points from the same 324-point map. A library recipe mismatch leaves that stock library unchanged and logs the failure; it does not prove that the corresponding feature works on KOR.
+`Car`, `Cluster`, and `NativePatch` consume supporting framework points from the same core map. A library recipe mismatch leaves that stock library unchanged and logs the failure; it does not prove that the corresponding feature works on KOR.
 
 ## Complete change/restore inventory
 
@@ -176,6 +180,15 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
 
 ## CarPlay turn-by-turn: lane fix, fallback icons, developer toggle
 
+- **Stock-format guidance (always on with TBT).** Inside the approach window (300 m ordinary
+  turns, 600 m ramps/exits/keeps/highway changes) `CpGuidance` maps the CarPlay maneuver to the
+  stock `DisplayType`/direction, which switches the cluster to its AR view and the HUD to its
+  hologram; outside it, or with ambiguous geometry, the projection icon stays. Loading /
+  rerouting send stock types 9 / 10. `CpTrapOverlay` (navigation process) lays the approach bar
+  over the latest real stock trap record under a 3.5 s lease renewed by DiPO. `CpJunctions`
+  picks the HUD junction view from the generated `CpJunctionTable`. Details:
+  [cluster-ar-view.md](cluster-ar-view.md), [hud-hologram.md](hud-hologram.md),
+  [hud-junction-view.md](hud-junction-view.md). Android Auto keeps projection icons.
 - **Lane guidance (our own raw 0x5204 decoder).** Bridge forwards CarPlay-channel bytes unchanged,
   then feeds the bounded, Android-free CpLaneDecoder and posts decoded data through Dipo.post
   to the TBT handler. Link/control messages may be split or coalesced; link/header checksums,
@@ -205,7 +218,7 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
   `0x0b`; status 0: `0x0f`). The old `lanes` setting modes (`off`/`rec`/`dim0`/`dim3`) were
   removed. While a frame with lanes shows, `NavigationCluster.updateRemainDis(dist, unit, tenths, 0)` carries the distance to
   the next maneuver (the turn's distance and unit; feet and yards as metres; resent every 2 s,
-  `65535, 15, 15, 0` when lanes go away; no toll-gate flag). The trailer bytes 0x43..0x50 stay
+  `65535, 15, 15, 0` when lanes go away, where the empty lane frame removes the box anyway; no toll-gate flag; the box always shows the next-maneuver distance by owner decision, [cluster-lane-frame.md](cluster-lane-frame.md) 1b). The trailer bytes 0x43..0x50 stay
   zero. Not yet seen on the car with this build. Refresh resends
   the last frame. tbt-lanes records contain raw numeric lane fields, description byte count,
   current index/count and all 81 frame bytes. Developer mode logs entries and index matches.

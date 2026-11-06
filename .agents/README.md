@@ -48,7 +48,10 @@ Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902` (p
 | [cluster-lane-arrows.md](cluster-lane-arrows.md) | Firmware lane arrow image-ID tables, status byte. |
 | [cluster-tbt-icons.md](cluster-tbt-icons.md) | Firmware TBT turn-icon and distance-unit codes. |
 | [navi-lib-index.md](navi-lib-index.md) | Index of stock `libExSLNavi.so`. |
-| [navi-ar-guidance.md](navi-ar-guidance.md) | Advanced-TBT pattern transport, AR geometry/stubs, HUD limits, gates and stock-capture plan. |
+| [cluster-ar-view.md](cluster-ar-view.md) | Cluster AR turn view: stock-format `updateTBTInfo`, vertical bar (trap info). |
+| [hud-hologram.md](hud-hologram.md) | HUD hologram turn: AR display mode, gear out of P; per-type dataset. |
+| [hud-junction-view.md](hud-junction-view.md) | HUD junction view: `updateCluDataNew_14` picture/highlight codes; code-table dataset. |
+| [navi-ar-guidance.md](navi-ar-guidance.md) | Firmware reference: advanced-TBT/PE14 path, field packing, AR subsystem. |
 | [carplay-tbt-learnings.md](carplay-tbt-learnings.md) | TBT fixes ported from HMG-API, open problems. |
 | [carplay-tbt-external-research.md](carplay-tbt-external-research.md) | Index of third-party iAP2/HKMC TBT research in `carplay-tbt-external/` (`iap2-protocol`, `mib2q-deep-dive`, `apps-and-oems`, `hkmc-cluster-tbt`, `hkmc-extras`, `sources`). |
 
