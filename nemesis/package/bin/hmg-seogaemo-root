@@ -133,7 +133,6 @@ if [ "$1" = export ]; then
     grep '^package-version=' "$base/NEMESIS.data" > "$dest/package-version"
     HMG_SEOGAEMO_BASE=$base HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
     export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE SG_DATA_ROOT
-    . "$base/lib/common.sh"
     hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
     . "$base/lib/diagnostics.sh"
     HMG_SEOGAEMO_EXPORT_LOGS=$export_logs
@@ -344,7 +343,8 @@ result=$SG_DATA_ROOT/result.$$
 /system/bin/sh "$script" "$2" > "$result" 2>&1
 code=$?
 if [ "$code" -eq 0 ] && [ "$2" = apply ]; then
-    . "$base/lib/common.sh"
+    # common.sh is already loaded above: sourcing it again only redefines every function,
+    # which some mksh builds (Ubuntu R59) take seconds to do.
     sg_reapply_binds >> "$result" 2>&1 || code=1
 fi
 dd if="$result" bs=1 count=4096 2>/dev/null
