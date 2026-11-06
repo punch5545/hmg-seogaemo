@@ -117,7 +117,7 @@ installs from 0.1.33 and older accept an OTA payload; the runtime ignores it. Cu
 adapter; the built-in client role excludes `wireless-carplay-and-aa`),
 `wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`,
 `skip-consent-screen` (factory Binder call on boot and screen wake), and
-`user-button-shortcut` / `user-button-head-unit`.
+`user-button` (both star buttons; merged from `user-button-shortcut` / `user-button-head-unit` with `replaces=`).
 `wireless-carplay-and-aa` claims `featurexml.cfg` stock lines; `wifi` owns only
 `android.hardware.wifi.xml` and `persist.wifi.state` (the NEEV KOR `featurexml.cfg` has no Wi-Fi
 removal line, verified on the car) plus transient USB adapter effects. Their exclusion is for STA versus AP on one radio.

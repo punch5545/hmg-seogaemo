@@ -1,4 +1,6 @@
-Status: current — implemented off-car; physical KOR button delivery untested.
+Status: current — merged into one module `user-button` (both buttons, one setting each, app-side target); physical KOR button delivery untested.
+
+`user-button` replaces both modules below with `replaces=user-button-head-unit,user-button-shortcut`: their baselines, applied records and on/off state move into it (an old module that was on turns its button setting on). Each enabled button gets its own broadcast (`USER_BUTTON_HEAD`, `USER_BUTTON_SWRC`); the receiver opens the app the owner picked in HMG-Seogaemo (default HMG-Seogaemo) and still accepts the old `USER_BUTTON_SHORTCUT`. The sections below describe the original per-button design that the merged module keeps.
 
 # User button shortcuts
 

@@ -55,7 +55,7 @@ HOST = (["python3", "tools/test-module-install.py"], ["python3", "tools/test-for
 EXPECTED = {"test_mutation_api_and_export": 55, "test_zygote_and_dex": 40, "wireless-carplay-and-aa": 35,
             "test_projection_reader_vm": 30, "test_hook_host": 30, "wifi/test": 25, "test-package.py": 25,
             "test-diagnostics.py": 20, "test_system_directory_mode": 15, "test_zygote_foreign": 15,
-            "test_replaces": 15, "test_installed_shared_line": 14, "test_converted_builtin": 14,
+            "test_replaces": 15, "test_merged_takeover": 40, "test_installed_shared_line": 14, "test_converted_builtin": 14,
             "test_install_validation": 12, "test-hsm-cli.py": 12, "test_stray_temporaries": 12,
             "test_shared_lines": 11, "test_lifecycle": 10, "test-map-verification.py": 9,
             "test_bundled": 9, "sharing": 9, "test_ro_holders": 9, "test_service_call_api": 9,

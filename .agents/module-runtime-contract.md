@@ -289,13 +289,22 @@ such a snapshot follows a role change after the next head-unit restart.
 module (read-only). Exit 0 or 2 (no such check) saves the value; any other exit refuses with `state=conflict` and the
 module's detail, so a value that clashes with another setting is never saved.
 
-`replaces=<old id>` (bundled packages only) renames a bundled module. When the bundled check installs the new id and
-`installed/<old>.properties` exists, the old package must be bundled, must not own lines, and its generated persistent
-ownership (`owns_props`, `reassert_props`, `owns_files`, `owns_generated_dirs`, `services`, `service_calls`, `restore`,
-`hooks`, `owns_lines.*`) must equal the new one's; otherwise conflict and the old module stays. The takeover writes
+`replaces=<old id>[,<old id>...]` (bundled packages only) renames a bundled module or merges several into one. When
+the bundled check installs the new id and any listed `installed/<old>.properties` exists, every present old package
+must be bundled and must not own lines, and the persistent ownership (`owns_props`, `reassert_props`, `owns_files`,
+`owns_generated_dirs`, `services`, `service_calls`, `restore`, `hooks`, `owns_lines.*`) of every present old package
+must also be declared by the new one, item by item (comma lists are split; `owns_lines` compare by value), so no
+baseline loses its owner; the new one may own more. Otherwise conflict and the old modules stay. Old ids that are not installed are skipped; the new one is recorded as removed
+only when every listed old id was removed by the owner (`bundled-removed/<old>`) and none is installed.
+Merging state: `modules/<old>/` entries move into `modules/<new>/`; an entry that already exists stays when it is
+byte-identical, `changes` gains the missing lines, `module.log` is appended, and any other clash is a conflict found
+before anything moves. `desired/<new>` is `on` when any old one was on. `settings/` (only one old id may have
+settings), `restart-cleanup/` and `peer/` move from at most one old id; two would conflict.
+`replaces_setting.<old>=<key>:<value>` sets the new module's setting `<key>` (declared by `setting.N`) to `<value>` when
+`<old>` was on, so a merged module keeps what each old one did. The takeover writes
 `<data root>/migrate/<new>` (journal: old id), moves `modules/`, `desired/`, `settings/`, `restart-cleanup/` and
 `peer/` entries from the old id to the new one, publishes the new package in the old one's catalog position, deletes
-the old package and appends a `module_takeover` ledger row (module = new id, target = old id). It never writes the
+the old packages and appends one `module_takeover` ledger row per old id (module = new id, target = old id). It never writes the
 system: baselines and applied records move with the state directory and keep their meaning because the targets are
 identical. An interrupted takeover finishes at the next bundled check (the journal also forces it). If the owner had
 removed the old module (`bundled-removed/<old>`), the new one is recorded as removed too. Earlier ledger rows keep the

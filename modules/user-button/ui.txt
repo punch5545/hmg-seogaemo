@@ -1,0 +1,4 @@
+pick_app slot=swrc setting=swrc label=@swrc
+pick_app slot=head setting=head label=@head
+info @note_override
+info @note_restore

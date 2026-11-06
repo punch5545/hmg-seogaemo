@@ -1049,7 +1049,91 @@ public final class MainActivity extends Activity {
             rows.addLink(getString(R.string.wifi_networks_open), new View.OnClickListener() {
                 public void onClick(View view) { showWifiNetworks(feature); }
             });
+        } else if ("pick_app".equals(type)) {
+            final String slot = arguments.get("slot");
+            if (!"head".equals(slot) && !"swrc".equals(slot)) return;
+            final Module.Setting setting = declaredSetting(installed, arguments.get("setting"));
+            if (setting == null) return;
+            final boolean assigned = "on".equals(settingValue(feature, setting));
+            rows.addValue(label, assigned ? appLabel(UserButtonReceiver.target(this, slot))
+                    : getString(R.string.user_button_stock), true, new View.OnClickListener() {
+                public void onClick(View view) { pickApp(feature, setting, assigned, slot, label); }
+            });
         }
+    }
+
+    private String appLabel(String pkg) {
+        if (pkg.length() == 0) return "HMG-Seogaemo";
+        try {
+            PackageManager pm = getPackageManager();
+            return pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString();
+        } catch (PackageManager.NameNotFoundException e) {
+            return "HMG-Seogaemo";
+        }
+    }
+
+    /** App the user button opens: stored in this app only; root never sees it. */
+    private void pickApp(final Feature feature, final Module.Setting setting, final boolean assigned,
+            final String slot, String label) {
+        if (moduleWorking || modulePlanning || stockBusy) return;
+        // null = the button keeps its stock function (setting off); "" = HMG-Seogaemo.
+        final List<String> packages = new ArrayList<String>();
+        packages.add(null);
+        packages.add("");
+        Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        final PackageManager pm = getPackageManager();
+        List<android.content.pm.ResolveInfo> found = pm.queryIntentActivities(launcher, 0);
+        final Map<String, String> labels = new HashMap<String, String>();
+        for (android.content.pm.ResolveInfo info : found) {
+            String pkg = info.activityInfo.packageName;
+            if (getPackageName().equals(pkg) || labels.containsKey(pkg)) continue;
+            labels.put(pkg, info.loadLabel(pm).toString());
+            packages.add(pkg);
+        }
+        Collections.sort(packages.subList(2, packages.size()), new Comparator<String>() {
+            public int compare(String a, String b) { return labels.get(a).compareToIgnoreCase(labels.get(b)); }
+        });
+        final String current = assigned ? UserButtonReceiver.target(this, slot) : null;
+        final String[] chosen = {current};
+        final LinearLayout list = vertical();
+        final List<TextView> markers = new ArrayList<TextView>();
+        for (final String pkg : packages) {
+            LinearLayout row = horizontal();
+            row.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
+            String name = pkg == null ? getString(R.string.user_button_stock)
+                    : pkg.length() == 0 ? "HMG-Seogaemo" : labels.get(pkg);
+            boolean selected = pkg == null ? current == null : pkg.equals(current);
+            row.addView(text(name, 22, WHITE, medium), new LinearLayout.LayoutParams(0, -1, 1));
+            TextView marker = text(getString(selected ? R.string.radio_selected : R.string.radio_unselected),
+                    28, selected ? BLUE : MUTED, sans);
+            marker.setGravity(Gravity.CENTER);
+            row.addView(marker, new LinearLayout.LayoutParams(dp(60), -1));
+            markers.add(marker);
+            row.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View view) {
+                    chosen[0] = pkg;
+                    for (int i = 0; i < markers.size(); i++) {
+                        String other = packages.get(i);
+                        boolean selected = other == null ? pkg == null : other.equals(pkg);
+                        markers.get(i).setText(getString(selected ? R.string.radio_selected : R.string.radio_unselected));
+                        markers.get(i).setTextColor(selected ? BLUE : MUTED);
+                    }
+                }
+            });
+            list.addView(row, new LinearLayout.LayoutParams(-1, dp(Theme.ACTION_HEIGHT)));
+            divider(list, false);
+        }
+        ConfirmDialog.showView(this, label, list, getString(R.string.apply), getString(R.string.cancel), false,
+                new ConfirmDialog.Action() {
+                    public void run(ConfirmDialog dialog) {
+                        String pkg = chosen[0];
+                        if (pkg != null) getSharedPreferences(UserButtonReceiver.PREFS, MODE_PRIVATE).edit()
+                                .putString("target_" + slot, pkg).apply();
+                        // Only the stock/assigned switch reaches root; the chosen app stays in the app.
+                        if ((pkg != null) != assigned) applySetting(feature, setting, pkg != null ? "on" : "off", dialog);
+                        else { dialog.dismiss(); showDetail(feature); }
+                    }
+                }, null);
     }
 
     private void confirmSetting(final Feature feature, final Module.Setting setting, String label, final String value) {
