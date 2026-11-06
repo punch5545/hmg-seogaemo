@@ -1,0 +1,149 @@
+// HMG-Seogaemo: the USB CarPlay hotspot published by the wifi module. SPDX-License-Identifier: AGPL-3.0-or-later
+package hmgapi.mods.wireless;
+
+import android.net.wifi.WifiConfiguration;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * The CarPlay hotspot on the USB Wi-Fi adapter, as the wifi module publishes it with sg_peer_publish
+ * (root-only key=value file, contract "Peer info"). Wireless.zygoteInit reads it once, as root in the
+ * zygote before apps fork; the values live only in these statics of the mod's loader, which every app
+ * and app part shares (never in properties or files an app can read). Only radio=usb with valid values
+ * counts; a missing file, a parse error or any other radio means the stock hotspot, exactly as before.
+ * `ready` is not consulted: the zygote starts before this boot's reconcile publishes it again. A changed
+ * wifi role therefore takes effect after a head-unit restart (restart=head_unit in both modules).
+ */
+public final class UsbHotspot {
+    static final File PEER = new File("/data/nemesis/backup/hmg-seogaemo/peer/wifi");
+    /** the interface name GPM's host locator looks for, and the name the built-in one reports instead */
+    static final String STOCK = "wlan0", STOCK_RENAMED = "wlan0-builtin";
+    /** WifiConfiguration.KeyMgmt.WPA2_PSK, hidden on API 19; the iAP2 server logs auth type 4 as WPA2_PSK */
+    static final int KEY_MGMT_WPA2_PSK = 4;
+    static final int LIMIT = 4096;
+    private static volatile String iface, ssid, passphrase;
+
+    private UsbHotspot() {}
+
+    public static boolean active() { return iface != null; }
+
+    public static String iface() { return iface; }
+
+    /** Reads the published hotspot; returns a short reason (no credentials) for the runtime record. Never throws. */
+    static String snapshot() {
+        clear();
+        try {
+            if (!PEER.isFile()) return "stock: no published hotspot";
+            return use(parse(read(PEER)));
+        } catch (Throwable t) {
+            clear();
+            return "stock: unreadable (" + t.getClass().getSimpleName() + ")";
+        }
+    }
+
+    /** key=value lines; the first value of a key wins, as sg_peer_info reads it */
+    static Map<String, String> parse(String text) {
+        Map<String, String> values = new HashMap<String, String>();
+        for (String line : text.split("\n")) {
+            int eq = line.indexOf('=');
+            if (eq <= 0) continue;
+            String key = line.substring(0, eq);
+            if (!values.containsKey(key)) values.put(key, line.substring(eq + 1));
+        }
+        return values;
+    }
+
+    static String use(Map<String, String> values) {
+        clear();
+        String radio = values.get("radio");
+        if (!"usb".equals(radio)) return "stock: radio=" + radio;
+        String i = values.get("interface"), ip = values.get("ip"), s = values.get("ssid"), p = values.get("passphrase");
+        if (i == null || !i.matches("[a-zA-Z0-9_.-]{1,15}") || STOCK.equals(i) || STOCK_RENAMED.equals(i))
+            return "stock: invalid interface";
+        if (ip == null || !ip.matches("([0-9]{1,3}\\.){3}[0-9]{1,3}")) return "stock: invalid ip";
+        if (s == null || s.length() < 1 || s.length() > 32 || !printable(s)) return "stock: invalid ssid";
+        if (p == null || p.length() < 8 || p.length() > 63 || !printable(p)) return "stock: invalid passphrase";
+        ssid = s;
+        passphrase = p;
+        iface = i;
+        return "usb: " + i + " " + ip;
+    }
+
+    static void clear() {
+        iface = null;
+        ssid = null;
+        passphrase = null;
+    }
+
+    static boolean printable(String s) {
+        for (int k = 0; k < s.length(); k++) {
+            char c = s.charAt(k);
+            if (c < 0x20 || c > 0x7e) return false;
+        }
+        return true;
+    }
+
+    static String read(File f) throws IOException {
+        InputStream in = new FileInputStream(f);
+        try {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] b = new byte[512];
+            int n;
+            while ((n = in.read(b)) > 0) {
+                out.write(b, 0, n);
+                if (out.size() > LIMIT) throw new IOException("oversized peer file");
+            }
+            return out.toString("UTF-8");
+        } finally {
+            in.close();
+        }
+    }
+
+    /**
+     * The hotspot as WifiManager.getWifiApConfiguration() reports it: the published SSID and passphrase in
+     * the AOSP fields and in Hyundai's ConnectivitySSID/ConnectivityPSK (set only where this framework has
+     * them), WPA2-PSK as the only key management so getAuthType() returns WPA2_PSK (AOSP 4.4 logic: the one
+     * set KeyMgmt bit; the car's framework source is not available, so this is an assumption).
+     */
+    public static WifiConfiguration apConfiguration() {
+        String s = ssid, p = passphrase;
+        if (iface == null || s == null || p == null) throw new IllegalStateException("no USB hotspot");
+        WifiConfiguration c = new WifiConfiguration();
+        c.SSID = s;
+        c.preSharedKey = p;
+        c.allowedKeyManagement.clear();
+        c.allowedKeyManagement.set(KEY_MGMT_WPA2_PSK);
+        setIfPresent(c, "ConnectivitySSID", s);
+        setIfPresent(c, "ConnectivityPSK", p);
+        return c;
+    }
+
+    static void setIfPresent(Object target, String field, String value) {
+        try {
+            target.getClass().getField(field).set(target, value);
+        } catch (NoSuchFieldException absent) {
+            // not this framework's field
+        } catch (IllegalAccessException e) {
+            throw new IllegalStateException(field, e);
+        }
+    }
+
+    /**
+     * NetworkInterface.getName()/getDisplayName() in GPM: its host locator takes the first site-local
+     * IPv4 interface named "wlan0" (host IP and BSSID; AA port 40515), so the USB interface reports
+     * "wlan0" and a real wlan0 (e.g. the built-in radio as a client) reports another name.
+     */
+    public static String gpmName(String name) {
+        String i = iface;
+        if (i == null || name == null) return name;
+        if (name.equals(i)) return STOCK;
+        if (name.equals(STOCK)) return STOCK_RENAMED;
+        return name;
+    }
+}

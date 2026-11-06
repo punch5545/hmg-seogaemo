@@ -21,7 +21,7 @@ again while the module is on):
   `setting-ok` refuse it while `wireless-carplay-and-aa` is desired on; `precheck` only warns (`warn.carplay_active`)
   because the app's plan (`ModuleManager.hotspotConflict`) turns CarPlay off first, and turns `wifi` off when CarPlay is
   enabled under that configuration (the former static `not_with` exclusion, now role-dependent). The CarPlay module
-  does not check this itself yet (see [external-wifi.md](external-wifi.md)).
+  checks the same on its side: its `apply` refuses, its `precheck` warns (contract "Peer info").
 - The default keeps the old behaviour: an updated car with wifi-client on becomes `wifi` on with `builtin_role=client`.
 
 ## Built-in client role

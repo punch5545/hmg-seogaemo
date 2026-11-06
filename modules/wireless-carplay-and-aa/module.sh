@@ -40,6 +40,33 @@ cleanup_runtime() {
     sg_projection_runtime clear || { fail 'runtime diagnostics cleanup failed'; return 1; }
     sg_generated_dirs_remove || :
 }
+# The CarPlay hotspot (contract: peer info). The wifi module publishes it while it is on; this script
+# only reads. Without a published hotspot the stock Broadcom one is used, as before the wifi module.
+wifi_role() {
+    wr_value=$(cat "$(path "$SG_DATA_ROOT/settings/wifi/$1")" 2>/dev/null) || wr_value=
+    case "$wr_value" in off|client|carplay_ap) sg_write "$wr_value" ;; *) sg_write "$2" ;; esac
+}
+stock_radio() {
+    [ "$(value tcc.wifi.vendor)" = broadcom ] &&
+        [ -s "$(path /system/wifi/bcmdhd.ko)" ] && [ -s "$(path /system/wifi/fw_bcmdhd.bin)" ]
+}
+hotspot_radio() {
+    hr_radio=$(sg_peer_info wifi radio 2>/dev/null) || hr_radio=
+    case "$hr_radio" in
+        usb) sg_write usb; return ;;
+        none) if [ "$(wifi_role builtin_role client)" = client ]; then sg_write none; return; fi ;;
+    esac
+    if stock_radio; then sg_write builtin; else sg_write none; fi
+}
+# ModuleManager.hotspotConflict on the root side: wifi on with the built-in radio as a client and no
+# USB CarPlay hotspot leaves wireless CarPlay without one. apply refuses; precheck only warns because
+# the app's plan turns wifi off before this apply.
+no_hotspot() {
+    [ "$(cat "$(path "$SG_DATA_ROOT/desired/wifi")" 2>/dev/null)" = on ] || return 1
+    [ "$(wifi_role builtin_role client)" = client ] || return 1
+    [ "$(wifi_role usb_role off)" != carplay_ap ] || return 1
+    [ "$(sg_peer_info wifi radio 2>/dev/null)" != usb ]
+}
 compatibility() {
     map_state=$(/system/bin/sh "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state= # android44-shell: allow -- fixed dispatcher beneath the runtime-supplied package root
     sg_print "$map_state" | grep -Fxq 'state=on' ||
@@ -112,6 +139,9 @@ repair_assets() {
 
 apply() {
     compatibility || return $?
+    if no_hotspot; then
+        conflict 'Wireless CarPlay needs a hotspot: the Wi-Fi module uses built-in Wi-Fi as a client'; return 3
+    fi
     if legacy; then
         # Package update: restore what the old self-installed wrapper changed, then apply
         # again through the core hook host. The running zygote is untouched until restart.
@@ -182,6 +212,7 @@ revert() {
 status() {
     if sg_restore_material; then sg_print info.restore_material=present
     else sg_print info.restore_material=absent; fi
+    sg_print "info.hotspot_radio=$(hotspot_radio)"
     if ! command -v sg_applied >/dev/null 2>&1; then
         sg_status not-implemented none 'not implemented'; return 0
     fi
@@ -221,7 +252,9 @@ if ! command -v sg_applied >/dev/null 2>&1; then
     exit $?
 fi
 case "$1" in
-    precheck) if hooked || legacy; then status; else compatibility && sg_status off none 'compatible'; fi ;;
+    precheck)
+        if no_hotspot; then sg_print warn.wifi_client=1; fi
+        if hooked || legacy; then status; else compatibility && sg_status off none 'compatible'; fi ;;
     apply) apply ;;
     revert) revert ;;
     status) status ;;

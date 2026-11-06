@@ -258,7 +258,25 @@ The `wifi` module publishes the active CarPlay hotspot on apply, watch and rever
 | `channel` | `36` (usb), empty |
 | `ready` | `1` while hostapd and dnsmasq run this boot, `0` otherwise, `stock` when Android runs the built-in hotspot |
 
-Hooks in system-uid processes cannot read `<data root>`; a consumer's root script copies what its hooks need.
+Hooks in system-uid processes cannot read `<data root>`. A consumer either copies what its hooks need from its
+root script, or (`wireless-carplay-and-aa`) reads the peer file once in its zygote entry, which still runs as root
+before apps fork, and keeps the values only in its own loader's statics (never in properties or app-readable files);
+such a snapshot follows a role change after the next head-unit restart.
+
+`wireless-carplay-and-aa` consumes it as follows:
+
+- It starts a hotspot only through DiPO's `WifiManager.setWifiApEnabledForConnectivity` call (its Bluetooth bridge,
+  `ensureHotspot`). With `radio=usb` in the zygote snapshot (valid `interface`, `ip`, `ssid`, `passphrase`; `ready` is
+  ignored because the zygote starts before this boot's reconcile) that call is skipped and the hook part
+  `usb_hotspot` (no map points; runtime record `part.usb_hotspot`) loads in `com.tcc.iap2server` and
+  `com.google.android.projection.sink`. Anything else, including a missing or unreadable file, is the stock path.
+- `status` prints `info.hotspot_radio=usb|builtin|none`: `usb` for a published USB hotspot; `none` for `radio=none`
+  with `wifi` setting `builtin_role=client`; otherwise `builtin` when the stock Broadcom radio exists
+  (`tcc.wifi.vendor=broadcom`, non-empty `bcmdhd.ko` and `fw_bcmdhd.bin`), else `none`.
+- `apply` refuses (conflict) while `wifi` is desired on with `builtin_role=client`, `usb_role` not `carplay_ap` and no
+  published `radio=usb` (the root-side `ModuleManager.hotspotConflict`); `precheck` only prints `warn.wifi_client=1`,
+  because the app's plan turns `wifi` off before that apply. It reads `wifi`'s `desired` and `settings` files,
+  read-only, as `wifi` reads the CarPlay desired state.
 
 ## Settings check and module takeover
 

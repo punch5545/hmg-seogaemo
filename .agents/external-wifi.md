@@ -1,4 +1,4 @@
-Status: current — USB Wi-Fi dongle support; `wifi` module roles implemented off-car (2026-11-07), CarPlay side open.
+Status: current — USB Wi-Fi dongle support; `wifi` module roles and the CarPlay/AA side implemented off-car (2026-11-07), not run on a car.
 
 # External (USB) Wi-Fi dongle
 
@@ -6,8 +6,8 @@ Goal (owner, 2026-11-06): a USB Wi-Fi dongle works for both the Wi-Fi client (ST
 wireless CarPlay hotspot (AP). Order chosen by the owner: driver first, then the CarPlay
 hotspot. Implemented (owner-approved flow, 2026-11-07): the bundled `wifi` module (formerly
 `wifi-client`) gives each radio one role, `builtin_role` and `usb_role` = `off|client|carplay_ap`,
-with at most one `carplay_ap`; design, files and tests in [wifi.md](wifi.md). The CarPlay module
-still assumes the stock Broadcom hotspot on `wlan0` (see CarPlay-side changes below).
+with at most one `carplay_ap`; design, files and tests in [wifi.md](wifi.md). The CarPlay module uses the
+published USB hotspot (see Interface for the CarPlay module below).
 
 Reference: `tmp/HKG_5W_USB_Wlan` (GRT47, no license file: facts only, never copied). It loads
 Realtek `88x2bu`/`8851bu` modules built for `3.18.24-tcc` from its package directory, names the
@@ -37,8 +37,8 @@ its `0bda:1a2b` CD-ROM mode switch.
   build reversible through the ledger.
 - Owner decision (2026-11-07, supersedes the separate `usb-wifi` module of 2026-11-06): driver,
   USB client and USB hotspot are roles of the `wifi` module; the CarPlay module consumes the
-  published hotspot and owns any hooks (through the shared core hook host). Not a change inside
-  `modules/wireless-carplay-and-aa` from this branch.
+  published hotspot and owns any hooks (through the shared core hook host), implemented in
+  `modules/wireless-carplay-and-aa` (CarPlay side below).
 - 0.1.33 cannot load a diagnostic `.hsm` (`raw_shell` is refused), so evidence collection ships in
   the core problem report.
 
@@ -98,16 +98,30 @@ The hotspot to project over is published by `wifi` (root side; contract table "P
 `rtwlan0`, `192.168.50.1/24`, DHCP `192.168.50.10-99`, 5 GHz channel 36, WPA2-PSK, SSID `HMG-Seogaemo-<4 hex>`;
 credentials stay fixed across boots. `radio=builtin`, `ready=stock` means the stock hotspot as today.
 
-## CarPlay-side changes still needed (not made in this branch)
+## CarPlay side (implemented off-car, 2026-11-07)
 
-1. Read the peer info in the CarPlay root script (apply/watch) and copy what hooks need into its own runtime record
-   (system-uid hooks cannot read `/data/nemesis/backup/hmg-seogaemo`).
-2. With `radio=usb`: hook `WifiManager.getWifiApConfiguration` in `com.tcc.iap2server` and GPM to return the published
-   SSID/passphrase (WPA2), make DiPO's `setWifiApEnabledForConnectivity` a no-op that reports success instead of
-   starting the stock `wlan0` AP, and replace GPM's hardcoded `wlan0` lookup (host IP, BSSID; port 40515) with
-   `rtwlan0`/`192.168.50.1`. Then check which interface CarPlay Bonjour/AirPlay binds.
-3. Refuse or warn in CarPlay `precheck`/`apply` when `wifi` publishes `radio=none` while `wifi` is on with
-   `builtin_role=client` (today only the app planner turns one of them off; a direct root call is not refused).
-4. Declare in the contract that the CarPlay module starts the hotspot only through DiPO's `WifiManager` call, and add a
-   status line for the hotspot it uses (`info.hotspot_radio`).
-5. The hook targets need mapped hookpoint IDs (KOR 260902 equivalence of the US build analysis is open).
+Normative rules: contract [Peer info](module-runtime-contract.md#peer-info). In `modules/wireless-carplay-and-aa`:
+
+- `Wireless.zygoteInit` reads `<data root>/peer/wifi` as root in the zygote (`UsbHotspot`); only `radio=usb` with valid
+  values counts, and the credentials stay in the mod loader's statics (runtime record: `hotspot.radio`, `hotspot.reason`,
+  never the passphrase). A changed role takes effect after a head-unit restart, as both modules declare.
+- DiPO `Bridge.ensureHotspot` skips `setWifiApEnabledForConnectivity` and the attach goes on.
+- Part `usb_hotspot` (iAP2 server and GPM, framework/libcore hooks, no map points, so no KOR hookpoint mapping is needed):
+  `WifiManager.getWifiApConfiguration()` returns the published SSID/passphrase in `SSID`/`preSharedKey` and, where the
+  framework has them, `ConnectivitySSID`/`ConnectivityPSK`, with only `KeyMgmt` bit 4 (`WPA2_PSK`, which the iAP2
+  server logs as such). That `getAuthType()` returns it assumes AOSP 4.4 logic; the car's framework source is not available.
+  In GPM only, `NetworkInterface.getName()`/`getDisplayName()` report the adapter as `wlan0` and a real `wlan0` as
+  `wlan0-builtin`, so GPM's host locator (first site-local IPv4 interface named `wlan0`; BSSID from its MAC) picks
+  `rtwlan0`/`192.168.50.1`. A failed part shows in the module status; it never disables other parts.
+- Without a published USB hotspot nothing loads or changes: the stock `wlan0` path is the car-verified one.
+- Root: `info.hotspot_radio` and the built-in client refusal in `apply` (warning in `precheck`).
+
+## Still unverified on a car
+
+1. The whole USB path: hostapd/dnsmasq on `rtwlan0`, the iPhone joining with the credentials iAP2 sends, and whether
+   CarPlay Bonjour/AirPlay (native) binds or advertises on `rtwlan0`.
+2. Android Auto reaching `192.168.50.1:40515` (GPM logs `findHostInterfaceAndIp`), and the phone accepting the adapter's
+   MAC as BSSID.
+3. Whether the car firewall (`iptrules`) still drops anything on `rtwlan0` beyond the `wifi` module's INPUT accept rule.
+4. That Dalvik hooks on `NetworkInterface` getters and `WifiManager.getWifiApConfiguration` take effect in those apps
+   (trivial getters could be inlined if a caller is compiled before the hook; hooks install at app load).

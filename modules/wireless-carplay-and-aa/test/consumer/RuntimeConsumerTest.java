@@ -60,6 +60,9 @@ public final class RuntimeConsumerTest {
         put(path("system/framework/hmg-seogaemo-hook.jar"), "jar-A");
         File gpm = record(2, 103); String gpmReady = contents(2, 103);
         put(gpm, gpmReady.replace("native.libautoreceiver_infobank.so.state=applied", "native.libautoreceiver_infobank.so.applicability=stock")); expect("on", "ready");
+        // The USB hotspot part counts only where it was loaded (wifi module's USB CarPlay hotspot).
+        put(gpm, gpmReady + "part.usb_hotspot.state=failed\npart.usb_hotspot.reason=no method\n"); expect("failed", "part.usb_hotspot=failed");
+        put(gpm, gpmReady + "part.usb_hotspot.state=loaded\n"); expect("on", "ready"); put(gpm, gpmReady);
         File log = new File(dir(0), "p-101-900.log"), previous = new File(dir(0), "p-101-900.log.1");
         put(log, "current log\n"); put(previous, "previous log\n"); expect("on", "ready");
         File copies = new File(runtime, "apps/" + HmgSeogaemoProjectionRuntime.PACKAGES[0]);
