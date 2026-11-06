@@ -2,6 +2,8 @@ package hmgapi.mods.wireless.dipo;
 
 /** host stand-in: CpTurns only logs through it and asks it for the settings */
 final class Dipo {
+    static final java.util.List<String> approaches = new java.util.ArrayList<String>();
+    static void approach(boolean active, int bar) { approaches.add(active + " " + bar); }
     static String lastLog = "";
     static final java.util.List<String> logs = new java.util.ArrayList<String>();
 

@@ -1,0 +1,108 @@
+package hmgapi.mods.wireless.dipo;
+
+import hmgapi.hook.Cluster;
+import static hmgapi.mods.wireless.dipo.CpTurnsTest.*;
+
+public final class CpGuidanceTest {
+    static void require(boolean value, String label) {
+        if (!value) throw new AssertionError(label);
+    }
+    static CpTurns.Maneuver m(int type, Integer angle) {
+        CpTurns.Maneuver m = new CpTurns.Maneuver(0, 1, null);
+        m.type = type;
+        m.hasExit = angle != null;
+        m.exit = angle == null ? 0 : angle;
+        return m;
+    }
+    static void mapping(int type, Integer angle, int display, int direction) {
+        int[] r = CpGuidance.stock(m(type, angle));
+        require(r != null && r[0] == display && r[1] == direction, "mapping " + type + "/" + angle);
+    }
+    public static void main(String[] args) {
+        mapping(1, -90, 13, 270); mapping(2, 90, 13, 90);
+        mapping(47, null, 13, 225); mapping(50, null, 13, 45);
+        mapping(2, 62, 13, 45); mapping(4, null, 31, 270);
+        CpTurns.Maneuver leftTraffic = m(4, null); leftTraffic.side = 1;
+        require(CpGuidance.stock(leftTraffic)[1] == 90, "LHT U loop");
+        mapping(22, null, 18, 270); mapping(23, null, 17, 90);
+        mapping(8, -35, 18, 270); mapping(9, 40, 17, 90);
+        CpTurns.Maneuver combined = m(23, 45); combined.angles = new int[] {90};
+        require(CpGuidance.stock(combined)[0] == 19, "combined right exits");
+        combined.type = 22; combined.exit = -45; combined.angles = new int[] {-90};
+        require(CpGuidance.stock(combined)[0] == 20, "classified combined left picture");
+        mapping(13, null, 25, 315); mapping(53, null, 25, 45);
+        for (int type : new int[] {13, 52, 14, 53})
+            require(CpGuidance.stock(m(type, type == 13 || type == 52 ? 90 : -90)) == null,
+                    "contradictory keep/highway side " + type);
+        CpTurns.Maneuver fork = m(51, 0); fork.angles = new int[] {-40, 40};
+        require(CpGuidance.stock(fork)[0] == 26, "three-way fork from topology");
+        mapping(3, 0, 13, 0); mapping(7, 180, 32, 180); mapping(28, -90, 32, 270);
+        require(CpGuidance.stock(m(28, null)) == null, "roundabout ordinal is not an angle");
+        require(CpGuidance.stock(m(2, -90)) == null, "contradictory direction fallback");
+        require(CpGuidance.stock(m(8, null)) == null, "unknown ramp side fallback");
+        CpTurns.Maneuver straight = m(3, 0); straight.angles = new int[] {45};
+        require(CpGuidance.stock(straight)[0] == 17 && CpGuidance.stock(straight)[1] == 270, "straight past right exit");
+        for (int n = 0; n <= 300; n++) {
+            int level = CpGuidance.bar(n, 300);
+            require(level >= 0 && level <= 100 && level <= CpGuidance.bar(n + 1, 300), "monotone bar");
+        }
+        require(CpGuidance.bar(0, 300) == 0 && CpGuidance.bar(150, 300) == 50 && CpGuidance.bar(600, 600) == 100, "bar endpoints");
+        CpTurns.Update u = new CpTurns.Update(1, null); u.state = 1; u.distNext = 0;
+        require(!CpGuidance.approach(u, m(2, null)), "missing distance is not zero");
+        u.hasDistance = true; u.distNext = 300;
+        require(CpGuidance.approach(u, m(2, null)), "300m inclusive");
+        u.distNext = 301;
+        require(!CpGuidance.approach(u, m(2, null)), "301m outside turn");
+        u.distNext = 600;
+        require(CpGuidance.approach(u, m(23, null)), "600m highway inclusive");
+        u.distNext = 601;
+        require(!CpGuidance.approach(u, m(23, null)), "601m outside highway");
+
+        Cluster c = new Cluster();
+        CpTurns t = new CpTurns(new android.content.Context(), c, null);
+        t.maneuver(maneuver(0, 2, 0, 0, 90, "Road", 1000));
+        t.maneuver(maneuver(1, 1, 0, 0, -90, "Other", 200));
+        t.routeGuidance(msg(0,U16,i(1),1,ENUM,i(1),10,U32,i(300),11,STR,s("0.3"),12,ENUM,i(0),13,U16,i(0)));
+        require(c.calls.contains("tbt 13 0 90.0 0.3 0 0 1 0 0"), "main stock turn");
+        require(c.calls.toString().contains("hud f20143"), "HUD retains projection icon");
+        require(Dipo.approaches.get(Dipo.approaches.size()-1).equals("true 100"), "approach lease started");
+        t.routeGuidance(msg(0,U16,i(1),10,U32,i(0)));
+        require(Dipo.approaches.get(Dipo.approaches.size()-1).equals("true 0"), "zero at maneuver");
+        t.routeGuidance(msg(0,U16,i(1),13,U16,i(1)));
+        require(!t.updates.get(1).hasDistance, "replacement invalidates old distance");
+        require(Dipo.approaches.get(Dipo.approaches.size()-1).equals("false 0"), "replacement clears lease");
+        t.routeGuidance(msg(0,U16,i(1),10,U32,i(100)));
+        require(Dipo.approaches.get(Dipo.approaches.size()-1).equals("true 33"), "replacement with fresh distance");
+        c.calls.clear();
+        t.routeGuidance(msg(0,U16,i(1),1,ENUM,i(5)));
+        require(c.calls.contains("tbt 10 0 0.0 0.0 0 0 0 0 0"), "rerouting");
+        require(!t.updates.get(1).hasDistance, "reroute invalidates old distance");
+        c.calls.clear();
+        t.routeGuidance(msg(0,U16,i(1),1,ENUM,i(3),13,U16,i()));
+        require(c.calls.contains("tbt 9 0 0.0 0.0 0 0 0 0 0"), "loading without maneuver");
+        t.routeGuidance(msg(0,U16,i(1),1,ENUM,i(1),13,U16,i()));
+        for (int action = 0; action < 4; action++) {
+            t.maneuver(maneuver(0,2,0,0,90,"Road",100));
+            t.routeGuidance(msg(0,U16,i(1),1,ENUM,i(1),10,U32,i(100),13,U16,i(0)));
+            c.calls.clear();
+            if (action == 0) t.stop();
+            else if (action == 1) t.disconnected();
+            else if (action == 2) t.reset();
+            else t.routeGuidance(msg(0,U16,i(1),1,ENUM,i(0)));
+            require(Dipo.approaches.get(Dipo.approaches.size()-1).equals("false 0"), "clear path " + action);
+            if (action != 2) {
+                String idle = "tbt 8 0 0.0 0.0 -1 0 0 0 -1";
+                require(java.util.Collections.frequency(c.calls, idle) == 1, "one final idle " + action);
+                require(!c.calls.contains("tbt 8 0 0.0 0.0 0 0 0 0 0"), "no competing approach idle");
+                c.calls.clear(); t.stop();
+                require(!c.calls.contains(idle), "repeated stop keeps idle compass");
+            }
+        }
+        for (int state : new int[] {3, 5}) {
+            t.routeGuidance(msg(0,U16,i(1),1,ENUM,i(state)));
+            c.calls.clear(); t.disconnected();
+            require(c.calls.contains("tbt 8 0 0.0 0.0 -1 0 0 0 -1"), "search state returns idle " + state);
+        }
+        System.out.println("CpGuidanceTest passed");
+    }
+}

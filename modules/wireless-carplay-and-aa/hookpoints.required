@@ -69,6 +69,8 @@ framework.navigation_cluster.update_tbt_sub_info2
 framework.navigation_cluster.update_tbt_sub_info2_b
 framework.navigation_cluster.update_tbt_sub_info_2c
 framework.navigation_cluster.update_tbt_sub_info_b
+framework.navigation_cluster.update_tbt_trap_info
+framework.navigation_cluster.update_tbt_trap_info_new
 framework.navigation_cluster.update_tp_crossroad_name
 framework.navigation_cluster.update_tp_destination_name
 framework.navigation_cluster.update_tp_lane_info
@@ -79,6 +81,9 @@ framework.runtime.load
 framework.runtime.load_library
 framework.system_properties
 framework.system_properties.get_int
+framework.tbt_trap_info
+framework.tbt_trap_info.bar_graph_level
+framework.tbt_trap_info.new
 framework.turn_list
 framework.turn_list.direction
 framework.turn_list.distance

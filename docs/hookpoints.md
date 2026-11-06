@@ -224,8 +224,8 @@ The new catalogue additions require on-car reflection; existing module requireme
 | framework.navigation_cluster.update_tbt_sub_info2_b | method | com.hkmc.cluster.NavigationCluster.updateTBTSubInfo2 | yes | wireless-carplay-and-aa |
 | framework.navigation_cluster.update_tbt_sub_info_2c | method | com.hkmc.cluster.NavigationCluster.updateTBTSubInfo2C | yes | wireless-carplay-and-aa |
 | framework.navigation_cluster.update_tbt_sub_info_b | method | com.hkmc.cluster.NavigationCluster.updateTBTSubInfo | yes | wireless-carplay-and-aa |
-| framework.navigation_cluster.update_tbt_trap_info | method | com.hkmc.cluster.NavigationCluster.updateTBTTrapInfo | not recorded | — |
-| framework.navigation_cluster.update_tbt_trap_info_new | method | com.hkmc.cluster.NavigationCluster.updateTBTTrapInfoNew | not recorded | — |
+| framework.navigation_cluster.update_tbt_trap_info | method | com.hkmc.cluster.NavigationCluster.updateTBTTrapInfo | not recorded | wireless-carplay-and-aa |
+| framework.navigation_cluster.update_tbt_trap_info_new | method | com.hkmc.cluster.NavigationCluster.updateTBTTrapInfoNew | not recorded | wireless-carplay-and-aa |
 | framework.navigation_cluster.update_tp_crossroad_name | method | com.hkmc.cluster.NavigationCluster.updateTPCrossroadName | yes | wireless-carplay-and-aa |
 | framework.navigation_cluster.update_tp_destination_name | method | com.hkmc.cluster.NavigationCluster.updateTPFlexibleDestinationName | yes | wireless-carplay-and-aa |
 | framework.navigation_cluster.update_tp_lane_info | method | com.hkmc.cluster.NavigationCluster.updateTPLaneInfo | yes | wireless-carplay-and-aa |
@@ -262,9 +262,9 @@ The new catalogue additions require on-car reflection; existing module requireme
 | framework.system_service.sml_status | method | com.hkmc.micom.ISystemService.requestSMLStatus | yes | — |
 | framework.system_service_stub | class | com.hkmc.micom.ISystemService$Stub | yes | — |
 | framework.system_service_stub.as_interface | method | com.hkmc.micom.ISystemService$Stub.asInterface | yes | — |
-| framework.tbt_trap_info | class | com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo | not recorded | — |
-| framework.tbt_trap_info.bar_graph_level | field | com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo.barGraphLevel | not recorded | — |
-| framework.tbt_trap_info.new | ctor | com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo.<init> | not recorded | — |
+| framework.tbt_trap_info | class | com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo | not recorded | wireless-carplay-and-aa |
+| framework.tbt_trap_info.bar_graph_level | field | com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo.barGraphLevel | not recorded | wireless-carplay-and-aa |
+| framework.tbt_trap_info.new | ctor | com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo.<init> | not recorded | wireless-carplay-and-aa |
 | framework.turn_list | class | com.hkmc.cluster.NavigationCluster$TurnList | yes | wireless-carplay-and-aa |
 | framework.turn_list.direction | field | com.hkmc.cluster.NavigationCluster$TurnList.direction | yes | wireless-carplay-and-aa |
 | framework.turn_list.distance | field | com.hkmc.cluster.NavigationCluster$TurnList.distance | yes | wireless-carplay-and-aa |

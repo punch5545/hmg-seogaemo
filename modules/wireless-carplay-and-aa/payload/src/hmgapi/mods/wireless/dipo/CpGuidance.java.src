@@ -1,0 +1,78 @@
+// HMG-Seogaemo: independently implemented stock guidance policy.
+package hmgapi.mods.wireless.dipo;
+
+/** Pure policy; display units never determine the approach window. */
+final class CpGuidance {
+    static final int TURN_WINDOW_M = 300, HIGHWAY_WINDOW_M = 600;
+
+    static boolean highway(int type) {
+        return type == 8 || type == 9 || type == 13 || type == 14
+                || type == 22 || type == 23 || type >= 51 && type <= 53;
+    }
+
+    static int window(int type) { return highway(type) ? HIGHWAY_WINDOW_M : TURN_WINDOW_M; }
+
+    static boolean approach(CpTurns.Update u, CpTurns.Maneuver m) {
+        return m != null && u.state != 0 && u.state != 2 && u.state != 3 && u.state != 5
+                && u.hasDistance && u.distNext >= 0 && u.distNext <= window(m.type);
+    }
+
+    static int bar(int meters, int window) {
+        return Math.max(0, Math.min(100, Math.round(meters * 100f / window)));
+    }
+
+    static int direction(int angle) {
+        return ((Math.round(angle / 45f) * 45) % 360 + 360) % 360;
+    }
+
+    /** {DisplayType, direction}, or null when the available geometry is ambiguous. */
+    static int[] stock(CpTurns.Maneuver m) {
+        if (m.hasExit && (m.exit < -180 || m.exit > 180)) return null;
+        int t = m.type, a = m.hasExit ? direction(m.exit) : -1;
+        if (t == 4 || t == 18 || t == 26) return new int[] {31, m.side == 1 ? 90 : 270};
+        if (t == 6 || t == 7 || t == 19 || t >= 28 && t <= 46) {
+            // Ordinal roundabout exit numbers are not angular positions.
+            return a < 0 ? null : new int[] {m.side == 1 ? 33 : 32, a};
+        }
+        if (m.junction == 1) return null;
+        boolean left = t == 1 || t == 20 || t == 47 || t == 49;
+        boolean right = t == 2 || t == 21 || t == 48 || t == 50;
+        if (left || right) {
+            if (a < 0) a = left ? (t == 47 ? 225 : t == 49 ? 315 : 270)
+                    : (t == 48 ? 135 : t == 50 ? 45 : 90);
+            if (left && (a < 225 || a > 315) || right && (a < 45 || a > 135)) return null;
+            return new int[] {13, a};
+        }
+        if (t == 8 || t == 9 || t == 22 || t == 23) {
+            int side = t == 22 ? -1 : t == 23 ? 1 : a < 0 || a == 0 || a == 180 ? 0 : a > 180 ? -1 : 1;
+            if (side == 0) return null;
+            if (m.hasExit && (side < 0 && a > 0 && a < 180 || side > 0 && a > 180)) return null;
+            boolean combined = false;
+            if (m.angles != null) for (int other : m.angles)
+                if (side < 0 ? other < -15 && other > -165 : other > 15 && other < 165) combined = true;
+            return new int[] {combined ? (side > 0 ? 19 : 20) : (side > 0 ? 17 : 18), side > 0 ? 90 : 270};
+        }
+        if (t == 13 || t == 14 || t >= 51 && t <= 53) {
+            if (m.hasExit && ((t == 13 || t == 52) && a > 0 && a < 180
+                    || (t == 14 || t == 53) && a > 180)) return null;
+            if (a < 0) a = t == 13 || t == 52 ? 315 : t == 14 || t == 53 ? 45 : -1;
+            if (a < 0 || a == 180) return null;
+            boolean otherLeft = false, otherRight = false;
+            if (m.angles != null) for (int other : m.angles) {
+                otherLeft |= other < -15;
+                otherRight |= other > 15;
+            }
+            return new int[] {otherLeft && otherRight ? 26 : 25, a};
+        }
+        if (t == 3 || t == 5) {
+            if (a > 0) return null;
+            if (m.angles != null && m.angles.length == 1) {
+                int other = m.angles[0];
+                if (other > 15 && other < 165) return new int[] {17, 270};
+                if (other < -15 && other > -165) return new int[] {18, 90};
+            }
+            return new int[] {13, 0};
+        }
+        return null;
+    }
+}

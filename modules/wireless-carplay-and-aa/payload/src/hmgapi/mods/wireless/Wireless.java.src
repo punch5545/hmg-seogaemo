@@ -132,6 +132,7 @@ public final class Wireless extends ModEntry {
     private void navigation(final ModContext mod, final LoadedApp app) {
         if (!mod.settingBoolean("tbt", true)) return;
         final CarLaneCapture carLanes = new CarLaneCapture(mod);
+        CpTrapOverlay.install(mod, app);
         MethodHook skip = new MethodHook() {
             @Override
             protected void beforeHookedMethod(Param p) {
