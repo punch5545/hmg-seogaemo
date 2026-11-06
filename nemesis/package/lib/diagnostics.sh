@@ -61,6 +61,10 @@ hmg_seogaemo_diag_wifi() {
         -e firmware "$wr"/init*.rc
     sg_print '# properties'
     getprop | grep -i -e wifi -e wlan -e wpa -e hostapd -e p2p -e dhcp -e usb -e tcc
+    # Where persist.wifi.state comes from when /data/property has no file for it.
+    ls -l "$wr/data/property/persist.wifi.state"
+    grep -H persist.wifi "$wr/default.prop" "$wr/system/build.prop" "$wr/data/local.prop" "$wr"/init*.rc \
+        "$wr"/system/etc/*.sh "$wr"/system/etc/init.d/*
     sg_print '# dmesg'
     dmesg | grep -i -e usb -e wlan -e wifi -e 80211 -e firmware -e rtl -e rtw -e mt7 -e ath -e bcm -e dhd
 }

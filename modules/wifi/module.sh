@@ -37,7 +37,6 @@ role() {
     rl_value=$(cat "$SG_DATA_ROOT/settings/$id/$1" 2>/dev/null) || rl_value=
     case "$rl_value" in off|client|carplay_ap) sg_write "$rl_value" ;; *) sg_write "$2" ;; esac
 }
-builtin_role=$(role builtin_role client)
 usb_role=$(role usb_role off)
 
 desired_file_on() { [ "$(cat "$SG_DATA_ROOT/desired/$id" 2>/dev/null)" = on ]; }
@@ -55,8 +54,18 @@ wifi_capable() {
     # off, so enumeration and wlan.driver.status cannot gate initial enable.
     [ "$(getprop tcc.wifi.vendor 2>/dev/null)" = broadcom ] &&
         [ -f /system/wifi/bcmdhd.ko ] && [ -s /system/wifi/bcmdhd.ko ] &&
-        [ -f /system/wifi/fw_bcmdhd.bin ] && [ -s /system/wifi/fw_bcmdhd.bin ]
+        [ -f /system/wifi/fw_bcmdhd.bin ] && [ -s /system/wifi/fw_bcmdhd.bin ] &&
+        ! builtin_missing
 }
+# Some cars ship the Broadcom driver and firmware without the chip (a tester's NEEV KOR car,
+# 2026-11-07): nothing answers on SDIO and bcmdhd logs failed power-ups, the same evidence as the
+# preflight wifi_hw check. Kernel log only, so the hint is lost once the log rotates.
+builtin_missing() {
+    for bm_dev in "${SG_SDIO_DIR:-/sys/bus/sdio/devices}"/*; do [ ! -e "$bm_dev" ] || return 1; done
+    dmesg 2>/dev/null | grep -Fq 'failed to power up DHD generic adapter'
+}
+# The app hides the built-in role without the radio, so the unset default must not be the client.
+if wifi_capable; then builtin_role=$(role builtin_role client); else builtin_role=$(role builtin_role off); fi
 
 # Prints "<vendor>:<product> <kernel module> <model>" for the first connected USB adapter
 # that a bundled driver binds (files/usb-ids.txt, taken from the drivers' device id tables).
@@ -331,11 +340,12 @@ status() {
     elif sg_applied "$xml" || sg_applied "$prop"; then
         result conflict none 'Wi-Fi client changes are only partly applied'
     else
-        if [ -e "$xml" ]; then
+        # Leftovers only block the built-in client role; the USB roles never touch them.
+        if [ "$builtin_role" = client ] && [ -e "$xml" ]; then
             if xml_ours; then result conflict none 'Wi-Fi settings left by another package; clean them up in the Car tab'; fi
             result conflict none 'Existing Wi-Fi feature XML differs'
         fi
-        if [ -n "$(getprop "$prop" 2>/dev/null)" ]; then
+        if [ "$builtin_role" = client ] && [ -n "$(getprop "$prop" 2>/dev/null)" ]; then
             [ "$(getprop "$prop" 2>/dev/null)" != "$value" ] ||
                 result conflict none 'Wi-Fi settings left by another package; clean them up in the Car tab'
             result conflict none 'persist.wifi.state is set outside this module'
