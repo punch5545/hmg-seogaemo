@@ -29,8 +29,17 @@ final class AaGuidance {
         return Math.max(0, Math.min(100, Math.round(meters * 100f / window)));
     }
 
-    static int direction(int angle) {
-        return ((Math.round(angle / 45f) * 45) % 360 + 360) % 360;
+    /** The exit's clock position for an exit angle, in stock GPM's bins (180 straight on), or -1. */
+    static int roundaboutDirection(int a) {
+        if (a <= 0 || a > 360) return -1;
+        if (a == 180) return 0;
+        if (a >= 135 && a < 180) return 45;
+        if (a >= 90 && a < 135) return 90;
+        if (a >= 45 && a < 90) return 135;
+        if (a < 45 || a > 315) return 180;
+        if (a > 270) return 225;
+        if (a > 225) return 270;
+        return 315;
     }
 
     /** {DisplayType, direction}, or null to keep the projection icon. */
@@ -38,7 +47,9 @@ final class AaGuidance {
         boolean r = side == AaTurns.RIGHT, l = side == AaTurns.LEFT;
         switch (ev) {
             case AaTurns.STRAIGHT:
-                return new int[] {13, 0};
+                // with a side it is a keep (Car App Library KEEP_LEFT/RIGHT: "more than one option
+                // into the same general direction"): the projection icon, as CarPlay keeps
+                return r || l ? null : new int[] {13, 0};
             case AaTurns.NAME_CHANGE:
                 // a name change to one side is not a turn of known shape
                 return r || l ? null : new int[] {13, 0};
@@ -56,11 +67,15 @@ final class AaGuidance {
                 // lane-change exits 19 / 20 could be chosen from
                 return r ? new int[] {17, 90} : l ? new int[] {18, 270} : null;
             case AaTurns.ROUNDABOUT_EXIT: case AaTurns.ROUNDABOUT_ENTER_AND_EXIT:
-                // 32 = counter-clockwise travel (right-hand traffic) with the exit's clock position,
-                // from the exit angle measured counter-clockwise from the entry (180 = straight on).
-                // Left-hand traffic and a missing angle keep the icon.
-                if (ev != AaTurns.ROUNDABOUT_ENTER_AND_EXIT || l || angle < 0 || angle > 360) return null;
-                return new int[] {32, direction(180 - angle)};
+                // 32 = counter-clockwise travel (right-hand traffic) with the exit's clock position.
+                // The angle (the callback's fifth argument; stock GPM's setRoundAboutDisplayType
+                // reads it so) is travelled around the roundabout from the entry: 90 the exit on
+                // the right, 180 straight on, 270 left, 360 back (AOSP CarNavigationStatusManager,
+                // Car App Library getRoundaboutExitAngle). Stock GPM draws right-hand roundabouts
+                // only for side RIGHT; other sides and a missing angle (0 / -1) keep the icon.
+                if (ev != AaTurns.ROUNDABOUT_ENTER_AND_EXIT || !r) return null;
+                int d = roundaboutDirection(angle);
+                return d < 0 ? null : new int[] {32, d};
             case AaTurns.DESTINATION:
                 // the stock destination arrow: 2 at 90 / 270 points at the side of the road
                 return r ? new int[] {2, 90} : l ? new int[] {2, 270} : new int[] {ARRIVED, 0};

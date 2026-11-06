@@ -72,8 +72,11 @@ final class AaTurns {
     boolean navLive;
     /** metres to the next turn, -1 until a distance for this turn came */
     int meters = -1;
-    /** the phone is rerouting: the cluster shows RECALC_ROUTE 10 until a turn or active status */
+    /** the phone is rerouting: the cluster shows RECALC_ROUTE 10 until a turn, active status or REROUTE_HOLD distances */
     boolean rerouting;
+    int rerouteHeld;
+    /** distance updates (about one a second) held while rerouting before the turn shows again */
+    static final int REROUTE_HOLD = 5;
     /** the approach bar sent last (0..100), -1 when off */
     int approachBar = -1;
     // destination and the remaining trip
@@ -210,6 +213,8 @@ final class AaTurns {
         }
         setDistance(meters, e3, unitFlags);
         setTurnType(event, turnSide);
+        // never stuck on RECALC_ROUTE when the phone skips the active status and keeps the same turn
+        if (rerouting && ++rerouteHeld >= REROUTE_HOLD) rerouting = false;
         sendTurn();
     }
 
@@ -220,6 +225,7 @@ final class AaTurns {
                 rerouting = false;
             } else if (!rerouting) {
                 rerouting = true;
+                rerouteHeld = 0;
                 setApproach(-1);
                 cluster.tbtInfo(10, 0, 0f, 0f, 0, 0, 0, 0, 0);
             }

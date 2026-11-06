@@ -75,18 +75,32 @@ The classified car sweep is in local, gitignored dataset `datasets/cluster-ar-tb
 ## Android Auto policy
 
 `AaTurns` uses our `AaGuidance` with the CarPlay windows (300 m; 600 m for on/off ramps, forks and
-merges), the raw distance in metres, and a fresh distance after the next turn changes. Android
-Auto sends an event and a side, no junction geometry and no exit angle for turns, so the
-directions are fixed: turns 13 at 45/90/135 (right) or 315/270/225 (left); straight on and an
-unsided name change 13 at 0; U-turn 31 at 270 (90 when the phone says right); on/off ramps 17
-at 90 / 18 at 270 (no lane recommendation to pick 19 / 20); roundabout enter-and-exit 32 with
-the exit's clock position from the phone's exit angle (180 − angle, counter-clockwise from the
-entry), right-hand traffic only; destination 2 at 90 / 270 by side, otherwise ARRIVED 3. Forks,
-merges, sideless turns, depart, ferries and unknown keep the projection icon. Stock types go out
-with sideStreet 0 (65535 would draw a road in every direction); icons keep 65535. Rerouting
-(status 3) sends 10 and holds turns until the next turn or active status. GPM sends the bar
-lease (`ApproachBar`, renewed every second) to the same `CpTrapOverlay`. Not yet seen on a
-drive; reference: HMG-API PR #75 (US Ioniq 5, its own window and bar).
+merges), the raw distance in metres, and a fresh distance after the next turn changes (event,
+side, angle or road). Android Auto's legacy next-turn event carries an event, a side and, for
+roundabouts only, an exit angle; no junction geometry. Mapping:
+
+| AA event (side) | Stock type, direction |
+|---|---|
+| TURN / SLIGHT_TURN / SHARP_TURN (L/R) | 13 at 270/315/225 or 90/45/135 |
+| STRAIGHT, NAME_CHANGE (no side) | 13 at 0 |
+| U_TURN | 31 at 270 (90 when the phone says right) |
+| ON_RAMP / OFF_RAMP (L/R) | 18 at 270 / 17 at 90 (no lane recommendation to pick 19 / 20) |
+| ROUNDABOUT_ENTER_AND_EXIT (RIGHT, angle 1-360) | 32 at the exit's clock position, stock GPM's bins |
+| DESTINATION (L/R / none) | 2 at 270 / 90, ARRIVED 3 |
+| STRAIGHT or NAME_CHANGE with a side (keeps), FORK, MERGE, sideless turns, ROUNDABOUT_EXIT, other roundabout sides, DEPART, ferries, UNKNOWN | projection icon |
+
+Stock types go out with sideStreet 0 (65535 draws a road in every direction); icons keep
+65535. Rerouting (status 3) sends 10 and holds turns until the next turn, active status or five
+distance updates. GPM renews the bar lease (`ApproachBar`, every second) with the same
+`CpTrapOverlay`. Not yet seen on a drive.
+
+Evidence: event/side/status numbers match AOSP `CarNavigationStatusManager` (API 26) and the AA
+protos in open-headunit; the roundabout angle is travelled from the entry (90 right, 180
+straight, 270 left; AOSP and Car App Library `getRoundaboutExitAngle`); stock `HKMC_GPM`
+`GpmNaviTBTManager` reads the callback's fifth argument as that angle with the same bins and
+side RIGHT as right-hand traffic (offline dump, `setRoundAboutDisplayType`); Car App Library
+`KEEP_LEFT/RIGHT` is a no-turn choice, which open-headunit sends as STRAIGHT with a side.
+Reference implementation: HMG-API PR #75 (US Ioniq 5, its own window and bar).
 
 ## Reading the state
 
