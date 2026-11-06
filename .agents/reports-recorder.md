@@ -46,8 +46,16 @@ hashes, module state, boot logs). Developers read the files; users never type a 
   SSID, passwords, tokens, IMEI/IMSI/ICCID, VIN, hardware addresses or any `xx:xx:xx:xx:xx:xx` are replaced
   by `[redacted]`. (A kernel-log filter once leaked the unit serial through the boot command line; the
   collectors now never copy that line and the pass would still remove it.)
-- **No new write verbs.** Verbs: `recorder status|enable|disable|tick` and `preflight run`, fixed, no
-  arguments, no paths. It writes only under its own state directory and `<usb>/HSM-REPORTS`.
+- **No new write verbs.** Verbs: `recorder status|enable|disable|tick`, `preflight run` and `report digest`,
+  fixed, no arguments, no paths. It writes only under its own state directory and `<usb>/HSM-REPORTS`.
+- **Issue digest.** `report digest` is read-only: product and versions, each module's desired/status, car
+  check results that are not ok, ledger rows whose result is not ok (whole ledger), the last lines of each
+  `module.log`, `reconcile.log`, `watcher.log` and `update/log`, then the last ledger rows. Before/after
+  record names are dropped; every line goes through `sg_redact`. Output is `info.log_NNN=` lines capped at
+  7000 bytes (the app reads 8 KiB). Support → Report a problem → Export as a GitHub issue packs it with the
+  app's own state and recent errors into the QR link (`IssueLink.withLog`: raw deflate, base64url, `HSR1.`
+  prefix, leading lines that fit). `.github/workflows/issue-log.yml` decodes it into an issue comment with
+  `tools/decode-issue-log.py`. logcat and NEMESIS logs stay USB-only (phone names are not redacted).
 - **No system change, no radio power.** The car check never powers the Wi-Fi radio.
 
 ## Car check (`lib/preflight.sh`)

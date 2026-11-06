@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # HSM-REPORTS recorder and car check. Reached only through the fixed root verbs
-#   recorder status|enable|disable|tick     preflight run
+#   recorder status|enable|disable|tick     preflight run     report digest
 # Read-only on the unit: it writes only under its own state directory and, while the owner has
 # turned recording on, into <usb>/HSM-REPORTS. See .agents/reports-recorder.md.
 umask 077
@@ -175,6 +175,76 @@ collect_status() {
         sg_print "[$rc_id] desired=$(cat "$SG_DATA_ROOT/desired/$rc_id" 2>/dev/null)"
         /system/bin/sh "$base/bin/hmg-seogaemo-root" "$rc_id" status 2>&1
     done
+}
+
+# Last $2 lines of $1 from its last 8 KiB (toolbox has no tail).
+digest_tail() {
+    [ -f "$1" ] || return 0
+    rc_bytes=$(sg_file_size "$1") || return 0
+    rc_skip=$((rc_bytes / 4096 - 1))
+    [ "$rc_skip" -ge 0 ] || rc_skip=0
+    dd if="$1" bs=4096 skip="$rc_skip" count=2 2>/dev/null > "$state/digest.raw.$$" || return 0
+    rc_total=0
+    while IFS= read -r rc_line || [ -n "$rc_line" ]; do rc_total=$((rc_total + 1)); done < "$state/digest.raw.$$"
+    rc_i=0
+    while IFS= read -r rc_line || [ -n "$rc_line" ]; do
+        rc_i=$((rc_i + 1))
+        # A tail that starts mid-file begins inside a line: drop that fragment.
+        [ "$rc_i" -eq 1 ] && [ "$rc_skip" -gt 0 ] && continue
+        [ "$rc_i" -gt $((rc_total - $2)) ] && sg_print "$rc_line"
+    done < "$state/digest.raw.$$"
+    rm -f "$state/digest.raw.$$"
+}
+
+# Last $1 ledger rows without the before/after record names; $2 = fail searches the whole
+# ledger for rows whose result is not ok.
+digest_ledger() {
+    rc_ledger=$SG_DATA_ROOT/ledger/ledger.tsv
+    [ -f "$rc_ledger" ] || return 0
+    if [ "$2" = fail ]; then
+        grep -v '	ok$' "$rc_ledger" > "$state/digest.fail.$$" 2>/dev/null
+        rc_ledger=$state/digest.fail.$$
+    fi
+    digest_tail "$rc_ledger" "$1" | while IFS='	' read -r rc_t rc_m rc_op rc_target rc_b rc_a rc_r; do
+        [ "$rc_t" != time ] || continue
+        sg_print "$rc_t $rc_m $rc_op $rc_target $rc_r"
+    done
+    rm -f "$state/digest.fail.$$"
+}
+
+# Short problem-report summary, most important first; the app compresses it into the issue QR code.
+collect_digest() {
+    sg_print "# $(grep '^package-version=' "$base/NEMESIS.data" 2>/dev/null) root=$(cat "$base/VERSION" 2>/dev/null)"
+    sg_print "product=$(getprop ro.build.product) onebin=$(getprop ro.mobis.onebindir) android=$(getprop ro.build.version.release) uptime=$(cat /proc/uptime 2>/dev/null)"
+    sg_print "# modules"
+    for rc_id in $(sg_module_list "$base"); do
+        rc_state=; rc_detail=
+        /system/bin/sh "$base/bin/hmg-seogaemo-root" "$rc_id" status > "$state/digest.status.$$" 2>&1 < /dev/null
+        while IFS= read -r rc_line; do
+            case "$rc_line" in state=*) rc_state=${rc_line#state=};; detail=*) rc_detail=${rc_line#detail=};; esac
+        done < "$state/digest.status.$$"
+        rm -f "$state/digest.status.$$"
+        sg_print "$rc_id desired=$(cat "$SG_DATA_ROOT/desired/$rc_id" 2>/dev/null) state=$rc_state $rc_detail"
+    done
+    sg_print "# check"
+    hmg_seogaemo_preflight 2>&1 | while IFS='|' read -r rc_cid rc_level rc_evidence rc_message; do
+        [ -n "$rc_cid" ] && [ "$rc_level" != ok ] && sg_print "$rc_cid $rc_level $rc_message"
+    done
+    sg_print "# failed changes"
+    digest_ledger 10 fail
+    for rc_id in $(sg_module_list "$base"); do
+        [ -f "$SG_DATA_ROOT/modules/$rc_id/module.log" ] || continue
+        sg_print "# $rc_id log"
+        digest_tail "$SG_DATA_ROOT/modules/$rc_id/module.log" 6
+    done
+    sg_print "# reconcile"
+    digest_tail "$SG_DATA_ROOT/reconcile.log" 8
+    sg_print "# watcher"
+    digest_tail "$SG_DATA_ROOT/watcher.log" 8
+    sg_print "# update"
+    digest_tail "$SG_DATA_ROOT/update/log" 5
+    sg_print "# changes"
+    digest_ledger 12 all
 }
 
 snapshot() {
@@ -360,6 +430,23 @@ $rc_out
 EOF
         sg_print "info.verdict=$rc_worst"
         sg_print state=on restart=none "detail=$rc_n checks, worst result: $rc_worst"
+        exit 0 ;;
+    report:digest)
+        # Read-only. Redacted lines as numbered info keys; the total stays under the app's 8 KiB read.
+        mkdir -p "$state" || { reply failed 'Report unavailable'; exit 1; }
+        collect_digest 2>&1 | sg_redact > "$state/digest.$$"
+        rc_n=0
+        rc_used=0
+        while IFS= read -r rc_line || [ -n "$rc_line" ]; do
+            [ -n "$rc_line" ] || continue
+            rc_used=$((rc_used + ${#rc_line} + 14))
+            [ "$rc_used" -le 7000 ] || break
+            rc_n=$((rc_n + 1))
+            case "${#rc_n}" in 1) rc_key=00$rc_n;; 2) rc_key=0$rc_n;; *) rc_key=$rc_n;; esac
+            sg_print "info.log_$rc_key=$rc_line"
+        done < "$state/digest.$$"
+        rm -f "$state/digest.$$"
+        sg_print state=on restart=none "detail=$rc_n lines"
         exit 0 ;;
     *) reply failed 'Invalid command'; exit 2 ;;
 esac

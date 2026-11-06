@@ -3,6 +3,7 @@ import com.seogaemo.hmg.ui.QrCode;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,7 +42,22 @@ public class QrCodeTest {
                 "c", "short");
         check(bounded.length() <= 1100 && bounded.length() > 1090, "link length " + bounded.length());
         check(bounded.contains("&a=") && bounded.contains("&b=") && !bounded.contains("&c="), bounded);
+        // Packed log: leading lines kept to fit, a count of the rest, and a handoff to the Python decoder.
+        StringBuilder log = new StringBuilder("# app 1.0 \uD55C\uAE00");
+        for (int i = 0; i < 400; i++) log.append("\nline ").append(i).append(" state=failed detail=No mounted USB drive ").append(i * 7919 % 1000);
+        String base = IssueLink.NEW_ISSUE + "?template=bug-car-support.yml";
+        String packedLink = IssueLink.withLog(base, "app-log", log.toString(), 990);
+        check(packedLink.length() <= 990 && packedLink.startsWith(base + "&app-log=HSR1."), packedLink);
+        check(IssueLink.withLog(base, "app-log", log.toString(), base.length() + 10).equals(base), "no room");
+        String packed = packedLink.substring(packedLink.indexOf("HSR1."));
+        String all = IssueLink.withLog(base, "app-log", "a\nb", 990);
+        write(new File(args[1], "packed.txt"), packed + "\n" + all.substring(all.indexOf("HSR1.")) + "\n");
         System.out.println("qr code and issue link checks passed");
+    }
+
+    private static void write(File file, String text) throws Exception {
+        FileOutputStream out = new FileOutputStream(file);
+        try { out.write(text.getBytes("UTF-8")); } finally { out.close(); }
     }
 
     private static void check(boolean ok, String message) {

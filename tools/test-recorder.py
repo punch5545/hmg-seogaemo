@@ -312,13 +312,45 @@ def test_current_folder_survives_pruning_and_reused_stick(folder):
         unit.stop_logcat()
 
 
+def test_report_digest_is_short_redacted_and_read_only(folder):
+    unit = Unit(folder)
+    (unit.data / 'desired').mkdir()
+    (unit.data / 'desired/demo').write_text('on\n')
+    (unit.data / 'ledger').mkdir()
+    rows = ['time\tmodule\top\ttarget\tbefore-ref\tafter-ref\tresult']
+    rows += [f'{1700000000 + n}\tdemo\tprop_set\tpersist.demo.{n}\tbefore/x\tafter/x\tok' for n in range(400)]
+    rows.insert(5, '1690000000\tdemo\tfile_put\t/system/etc/demo.xml\tbefore/y\tafter/y\tconflict')
+    (unit.data / 'ledger/ledger.tsv').write_text('\n'.join(rows) + '\n')
+    (unit.data / 'modules/demo').mkdir(parents=True)
+    (unit.data / 'modules/demo/module.log').write_text(
+        ''.join(f'{n} old line\n' for n in range(50)) + f'ssid=HomeNet\nmac {MAC}\nLAST-DEMO-LINE\n')
+    (unit.data / 'reconcile.log').write_text('boot reconcile done\n')
+    before = sorted(str(p) for p in unit.data.rglob('*'))
+    code, out, err = unit.run('report', 'digest')
+    assert code == 0, err
+    # Only the recorder state and the car check's own foreign-report cache may change.
+    own = ('recorder', 'foreign')
+    after = sorted(str(p) for p in unit.data.rglob('*') if not set(own) & set(p.parts))
+    assert after == [p for p in before if not set(own) & set(Path(p).parts)], set(after) ^ set(before)
+    lines = [line.split('=', 1)[1] for line in out.splitlines() if line.startswith('info.log_')]
+    assert len(out.encode()) < 8192 and lines, out
+    text = '\n'.join(lines)
+    assert f'product={PRODUCT}' in text
+    assert 'demo desired=on state=off demo-status' in text
+    assert '1690000000 demo file_put /system/etc/demo.xml conflict' in text
+    assert 'LAST-DEMO-LINE' in text and '0 old line' not in text.split('# demo log')[1].split('#')[0]
+    assert 'HomeNet' not in out and MAC not in out
+    assert 'before/x' not in text and 'persist.demo.399' in text
+    assert 'boot reconcile done' in text
+
+
 def test_dispatcher_accepts_only_fixed_verbs(folder):
     unit = Unit(folder)
     root = ROOT / 'nemesis/package/bin/hmg-seogaemo-root'
     copy = unit.base / 'bin/hmg-seogaemo-root'
     copy.write_text(root.read_text().replace('/system/bin/sh', SHELL))
     for args in (['recorder', 'enable', 'x'], ['recorder', 'delete'], ['preflight', 'x'], ['recorder'],
-                 ['preflight', 'run', 'extra']):
+                 ['preflight', 'run', 'extra'], ['report', 'all'], ['report', 'digest', 'x']):
         result = subprocess.run([SHELL, str(copy)] + args, env=unit.env(), capture_output=True, text=True)
         assert result.returncode == 2 and 'state=failed' in result.stdout, (args, result.stdout)
     result = subprocess.run([SHELL, str(copy), 'preflight', 'run'], env=unit.env(), capture_output=True, text=True)
@@ -330,4 +362,5 @@ run_tests([test_check_without_wifi_chip, test_check_with_wifi_chip_and_conflicts
            test_cannot_enable_without_usb, test_enable_records_and_redacts, test_tick_follows_usb_and_boots,
            test_disable_stops_and_keeps_reports, test_old_boot_folders_are_pruned,
            test_current_folder_survives_pruning_and_reused_stick,
+           test_report_digest_is_short_redacted_and_read_only,
            test_dispatcher_accepts_only_fixed_verbs], 'recorder tests passed')
