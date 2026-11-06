@@ -111,6 +111,7 @@ public final class MainActivity extends Activity {
     private final Set<String> settling = new HashSet<String>();
     /** Modules whose first status read was not definitive (for example right after boot); re-read quietly. */
     private final Set<String> rechecking = new HashSet<String>();
+    private final Map<String, Integer> sortGroups = new HashMap<String, Integer>();
     private boolean recheckRunning;
     private final Handler handler = new Handler();
     private boolean restartLater;
@@ -543,11 +544,20 @@ public final class MainActivity extends Activity {
 
     private List<FeaturesView.Entry> sortedEntries(List<Feature> features) {
         List<FeaturesView.Entry> list = new ArrayList<FeaturesView.Entry>();
-        for (Feature feature : features) list.add(entry(feature));
+        final Map<String, Integer> groups = new HashMap<String, Integer>();
+        for (Feature feature : features) {
+            FeaturesView.Entry entry = entry(feature);
+            list.add(entry);
+            // A status that is momentarily unread keeps its last sorted place instead of jumping groups.
+            boolean unread = entry.state == FeatureCard.State.LOADING || entry.state == FeatureCard.State.UNKNOWN;
+            Integer known = sortGroups.get(feature.id);
+            if (!unread) sortGroups.put(feature.id, group(entry.state));
+            groups.put(feature.id, unread && known != null ? known : group(entry.state));
+        }
         final Collator collator = Collator.getInstance(locale());
         Collections.sort(list, new Comparator<FeaturesView.Entry>() {
             public int compare(FeaturesView.Entry left, FeaturesView.Entry right) {
-                int byGroup = group(left.state) - group(right.state);
+                int byGroup = groups.get(left.feature.id) - groups.get(right.feature.id);
                 return byGroup != 0 ? byGroup : collator.compare(left.feature.name, right.feature.name);
             }
         });
