@@ -354,6 +354,10 @@ sg_module_props() {
 }
 sg_module_script() {
     if sg_module_builtin "$1" "$2"; then sg_print "$1/modules/$2.sh"
+    # Only bundled packages may carry their own root script (raw_shell); see installable-modules.md.
+    elif grep -Fxq source=bundled "$SG_DATA_ROOT/installed/$2.properties" 2>/dev/null &&
+            grep -Fxq raw_shell=1 "$SG_DATA_ROOT/installed/$2.properties"; then
+        sg_print "$SG_DATA_ROOT/installed/$2/module.sh"
     else sg_print "$1/core/hsm-module.sh"; fi
 }
 sg_module_dir() {
@@ -1879,8 +1883,7 @@ sg_projection_runtime() (
 # (symlinks, subdirectories, odd names) untouched.
 sg_generated_dirs() {
     sg_gd_list=
-    sg_manifest=$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties
-    [ -f "$sg_manifest" ] || return 0
+    sg_manifest=$(sg_manifest_file) || return 0
     while IFS='=' read -r sg_field sg_values; do
         [ "$sg_field" != owns_generated_dirs ] || sg_gd_list=$sg_values
     done < "$sg_manifest"

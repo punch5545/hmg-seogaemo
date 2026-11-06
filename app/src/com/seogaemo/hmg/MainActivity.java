@@ -852,6 +852,12 @@ public final class MainActivity extends Activity {
             if (help.length() > 0) help.append("\n\n");
             help.append(getString(item.labelResId));
         }
+        if (feature.installed != null) for (String block : feature.installed.uiBlocks) {
+            String[] tokens = block.trim().split("\\s+");
+            if (tokens.length == 0 || !"info".equals(tokens[0])) continue;
+            if (help.length() > 0) help.append("\n\n");
+            help.append(feature.installed.text(blockArguments(tokens).get("")));
+        }
         if (help.length() > 0) options.addLink(getString(R.string.detail_help), new View.OnClickListener() {
             public void onClick(View v) {
                 ConfirmDialog.showResult(MainActivity.this, getString(R.string.detail_help), help, getString(R.string.close));
@@ -869,6 +875,14 @@ public final class MainActivity extends Activity {
                     String value = result.info.get(item.key);
                     raw.append(getString(item.labelResId)).append(": ")
                             .append(value == null || value.length() == 0 ? "\u2014" : value).append('\n');
+                }
+                if (feature.installed != null) for (String block : feature.installed.uiBlocks) {
+                    String[] tokens = block.trim().split("\\s+");
+                    if (tokens.length == 0 || !"value".equals(tokens[0])) continue;
+                    Map<String, String> arguments = blockArguments(tokens);
+                    String value = arguments.get("key") == null ? null : result.info.get(arguments.get("key"));
+                    if (value == null || value.length() == 0) continue;
+                    raw.append(feature.installed.text(arguments.get("label"))).append(": ").append(value).append('\n');
                 }
                 if (raw.length() > 0) raw.append('\n');
                 raw.append("state=").append(result.state).append("\nrestart=")
@@ -949,9 +963,11 @@ public final class MainActivity extends Activity {
         final InstalledModule installed = feature.installed;
         final String label = arguments.containsKey("label") ? installed.text(arguments.get("label")) : "";
         if ("status".equals(type)) return;
-        if ("info".equals(type) || "warning".equals(type)) {
-            String text = installed.text(arguments.containsKey("") ? arguments.get("") : "");
-            if ("info".equals(type)) rows.addInfo(text); else rows.addWarning(text);
+        // info text goes behind 도움말 and value rows into the developer-only diagnostics (finishOptions),
+        // so 옵션 holds only what the user can change, as for built-in modules.
+        if ("info".equals(type) || "value".equals(type)) return;
+        if ("warning".equals(type)) {
+            rows.addWarning(installed.text(arguments.containsKey("") ? arguments.get("") : ""));
         } else if ("toggle".equals(type) || "choice".equals(type) || "number".equals(type)) {
             final Module.Setting setting = declaredSetting(installed, arguments.get("setting"));
             if (setting == null) return;
@@ -964,9 +980,6 @@ public final class MainActivity extends Activity {
                     else adjustSetting(feature, setting, label, current);
                 }
             });
-        } else if ("value".equals(type)) {
-            String key = arguments.get("key");
-            rows.addReadOnly(label, key == null || result == null ? null : result.info.get(key));
         } else if ("button".equals(type)) {
             final String name = arguments.get("name");
             final String confirm = arguments.containsKey("confirm") ? installed.text(arguments.get("confirm")) : label;
@@ -1277,6 +1290,7 @@ public final class MainActivity extends Activity {
     }
 
     private String resultLine(Feature feature, boolean enable) {
+        if (feature.installed != null) return feature.installed.strings.get(enable ? "on_result" : "off_result");
         if (feature.builtIn == null) return null;
         int id = getResources().getIdentifier(feature.id.replace('-', '_') + (enable ? "_on_result" : "_off_result"),
                 "string", getPackageName());

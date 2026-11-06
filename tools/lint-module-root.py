@@ -56,7 +56,7 @@ def lint(path):
 
 paths = [Path(arg) for arg in sys.argv[1:]]
 if not paths:
-    paths = sorted(Path("modules").glob("*/root/*.sh"))
+    paths = sorted(Path("modules").glob("*/root/*.sh")) + sorted(Path("modules").glob("*/module.sh"))
     paths += sorted(Path("nemesis/package").rglob("*.sh"))
     paths += [Path("nemesis/package/bin/hmg-seogaemo-root")]
 errors = [error for path in paths for error in lint(path)]

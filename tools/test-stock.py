@@ -694,7 +694,7 @@ def test_wireless_adb_restore(folder):
     (proc / 'tcp').write_text('  sl  local_address rem_address   st\n'
                               '   0: 00000000:15B3 00000000:0000 0A 00000000:00000000 00:00000000 00000000\n')
     (proc / 'tcp6').write_text('  sl  local_address rem_address   st\n')
-    text = (ROOT / 'modules/wireless-adb/root/wireless-adb.sh').read_text()
+    text = (ROOT / 'modules/wireless-adb/module.sh').read_text()
     text = text.replace('/proc/net/tcp6', f'{proc}/tcp6').replace('/proc/net/tcp', f'{proc}/tcp')
     only_module(car, 'wireless-adb', properties + 'watch=boot,screen_on\n', text=text)
     for name, body in {

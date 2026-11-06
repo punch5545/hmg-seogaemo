@@ -73,7 +73,7 @@ export SG_DATA_ROOT="$tmp/data" SG_SKIP_CONSENT_FRAMEWORK="$tmp/framework.odex"
 export HMG_SEOGAEMO_SERVICE_BIN="$tmp/bin/service"
 script="$tmp/skip-consent-screen.sh"
 # Intercept mksh's sleep builtin in the private fixture too.
-{ echo "sleep() { :; }"; cat "$module_dir/root/skip-consent-screen.sh"; } > "$script"
+{ echo "sleep() { :; }"; cat "$module_dir/module.sh"; } > "$script"
 sg_write "stock" > "$tmp/framework.odex"
 sg_write "NEEV.KOR.0000.V039.001.260902" > "$tmp/props/ro.build.product"
 sg_write "19" > "$tmp/props/ro.build.version.sdk"

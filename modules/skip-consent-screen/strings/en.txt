@@ -1,0 +1,6 @@
+name=Skip consent screen
+summary=Dismiss the startup safety notice automatically.
+note=The driver remains responsible for safe operation.
+restore_note=After disabling, restart the head unit to restore the stock notice.
+on_result=The startup notice closes by itself.
+off_result=The stock notice returns after a restart.

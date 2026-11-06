@@ -2,6 +2,7 @@
 """Build deterministic NEMESIS archives and a signed release manifest."""
 import argparse
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -31,6 +32,32 @@ def add_zip(path, files):
             mode = 0o755 if name.endswith("/") or name.endswith(".sh") or name.endswith("/hmg-seogaemo-root") else 0o644
             info.external_attr = (mode << 16) | (0x10 if name.endswith("/") else 0)
             archive.writestr(info, source if isinstance(source, bytes) else source.read_bytes())
+
+
+def bundled_hsm(module, version):
+    """A module in package form, packed like tools/hsm pack, with the package version filled in."""
+    members = {}
+    for path in sorted(module.rglob("*")):
+        relative = path.relative_to(module).as_posix()
+        if not path.is_file() or path.name.startswith(".") or relative.startswith("test/") or relative == "hookpoints.required":
+            continue
+        data = path.read_bytes()
+        if relative == "module.properties":
+            if data.count(b"version=@VERSION@\n") != 1:
+                raise ValueError(f"{module.name}: version must be @VERSION@")
+            data = data.replace(b"@VERSION@", version.encode())
+        members[relative] = data
+    required = module / "hookpoints.required"
+    if required.is_file():
+        members["files/hookpoints.txt"] = required.read_bytes()
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in sorted(members.items()):
+            info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            archive.writestr(info, data)
+    return buffer.getvalue()
 
 
 def apk_version(apk, aapt):
@@ -76,6 +103,11 @@ def build(aapt):
         if source.is_file():
             files[f"maps/{source.relative_to(ROOT / 'maps').as_posix()}"] = source
     for module in sorted((ROOT / "modules").iterdir()):
+        if (module / "module.properties").is_file() and "\napi=" in "\n" + (module / "module.properties").read_text():
+            packed = bundled_hsm(module, version)
+            files[f"bundled/{module.name}.hsm"] = packed
+            files[f"bundled/{module.name}.sha256"] = hashlib.sha256(packed).hexdigest().encode()
+            continue
         payload = module / "payload"
         if payload.is_dir():
             files[f"modules/{module.name}.d/"] = b""
@@ -94,7 +126,7 @@ def build(aapt):
     ota_files = {"app/hmg-seogaemo.apk": apk, "VERSION": (version + "\n").encode(),
                  "update_roots.pem": ROOT / "app/res/raw/update_roots.pem"}
     for name, source in files.items():
-        if name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/")) or name in ("modules.list", "modules.graph", "modules.lines"):
+        if name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/", "bundled/")) or name in ("modules.list", "modules.graph", "modules.lines"):
             ota_files[name] = source
     add_zip(ota_zip, ota_files)
     assets = [apk_asset, package_zip, usb_zip, ota_zip]

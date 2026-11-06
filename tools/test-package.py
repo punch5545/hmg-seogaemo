@@ -51,6 +51,8 @@ def run():
                     "core/stock.sh", "lib/stock.sh", "core/uninstall-detached.sh", "core/foreign.sh",
                     "core/map/hmg-seogaemo-mapper.jar", "core/hmg-seogaemo-map.sh", "hookpoints/framework.json",
                     "hookpoints.required/wireless-carplay-and-aa",
+                    "bundled/skip-consent-screen.hsm", "bundled/skip-consent-screen.sha256",
+                    "bundled/user-button-head-unit.hsm", "bundled/user-button-shortcut.hsm",
                     "maps/hyundai/ioniq5/kor/260902/map.json",
                     "maps/hyundai/ioniq5/kor/260902/car.json"}
         assert required <= entries, required - entries
@@ -70,7 +72,7 @@ def run():
         assert ota.read("app/hmg-seogaemo.apk") == package.read("app/hmg-seogaemo.apk")
         assert ota.read("update_roots.pem") == (ROOT / "app/res/raw/update_roots.pem").read_bytes()
         for name in ota.namelist():
-            assert name in ("VERSION", "update_roots.pem", "app/hmg-seogaemo.apk", "modules.list", "modules.graph", "modules.lines") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/"))
+            assert name in ("VERSION", "update_roots.pem", "app/hmg-seogaemo.apk", "modules.list", "modules.graph", "modules.lines") or name.startswith(("bin/", "lib/", "modules/", "core/", "svc/", "hookpoints/", "hookpoints.required/", "maps/", "bundled/"))
             if name in entries:
                 assert ota.read(name) == package.read(name)
         usb_meta = descriptor(usb.read("NEMESIS.data"))

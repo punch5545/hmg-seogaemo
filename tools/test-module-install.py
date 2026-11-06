@@ -323,9 +323,108 @@ def test_usb_import(car):
     car.root("module", "usb-import", "x", code=2)
 
 
+RAW = {
+    "module.properties": "id=raw-demo\nversion=1.0.0\napi=1\ncars=NEEV.KOR.*.260902\nraw_shell=1\n"
+                         "owns_props=persist.raw.demo\n",
+    "module.sh": '. "$HMG_SEOGAEMO_BASE/lib/common.sh"\n'
+                 'case "$1" in\n'
+                 '    status) if sg_applied persist.raw.demo; then sg_status on none on; else sg_status off none off; fi ;;\n'
+                 '    precheck) sg_status off none ready ;;\n'
+                 '    apply) sg_prop_set persist.raw.demo on && sg_status on none on ;;\n'
+                 '    revert) sg_revert_all && sg_status off none off ;;\n'
+                 '    *) exit 2 ;;\n'
+                 'esac\nexit $?\n',
+    "strings/en.txt": "name=Raw\nsummary=Bundled raw module\n",
+}
+
+
+def bundle(car, files):
+    (car.base / "bundled").mkdir(exist_ok=True)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, text in files.items():
+            archive.writestr(name, text)
+    (car.base / "bundled/raw-demo.hsm").write_bytes(buffer.getvalue())
+    (car.base / "bundled/raw-demo.sha256").write_text(hashlib.sha256(buffer.getvalue()).hexdigest())
+
+
+def test_bundled(car):
+    direct_raw = variant(**{"module.properties": SAMPLE["module.properties"] + "raw_shell=1\n"})
+    assert "HSM-E202" in car.root("module", "install", car.offer(direct_raw), code=1)
+    bundle(car, RAW)
+    first = car.root("module", "install-bundled")
+    listed = car.root("module", "list")
+    assert "raw-demo,1.0.0,bundled" in listed, (first, listed)
+    assert "bundle_sha256=" in (car.data / "installed/raw-demo.properties").read_text()
+    # A reserved ID cannot come in through the inbox.
+    assert "bundled with HMG-Seogaemo" in car.root("module", "install", car.offer(RAW), code=3)
+    assert "state=on" in car.root("raw-demo", "apply")
+    assert car.prop("persist.raw.demo") == "on"
+    # Same targets: replaced in place while on, state kept.
+    bundle(car, dict(RAW, **{"module.properties": RAW["module.properties"].replace("1.0.0", "1.0.1")}))
+    car.root("module", "install-bundled")
+    assert "raw-demo,1.0.1,bundled" in car.root("module", "list")
+    assert "state=on" in car.root("raw-demo", "status")
+    # Different targets while on: the old copy stays.
+    wider = RAW["module.properties"].replace("1.0.0", "1.0.2").replace("persist.raw.demo", "persist.raw.demo,persist.raw.more")
+    bundle(car, dict(RAW, **{"module.properties": wider}))
+    assert "Turn raw-demo off" in car.root("module", "install-bundled")
+    assert "raw-demo,1.0.1,bundled" in car.root("module", "list")
+    # Removal is remembered; the next check does not bring it back.
+    car.root("module", "remove", "raw-demo")
+    assert car.prop("persist.raw.demo") != "on"
+    assert (car.data / "bundled-removed/raw-demo").is_file()
+    car.root("module", "install-bundled")
+    assert "raw-demo" not in car.root("module", "list")
+
+
+def test_converted_builtin(car):
+    # Every converted module packs, installs as bundled, keeps its touched list and runs its own root script.
+    sys.path.insert(0, str(ROOT / "tools"))
+    from package import bundled_hsm
+    expected = {
+        "skip-consent-screen": ("raw_shell=1", "restore=reboot", "service_calls=com.hkmc.factory:82", "watch=boot,screen_on"),
+        "user-button-head-unit": ("raw_shell=1", "owns_props=persist.sys.key.custom",
+                                  "reassert_props=persist.sys.key.custom", "watch=boot,screen_on", "restart=none"),
+        "user-button-shortcut": ("raw_shell=1", "owns_props=persist.sys.key.swrccustom",
+                                 "reassert_props=persist.sys.key.swrccustom", "watch=boot,screen_on", "restart=none"),
+        "wireless-adb": ("raw_shell=1", "owns_props=persist.service.adb.tcp.enable,persist.adb.tcp.port",
+                         "services=adbd", "restart=adbd"),
+        "wifi-client": ("raw_shell=1", "owns_props=persist.wifi.state",
+                        "owns_files=/system/etc/permissions/android.hardware.wifi.xml",
+                        "excludes=wireless-carplay-and-aa", "restart=head_unit"),
+    }
+    converted = sorted(p.parent.name for p in (ROOT / "modules").glob("*/module.properties")
+                       if "\napi=" in "\n" + p.read_text())
+    assert set(expected) <= set(converted), converted
+    (car.base / "bundled").mkdir(exist_ok=True)
+    (car.data / "desired").mkdir(exist_ok=True)
+    for module_id in converted:
+        data = bundled_hsm(ROOT / "modules" / module_id, "1.2.3")
+        (car.base / f"bundled/{module_id}.hsm").write_bytes(data)
+        (car.base / f"bundled/{module_id}.sha256").write_text(hashlib.sha256(data).hexdigest())
+    (car.data / "desired/skip-consent-screen").write_text("on")
+    out = car.root("module", "install-bundled")
+    listed = car.root("module", "list")
+    for module_id in converted:
+        assert f"{module_id},1.2.3,bundled" in listed, (module_id, out)
+        manifest = (car.data / f"installed/{module_id}.properties").read_text().splitlines()
+        for line in expected.get(module_id, ()):
+            assert line in manifest, (module_id, line, manifest)
+        described = car.root("module", "describe", module_id, "ko")
+        assert "info.str_name=" in described and "info.str_summary=" in described, described
+        status = subprocess.run([SHELL, str(car.base / "bin/hmg-seogaemo-root"), module_id, "status"],
+                                env=car.env, capture_output=True, text=True, timeout=120).stdout
+        assert "state=" in status, (module_id, status)
+    assert (car.data / "installed/skip-consent-screen.hookpoints").read_text().strip()
+    status = subprocess.run([SHELL, str(car.base / "bin/hmg-seogaemo-root"), "skip-consent-screen", "status"],
+                            env=car.env, capture_output=True, text=True, timeout=120).stdout
+    assert "info.desired=on" in status, status
+
+
 def main():
     for test in (test_install_validation, test_lifecycle, test_reconcile_reapplies, test_hook_host, test_usb_import,
-                 test_button_action):
+                 test_button_action, test_bundled, test_converted_builtin):
         with tempfile.TemporaryDirectory() as directory:
             test(Car(Path(directory).resolve()))
     print("installed module tests passed")

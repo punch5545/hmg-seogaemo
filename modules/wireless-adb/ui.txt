@@ -1,0 +1,11 @@
+enable module=wifi-client label=@connect_other_wifi
+value label=@effective_port key=effective_port
+value label=@daemon_state key=adbd_state
+value label=@hotspot_ssid key=hotspot_ssid
+value label=@hotspot_ip key=hotspot_ip
+value label=@adb_endpoint key=adb_endpoint
+value label=@client_ip key=client_ip
+value label=@client_adb_endpoint key=client_adb_endpoint
+info @connect_note
+info @security_note
+info @restore_note

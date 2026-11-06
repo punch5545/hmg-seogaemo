@@ -151,9 +151,10 @@ sed -e "s|/system/bin/sh|$car_shell|g" \
     -e "s|^xml=/system/|xml=$work/system/|" \
     -e "s|/system/wifi/|$work/system/wifi/|g" \
     -e "s|/sys/class/net/wlan0|$work/sys/class/net/wlan0|" \
-    "$repo/modules/wifi-client/root/wifi-client.sh" > "$work/wifi-client.sh"
+    "$repo/modules/wifi-client/module.sh" > "$work/wifi-client.sh"
 
-cp "$repo/modules/wifi-client/payload/android.hardware.wifi.xml" "$work/base/android.hardware.wifi.xml"
+mkdir -p "$work/base/files"
+cp "$repo/modules/wifi-client/files/android.hardware.wifi.xml" "$work/base/files/android.hardware.wifi.xml"
 export TEST_WORK=$work HMG_SEOGAEMO_BASE=$work/base HMG_SEOGAEMO_STATE=$work/state HMG_SEOGAEMO_MODULE_DIR=$work/base
 # Keep the test harness on the host PATH, but execute the module with only
 # toolbox-like commands. Forbidden names are explicit failing stubs.

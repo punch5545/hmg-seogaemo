@@ -1,0 +1,3 @@
+open screen=wifi_settings
+value label=@client_ip key=client_ip
+info @note

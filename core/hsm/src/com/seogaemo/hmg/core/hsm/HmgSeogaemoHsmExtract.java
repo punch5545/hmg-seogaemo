@@ -79,7 +79,8 @@ public final class HmgSeogaemoHsmExtract {
         if (directory) return "strings".equals(path) || "files".equals(path) || path.startsWith("files/");
         if (path.startsWith("files/")) return true;
         if (path.matches("strings/[a-z]{2}(-[A-Z]{2})?\\.txt")) return true;
-        return path.equals("module.properties") || path.equals("apply.sh") || path.equals("check.sh")
+        // module.sh is accepted here and refused later unless the package is bundled with raw_shell=1.
+        return path.equals("module.properties") || path.equals("apply.sh") || path.equals("check.sh") || path.equals("module.sh")
                 || path.equals("status.sh") || path.equals("ui.txt") || path.equals("README.md");
     }
 

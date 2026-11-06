@@ -131,7 +131,7 @@ for name in awk sed tail head cut tr wc sort uniq xargs find stat readlink \
 done
 export FAKE_ROOT="$tmp" HMG_SEOGAEMO_BASE="$tmp/base" HMG_SEOGAEMO_STATE="$tmp/state"
 script="$tmp/wireless-adb.sh"
-python3 - "$module_dir/root/wireless-adb.sh" "$script" "$tmp" <<'PYFIXTURE'
+python3 - "$module_dir/module.sh" "$script" "$tmp" <<'PYFIXTURE'
 from pathlib import Path
 import sys
 Path(sys.argv[2]).write_text(Path(sys.argv[1]).read_text().replace('/proc/net/tcp6', sys.argv[3]+'/tcp6').replace('/proc/net/tcp', sys.argv[3]+'/tcp'))

@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory() as directory:
     def prop(key, value): (base / 'props' / key).write_text(value)
     def run(verb, expected, code=0, module=MODULE, module_state=state, event=None):
         module_env = dict(env, HMG_SEOGAEMO_STATE=str(module_state))
-        args = [SHELL, str(module / 'root' / (module.name + '.sh')), verb]
+        args = [SHELL, str(module / 'module.sh'), verb]
         if event is not None: args.append(event)
         p = subprocess.run(args, env=module_env, capture_output=True, text=True)
         assert p.returncode == code, (verb, p.stdout, p.stderr)

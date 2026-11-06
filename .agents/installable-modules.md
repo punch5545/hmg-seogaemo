@@ -21,8 +21,45 @@ reconcile of `module-runtime-contract.md`.
 Implemented: root runtime (P1: `lib/hsm.sh`, `core/hsm-module.sh`, `core/module.sh`, `core/hsm/`), app data
 layer (P2), `tools/hsm` (P5), core hook host (P3, host-tested only, see Core hook host), module screens and
 USB install UX (P6, see `ui-redesign.md`; on-car check pending).
-Not implemented: conversion of built-ins (P4), `hsm test`, `hsm logs`, CarPlay
+Bundled (P4): `skip-consent-screen`, `user-button-head-unit`, `user-button-shortcut`, `wireless-adb`,
+`wifi-client` (raw_shell, see Bundled modules). Not implemented: converting `wireless-carplay-and-aa` (needs the
+CarPlay migration to the core hook host), `hsm test`, `hsm logs`, CarPlay
 migration to the core host, the registry/store. `raw_shell` and `app_data_dir` are still refused.
+
+## Bundled modules (P4, owner decision 2026-11-06)
+
+Built-in modules become `.hsm` packages that ship inside the NEMESIS package and are installed
+automatically (option A: pre-installed, removable). Converted one at a time; a converted module has no Java
+class, no Android resources and no `modules.list` entry.
+
+- Source: `modules/<id>/` holds the package members directly (`module.properties` with `api=1`,
+  `strings/`, optional `ui.txt`, `files/`, and either `apply.sh` or, with `raw_shell=1`, `module.sh`), plus
+  `test/run.sh`. `gen-modules.sh` skips directories whose `module.properties` has `api=`. The build packs each
+  into `bundled/<id>.hsm` plus its SHA-256 in `bundled/<id>.sha256` (the extractor verifies the archive
+  against it) in the NEMESIS package and OTA; `version=@VERSION@` becomes the package version.
+- `raw_shell=1` is accepted only for bundled packages. Such a module ships `module.sh` (the former
+  `root/<id>.sh`, same verbs `status|precheck|apply|revert|watch`) and declares its touched list with the
+  existing keys (`owns_props`, `owns_files`, `owns_lines.N`, `services`, `service_calls`, `reassert_props`,
+  `owns_generated_dirs`, `restore`); the runtime enforces them exactly as for built-ins. `apply.sh` is then
+  not required. The dispatcher runs `installed/<id>/module.sh` for such a manifest (`source=bundled`,
+  `raw_shell=1`).
+- Install: `svc/reconcile.sh` runs `module.sh install-bundled` (no arguments; only the package's own
+  `bundled/*.hsm`) after Android is ready and before modules are reverted or applied; `scripts/postinstall.sh`
+  also runs it right after the APK step when Android is ready, so a USB install shows them without a restart. A bundled module is
+  installed when it is not installed and not removed by the owner (`<data>/bundled-removed/<id>`). Same
+  version: nothing. Other version: replaced in place, even while on, only when the generated ownership keys
+  are identical; otherwise the old copy stays and the reason is logged. The state directory, desired state
+  and settings are keyed by ID, so a module that was on as a built-in stays on after conversion.
+- `wifi-client` declares `not_with=wireless-carplay-and-aa`; the CarPlay built-in no longer lists it, and the
+  dispatcher and app planner apply exclusions in both directions. Foreign cleanup recognises the HMG-API Wi-Fi
+  XML by its MD5, so it works after `wifi-client` is removed.
+- IDs of bundled packages are reserved: a direct install with such an ID is refused. Removing a bundled
+  module (normal `module remove`) records `bundled-removed/<id>`. Adding it back from the app is not
+  implemented yet.
+- `module list` reports `bundled` as the source; the app treats it like an installed package.
+- Converted so far: `skip-consent-screen`, `user-button-head-unit`, `user-button-shortcut` (all `raw_shell=1`
+  with their former root scripts). The user-button broadcast receiver is app code
+  (`com.seogaemo.hmg.UserButtonReceiver`), not module code.
 
 ## Package
 
@@ -321,8 +358,11 @@ replaces `OPEN_STOCK_WIFI_SETTINGS`). Unknown blocks refuse install. State-chang
 `ui.ConfirmDialog`. No Java from modules in API 1, so the app process stays free of third-party code. Home
 tiles (`Module.homeTiles`) are dropped: no module uses them and the Home redesign does not need them.
 
-The app draws every block with its own fixed row components, so all modules share one look. The detail
-panel and the module card already show the state, so the app ignores `status` (still accepted). `status.sh`
+The app draws every block with its own fixed row components, so all modules share one look. As for built-in
+modules, 옵션 lists only what the user can change: `info` text is shown behind the 도움말 row and `value` rows
+appear in the developer-only diagnostics (skipped when the status has no such key). The detail
+panel and the module card already show the state, so the app ignores `status` (still accepted). Optional
+strings `on_result` and `off_result` are shown as the result line in the on/off confirm. `status.sh`
 may print `info note ...`; that value is the one-line note under the module name on its card.
 
 ## Root verbs and storage

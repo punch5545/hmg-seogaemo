@@ -40,14 +40,19 @@ hmgapi_residue() {
 # Once HMG-API is gone they stay behind with no wifi-client record, and wifi-client refuses to touch them.
 wifi_xml=$sys/system/etc/permissions/android.hardware.wifi.xml
 wifi_prop=${SG_PROPERTY_ROOT:-/data/property}/persist.wifi.state
-wifi_ref=$base/modules/wifi-client.d/android.hardware.wifi.xml
+# MD5 of wifi-client's files/android.hardware.wifi.xml (the bundled module may be removed).
+wifi_ref_md5=81d3142ca5e8586c25d0b3cab196b9a7
 wifi_recorded() {
     for fg_rec in "$SG_DATA_ROOT"/modules/wifi-client/file.*/applied "$SG_DATA_ROOT"/modules/wifi-client/prop.*/applied; do
         [ -e "$fg_rec" ] && return 0
     done
     return 1
 }
-wifi_xml_left() { [ -f "$wifi_xml" ] && [ -f "$wifi_ref" ] && cmp "$wifi_ref" "$wifi_xml" > /dev/null 2>&1; }
+wifi_xml_left() {
+    [ -f "$wifi_xml" ] || return 1
+    set -- $(md5 "$wifi_xml" 2>/dev/null)
+    [ "${1:-}" = "$wifi_ref_md5" ]
+}
 wifi_prop_left() { [ -f "$wifi_prop" ] && [ "$(cat "$wifi_prop" 2>/dev/null)" = 3 ]; }
 hmgapi_wifi() {
     has_pkg hmgapi && return 1

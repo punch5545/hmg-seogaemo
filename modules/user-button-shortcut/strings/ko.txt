@@ -1,0 +1,7 @@
+name=스티어링 휠 사용자 버튼
+summary=스티어링 휠 사용자 버튼으로 HMG-Seogaemo를 엽니다.
+assignment=이 버튼의 지금 기능 대신 HMG-Seogaemo가 열립니다.
+note_override=켜져 있는 동안에는 순정 버튼 설정에서 고른 기능도 덮어씁니다.
+note_restore=끄면 처음 저장한 원래 기능으로 정확히 돌아갑니다.
+on_result=스티어링 휠 사용자 버튼이 HMG-Seogaemo를 엽니다.
+off_result=원래 버튼 기능으로 돌아갑니다.

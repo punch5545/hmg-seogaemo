@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Fixed installed-module commands: install <sha256>, remove <id>, list, usb-import.
+# Fixed installed-module commands: install <sha256>, remove <id>, list, usb-import, install-bundled.
 # Packages come only from fixed inbox directories, by content digest.
 umask 077
 base=${0%/*}
@@ -10,7 +10,9 @@ HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/module
 export SG_DATA_ROOT HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE
 . "$base/lib/common.sh"
 . "$base/lib/hsm.sh"
-case "${1:-}:$#" in list:1|usb-import:1|install:2|remove:2|describe:3) ;; *) exit 2;; esac
+case "${1:-}:$#" in list:1|usb-import:1|install-bundled:1|install:2|remove:2|describe:3) ;; *) exit 2;; esac
+bundled=$base/bundled
+mi_mode=direct
 installed=$SG_DATA_ROOT/installed
 lock=$SG_DATA_ROOT/operation.lock
 lock_owned=0
@@ -71,8 +73,9 @@ mi_list() {
     mi_n=0
     for mi_id in $(sg_module_list "$base"); do
         mi_n=$((mi_n + 1))
-        if sg_module_builtin "$base" "$mi_id"; then mi_source=builtin; else mi_source=direct; fi
         mi_props=$(sg_module_props "$base" "$mi_id")
+        if sg_module_builtin "$base" "$mi_id"; then mi_source=builtin; else mi_source=$(mi_field source "$mi_props"); fi
+        [ "$mi_source" = bundled ] || [ "$mi_source" = builtin ] || mi_source=direct
         sg_print "info.module_$(mi_snake "$mi_id")=$mi_id,$(mi_field version "$mi_props"),$mi_source,$mi_n"
     done
     sg_status on none 'Module list'
@@ -162,7 +165,10 @@ mi_check_props() {
             setting.[1-9]|setting.[1-9][0-9])
                 hsm_setting_decl "${mi_val%%:*}" && hsm_setting_valid "$hsm_sdefault" ;;
             icon) case "$mi_val" in box|wifi|phone|terminal|car|gear|display|speaker|camera|map|power|key|skip|button|link|bolt) ;; *) false;; esac ;;
-            raw_shell) mi_fail "HSM-E202 raw_shell needs developer mode, which this runtime does not provide yet" ;;
+            raw_shell) [ "$mi_mode" = bundled ] && [ "$mi_val" = 1 ] || mi_fail "HSM-E202 raw_shell is allowed only for modules bundled with HMG-Seogaemo" ;;
+            owns_props|reassert_props|owns_files|owns_generated_dirs|services|service_calls|restore|owns_lines.[1-9]|owns_lines.[1-9][0-9])
+                [ "$mi_mode" = bundled ] || mi_fail "HSM-E203 module.properties: unknown key $mi_key"
+                mi_check_owned "$mi_key" "$mi_val" ;;
             *) mi_fail "HSM-E203 module.properties: unknown key $mi_key" ;;
         esac || mi_fail "HSM-E204 module.properties: bad value for $mi_key"
     done < "$mi_props"
@@ -186,6 +192,48 @@ mi_check_props() {
             case "$mi_point" in ''|*[!a-z0-9_.]*) mi_fail "HSM-E207 $mi_hooks: bad hookpoint ID";; esac
         done < "$mi_pkg/$mi_hooks"
     fi
+}
+
+# Declared touched list of a raw_shell bundled module (the runtime enforces it like a built-in's).
+mi_check_owned() {
+    mi_old_ifs=$IFS
+    IFS=,
+    for mi_item in $2; do
+        IFS=$mi_old_ifs
+        case "$1" in
+            owns_props|reassert_props) hsm_ok_prop "$mi_item" ;;
+            owns_files|owns_generated_dirs) hsm_ok_path "$mi_item" ;;
+            services) hsm_ok_service "$mi_item" ;;
+            service_calls) hsm_ok_service "${mi_item%:*}" && hsm_ok_code "${mi_item##*:}" ;;
+            restore) case "$mi_item" in exact|reboot) ;; *) false;; esac ;;
+            owns_lines.*) hsm_ok_path "${2%%:*}" && case "$2" in *:?*) ;; *) false;; esac; IFS=$mi_old_ifs; return ;;
+        esac || { IFS=$mi_old_ifs; return 1; }
+    done
+    IFS=$mi_old_ifs
+}
+
+mi_raw() { grep -Fxq raw_shell=1 "$1/module.properties"; }
+
+# One line per declared target, in the format hsm_walk touched writes.
+mi_declared_touched() {
+    while IFS='=' read -r mi_key mi_val; do
+        mi_old_ifs=$IFS
+        IFS=,
+        case "$mi_key" in
+            owns_props) for mi_t in $mi_val; do sg_print "prop	$mi_t"; done ;;
+            reassert_props) for mi_t in $mi_val; do sg_print "reassert	$mi_t"; done ;;
+            owns_files) for mi_t in $mi_val; do sg_print "file	$mi_t"; done ;;
+            services) for mi_t in $mi_val; do sg_print "service	$mi_t"; done ;;
+            service_calls) for mi_t in $mi_val; do sg_print "call	$mi_t"; done ;;
+            owns_lines.*) sg_print "line	$mi_val" ;;
+        esac
+        IFS=$mi_old_ifs
+    done < "$1/module.properties"
+}
+
+# Ownership lines of a generated manifest, compared before replacing a bundled module that is on.
+mi_ownership() {
+    grep -E '^(owns_props|reassert_props|owns_files|owns_generated_dirs|services|service_calls|restore|hooks|owns_lines\.[0-9]+)=' "$1" 2>/dev/null
 }
 
 # describe must fit the app's 8 KiB root output (two string files, ui.txt and
@@ -338,7 +386,7 @@ mi_generate() {
         case ",$mi_excludes," in *,wireless-carplay-and-aa,*) ;; *) mi_excludes=$mi_excludes${mi_excludes:+,}wireless-carplay-and-aa;; esac
     fi
     {
-        sg_print "id=$mi_id" "version=$(mi_field version "$mi_src")" api=1 source=direct \
+        sg_print "id=$mi_id" "version=$(mi_field version "$mi_src")" api=1 "source=$mi_mode" \
             "cars=$(mi_field cars "$mi_src")" "restart=$mi_restart" \
             "depends=$(mi_field depends "$mi_src")" "excludes=$mi_excludes" \
             "conflicts=$(mi_field conflicts "$mi_src")" "uses=$(mi_field uses "$mi_src")" \
@@ -346,7 +394,12 @@ mi_generate() {
             "reassert_props=$mi_reassert" "owns_files=$mi_files" "services=$mi_services" \
             "service_calls=$mi_calls"
         [ "$mi_hooks" -eq 0 ] || sg_print hooks=1
-        if [ -n "$mi_calls" ] && [ -z "$mi_props_csv$mi_files$mi_services" ] && [ "$mi_lines" -eq 0 ]; then
+        [ -z "$mi_bundle_md5" ] || sg_print "bundle_sha256=$mi_bundle_md5"
+        if [ "$mi_rawshell" -eq 1 ]; then
+            sg_print raw_shell=1
+            mi_v=$(mi_field owns_generated_dirs "$mi_src"); [ -z "$mi_v" ] || sg_print "owns_generated_dirs=$mi_v"
+            mi_v=$(mi_field restore "$mi_src"); [ -z "$mi_v" ] || sg_print "restore=$mi_v"
+        elif [ -n "$mi_calls" ] && [ -z "$mi_props_csv$mi_files$mi_services" ] && [ "$mi_lines" -eq 0 ]; then
             sg_print restore=reboot
         fi
         mi_n=0
@@ -402,32 +455,54 @@ mi_install() {
         if [ -f "$mi_inbox/$1.hsm" ] && [ ! -L "$mi_inbox/$1.hsm" ]; then mi_source=$mi_inbox/$1.hsm; break; fi
     done
     [ -n "$mi_source" ] || mi_fail 'Package not found'
+    mi_bundle_md5=
+    mi_install_file "$mi_source" "$1"
+}
+
+# Installs one package file; mi_mode is direct (inbox) or bundled (this package's bundled/).
+mi_install_file() {
     [ ! -f "$SG_DATA_ROOT/uninstall/pending" ] || mi_conflict 'Uninstall pending'
     mkdir -p "$SG_DATA_ROOT/staging" "$installed" && chmod 700 "$SG_DATA_ROOT/staging" "$installed" ||
         mi_fail 'Could not prepare staging'
-    work=$SG_DATA_ROOT/staging/$1.$$
-    cp "$mi_source" "$work.hsm" || mi_fail 'Could not copy package'
-    mi_extract "$1"
+    work=$SG_DATA_ROOT/staging/$2.$$
+    cp "$1" "$work.hsm" || mi_fail 'Could not copy package'
+    mi_extract "$2"
     mi_id=$(mi_field id "$work.d/module.properties")
     hsm_ok_id "$mi_id" || mi_fail 'HSM-E204 module.properties: bad value for id'
     ! sg_module_builtin "$base" "$mi_id" || mi_conflict "$mi_id is a built-in module"
+    if [ "$mi_mode" = direct ] && [ -f "$bundled/$mi_id.hsm" ]; then mi_conflict "$mi_id is bundled with HMG-Seogaemo"; fi
     HSM_MODULE_ID=$mi_id
     mi_check_props "$work.d"
     mi_check_text "$work.d"
     HMG_SEOGAEMO_MODULE_DIR=$work.d
-    hsm_walk "$work.d/apply.sh" apply validate || exit 2
-    for mi_kind in check status; do
-        [ ! -f "$work.d/$mi_kind.sh" ] || hsm_walk "$work.d/$mi_kind.sh" "$mi_kind" validate || exit 2
-    done
-    mi_check_ui "$work.d"
-    hsm_walk "$work.d/apply.sh" apply touched > "$work.touched" || exit 2
-    if mi_other=$(mi_collides); then mi_conflict "Changes the same file or line as $mi_other"; fi
-    if [ -d "$installed/$mi_id" ]; then
-        [ "$(cat "$SG_DATA_ROOT/desired/$mi_id" 2>/dev/null)" != on ] || mi_conflict "Turn $mi_id off before updating it"
-        (HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$mi_id; ! sg_restore_material) ||
-            mi_conflict "$mi_id still has changes to restore"
+    mi_rawshell=0
+    if mi_raw "$work.d"; then
+        mi_rawshell=1
+        [ -f "$work.d/module.sh" ] || mi_fail 'HSM-E210 module.sh: missing'
+        for mi_kind in check status; do
+            [ ! -f "$work.d/$mi_kind.sh" ] || hsm_walk "$work.d/$mi_kind.sh" "$mi_kind" validate || exit 2
+        done
+        mi_check_ui "$work.d"
+        mi_declared_touched "$work.d" > "$work.touched"
+    else
+        [ ! -f "$work.d/module.sh" ] || mi_fail 'HSM-E210 module.sh: needs raw_shell'
+        hsm_walk "$work.d/apply.sh" apply validate || exit 2
+        for mi_kind in check status; do
+            [ ! -f "$work.d/$mi_kind.sh" ] || hsm_walk "$work.d/$mi_kind.sh" "$mi_kind" validate || exit 2
+        done
+        mi_check_ui "$work.d"
+        hsm_walk "$work.d/apply.sh" apply touched > "$work.touched" || exit 2
     fi
+    if mi_other=$(mi_collides); then mi_conflict "Changes the same file or line as $mi_other"; fi
     mi_generate
+    if [ -d "$installed/$mi_id" ]; then
+        if [ "$(cat "$SG_DATA_ROOT/desired/$mi_id" 2>/dev/null)" = on ] ||
+            (HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/modules/$mi_id; sg_restore_material); then
+            # A bundled module may be replaced while on only when it touches exactly the same targets.
+            [ "$mi_mode" = bundled ] && [ "$(mi_ownership "$installed/$mi_id.properties")" = "$(mi_ownership "$work.properties")" ] ||
+                mi_conflict "Turn $mi_id off before updating it"
+        fi
+    fi
     rm -rf "$installed/$mi_id.new" "$installed/$mi_id.old"
     mv "$work.d" "$installed/$mi_id.new" || mi_fail 'Could not publish module'
     if [ -d "$installed/$mi_id" ]; then mv "$installed/$mi_id" "$installed/$mi_id.old" || mi_fail 'Could not publish module'; fi
@@ -443,6 +518,32 @@ mi_install() {
     mi_graph || mi_fail 'Could not record module'
     sg_ledger module_install "$mi_id" "" "" "" ok || :
     sg_status on none "Installed $mi_id $(mi_field version "$installed/$mi_id.properties")"
+}
+
+# Installs or updates every package in bundled/ that the owner has not removed. Each runs in its own
+# subshell so one bad package never stops the others.
+mi_install_bundled() {
+    mi_any=0
+    for mi_file in "$bundled"/*.hsm; do
+        [ -f "$mi_file" ] && [ ! -L "$mi_file" ] || continue
+        mi_bid=${mi_file##*/}
+        mi_bid=${mi_bid%.hsm}
+        hsm_ok_id "$mi_bid" || continue
+        [ ! -f "$SG_DATA_ROOT/bundled-removed/$mi_bid" ] || continue
+        # The build writes each package's SHA-256 beside it; the extractor verifies the archive against it.
+        mi_sum=$(cat "$bundled/$mi_bid.sha256" 2>/dev/null)
+        case "$mi_sum" in ????????????????????????????????????????????????????????????????) ;; *) continue;; esac
+        case "$mi_sum" in *[!0-9a-f]*) continue;; esac
+        if [ -f "$installed/$mi_bid.properties" ] && [ "$(mi_field bundle_sha256 "$installed/$mi_bid.properties")" = "$mi_sum" ]; then
+            continue
+        fi
+        mi_any=1
+        mi_out=$(lock_owned=0; work=; trap cleanup EXIT; mi_mode=bundled; mi_bundle_md5=$mi_sum
+            mi_install_file "$mi_file" "$mi_sum" 2>&1)
+        sg_print "bundled $mi_bid: $(sg_clean "$mi_out")"
+    done
+    [ "$mi_any" -eq 0 ] || sg_log 'bundled modules checked'
+    sg_status on none 'Bundled modules checked'
 }
 
 mi_remove() {
@@ -477,6 +578,9 @@ mi_remove() {
     mi_graph || mi_fail 'Could not update module list'
     rm -rf "$installed/$mi_id" "$installed/$mi_id.properties" "$installed/$mi_id.hookpoints" "$SG_DATA_ROOT/settings/$mi_id" \
         "$SG_DATA_ROOT/desired/$mi_id" "$mi_state"
+    if [ "$(mi_field source "$installed/$mi_id.properties" 2>/dev/null)" = bundled ] || [ -f "$bundled/$mi_id.hsm" ]; then
+        mkdir -p "$SG_DATA_ROOT/bundled-removed" && : > "$SG_DATA_ROOT/bundled-removed/$mi_id" || :
+    fi
     sg_ledger module_remove "$mi_id" "" "" "" ok || :
     case "$mi_out" in *state=pending-restart*)
         sg_print info.desired=off
@@ -490,5 +594,6 @@ case "$1" in
     usb-import) mi_usb_import ;;
     describe) mi_describe "$2" "$3" ;;
     install) mi_lock; mi_install "$2" ;;
+    install-bundled) mi_lock; mi_install_bundled ;;
     remove) mi_lock; mi_remove "$2" ;;
 esac

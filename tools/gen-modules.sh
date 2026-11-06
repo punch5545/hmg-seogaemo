@@ -19,6 +19,8 @@ trap 'rm -rf "$work"' 0 HUP INT TERM
 : > "$work/properties"
 for props in modules/*/module.properties; do
     [ -f "$props" ] || continue
+    # Modules in package form (api=) ship as bundled/<id>.hsm instead (tools/package.py).
+    ! grep -q '^api=' "$props" || continue
     printf '%s\n' "$props" >> "$work/properties"
 done
 : > "$work/ids"

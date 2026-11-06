@@ -97,9 +97,7 @@ def main():
 
         # HMG-API's Wi-Fi client leftovers: identical feature XML and persist.wifi.state=3, no wifi-client record.
         (temp / "property").mkdir()
-        payload = (ROOT / "modules/wifi-client/payload/android.hardware.wifi.xml").read_bytes()
-        (base / "modules/wifi-client.d").mkdir(parents=True)
-        (base / "modules/wifi-client.d/android.hardware.wifi.xml").write_bytes(payload)
+        payload = (ROOT / "modules/wifi-client/files/android.hardware.wifi.xml").read_bytes()
         xml = system / "system/etc/permissions/android.hardware.wifi.xml"
         xml.parent.mkdir(parents=True)
         xml.write_bytes(payload)

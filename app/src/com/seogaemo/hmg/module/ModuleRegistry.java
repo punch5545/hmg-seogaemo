@@ -35,7 +35,7 @@ public final class ModuleRegistry {
         for (Map.Entry<String, String> entry : list.info.entrySet()) {
             if (!entry.getKey().startsWith("module_")) continue;
             String[] fields = entry.getValue().split(",", -1);
-            if (fields.length != 4 || !"direct".equals(fields[2]) || !RootClient.validId(fields[0])) continue;
+            if (fields.length != 4 || !("direct".equals(fields[2]) || "bundled".equals(fields[2])) || !RootClient.validId(fields[0])) continue;
             try { order.put(Integer.valueOf(fields[3]), fields[0]); }
             catch (NumberFormatException bad) { return false; }
         }

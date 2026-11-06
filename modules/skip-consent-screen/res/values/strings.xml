@@ -1,8 +1,0 @@
-<resources>
-    <string name="skip_consent_screen_name">Skip consent screen</string>
-    <string name="skip_consent_screen_description">Dismiss the startup safety notice automatically.</string>
-    <string name="skip_consent_screen_note">The driver remains responsible for safe operation.</string>
-    <string name="skip_consent_screen_restore_note">After disabling, restart the head unit to restore the stock notice.</string>
-    <string name="skip_consent_screen_on_result">The startup notice closes by itself.</string>
-    <string name="skip_consent_screen_off_result">The stock notice returns after a restart.</string>
-</resources>

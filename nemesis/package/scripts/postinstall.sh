@@ -42,5 +42,9 @@ fi
 if [ "$android_ready" -eq 1 ]; then
     /system/bin/sh "$base/svc/install-pending.sh" install || exit 1
     [ ! -f "$job/pending" ] || exit 1
+    # Bundled modules appear in the app right away; boot reconcile retries (installable-modules.md).
+    if [ -d "$base/bundled" ]; then
+        SG_DATA_ROOT=$state /system/bin/sh "$base/core/module.sh" install-bundled >> "$state/reconcile.log" 2>&1 < /dev/null || :
+    fi
 fi
 [ "$android_ready" -eq 1 ] || echo 'Android is not ready; APK retained for automatic installation when ready'

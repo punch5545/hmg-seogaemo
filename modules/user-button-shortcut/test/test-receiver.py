@@ -5,7 +5,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 M = Path(__file__).resolve().parents[1]
 R = M.parents[1]
-source = M / 'src/com/seogaemo/hmg/modules/userbuttonshortcut/UserButtonReceiver.java'
+source = R / 'app/src/com/seogaemo/hmg/UserButtonReceiver.java'
 ns = '{http://schemas.android.com/apk/res/android}'
 receiver = ET.parse(R / 'app/AndroidManifest.xml').find(".//receiver")
 assert receiver.attrib[ns + 'exported'] == 'true'
@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as directory:
         }''',
         'android/util/Log.java': 'package android.util; public class Log { public static int e(String a,String b,Throwable t) { return 0; } }',
         'com/seogaemo/hmg/MainActivity.java': 'package com.seogaemo.hmg; public class MainActivity {}',
-        'Check.java': '''import android.content.*; import com.seogaemo.hmg.modules.userbuttonshortcut.UserButtonReceiver;
+        'Check.java': '''import android.content.*; import com.seogaemo.hmg.UserButtonReceiver;
             public class Check { public static void main(String[] args) {
                 Context c=new Context(); UserButtonReceiver r=new UserButtonReceiver();
                 r.onReceive(c,null); r.onReceive(c,new Intent("other"));

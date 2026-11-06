@@ -1,0 +1,15 @@
+name=Wireless ADB
+summary=Connect to ADB over Wi-Fi without USB.
+hotspot_ssid=Car hotspot SSID
+hotspot_ip=Hotspot IP
+adb_endpoint=ADB endpoint
+client_ip=Client IP
+client_adb_endpoint=Client ADB endpoint
+effective_port=Effective ADB port
+daemon_state=adbd state
+connect_note=Join the car's hotspot from a computer and run adb connect <endpoint>.
+security_note=Stock ADB does not require a key. Anyone who can reach port 5555 can connect.
+restore_note=Disabling restores the original ADB switch. If it was on, the car hotspot may stop giving IP addresses.
+connect_other_wifi=Connect to another Wi-Fi
+on_result=Computers on the car hotspot can run adb connect.
+off_result=The original ADB setting is restored.

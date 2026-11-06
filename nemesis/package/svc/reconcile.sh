@@ -98,6 +98,9 @@ while :; do
     [ "$ready_wait" -ge 30 ] || ready_wait=$((ready_wait * 2))
     [ "$ready_wait" -le 30 ] || ready_wait=30
 done
+# Modules bundled with this package are installed (or updated in place) before anything is applied.
+[ ! -f "$base/core/module.sh" ] ||
+    SG_DATA_ROOT=$state /system/bin/sh "$base/core/module.sh" install-bundled >> "$log" 2>&1 < /dev/null || :
 reverse=
 for id in $(cat "$base/modules.list" "$state/installed.list" 2>/dev/null); do reverse="$id $reverse"; done
 failed=0
