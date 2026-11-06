@@ -551,6 +551,7 @@ final class CpTurns {
 
     /** route guidance stopped (DiPO e/u.nS: the car's navigation took turn-by-turn back, or state 0) */
     void stop() {
+        guidanceStarted = false;
         laneInfos.clear();
         activeId = null;
         hudBlank();
@@ -562,6 +563,7 @@ final class CpTurns {
     void reset() {
         clearGuidance();
         lastProjection = 0;
+        guidanceStarted = false;
         laneInfos.clear();
         lastLane = null;
         activeId = null;
@@ -606,6 +608,11 @@ final class CpTurns {
             return;
         }
         activeId = id;
+        if (!guidanceStarted) {
+            // a junction picture stock navigation left before the phone took over must not persist
+            guidanceStarted = true;
+            cluster.junctionView(65535, 65535, 65535);
+        }
         selectLanes(id, u);
         lastSendAt = System.currentTimeMillis();
         if (u.state == 3 || u.state == 5) {
@@ -684,6 +691,8 @@ final class CpTurns {
         sendAhead(id, u);
     }
 
+    /** a guidance session has sent its initial junction clear */
+    private boolean guidanceStarted;
     /** projection icon of the last turn sent, resent when the AR window closes without a maneuver */
     private int lastProjection;
     private Integer approachComponent;

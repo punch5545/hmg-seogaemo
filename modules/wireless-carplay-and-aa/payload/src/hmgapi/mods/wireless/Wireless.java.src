@@ -130,6 +130,12 @@ public final class Wireless extends ModEntry {
      * phone's. Its speed limit, cameras, traps, warning distances and driver-assist
      * data still go through (phones carry none of that). Framework calls only: no app names.
      */
+    static boolean junctionClear(Object[] args) {
+        if (args == null || args.length < 2 || !(args[0] instanceof Integer) || !(args[1] instanceof Integer)) return false;
+        int a = ((Integer) args[0]).intValue(), b = ((Integer) args[1]).intValue();
+        return a == 65535 || a == 0 && b == 65535;
+    }
+
     private void navigation(final ModContext mod, final LoadedApp app) {
         if (!mod.settingBoolean("tbt", true)) return;
         final CarLaneCapture carLanes = new CarLaneCapture(mod);
@@ -137,8 +143,13 @@ public final class Wireless extends ModEntry {
         MethodHook skip = new MethodHook() {
             @Override
             protected void beforeHookedMethod(Param p) {
-                if (Car.phoneGuiding(app.context)) { p.setResult(null); return; }
                 String method = p.method.getName();
+                if (Car.phoneGuiding(app.context)) {
+                    // stock's own junction-view clear (A 65535, or 0 with B 65535) still goes through
+                    if ("updateCluDataNew_14".equals(method) && junctionClear(p.args)) return;
+                    p.setResult(null);
+                    return;
+                }
                 if ("updateLaneInfo".equals(method) || "updateTPLaneInfo".equals(method)) {
                     try {
                         for (Object arg : p.args) if (arg instanceof byte[]) {

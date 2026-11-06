@@ -25,6 +25,10 @@ public final class CpJunctionLifecycleTest {
     public static void main(String[] args) {
         setup(23,45); distance(601);
         require(pictures() == 0, "outside 600m window");
+        require(cluster.calls.indexOf(CLEAR) == 0 && java.util.Collections.frequency(cluster.calls, CLEAR) == 1,
+                "guidance start clears a stock junction view once");
+        cluster.calls.clear(); distance(601);
+        require(!cluster.calls.contains(CLEAR), "start clear is once per session");
         distance(600);
         require(pictures() == 1, "inclusive 600m entry");
         distance(590);
