@@ -116,8 +116,15 @@ public final class Cluster {
 
     /** PE14 persists until explicitly cleared with three 65535 values. */
     public void junctionView(int picture, int route, int secondRoute) {
+        // Optional point: without it the junction view is off (logged once).
+        if (!Points.has(NC + ".update_clu_data_new_14")) {
+            if (!junctionMissingLogged) HmgApi.i("cluster: junction view off, update_clu_data_new_14 not mapped");
+            junctionMissingLogged = true;
+            return;
+        }
         call("update_clu_data_new_14", picture, route, secondRoute, 0, 0);
     }
+    private boolean junctionMissingLogged;
 
     /** NavigationCluster.updateTBTInfo: the next turn (type, side street, direction, distance, ...). */
     public void tbtInfo(int type, int sideStreet, float direction, float distance, int distanceErr, int combiSideStreet,

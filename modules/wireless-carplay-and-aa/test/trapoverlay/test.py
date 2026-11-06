@@ -76,6 +76,8 @@ package hmgapi.hook;
 import java.lang.reflect.*;
 public final class Points {
     public static Class<?> recordType = CpTrapOverlayTest.Trap.class;
+    public static String absent = "";
+    public static String missing(String... ids) { return absent; }
     public static Method method(ClassLoader cl,String id) {
         if (cl!=null) throw new AssertionError("framework loader");
         try {
@@ -192,6 +194,10 @@ public final class CpTrapOverlayTest {
     public static void main(String[] args) throws Exception {
         final Context ctx=new Context(); ModContext mod=new ModContext();
         CpTrapOverlay.install(mod,new LoadedApp("other","other",null,ctx));
+        Points.absent="framework.tbt_trap_info";
+        CpTrapOverlay.install(mod,new LoadedApp("com.mnsoft.navi","navigation",null,ctx));
+        check(mod.errors==0,"missing optional points turn the bar off without errors");
+        Points.absent="";
         Points.recordType=NonIntTrap.class;
         CpTrapOverlay.install(mod,new LoadedApp("com.mnsoft.navi","navigation",null,ctx));
         check(mod.errors==1,"unsupported mapped record fails closed before hooks");

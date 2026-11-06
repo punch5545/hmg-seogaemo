@@ -51,10 +51,10 @@ Declared hook points and their exact resolved members on this car:
 | `framework.navigation_cluster.update_tp_turn_list` | `com.hkmc.cluster.NavigationCluster.updateTPTurnList` |
 | `framework.navigation_cluster.update_tp_turn_list_new` | `com.hkmc.cluster.NavigationCluster.updateTPTurnListNew` |
 | `framework.navigation_cluster.update_tp_lane_info` | `com.hkmc.cluster.NavigationCluster.updateTPLaneInfo` |
-| `framework.navigation_cluster.update_tbt_trap_info` | `com.hkmc.cluster.NavigationCluster.updateTBTTrapInfo` |
-| `framework.navigation_cluster.update_tbt_trap_info_new` | `com.hkmc.cluster.NavigationCluster.updateTBTTrapInfoNew` |
-| `framework.navigation_cluster.update_clu_data_new_14` | `com.hkmc.cluster.NavigationCluster.updateCluDataNew_14` |
-| `framework.tbt_trap_info` (`.new`, `.bar_graph_level`) | `com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo` |
+| `framework.navigation_cluster.update_tbt_trap_info` (optional) | `com.hkmc.cluster.NavigationCluster.updateTBTTrapInfo` |
+| `framework.navigation_cluster.update_tbt_trap_info_new` (optional) | `com.hkmc.cluster.NavigationCluster.updateTBTTrapInfoNew` |
+| `framework.navigation_cluster.update_clu_data_new_14` (optional) | `com.hkmc.cluster.NavigationCluster.updateCluDataNew_14` |
+| `framework.tbt_trap_info` (`.new`, `.bar_graph_level`) (optional) | `com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo` |
 | `iap2.init_info.check_supports_features` | `com.tcc.iap2server.Iap2InitInformationMsg.checkSupportsFeatures` |
 | `iap2.service.on_create` | `com.tcc.iap2server.Iap2Service.onCreate` |
 | `iap2.service_receiver.on_receive` | `com.tcc.iap2server.Iap2Service$1.onReceive` |

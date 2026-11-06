@@ -59,6 +59,12 @@ public final class CpTrapOverlay {
     /** Call once from Wireless.navigation, after its existing tbt setting/point gate. */
     public static synchronized void install(ModContext mod, LoadedApp app) {
         if (!NAVIGATION.equals(app.packageName) || app.context == null || installed != null) return;
+        // Optional points: a reflection failure turns off only the approach bar.
+        String absent = Points.missing(TRAP, TRAP_NEW, RECORD, RECORD + ".new", RECORD + ".bar_graph_level");
+        if (absent.length() != 0) {
+            mod.log("CarPlay: approach bar off, optional points not mapped: " + absent);
+            return;
+        }
         try {
             final CpTrapOverlay overlay = new CpTrapOverlay(mod);
             overlay.hook(mod, TRAP, false);

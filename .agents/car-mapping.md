@@ -56,6 +56,8 @@ Smali cross-checks under `analysis/api-inventory/smali/automotive/com/hkmc/clust
 (public no-argument constructor). The stock class implements Parcelable and has
 CREATOR, a Parcel constructor and writeToParcel; a consumer can preserve its other
 fields via a Parcelable round trip rather than mapping every camera/speed field.
+`wireless-carplay-and-aa` uses them as optional points (not in `hookpoints.required`):
+a failed reflection turns off only the approach bar or the junction view, never CarPlay.
 The six additions still need on-car reflection; physical view observations in
 cluster-ar-view.md and hud-junction-view.md do not establish that verification.
 

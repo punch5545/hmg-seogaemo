@@ -150,7 +150,12 @@ public final class Wireless extends ModEntry {
                 }
             }
         };
-        for (String m : NAVI_TBT) mod.hook(null, "framework.navigation_cluster." + m, skip);
+        for (String m : NAVI_TBT) {
+            String id = "framework.navigation_cluster." + m;
+            // Optional stock-guidance points (not in hookpoints.required) may be absent from the map.
+            if (!Points.has(id)) { mod.log("navigation: optional " + id + " not mapped; stock calls pass"); continue; }
+            mod.hook(null, id, skip);
+        }
         mod.log("navigation: turn-by-turn yields to the phone in " + app.processName);
     }
 
