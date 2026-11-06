@@ -44,6 +44,8 @@ import com.seogaemo.hmg.module.RootResult;
 import com.seogaemo.hmg.module.Warning;
 import com.seogaemo.hmg.module.WifiNetwork;
 import com.seogaemo.hmg.ui.ConfirmDialog;
+import com.seogaemo.hmg.ui.QrCode;
+import com.seogaemo.hmg.ui.QrView;
 import com.seogaemo.hmg.ui.settings.ReportsSection;
 import com.seogaemo.hmg.ui.Feature;
 import com.seogaemo.hmg.ui.FeatureCard;
@@ -55,6 +57,7 @@ import com.seogaemo.hmg.ui.StepProgressDialog;
 import com.seogaemo.hmg.ui.Theme;
 import com.seogaemo.hmg.ui.settings.SettingsPage;
 import com.seogaemo.hmg.ui.settings.SettingsUi;
+import com.seogaemo.hmg.core.IssueLink;
 import com.seogaemo.hmg.core.update.UpdateClient;
 import java.io.File;
 import java.io.FileInputStream;
@@ -1208,6 +1211,60 @@ public final class MainActivity extends Activity {
         }, null);
     }
 
+    /**
+     * Read-only QR code for a prefilled GitHub issue (problem report or new firmware map). It carries only
+     * firmware ids, versions and map/module states; the exported folder is attached from the phone or a PC.
+     */
+    private void showIssueQr(boolean mapIssue) {
+        String product = systemProperty("ro.build.product");
+        String onebin = systemProperty("ro.mobis.onebindir");
+        String versions = "app " + installedVersion();
+        StringBuilder map = new StringBuilder();
+        if (mapStatus == null) map.append("unknown");
+        else {
+            map.append("state=").append(mapStatus.state);
+            for (String key : new String[] {"source", "mapped", "verified", "failed"}) {
+                String value = mapStatus.info.get(key);
+                if (value != null) map.append(' ').append(key).append('=').append(value);
+            }
+            String failing = mapStatus.info.get("failing_ids");
+            if (failing != null && failing.length() > 0) map.append("\nfailing=").append(failing);
+        }
+        String link;
+        if (mapIssue) {
+            link = IssueLink.build(IssueLink.TEMPLATE_MAP, "Map: " + product, "product", product, "onebin", onebin,
+                    "android", Build.VERSION.RELEASE, "versions", versions, "map-status", map.toString());
+        } else {
+            StringBuilder modules = new StringBuilder();
+            for (String id : new java.util.TreeSet<String>(statuses.keySet())) {
+                if (modules.length() > 0) modules.append('\n');
+                modules.append(id).append('=').append(statuses.get(id).state);
+            }
+            link = IssueLink.build(IssueLink.TEMPLATE_BUG, null, "product", product, "onebin", onebin,
+                    "versions", versions, "map-status", map.toString(), "modules", modules.toString());
+        }
+        LinearLayout body = horizontal();
+        body.setGravity(Gravity.CENTER_VERTICAL);
+        body.addView(new QrView(this, QrCode.encode(link)), new LinearLayout.LayoutParams(dp(260), dp(260)));
+        TextView hint = text(getString(mapIssue ? R.string.issue_qr_map_hint : R.string.issue_qr_hint), 19, WHITE, sans);
+        hint.setLineSpacing(dp(4), 1f);
+        LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(0, -2, 1);
+        hintParams.leftMargin = dp(SettingsUi.LG);
+        body.addView(hint, hintParams);
+        ConfirmDialog.showResultView(this, getString(mapIssue ? R.string.issue_qr_map : R.string.issue_qr_report),
+                body, getString(R.string.close));
+    }
+
+    /** Hidden android.os.SystemProperties read; an empty string when unavailable. */
+    private static String systemProperty(String key) {
+        try {
+            Object value = Class.forName("android.os.SystemProperties").getMethod("get", String.class).invoke(null, key);
+            return value == null ? "" : value.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     /** The app's own view for a problem report: version, what each card showed and recent failures. */
     private void writeAppState() {
         StringBuilder state = new StringBuilder();
@@ -1734,7 +1791,7 @@ public final class MainActivity extends Activity {
             cleanParams.rightMargin = dp(SettingsUi.MD);
             actions.addView(clean, cleanParams);
         }
-        // A map this car generated (not the bundled one) is what developers need in a Pull Request.
+        // A map this car generated (not the bundled one) is what developers need in a GitHub issue.
         if (mapStatus != null && "on".equals(mapStatus.state) && !"bundled".equals(mapStatus.info.get("source"))) {
             TextView export = Theme.button(this, getString(R.string.car_export), false, false);
             export.setEnabled(!mapBusy);
@@ -2262,6 +2319,13 @@ public final class MainActivity extends Activity {
         export.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { confirmReport(); }
         });
+        TextView issue = action(getString(R.string.issue_qr_report), false);
+        LinearLayout.LayoutParams issueParams = SettingsUi.contentAction(this);
+        issueParams.topMargin = dp(SettingsUi.MD);
+        content.addView(issue, issueParams);
+        issue.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) { showIssueQr(false); }
+        });
         ReportsSection.addRecordingRow(this, content, new Runnable() {
             public void run() { if (tab == Tab.SETTINGS) showSettings(); }
         });
@@ -2292,10 +2356,13 @@ public final class MainActivity extends Activity {
         rows.addLink(getString(R.string.mapping_export), new View.OnClickListener() {
             public void onClick(View v) { confirmMapExport(); }
         });
+        rows.addLink(getString(R.string.issue_qr_map), new View.OnClickListener() {
+            public void onClick(View v) { showIssueQr(true); }
+        });
         rows.addLink(getString(R.string.open_nemesis), new View.OnClickListener() {
             public void onClick(View v) { openNemesis(); }
         });
-        rows.addInfo(getString(R.string.mapping_pr_hint));
+        rows.addInfo(getString(R.string.mapping_issue_hint));
         content.addView(rows, new LinearLayout.LayoutParams(-1, -2));
     }
 
@@ -2365,12 +2432,19 @@ public final class MainActivity extends Activity {
                 dialog.dismiss();
                 if (tab == Tab.CAR && detailId == null && !addVisible) showCar();
                 if (outcome.exitCode == 0 && "run".equals(verb)) {
-                    // A new map goes to the developers through the PR export in Developer options.
+                    // A new map goes to the developers as a GitHub issue with the exported maps folder.
                     ConfirmDialog.show(MainActivity.this, getString(R.string.mapping_run), mapResult,
                             getString(R.string.car_export), getString(R.string.close), false,
                             new ConfirmDialog.Action() { public void run(ConfirmDialog done) {
                                 done.dismiss();
                                 confirmMapExport();
+                            } }, null);
+                } else if (outcome.exitCode == 0 && "export".equals(verb)) {
+                    ConfirmDialog.show(MainActivity.this, getString(R.string.mapping_export), mapResult,
+                            getString(R.string.issue_qr_show), getString(R.string.close), false,
+                            new ConfirmDialog.Action() { public void run(ConfirmDialog done) {
+                                done.dismiss();
+                                showIssueQr(true);
                             } }, null);
                 } else ConfirmDialog.showResult(MainActivity.this, getString("run".equals(verb)
                         ? R.string.mapping_run : R.string.mapping_export), mapResult, getString(R.string.close));
