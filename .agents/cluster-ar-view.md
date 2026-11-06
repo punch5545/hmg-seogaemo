@@ -49,19 +49,23 @@ CarPlay does not expose the stock road-dependent guide-window policy. A changed 
 maneuver needs a fresh distance. Unknown distance cannot open the window.
 
 The independently implemented CpGuidance policy uses maneuver type, explicit exit angle,
-other junction angles and driving handedness. Turns round to 45 degrees. Exits send the branch
-side (17/19 at 90, 18/20 at 270). Keeps and highway changes send EXIT_LEFT 18 at 270 to the left
+other junction angles and driving handedness. Turns round to 45 degrees (the branch angle
+equals the direction; 180 draws no line and is never sent). Exits send EXIT_RIGHT 17 at 90 or
+EXIT_LEFT 18 at 270; 19/20 are not used (20 draws a left-side exit on this cluster). Keeps and highway changes send EXIT_LEFT 18 at 270 to the left
 and FORK_2 25 at 90 to the right (FORK_2 draws only at 90, FORK_3 26 draws nothing); a measured
-straight is no keep. Straight past one side road uses the exit picture with the route straight
-only with a highway road name or instruction, otherwise TURN 13 at 0. U-turns use the Korean
-left loop by default. Roundabout positions require an explicit exit angle; ordinal exit numbers
+straight is no keep. Straight past one side road sends SERVICE_ROAD 23 at 270 (branch right) or 24 at 90 (branch
+left), which draw the main road straight on, only with a highway road name or instruction;
+otherwise TURN 13 at 0. U-turns use the Korean
+left loop by default. Roundabouts send 32 (counter-clockwise travel, right-hand traffic) or 33
+(clockwise, left-hand traffic) by driving side, with the exit clock position measured clockwise
+from 12 o'clock as direction; positions require an explicit exit angle; ordinal exit numbers
 do not provide an angular position. Ambiguous or contradictory geometry retains the projection
 icon. When the next maneuver is not known yet the projection icon is resent; the idle compass
 is only for stop and disconnect.
 The bar decreases linearly from 100 at entry to 0 at the maneuver. Route states Loading and
 Rerouting send stock types 9 and 10. The HUD F2 list retains its projection icon format.
 
-The classified car sweep is in local, gitignored dataset `datasets/cluster-ar-tbt/`: `summary.md` and per-row `classify.csv`.
+The classified car sweep is in local, gitignored dataset `datasets/cluster-ar-tbt/`: `summary.md`, per-row `classify.csv`, second-pass review in `classify-reviewed.csv` and `review.md`.
 
 ## Reading the state
 
