@@ -102,7 +102,9 @@ done
 [ ! -f "$base/core/module.sh" ] ||
     SG_DATA_ROOT=$state /system/bin/sh "$base/core/module.sh" install-bundled >> "$log" 2>&1 < /dev/null || :
 reverse=
-for id in $(cat "$base/modules.list" "$state/installed.list" 2>/dev/null); do reverse="$id $reverse"; done
+for id in $(cat "$base/modules.list" "$state/installed.list" 2>/dev/null); do
+    [ "$id" = package-compat ] || reverse="$id $reverse"   # compatibility entry, not a module
+done
 failed=0
 missing_apk=0
 case "$(pm path com.seogaemo.hmg 2>/dev/null)" in package:*) ;; *) missing_apk=1; echo 'APK missing: reverting modules' >> "$log";; esac
@@ -260,7 +262,7 @@ start_retry() {
 }
 # Read-only scan for other packages that overlap ours; the app shows it on the Car tab.
 [ ! -f "$base/core/foreign.sh" ] || /system/bin/sh "$base/core/foreign.sh" status > /dev/null 2>&1 < /dev/null || :
-pending=$(cat "$base/modules.list" "$state/installed.list" 2>/dev/null)
+pending=$(cat "$base/modules.list" "$state/installed.list" 2>/dev/null | grep -Fvx package-compat)
 apply_pending
 # NEMESIS starts this background service at boot and install/update.
 # OTA health also returns after this bounded pass; a deferred module still needs

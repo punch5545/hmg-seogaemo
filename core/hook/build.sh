@@ -1,7 +1,8 @@
 #!/bin/sh
 # Builds the core hook host into out/package/core/hook/data and the module API jar into
-# out/hook-sdk. The native wrapper/loader and the generic engine classes are the
-# wireless-carplay-and-aa sources (AGPL-3.0, derived from HMG-API) built with core paths.
+# out/hook-sdk. The native wrapper/loader and the engine classes (hmgapi.hook, hmgapi.engine) are the
+# wireless-carplay-and-aa sources (AGPL-3.0, derived from HMG-API) built with core paths; the core adds
+# its own HmgApi, ModContext and HostStatus. Module jars (CarPlay included) compile against the SDK jar.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 SDK=${ANDROID_HOME:-$HOME/Library/Android/sdk}
@@ -13,7 +14,7 @@ OUT=$ROOT/out/package/core/hook/data
 SDKOUT=$ROOT/out/hook-sdk
 W=$(mktemp -d)
 trap 'rm -rf "$W"' EXIT
-mkdir -p "$OUT" "$SDKOUT" "$W/src/hmgapi/hook" "$W/classes" "$W/dex" "$W/syslib"
+mkdir -p "$OUT" "$SDKOUT" "$W/src/hmgapi/hook" "$W/src/hmgapi/engine" "$W/classes" "$W/dex" "$W/syslib"
 
 "$CLANG" --target=armv7a-linux-gnueabi -mthumb -march=armv7-a -mfloat-abi=soft -Os -ffreestanding -fno-builtin \
     -nostdlib -static -fno-stack-protector -fuse-ld=lld -Wl,-e,_start -Wl,--build-id=none -Wall \
@@ -27,11 +28,12 @@ CLANG=$CLANG sh "$PAYLOAD/native/syslib-stubs.sh" "$W/syslib"
     '-DJAR="/system/framework/hmg-seogaemo-hook.jar"' '-DTAG="HMG-Seogaemo-Hook"' \
     -o "$OUT/libhmg_seogaemo_hook.so" "$PAYLOAD/native/loader.c" "$W/syslib/libc.so" "$W/syslib/liblog.so" "$W/syslib/libdl.so"
 
-for name in Bridge Hooks MethodHook Points LoadedApp ModEntry; do
-    cp "$PAYLOAD/src/hmgapi/hook/$name.java.src" "$W/src/hmgapi/hook/$name.java"
+for source in "$PAYLOAD"/src/hmgapi/hook/*.java.src "$PAYLOAD"/src/hmgapi/engine/*.java.src; do
+    rel=${source#"$PAYLOAD/src/"}
+    cp "$source" "$W/src/${rel%.src}"
 done
 cp "$ROOT"/core/hook/src/hmgapi/hook/*.java "$W/src/hmgapi/hook/"
-javac -nowarn -source 1.7 -target 1.7 -bootclasspath "$ANDROID_JAR" -cp "$ANDROID_JAR" -d "$W/classes" "$W"/src/hmgapi/hook/*.java
+javac -nowarn -source 1.7 -target 1.7 -bootclasspath "$ANDROID_JAR" -cp "$ANDROID_JAR" -d "$W/classes" "$W"/src/hmgapi/hook/*.java "$W"/src/hmgapi/engine/*.java
 "$BT/d8" --release --min-api 19 --lib "$ANDROID_JAR" --output "$W/dex" $(find "$W/classes" -name '*.class' | sort)
 touch -t 198001010000 "$W/dex/classes.dex"
 rm -f "$OUT/hmg-seogaemo-hook.jar" "$SDKOUT/hmg-seogaemo-hook-api.jar"

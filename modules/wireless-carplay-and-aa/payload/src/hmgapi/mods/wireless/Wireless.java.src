@@ -15,6 +15,7 @@ import hmgapi.hook.ModContext;
 import hmgapi.hook.ModEntry;
 import hmgapi.hook.Points;
 import hmgapi.hook.RuntimeResult;
+import java.io.File;
 
 /**
  * The Wireless mod's hooks (the rest of the mod is file changes in patches.json).
@@ -56,11 +57,22 @@ public final class Wireless extends ModEntry {
         "update_tbt_sub_info2_b", "update_tbt_sub_info_2c", "update_remain_dis", "update_tp_crossroad_name",
         "update_tp_destination_name", "update_tp_turn_list", "update_tp_turn_list_new", "update_tp_lane_info", "update_lane_info" };
 
+    /** In the zygote: the module's runtime record and the boot points it needs; a throw turns only this module off. */
+    @Override
+    public void zygoteInit(ModContext mod) {
+        RuntimeResult.begin(new File("/data/nemesis/backup/hmg-seogaemo/runtime/wireless-carplay-and-aa"), "zygote", "zygote");
+        if (!Points.need("boot", "boot")) {
+            RuntimeResult.phase("gate", "off", "missing boot points");
+            throw new IllegalStateException("missing boot points");
+        }
+        RuntimeResult.phase("gate", "ready", "loaded by the core hook host");
+    }
+
     @Override
     public void appLoaded(final ModContext mod, LoadedApp app) {
         String pkg = app.packageName;
         if (!NAVIGATION.equals(pkg) && !IAP2.equals(pkg) && !GPM.equals(pkg) && !BTSETTINGS.equals(pkg) && !DIPO.equals(pkg)) return;
-        mod.beginRuntime(app);
+        WirelessSupport.beginRuntime(app);
         if (NAVIGATION.equals(pkg)) loadPart("navigation", "navigation", mod, app);
         if (IAP2.equals(pkg)) loadPart("iap2", "iap2", mod, app);
         if (GPM.equals(pkg)) {
@@ -95,7 +107,7 @@ public final class Wireless extends ModEntry {
      * libraries.
      */
     private void dipo(ModContext mod, LoadedApp app) throws Exception {
-        mod.appPart(app, "hmgapi.mods.wireless.dipo.Dipo").getMethod("start", ModContext.class, LoadedApp.class).invoke(null, mod, app);
+        WirelessSupport.appPart(app, "hmgapi.mods.wireless.dipo.Dipo").getMethod("start", ModContext.class, LoadedApp.class).invoke(null, mod, app);
     }
 
     /**
@@ -233,7 +245,7 @@ public final class Wireless extends ModEntry {
             return;
         }
         // the AA library: protocol 1.6 and the turn-by-turn extras packed into its callbacks, in memory (file stays stock)
-        mod.nativePatch(app, "libautoreceiver_infobank.so");
+        WirelessSupport.nativePatch(mod, "libautoreceiver_infobank.so");
         mod.hook(cl, "gpm.navigation_status.init", new MethodHook() {
             @Override
             protected void beforeHookedMethod(Param p) {

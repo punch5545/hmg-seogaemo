@@ -7,8 +7,9 @@ export HMG_SEOGAEMO_TEST_COMMON="$HERE/../../nemesis/package/lib/common.sh"
 . "$HMG_SEOGAEMO_TEST_COMMON"
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
-export SG_WIRELESS_TEST_ROOT=$T/root HMG_SEOGAEMO_BASE=$T/base HMG_SEOGAEMO_STATE=$T/state HMG_SEOGAEMO_MODULE_DIR=$HERE/payload
-export TEST_PROPS=$T/props TEST_STATE=$T/state
+export SG_WIRELESS_TEST_ROOT=$T/root HMG_SEOGAEMO_BASE=$T/base HMG_SEOGAEMO_STATE=$T/state HMG_SEOGAEMO_MODULE_DIR=$HERE
+export TEST_PROPS=$T/props TEST_STATE=$T/state SG_DATA_ROOT=/data/nemesis/backup/hmg-seogaemo
+HOOK=$T/root$SG_DATA_ROOT/core/hook/mods/state
 mkdir -p "$T/base/lib" "$T/bin" "$T/props" "$T/state" "$T/root/system/bin" "$T/root/system/app" "$T/root/system/framework" "$T/root/system/onebin/neev_kr" "$T/root/system/etc/permissions" "$T/root/proc/sys/kernel/random"
 cat > "$T/base/lib/common.sh" <<'SH'
 . "$HMG_SEOGAEMO_TEST_COMMON"
@@ -21,6 +22,7 @@ sg_projection_runtime() {
             if [ -f "$HMG_SEOGAEMO_STATE/runtime/ready" ]; then sg_status on none 'validated runtime ready'
             elif [ "$1" = applying ]; then sg_status pending-restart head_unit 'runtime evidence absent'
             else sg_print state=unknown restart=none 'detail=runtime evidence absent'; fi;;
+        tbt-reset) sg_print state=on restart=none 'detail=records reset';;
         *) return 2;;
     esac
 }
@@ -109,24 +111,33 @@ sg_prop_set() {
     sg_write "$val" > "$HMG_SEOGAEMO_STATE/prop-applied-$key"
     sg_print "prop $key" >> "$HMG_SEOGAEMO_STATE/ops.list"
 }
-sg_dex_cache_track() { sg_print "$1 $2" > "$HMG_SEOGAEMO_STATE/dex-track"; }
 sg_restore_material() { [ -f "$HMG_SEOGAEMO_STATE/ops.list" ]; }
-sg_zygote_install() {
+# The core hook host itself is exercised by tools/test-runtime.py; here only the wiring.
+sg_hook_register() {
+    jar=$1; dir=$SG_DATA_ROOT/core/hook/mods/${HMG_SEOGAEMO_STATE##*/}
+    sg_print "$2" > "$HMG_SEOGAEMO_STATE/hook-entry"
+    sg_file_put "$dir/hook.jar" "$jar" 600 0:0 && sg_file_put "$dir/entry" test/enable-marker 600 0:0
+}
+sg_core_hook_ensure() {
     [ -d "$HMG_SEOGAEMO_STATE/runtime" ] || return 1
     [ "${SG_FAIL_ZYGOTE:-0}" != 1 ] || return 1
+    touch "$HMG_SEOGAEMO_STATE/core-hook"
+}
+sg_owned_dirs_prune() { for d in "$@"; do rmdir "$SG_WIRELESS_TEST_ROOT$d" 2>/dev/null || :; done; }
+sg_core_hook_owned() { [ -f "$HMG_SEOGAEMO_STATE/core-hook" ]; }
+sg_core_hook_release() {
+    ! sg_applied "$SG_DATA_ROOT/core/hook/mods/${HMG_SEOGAEMO_STATE##*/}/entry" || return 0
+    rm -f "$HMG_SEOGAEMO_STATE/core-hook"
+}
+# Before the core hook host the module installed its own wrapper (package update input).
+sg_legacy_install() {
+    sg_prop_set persist.ium.support carplay
     stock=/system/bin/app_process.hmg-seogaemo-stock
-    if ! sg_applied /system/bin/app_process; then
-        sg_file_baseline "$stock"
-        dest=$(sg_path "$stock")
-        cp "$(sg_path /system/bin/app_process)" "$dest"
-        sg_file_mark_applied "$stock"
-        sg_print "file $stock" >> "$HMG_SEOGAEMO_STATE/ops.list"
-    fi
-    sg_file_put /system/bin/app_process "$1" 755 0:0
-    sg_file_put /system/lib/libhmg_seogaemo_wireless_hook.so "$2" 644 0:0
-    sg_file_put /system/framework/hmg-seogaemo-wireless-hook.jar "$3" 644 0:0
-    sg_file_put "$HMG_SEOGAEMO_STATE/enable" data/enable-marker 600 0:0
-    sg_file_put "$HMG_SEOGAEMO_STATE/enabled" data/enable-marker 600 0:0
+    sg_file_baseline "$stock"; cp "$(sg_path /system/bin/app_process)" "$(sg_path "$stock")"
+    sg_file_mark_applied "$stock"; sg_print "file $stock" >> "$HMG_SEOGAEMO_STATE/ops.list"
+    sg_file_put /system/bin/app_process test/enable-marker 755 0:0
+    sg_file_put /system/lib/libhmg_seogaemo_wireless_hook.so test/enable-marker 644 0:0
+    sg_file_put /system/framework/hmg-seogaemo-wireless-hook.jar test/enable-marker 644 0:0
 }
 sg_revert_all() {
     [ -f "$HMG_SEOGAEMO_STATE/ops.list" ] || return 0
@@ -188,12 +199,12 @@ sg_print "stock-app-process" > "$T/root/system/bin/app_process"
 sg_print "boot-one" > "$T/root/proc/sys/kernel/random/boot_id"
 sg_print '-/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml' '-/system/etc/permissions/com.hkmc.software.connectivity.androidauto_wireless.xml' '-/system/etc/permissions/com.hkmc.software.wifihotspot.xml' > "$T/root/system/onebin/neev_kr/featurexml.cfg"
 SCRIPT=$T/wireless-carplay-and-aa.sh
-sed "s|/system/bin/sh|$car_shell|g" "$HERE/root/wireless-carplay-and-aa.sh" > "$SCRIPT"
-run() { "$car_shell" "$SCRIPT" "$1" > "$T/output"; }
+sed "s|/system/bin/sh|$car_shell|g" "$HERE/module.sh" > "$SCRIPT"
+run() { "$car_shell" "$SCRIPT" "$@" > "$T/output"; }
 fail() { echo "FAIL: $1" >&2; cat "$T/output" >&2; exit 1; }
 # The zygote starts seconds after boot, before this boot's map verification can finish,
 # so the hook gate must not depend on the boot ID (the car-map seal's third line).
-if grep -q 'boot_id' "$HERE/payload/src/hmgapi/hook/HmgApi.java.src"; then fail 'zygote hook gate must not require the boot id'; fi
+if grep -q 'boot_id' "$HERE/../../core/hook/src/hmgapi/hook/HmgApi.java"; then fail 'zygote hook gate must not require the boot id'; fi
 sg_write "OTHER.KOR.0000.V039.001.260902" > "$T/props/ro.build.product"
 run precheck && fail wrong-firmware-accepted
 grep -q '^state=incompatible$' "$T/output" || fail firmware-state
@@ -239,13 +250,17 @@ export SG_FAIL_ZYGOTE=1
 run apply && fail injected-zygote-failure-accepted
 cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail failed-apply-restoration
 [ "$(cat "$T/props/persist.ium.support")" = stock ] || fail failed-apply-property
-[ ! -e "$T/root/system/bin/app_process.hmg-seogaemo-stock" ] || fail failed-apply-wrapper
+[ ! -e "$T/state/core-hook" ] && [ ! -e "$HOOK/entry" ] || fail failed-apply-hook
+[ ! -e "$T/root/system/framework/hmg-seogaemo-wireless-parts.jar" ] || fail failed-apply-parts
 unset SG_FAIL_ZYGOTE
 run apply || fail apply
 grep -q '^state=pending-restart$' "$T/output" || fail apply-state
 [ "$(cat "$T/props/persist.ium.support")" = carplay ] || fail property
-[ -f "$T/root/system/bin/app_process.hmg-seogaemo-stock" ] || fail wrapper-backup
-[ -f "$T/state/dex-track" ] || fail dex-tracking
+[ -f "$T/state/core-hook" ] || fail hook-host
+[ "$(cat "$T/state/hook-entry")" = hmgapi.mods.wireless.Wireless ] || fail hook-entry
+cmp -s "$HERE/files/wireless-mod.jar" "$HOOK/hook.jar" || fail hook-jar
+cmp -s "$HERE/files/wireless-mod.jar" "$T/root/system/framework/hmg-seogaemo-wireless-parts.jar" || fail parts-jar
+[ "$(cat "$T/root/system/bin/app_process")" = stock-app-process ] || fail app-process-touched
 [ -f "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file
 # Same boot as the apply: the running zygote is the stock one, so even a ready runtime
 # directory cannot count; the head unit must restart first.
@@ -281,6 +296,15 @@ for key in persist.ium.support persist.sys.iap2.wifi persist.iap2.iden.wireless;
     run apply || fail property-reassert
 done
 [ "$(cat "$T/props/persist.ium.support")" = carplay ] || fail reassert-ium
+# A changed hook jar on reapply (package update) needs a restart to load.
+cp "$HOOK/hook.jar" "$T/hook.jar.saved"; printf old > "$HOOK/hook.jar"; cp "$HOOK/hook.jar" "$T/state/applied$SG_DATA_ROOT/core/hook/mods/state/hook.jar"
+run apply || fail jar-update-apply
+grep -q '^state=pending-restart$' "$T/output" || fail jar-update-restart
+cmp -s "$HERE/files/wireless-mod.jar" "$HOOK/hook.jar" || fail jar-update-content
+# Reapplies keep identical jars in place (running apps hold them open).
+[ "$(grep -c 'hmg-seogaemo-wireless-parts.jar' "$T/state/ops.list")" = 1 ] || fail parts-jar-rewritten
+# Install plus the one simulated package update above; identical reapplies add none.
+[ "$(grep -c 'core/hook/mods/state/hook.jar' "$T/state/ops.list")" = 2 ] || fail hook-jar-rewritten
 [ "$(cat "$T/props/persist.sys.iap2.wifi")" = t ] || fail reassert-wifi
 [ "$(cat "$T/props/persist.iap2.iden.wireless")" = t ] || fail reassert-wireless
 # Existing applied wrapper must not skip repair of old private ancestors.
@@ -312,7 +336,7 @@ chmod 644 "$T/root/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/carpl
 rm -f "$T/bin/ps" "$T/root/proc/123/maps"
 sg_print "external-change" >> "$T/root/system/onebin/neev_kr/featurexml.cfg"
 run revert && fail drift-accepted
-[ -f "$T/state/enabled" ] || fail state-lost-after-drift
+[ -f "$HOOK/entry" ] && [ -f "$T/state/core-hook" ] || fail state-lost-after-drift
 # Restore our exact applied file, then revert.
 cp "$T/state/applied/system/onebin/neev_kr/featurexml.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg"
 run revert || fail revert
@@ -326,7 +350,9 @@ cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail 
 [ ! -e "$T/root/system/lib/libleafiaaac.so" ] || fail audio-lib-present
 [ ! -e "$T/root/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml" ] || fail feature-file-present
 [ "$(cat "$T/props/persist.ium.support")" = stock ] || fail exact-prop-restore
-[ ! -f "$T/state/enabled" ] || fail enabled-marker-present
+[ ! -e "$HOOK/entry" ] && [ ! -e "$HOOK/hook.jar" ] || fail hook-registration-present
+[ ! -e "$T/root/system/framework/hmg-seogaemo-wireless-parts.jar" ] || fail parts-jar-present
+[ ! -e "$T/state/core-hook" ] || fail hook-host-not-released
 [ ! -e "$T/state/runtime" ] || fail runtime-diagnostics-residue
 run status || fail reverted-status
 grep -q '^info.restore_material=absent$' "$T/output" || fail rollback-after-restore
@@ -341,6 +367,29 @@ run status || fail new-boot-status
 grep -q '^state=off$' "$T/output" || fail new-boot-off
 run revert || fail new-boot-revert
 grep -q '^state=off$' "$T/output" || fail new-boot-revert-off
+# Package update with the module on: the old self-installed wrapper is restored exactly and
+# the hooks move to the core hook host in the same apply.
+( . "$T/base/lib/common.sh"; sg_legacy_install )
+run status || fail legacy-status
+grep -q '^state=pending-restart$' "$T/output" || fail legacy-status-pending
+run apply || fail legacy-apply
+grep -q '^state=pending-restart$' "$T/output" || fail legacy-apply-pending
+[ "$(cat "$T/root/system/bin/app_process")" = stock-app-process ] || fail legacy-wrapper-restore
+[ ! -e "$T/root/system/bin/app_process.hmg-seogaemo-stock" ] || fail legacy-stock-copy
+[ ! -e "$T/root/system/lib/libhmg_seogaemo_wireless_hook.so" ] || fail legacy-hook-lib
+[ ! -e "$T/root/system/framework/hmg-seogaemo-wireless-hook.jar" ] || fail legacy-hook-jar
+[ -f "$T/state/core-hook" ] && [ -f "$HOOK/entry" ] || fail legacy-moved
+[ "$(cat "$T/props/persist.ium.support")" = carplay ] || fail legacy-property
+run revert || fail legacy-revert
+cmp -s "$T/original.cfg" "$T/root/system/onebin/neev_kr/featurexml.cfg" || fail legacy-exact-feature-restore
+[ "$(cat "$T/props/persist.ium.support")" = stock ] || fail legacy-exact-prop-restore
+[ ! -e "$T/state/core-hook" ] || fail legacy-hook-host-not-released
+[ ! -e "$T/root/system/etc/hmg-seogaemo" ] || fail empty-asset-dirs-left
+sg_print "boot-five" > "$T/root/proc/sys/kernel/random/boot_id"
+# The app's ui.txt button and older apps' fixed verb both reach the record reset; nothing else is accepted.
+run action tbt_reset && grep -q 'records reset' "$T/output" || fail action-tbt-reset
+run tbt-reset && grep -q 'records reset' "$T/output" || fail verb-tbt-reset
+run action other && fail unknown-action-accepted
 # A guard sweep that cannot finish blocks a fresh apply before anything is written.
 touch "$T/state/guard-sweep-fails"
 run apply && fail sweep-failure-accepted

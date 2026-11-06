@@ -1,6 +1,12 @@
-Status: current — implemented AGPL port. Wireless CarPlay with music, Siri and calls is verified working on the car (since 0.1.25, 2026-11-04). Items below that are not stated as verified (wireless Android Auto, cluster/HUD rendering, boot-guard recovery) still need on-car evidence.
+Status: current — implemented AGPL port. Wireless CarPlay with music, Siri and calls is verified working on the car (since 0.1.25, 2026-11-04). Wireless Android Auto and cluster/HUD lane rendering are owner-verified on the car (2026-11-07). Boot-guard recovery still needs on-car evidence.
 
 # Wireless CarPlay and Android Auto: NEEV.KOR.260902 port
+
+Packaging: a bundled raw_shell `.hsm` (`modules/wireless-carplay-and-aa/`: `module.sh`, `strings/`, `ui.txt`, `files/`
+with the mod jar, projection reader jar, AAC converter, recipes and feature XMLs; `payload/` holds the sources). It
+hooks through the core hook host (`hooks=1`). The record reset is the `ui.txt` button `tbt_reset` (`action tbt_reset`);
+the `tbt-reset` verb stays for 0.1.31 apps. Updates from the built-in or the old self-installed wrapper: see
+`installable-modules.md` (Core hook host, Bundled modules).
 
 Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902`, onebin `neev_kr` (`ro.mobis.onebindir`), Android 4.4.2. Owner confirms HMG-API 1.0.0-beta.5 with its mapping and wireless mod worked on this car (hotspot and wireless CarPlay). The pre-install Car Report at `tmp/car-reports/car-report-neev-kor-260902-20261102-2115.json` has 324 mapped points, 12 by reference, one unrelated ThemeSettings point missing. Its `map.status=none` and `wifi_chip=false` are pre-install observations, not a negation of the owner's working test.
 
@@ -11,7 +17,7 @@ Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902`, o
 | `feature_flags` generates CarPlay/AA wireless permission XMLs and comments their removal lines; `patches.json` comments the hotspot removal line. | `sg_file_put` only for absent XMLs and `sg_file_replace_line` for exact active lines. Missing removal lines are no-ops, as in the upstream engine; duplicate lines are refused. An existing XML must declare the expected feature. We also add hotspot XML if absent on this KOR build. |
 | `persist.ium.support=carplay`; bridge `persist.sys.iap2.wifi=t`, `persist.iap2.iden.wireless=t`. | Same values via `sg_prop_set`; ledger restores live values and `/data/property` existence/content. |
 | `Wireless`, `AaTurns`, `dipo/{Dipo,Bridge,CpTurns}` Java hooks DiPO, iAP2, GPM, navigation, USB startService, BtSettings. | Copied with fixed upstream default settings. Korean BtSettings menu hook is a no-op; upstream changes only US/CAN. |
-| Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | Wrapper, loader and hook JAR remain under this module; the core selects and publishes the verified map. `sg_zygote_install` runs through the shared package API. |
+| Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | The core hook host owns wrapper, loader and engine JAR (ledger owner `core-hook`); this module registers its mod jar (`hmgapi.mods.wireless.Wireless`, five apps) with `sg_hook_register`, ships a world-readable parts copy, and the core selects and publishes the verified map. Car-verified 2026-11-07: migration from the self-installed wrapper, wireless CarPlay, status `on`. |
 | Native `MemRecipe` on `libautoreceiver_infobank.so`, `libCarPlayCore.so`, `libCarPlayAudio.so`, `libCarPlayUtils.so`. | Same 5 recipes applied **in memory** after exact byte-region verification. Stock libraries stay untouched. No `lpatch` binary or rebuilt OEM APK/odex. KOR CarPlayCore hash `ef49c09b7ab5eb72298f9973443b66b3` is listed as Wi-Fi native; Utils hash `e85385d70194efe82cc8a6d0f66f5115` as converter native. Other builds may reject recipes. |
 | `libleafiaaac.so` for AAC/Opus. | Rebuilt from upstream `leafiaaac.c` with local clang/lld and installed through the package API. No manufacturer binary is bundled. |
 | Generic settings UI, HMG-API `hmgapid`, mod engine, APK patch transaction, network keeper. | Dropped. The upstream mod declares no network rule; this car's pre-install firewall report is permissive. No Wi-Fi client property or feature is requested. |
@@ -82,10 +88,9 @@ The package API must baseline each owned path before writing it, record applied 
 | `/system/etc/permissions/com.hkmc.software.wifihotspot.xml` | Same. |
 | `/system/lib/libleafiaaac.so` | Put rebuilt converter; restore bytes or absence. |
 | `/system/etc/hmg-seogaemo/wireless-carplay-and-aa/recipes/aa-tbt-48ee793a.recipe`, `aa-tbt-a0bea1c4.recipe`, `carplay-core-wifi.recipe`, `carplay-audio-formats.recipe`, `carplay-utils-converter.recipe`, `iap2-lane-msgid.recipe` | Put six recipes; restore each exact original or absence and remove newly created empty directories. |
-| `/system/bin/app_process` | `sg_zygote_install` installs wrapper; restore exact stock executable bytes/mode/owner. |
-| `/system/bin/app_process.hmg-seogaemo-stock` | `sg_zygote_install` copies the current original here before swap; restore prior bytes or absence. |
-| `/system/lib/libhmg_seogaemo_wireless_hook.so`, `/system/framework/hmg-seogaemo-wireless-hook.jar` | `sg_zygote_install` installs runtime; restore exact bytes or absence. |
-| `/data/nemesis/backup/hmg-seogaemo/modules/wireless-carplay-and-aa/enable`, `enabled`, `starts`, `disable` | `sg_zygote_install` owns guard state. The wrapper increments `starts`, resets it after 120 seconds alive and obeys `disable`; the API must track/export/restore all generated state. |
+| `/system/framework/hmg-seogaemo-wireless-parts.jar` | Put the mod jar for app parts (apps cannot read the core copy); restore absence. Not rewritten on reapply when identical. |
+| `$SG_DATA_ROOT/core/hook/mods/wireless-carplay-and-aa/{hook.jar,entry,processes}` | `sg_hook_register`; restore absence, then `sg_core_hook_release` restores stock `app_process` when no hook module remains. |
+| `/system/bin/app_process`, `app_process.hmg-seogaemo-stock`, `libhmg_seogaemo_wireless_hook.so`, `hmg-seogaemo-wireless-hook.jar`, guard files `enable`/`enabled`/`starts`/`disable` | Legacy (0.1.33 and earlier self-installed wrapper): kept in `owns_files` only so apply can restore them exactly before moving to the core host. The core host owns its own `app_process` swap and guard files under `modules/core-hook`. |
 | `persist.ium.support`, `persist.sys.iap2.wifi`, `persist.iap2.iden.wireless` plus `/data/property/` backing files | Set `carplay`, `t`, `t`; restore live and backing state, including absent vs empty. |
 | Potential `/data/dalvik-cache/system@framework@hmg-seogaemo-wireless-hook.jar@classes.dex` and `/data/data/com.daudio.app.dipo/app_hmg-seogaemo-wireless-dex/` | Android may generate optimized DEX. Package API must track and remove only this module's generated entries and restore any pre-existing bytes. Dalvik can regenerate cleanly after stock restoration. |
 

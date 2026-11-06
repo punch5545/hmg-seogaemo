@@ -350,11 +350,19 @@ sg_validate() {
         [ "$sg_field" = "$1" ] || continue
         case ",$sg_values," in *,"$2",*) sg_found=1;; esac
     done < "$sg_manifest"
-    [ "$sg_found" -eq 1 ]
+    [ "$sg_found" -eq 0 ] || return 0
+    # A hooks=1 module owns its own registration with the core hook host (sg_hook_register).
+    [ "$1" = owns_files ] && grep -Fxq hooks=1 "$sg_manifest" || return 1
+    case "$2" in
+        "$SG_DATA_ROOT/core/hook/mods/${HMG_SEOGAEMO_STATE##*/}/hook.jar"|"$SG_DATA_ROOT/core/hook/mods/${HMG_SEOGAEMO_STATE##*/}/entry"|"$SG_DATA_ROOT/core/hook/mods/${HMG_SEOGAEMO_STATE##*/}/processes") return 0 ;;
+    esac
+    return 1
 }
 # Module catalog: package built-ins in generated order, then installed packages
 # in install order. An installed module may depend only on earlier entries.
-sg_module_list() { cat "$1/modules.list" "$SG_DATA_ROOT/installed.list" 2>/dev/null; }
+# modules.list may hold only the compatibility entry package-compat (it lets 0.1.33 and older
+# installs accept an OTA payload); it is never a module.
+sg_module_list() { cat "$1/modules.list" "$SG_DATA_ROOT/installed.list" 2>/dev/null | grep -Fvx package-compat || :; }
 sg_module_graph() { cat "$1/modules.graph" "$SG_DATA_ROOT/installed.graph" 2>/dev/null; }
 sg_module_builtin() { grep -Fxq "$2" "$1/modules.list" 2>/dev/null; }
 sg_module_known() { sg_module_list "$1" | grep -Fxq "$2"; }
@@ -922,7 +930,8 @@ sg_line_compose() (
     for patch in "$next"/patches/*/*; do
         [ -d "$patch" ] || continue
         owner=${patch%/*}; owner=${owner##*/}
-        grep -Fxq "$owner" "$HMG_SEOGAEMO_BASE/modules.list" || exit 3
+        # Owners are the known modules (all bundled now), not only package built-ins.
+        sg_module_list "$HMG_SEOGAEMO_BASE" | grep -Fxq "$owner" || exit 3
         old=$(cat "$patch/old") || exit 1
         count=0
         while IFS= read -r line || [ -n "$line" ]; do
@@ -944,7 +953,9 @@ sg_line_compose() (
                     output=$(cat "$patch/new") || exit 1
                 fi
             done
-        done < "$HMG_SEOGAEMO_BASE/modules.list"
+        done <<EOF
+$(sg_module_list "$HMG_SEOGAEMO_BASE")
+EOF
         [ "$matches" -le 1 ] || exit 3
         if [ "$newline" -eq 1 ]; then sg_print "$output"; else sg_write "$output"; fi >> "$next/bytes" || exit 1
         [ "$newline" -eq 1 ] || break
@@ -2147,13 +2158,59 @@ sg_core_hook_manifest() {
     {
         sg_print id=core-hook restart=head_unit
         sg_print "owns_files=$sg_ch_t/system/bin/app_process,$sg_ch_t/system/bin/app_process.hmg-seogaemo-stock,$sg_ch_t/system/lib/libhmg_seogaemo_hook.so,$sg_ch_t/system/framework/hmg-seogaemo-hook.jar,$HMG_SEOGAEMO_STATE/enable,$HMG_SEOGAEMO_STATE/enabled,$HMG_SEOGAEMO_STATE/starts,$HMG_SEOGAEMO_STATE/disable"
-        grep '^known_stock\.[0-9]*=.*:/system/bin/app_process:' "$HMG_SEOGAEMO_BASE/modules/wireless-carplay-and-aa.properties" 2>/dev/null || :
+        # The stock app_process MD5 is declared by the CarPlay package (stock_file.1).
+        for sg_ch_m in "$SG_DATA_ROOT/installed/wireless-carplay-and-aa.properties" "$HMG_SEOGAEMO_BASE/modules/wireless-carplay-and-aa.properties"; do
+            grep '^known_stock\.[0-9]*=.*:/system/bin/app_process:' "$sg_ch_m" 2>/dev/null && break
+        done || :
     } > "$sg_ch_dir/core-hook.properties.tmp.$$" &&
         mv "$sg_ch_dir/core-hook.properties.tmp.$$" "$sg_ch_dir/core-hook.properties"
 }
 sg_core_hook_owned() {
     sg_ch_key=$(sg_file_key "${SG_TARGET_ROOT:-}/system/bin/app_process") || return 1
     [ -f "$SG_DATA_ROOT/modules/core-hook/file.$sg_ch_key/ready" ]
+}
+# Removes our own empty directories under /system/etc/hmg-seogaemo (left by earlier
+# builds, so no directory baseline names them). Only an empty directory that is an
+# ancestor of one of this module's owns_files is removed; one ledger row each.
+sg_owned_dirs_prune() (
+    set +f  # the emptiness check below globs; callers may run with noglob
+    for sg_pd in "$@"; do
+        case "$sg_pd" in /system/etc/hmg-seogaemo|/system/etc/hmg-seogaemo/*) ;; *) exit 2;; esac
+        case "$sg_pd" in *..*|*//*) exit 2;; esac
+        sg_pd_ok=0
+        sg_manifest=$(sg_manifest_file) || exit 2
+        while IFS='=' read -r sg_pd_key sg_pd_val; do
+            [ "$sg_pd_key" = owns_files ] || continue
+            case ",$sg_pd_val" in *,"$sg_pd"/*) sg_pd_ok=1;; esac
+        done < "$sg_manifest"
+        [ "$sg_pd_ok" -eq 1 ] || exit 2
+        sg_pd_t=${SG_TARGET_ROOT:-}$sg_pd
+        [ -d "$sg_pd_t" ] && [ ! -L "$sg_pd_t" ] || continue
+        for sg_pd_x in "$sg_pd_t"/* "$sg_pd_t"/.[!.]*; do [ ! -e "$sg_pd_x" ] || continue 2; done
+        sg_remount rw || exit 1
+        rmdir "$sg_pd_t"; sg_pd_rc=$?
+        sg_remount_ro
+        [ "$sg_pd_rc" -eq 0 ] || exit 1
+        sg_ledger directory_prune "$sg_pd" "" "" "" ok || exit 1
+    done
+)
+# Registers the module's hook jar with the core hook host: the payload jar, its ModEntry class and
+# the processes (names or packages) it hooks. sg_core_hook_ensure installs the wrapper afterwards.
+sg_hook_register() {
+    sg_payload "$1" || return 2
+    sg_hr_jar=$sg_source
+    sg_hr_dir=$SG_DATA_ROOT/core/hook/mods/${HMG_SEOGAEMO_STATE##*/}
+    mkdir -p "$sg_hr_dir" && chmod 700 "$SG_DATA_ROOT/core" "$SG_DATA_ROOT/core/hook" "$SG_DATA_ROOT/core/hook/mods" "$sg_hr_dir" || return 1
+    sg_ready || return 1
+    sg_hr_entry=$2; shift 2
+    sg_hr_tmp=$HMG_SEOGAEMO_STATE/hook.$$
+    sg_print "$sg_hr_entry" > "$sg_hr_tmp.entry" && sg_print "$@" > "$sg_hr_tmp.processes" || return 1
+    sg_commit_file "$sg_hr_dir/hook.jar" "$sg_hr_jar" 0600 0:0 &&
+        sg_commit_file "$sg_hr_dir/entry" "$sg_hr_tmp.entry" 0600 0:0 &&
+        sg_commit_file "$sg_hr_dir/processes" "$sg_hr_tmp.processes" 0600 0:0
+    sg_hr_rc=$?
+    rm -f "$sg_hr_tmp.entry" "$sg_hr_tmp.processes"
+    return "$sg_hr_rc"
 }
 # Installs the wrapper (or upgrades it to this package) for a module that registered hooks.
 sg_core_hook_ensure() (
@@ -2409,7 +2466,7 @@ sg_projection_runtime() (
     # OTA dispatch enters through update/current; resolve that package pointer
     # before applying the no-symlink guard to the fixed reader artifact.
     sg_helper_dir=$(readlink -f "$HMG_SEOGAEMO_MODULE_DIR") || exit 1
-    sg_helper=$sg_helper_dir/data/hmg-seogaemo-projection-runtime.jar
+    sg_helper=$sg_helper_dir/files/hmg-seogaemo-projection-runtime.jar
     sg_path_safe "$sg_helper" && [ -f "$sg_helper" ] || exit 1
     sg_boot=$(sg_bootclasspath) || sg_unknown 'BOOTCLASSPATH unavailable'
     sg_process=${SG_TARGET_ROOT:-}/system/bin/app_process

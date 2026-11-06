@@ -8,7 +8,8 @@ INPUTS := $(shell find app/res modules -type f | sort)
 .PHONY: all clean generate module-build map-build hsm-build hook-build test package verify-dist
 all: $(OUT)
 
-module-build:
+# CarPlay compiles against the hook SDK jar that hook-build writes.
+module-build: hook-build
 	@set -eu; for hook in modules/*/build/build.sh; do test ! -f "$$hook" || sh "$$hook"; done
 
 map-build:
@@ -29,7 +30,7 @@ hsm-build:
 	cd out/hsm-dex && zip -q -X ../package/core/hsm/hmg-seogaemo-hsm.jar classes.dex
 
 hook-build:
-	sh core/hook/build.sh
+	test ! -f core/hook/build.sh || sh core/hook/build.sh
 
 generate:
 	sh tools/gen-modules.sh

@@ -7,8 +7,12 @@ hmg_seogaemo_payload_valid() (
         [ -f "$payload/$member" ] && [ -r "$payload/$member" ] && [ -s "$payload/$member" ] || exit 1
         /system/bin/sh -n "$payload/$member" >/dev/null 2>&1 || exit 1
     done
-    for member in modules.list modules.graph core/map/hmg-seogaemo-mapper.jar app/hmg-seogaemo.apk VERSION; do
+    for member in core/map/hmg-seogaemo-mapper.jar app/hmg-seogaemo.apk VERSION; do
         [ -f "$payload/$member" ] && [ -r "$payload/$member" ] && [ -s "$payload/$member" ] || exit 1
+    done
+    # Modules ship as bundled packages; the lists may hold only the compatibility entry.
+    for member in modules.list modules.graph; do
+        [ -f "$payload/$member" ] && [ -r "$payload/$member" ] || exit 1
     done
     while IFS= read -r id; do
         case "$id" in ''|*[!a-z0-9-]*|-*|*--*|*-) exit 1;; esac

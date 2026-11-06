@@ -36,7 +36,7 @@ def run():
     ota_path = DIST / f"{prefix}-ota.zip"
     with zipfile.ZipFile(package_path) as package, zipfile.ZipFile(usb_path) as usb, zipfile.ZipFile(ota_path) as ota:
         # Every Java root command must explicitly select the device interpreter.
-        for source, expected_count in (("module/RootClient.java", 9),
+        for source, expected_count in (("module/RootClient.java", 8),
                                        ("core/update/UpdateClient.java", 1)):
             java = (ROOT / "app/src/com/seogaemo/hmg" / source).read_text()
             commands = re.findall(r'"([^"\n]*bin/hmg-seogaemo-root [^"\n]*)"', java)
@@ -53,9 +53,30 @@ def run():
                     "hookpoints.required/wireless-carplay-and-aa",
                     "bundled/skip-consent-screen.hsm", "bundled/skip-consent-screen.sha256",
                     "bundled/user-button-head-unit.hsm", "bundled/user-button-shortcut.hsm",
+                    "bundled/wireless-carplay-and-aa.hsm", "modules/package-compat.sh",
+                    "modules/package-compat.properties",
                     "maps/hyundai/ioniq5/kor/260902/map.json",
                     "maps/hyundai/ioniq5/kor/260902/car.json"}
         assert required <= entries, required - entries
+        assert package.read("modules.list") == b"package-compat\n", package.read("modules.list")
+        # Shared-line and whole-file ownership checks read every module's manifest from the
+        # package's modules/ (a bundled CarPlay without it could not claim its featurexml lines).
+        for bundled in sorted(n for n in entries if n.startswith("bundled/") and n.endswith(".hsm")):
+            module_id = bundled[len("bundled/"):-len(".hsm")]
+            manifest = package.read(f"modules/{module_id}.properties").decode()
+            assert f"\nid={module_id}\n" in "\n" + manifest, (module_id, manifest)
+        assert "owns_lines.1=/system/onebin/neev_kr/featurexml.cfg:" in package.read(
+            "modules/wireless-carplay-and-aa.properties").decode()
+        # Installs from 0.1.33 and older check an OTA payload with their own lib/payload.sh before
+        # switching to it; the new payload (no built-in modules) must pass that old check.
+        with tempfile.TemporaryDirectory() as old_check:
+            payload_dir = Path(old_check) / "payload"
+            ota.extractall(payload_dir)
+            checker = Path(old_check) / "check.sh"
+            checker.write_text(host_shell_script((ROOT / "tools/fixtures/payload-0.1.33.sh").read_text()) +
+                               '\nhmg_seogaemo_payload_valid "$1"\n')
+            old = subprocess.run([SHELL, str(checker), str(payload_dir)], capture_output=True, text=True)
+            assert old.returncode == 0, (old.stdout, old.stderr)
         for map_name in ("map.json", "car.json", "README.md"):
             source = ROOT / "maps/hyundai/ioniq5/kor/260902" / map_name
             assert package.read(f"maps/hyundai/ioniq5/kor/260902/{map_name}") == source.read_bytes()
@@ -105,7 +126,8 @@ def run():
                             assert entry not in ota.namelist()
                             continue
                         assert package.read(entry) == source.read_bytes()
-        for name in ids:
+        # package-compat is a stub for older installs' payload checks, not a module.
+        for name in [n for n in ids if n != "package-compat"]:
             with tempfile.TemporaryDirectory() as module_temp:
                 module_root = Path(module_temp)
                 (module_root / "lib").mkdir()

@@ -459,7 +459,7 @@ def test_snapshot_free_recovery(folder):
     shutil.copyfile(ROOT / f'modules/{module}/module.properties',
                     car.base / f'modules/{module}.properties')
     (car.base / f'modules/{module}.sh').write_text(host_shell_script(
-        (ROOT / f'modules/{module}/root/{module}.sh').read_text()))
+        (ROOT / f'modules/{module}/module.sh').read_text()))
     (car.base / 'modules.list').write_text(module + '\n')
     (car.base / 'modules.graph').write_text(module + '\tdepends=\texcludes=\n')
     (car.state / f'desired/{module}').write_text('on')
@@ -491,7 +491,7 @@ def swap_fixture(folder):
         'owns_files=' + ','.join(map(str, [process, *extras])) + ',/system/bin/app_process\n' +
         f'known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:{md5}\n')
     (car.base / f'modules/{module}.sh').write_text(host_shell_script(
-        (ROOT / f'modules/{module}/root/{module}.sh').read_text()))
+        (ROOT / f'modules/{module}/module.sh').read_text()))
     (car.base / 'modules.list').write_text(f'{module}\na\nb\nc\n')
     (car.base / 'modules.graph').write_text(
         f'{module}\tdepends=\texcludes=\na\tdepends=\texcludes=\nb\tdepends=a\texcludes=\nc\tdepends=\texcludes=\n')

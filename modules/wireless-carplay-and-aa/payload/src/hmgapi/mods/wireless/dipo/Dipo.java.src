@@ -19,6 +19,7 @@ import com.tcc.iap2.Iap2ListenerInfo;
 import com.tcc.iap2.Iap2NotiMsg;
 
 import hmgapi.hook.Car;
+import hmgapi.mods.wireless.WirelessSupport;
 import hmgapi.hook.Cluster;
 import hmgapi.hook.LoadedApp;
 import hmgapi.hook.MethodHook;
@@ -118,10 +119,10 @@ public final class Dipo {
         tbt = m.settingBoolean("tbt", true);
         bridge = m.settingBoolean("bridge", true);
         // the CarPlay libraries, patched in memory once DiPO loads them (files stay stock)
-        if (bridge) m.nativePatch(a, "libCarPlayCore.so");   // AirPlay sessions over Wi-Fi
+        if (bridge) WirelessSupport.nativePatch(m, "libCarPlayCore.so");   // AirPlay sessions over Wi-Fi
         if (m.settingBoolean("audio", true)) {
-            m.nativePatch(a, "libCarPlayAudio.so");   // offer AAC and Opus on Wi-Fi
-            m.nativePatch(a, "libCarPlayUtils.so");   // its AudioConverter calls go to libleafiaaac.so
+            WirelessSupport.nativePatch(m, "libCarPlayAudio.so");   // offer AAC and Opus on Wi-Fi
+            WirelessSupport.nativePatch(m, "libCarPlayUtils.so");   // its AudioConverter calls go to libleafiaaac.so
         }
         if (tbt) turnByTurn();
         if (bridge) bridge();

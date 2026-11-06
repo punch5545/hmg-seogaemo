@@ -248,8 +248,8 @@ public final class HmgSeogaemoProjectionRuntime {
     }
     Result status() throws Exception {
         boot = text(path("/proc/sys/kernel/random/boot_id"), 128).trim();
-        jarHash = digest(path("/system/framework/hmg-seogaemo-wireless-hook.jar"));
-        loaderHash = digest(path("/system/lib/libhmg_seogaemo_wireless_hook.so"));
+        jarHash = digest(path("/system/framework/hmg-seogaemo-hook.jar"));
+        loaderHash = digest(path("/system/lib/libhmg_seogaemo_hook.so"));
         privateDir(runtime);
         File apps = new File(runtime, "apps"); deleteTree(apps, 3); privateDir(apps);
         Result result;

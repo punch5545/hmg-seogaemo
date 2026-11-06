@@ -169,6 +169,7 @@ mi_check_props() {
             replaces)
                 [ "$mi_mode" = bundled ] || mi_fail "HSM-E203 module.properties: unknown key $mi_key"
                 hsm_ok_id "$mi_val" && [ "$mi_val" != "$(mi_field id "$mi_props")" ] ;;
+            hooks) [ "$mi_mode" = bundled ] && [ "$mi_val" = 1 ] && mi_raw "$mi_pkg" || mi_fail "HSM-E203 module.properties: unknown key $mi_key" ;;
             owns_props|reassert_props|owns_files|owns_generated_dirs|services|service_calls|restore|owns_lines.[1-9]|owns_lines.[1-9][0-9])
                 [ "$mi_mode" = bundled ] || mi_fail "HSM-E203 module.properties: unknown key $mi_key"
                 mi_check_owned "$mi_key" "$mi_val" ;;
@@ -232,6 +233,7 @@ mi_declared_touched() {
             services) for mi_t in $mi_val; do sg_print "service	$mi_t"; done ;;
             service_calls) for mi_t in $mi_val; do sg_print "call	$mi_t"; done ;;
             owns_lines.*) sg_print "line	$mi_val" ;;
+            hooks) sg_print "hook	1" ;;
         esac
         IFS=$mi_old_ifs
     done < "$1/module.properties"
@@ -412,6 +414,7 @@ mi_check_ui() {
                 key=*|name=*|when=*) hsm_ok_name "${mi_arg#*=}" ;;
                 module=*) hsm_ok_id "${mi_arg#module=}" ;;
                 screen=*) case "${mi_arg#screen=}" in wifi_settings|wifi_networks) ;; *) false;; esac ;;
+                danger=1) [ "$mi_block" = button ] ;;
                 *) false ;;
             esac || { hsm_error 112 "bad argument for $mi_block"; exit 2; }
         done
@@ -460,11 +463,8 @@ mi_generate() {
     done < "$work.touched"
     mi_restart=$(mi_field restart "$mi_src")
     mi_excludes=$(mi_field not_with "$mi_src")
-    if [ "$mi_hooks" -eq 1 ]; then
-        # App hooks load at zygote start and share app_process with the CarPlay module.
-        mi_restart=head_unit
-        case ",$mi_excludes," in *,wireless-carplay-and-aa,*) ;; *) mi_excludes=$mi_excludes${mi_excludes:+,}wireless-carplay-and-aa;; esac
-    fi
+    # App hooks load at zygote start through the shared core hook host.
+    [ "$mi_hooks" -eq 0 ] || mi_restart=head_unit
     {
         sg_print "id=$mi_id" "version=$(mi_field version "$mi_src")" api=1 "source=$mi_mode" \
             "cars=$(mi_field cars "$mi_src")" "restart=$mi_restart" \

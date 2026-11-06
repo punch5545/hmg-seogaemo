@@ -147,6 +147,8 @@ while IFS= read -r props; do
     fi
 done < "$work/properties"
 
+# With no built-in module the awk pass writes nothing; the outputs still exist.
+: > "$work/ordered"; : > "$work/ordered-ids"; : > "$work/graph"
 awk -F '\t' -v ordered="$work/ordered" -v ids_file="$work/ordered-ids" -v graph="$work/graph" '
 function fail(message) { print "gen-modules: " message > "/dev/stderr"; exit 1 }
 function parse(id, value, kind, parts, count, i, ref, key) {
@@ -275,16 +277,25 @@ mkdir -p "$OUT_DIR/gen/com/seogaemo/hmg/module" "$OUT_DIR/package/modules"
     echo '    };'
     echo '}'
 } > "$OUT_DIR/gen/com/seogaemo/hmg/module/GeneratedModules.java"
-cp "$work/ordered-ids" "$OUT_DIR/package/modules.list"
-cp "$work/graph" "$OUT_DIR/package/modules.graph"
+# Every module now ships as a bundled package. The compatibility entry package-compat keeps
+# modules.list and modules.graph non-empty with a valid stub script, which installs from 0.1.33 and
+# older require of an OTA payload (lib/payload.sh, core/update.sh); the runtime ignores it.
+{ cat "$work/ordered-ids"; echo package-compat; } > "$OUT_DIR/package/modules.list"
+{ cat "$work/graph"; printf 'package-compat\tdepends=\texcludes=\n'; } > "$OUT_DIR/package/modules.graph"
 cp "$work/lines" "$OUT_DIR/package/modules.lines"
 rm -f "$OUT_DIR/package/modules/"*.sh "$OUT_DIR/package/modules/"*.properties
+# Left by builds where a module was still built in (its payload now ships inside its .hsm).
+rm -rf "$OUT_DIR/package/modules/"*.d
 while IFS=' ' read -r id script; do
     [ -n "$id" ] || continue
     cp "$script" "$OUT_DIR/package/modules/$id.sh"
 done < "$work/scripts"
+printf '#!/system/bin/sh\n# Compatibility entry for OTA payload checks of older installs; not a module.\nexit 2\n' > "$OUT_DIR/package/modules/package-compat.sh"
+printf 'id=package-compat\nversion=%s\nservices=\n' "$version" > "$OUT_DIR/package/modules/package-compat.properties"
 for props in modules/*/module.properties; do
     [ -f "$props" ] || continue
+    # Bundled modules (api=) also keep their declared manifest here: the shared-line and
+    # whole-file ownership checks read every module's manifest from the package.
     id=${props%/module.properties}
     id=${id##*/}
     sed "s/^version=@VERSION@$/version=$version/" "$props" > "$OUT_DIR/package/modules/$id.properties"

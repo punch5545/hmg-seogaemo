@@ -22,7 +22,7 @@ import hmgapi.engine.MemRecipe;
  * of a mod's recipes that fits the library (its stock bytes) is the one used, so one
  * mod can carry a recipe per build of a library.
  */
-final class NativePatch {
+public final class NativePatch {
     private NativePatch() {}
 
     static final class Want {
@@ -93,7 +93,7 @@ final class NativePatch {
         }
     };
 
-    static synchronized void request(ModContext mod, String lib, List<MemRecipe> recipes) {
+    public static synchronized void request(ModContext mod, String lib, List<MemRecipe> recipes) {
         for (Want existing : wants) if (existing.lib.equals(lib)) return;
         if (!Points.needAll("native patches", "framework.runtime", "framework.runtime.load_library", "framework.runtime.load")) {
             RuntimeResult.phase("native." + lib, "failed", "missing runtime load points");
@@ -220,7 +220,7 @@ final class NativePatch {
     }
 
     // Modified by HMG-Seogaemo: read a fixed bundled recipe.
-    static MemRecipe readOne(File f) throws Exception {
+    public static MemRecipe readOne(File f) throws Exception {
         BufferedReader in = new BufferedReader(new FileReader(f));
         StringBuilder text = new StringBuilder(); String line;
         try { while ((line = in.readLine()) != null) text.append(line).append('\n'); }

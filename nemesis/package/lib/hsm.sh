@@ -338,22 +338,8 @@ hsm_ok_hook() {
     done
 }
 
-# Registers the module's hook jar with the core hook host; the wrapper itself is
-# installed by sg_core_hook_ensure after apply.sh succeeds.
-hsm_hook_apps() {
-    hsm_hdir=$(hsm_hook_dir)
-    mkdir -p "$hsm_hdir" && chmod 700 "$SG_DATA_ROOT/core" "$SG_DATA_ROOT/core/hook" "$SG_DATA_ROOT/core/hook/mods" "$hsm_hdir" || return 1
-    sg_ready || return 1
-    hsm_jar=$1; hsm_entry=$2; shift 2
-    hsm_tmp=$HMG_SEOGAEMO_STATE/hook.$
-    sg_print "$hsm_entry" > "$hsm_tmp.entry" && sg_print "$@" > "$hsm_tmp.processes" || return 1
-    sg_commit_file "$hsm_hdir/hook.jar" "$HMG_SEOGAEMO_MODULE_DIR/$hsm_jar" 0600 0:0 &&
-        sg_commit_file "$hsm_hdir/entry" "$hsm_tmp.entry" 0600 0:0 &&
-        sg_commit_file "$hsm_hdir/processes" "$hsm_tmp.processes" 0600 0:0
-    hsm_rc=$?
-    rm -f "$hsm_tmp.entry" "$hsm_tmp.processes"
-    return "$hsm_rc"
-}
+# Registers the module's hook jar with the core hook host (runtime API).
+hsm_hook_apps() { sg_hook_register "$@"; }
 
 hsm_has_baseline() {
     [ -f "$HMG_SEOGAEMO_STATE/prop.$1/ready" ]

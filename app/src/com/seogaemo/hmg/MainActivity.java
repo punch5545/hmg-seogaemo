@@ -686,7 +686,6 @@ public final class MainActivity extends Activity {
             Feature target = feature(action.target);
             if (target != null) prepareModuleChange(target, true, false);
         } else if (action.type == ModuleAction.Type.OPEN_STOCK_WIFI_SETTINGS) openWifiSettings();
-        else if (action.type == ModuleAction.Type.RESET_TBT_RECORDS) confirmTbtReset();
     }
 
     private void openWifiSettings() {
@@ -694,39 +693,6 @@ public final class MainActivity extends Activity {
         catch (ActivityNotFoundException missing) {
             Toast.makeText(this, R.string.screen_unavailable, Toast.LENGTH_SHORT).show();
         }
-    }
-
-    private boolean tbtResetBusy;
-
-    /** Deletes the two generated turn-by-turn observation files: confirmed, off the main thread, count refreshed after. */
-    private void confirmTbtReset() {
-        if (tbtResetBusy || stockBusy || moduleWorking || modulePlanning) return;
-        ConfirmDialog.show(this, getString(R.string.wireless_carplay_and_aa_tbt_reset),
-                getString(R.string.wireless_carplay_and_aa_tbt_reset_confirm),
-                getString(R.string.wireless_carplay_and_aa_tbt_reset), getString(R.string.cancel), true,
-                new ConfirmDialog.Action() {
-                    public void run(final ConfirmDialog dialog) {
-                        tbtResetBusy = true;
-                        dialog.showProgress();
-                        new Thread(new Runnable() {
-                            public void run() {
-                                final RootResult result = RootClient.tbtReset();
-                                runOnUiThread(new Runnable() {
-                                    public void run() {
-                                        tbtResetBusy = false;
-                                        dialog.dismiss();
-                                        refreshAfterOperation();
-                                        ConfirmDialog.showResult(MainActivity.this,
-                                                getString(R.string.wireless_carplay_and_aa_tbt_reset),
-                                                result.exitCode == 0
-                                                        ? getString(R.string.wireless_carplay_and_aa_tbt_reset_done)
-                                                        : result.detail, getString(R.string.close));
-                                    }
-                                });
-                            }
-                        }, "tbt-reset").start();
-                    }
-                }, null);
     }
 
     private void showDetail(final Feature feature) {
@@ -923,9 +889,7 @@ public final class MainActivity extends Activity {
                 View.OnClickListener tap = new View.OnClickListener() {
                     public void onClick(View view) { dispatchModuleAction(action); }
                 };
-                if (action.type == ModuleAction.Type.RESET_TBT_RECORDS)
-                    rows.addAction(getString(item.labelResId), getString(R.string.option_run), true, true, tap);
-                else rows.addLink(getString(item.labelResId), tap);
+                rows.addLink(getString(item.labelResId), tap);
                 break;
         }
     }
@@ -990,9 +954,11 @@ public final class MainActivity extends Activity {
         } else if ("button".equals(type)) {
             final String name = arguments.get("name");
             final String confirm = arguments.containsKey("confirm") ? installed.text(arguments.get("confirm")) : label;
+            // danger=1: the action deletes something; the confirm uses the destructive style.
+            final boolean danger = "1".equals(arguments.get("danger"));
             boolean on = result != null && "on".equals(result.state) && RootClient.validActionName(name);
             rows.addAction(label, getString(R.string.option_run), false, on, new View.OnClickListener() {
-                public void onClick(View view) { confirmAction(feature, name, label, confirm); }
+                public void onClick(View view) { confirmAction(feature, name, label, confirm, danger); }
             });
         } else if ("enable".equals(type)) {
             final Feature target = feature(arguments.get("module"));
@@ -1330,9 +1296,10 @@ public final class MainActivity extends Activity {
         check.run();
     }
 
-    private void confirmAction(final Feature feature, final String name, final String label, String question) {
+    private void confirmAction(final Feature feature, final String name, final String label, String question,
+            boolean destructive) {
         if (moduleWorking || modulePlanning || stockBusy) return;
-        ConfirmDialog.show(this, question, null, getString(R.string.option_run), getString(R.string.cancel), false,
+        ConfirmDialog.show(this, question, null, getString(R.string.option_run), getString(R.string.cancel), destructive,
                 new ConfirmDialog.Action() {
             public void run(ConfirmDialog dialog) {
                 moduleWorking = true;
