@@ -32,7 +32,7 @@ def run_tests(tests, done):
     """Run test functions, each in its own temp dir.
 
     Without arguments run all and print `done`. With names run only those
-    (so tools/test-root-shells.py can shard one suite across workers);
+    (so tools/run-tests.py can shard one suite across workers);
     `--list` prints the names.
     """
     import sys
