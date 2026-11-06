@@ -38,6 +38,9 @@ public final class CpTrapOverlay {
     private static CpTrapOverlay installed;
 
     private final ModContext mod;
+    private final Context context;
+    /** NavigationCluster for the neutral record, made on first use */
+    private Object cluster;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Method legacy, modern;
     private final Constructor<?> constructor;
@@ -75,7 +78,7 @@ public final class CpTrapOverlay {
             return;
         }
         try {
-            final CpTrapOverlay overlay = new CpTrapOverlay(mod);
+            final CpTrapOverlay overlay = new CpTrapOverlay(mod, app.context);
             overlay.hook(mod, TRAP, false);
             overlay.hook(mod, TRAP_NEW, true);
             app.context.registerReceiver(new BroadcastReceiver() {
@@ -94,8 +97,9 @@ public final class CpTrapOverlay {
         }
     }
 
-    private CpTrapOverlay(ModContext mod) throws Exception {
+    private CpTrapOverlay(ModContext mod, Context context) throws Exception {
         this.mod = mod;
+        this.context = context;
         legacy = Points.method(null, TRAP);
         modern = Points.method(null, TRAP_NEW);
         recordClass = Points.cls(null, RECORD);
@@ -210,10 +214,23 @@ public final class CpTrapOverlay {
         if (overlaid) replay(false);
     }
 
+    /**
+     * The latest stock record, or a neutral one: stock navigation sends trap info only on change,
+     * so a calm road may have none. Neutral = no camera/speed/toll (all 0), overSpeedAlarm 3 as
+     * stock sends when idle.
+     */
+    private Snapshot base() throws Exception {
+        if (latest != null) return latest;
+        if (cluster == null) cluster = Points.newInstance(null, "framework.navigation_cluster.new", context);
+        int[] values = new int[17];
+        values[2] = 3;
+        return new Snapshot(cluster, false, values, false);
+    }
+
     private void replay(boolean overlay) {
-        if (latest == null) return; // Never invent a camera/speed/toll record.
         try {
-            invoke(latest.isNew ? modern : legacy, latest.target, latest.arguments(overlay, bar));
+            Snapshot s = base();
+            invoke(s.isNew ? modern : legacy, s.target, s.arguments(overlay, bar));
             overlaid = overlay;
         } catch (Throwable t) {
             error("CarPlay: stock trap-bar replay", t);

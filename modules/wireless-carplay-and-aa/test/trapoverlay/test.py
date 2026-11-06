@@ -78,6 +78,11 @@ public final class Points {
     public static Class<?> recordType = CpTrapOverlayTest.Trap.class;
     public static String absent = "";
     public static String missing(String... ids) { return absent; }
+    public static Object cluster;
+    public static Object newInstance(ClassLoader cl,String id,Object... args) {
+        if (!id.equals("framework.navigation_cluster.new") || args.length!=1) throw new AssertionError(id);
+        return cluster;
+    }
     public static Method method(ClassLoader cl,String id) {
         if (cl!=null) throw new AssertionError("framework loader");
         try {
@@ -210,11 +215,14 @@ public final class CpTrapOverlayTest {
         Points.recordType=Trap.class;
         CpTrapOverlay.install(mod,new LoadedApp("com.mnsoft.navi","navigation",null,ctx));
         CpTrapOverlay.install(mod,new LoadedApp("com.mnsoft.navi","navigation",null,ctx));
-        final Stock stock=new Stock();
+        final Stock stock=new Stock(); Points.cluster=stock;
         ctx.sendBroadcast(message(true,80));
-        check(stock.calls==0,"no fabricated empty record");
+        int[] neutral=new int[17]; neutral[2]=3; neutral[11]=80;
+        check(stock.calls==1 && Arrays.equals(stock.last,neutral),"no stock record: neutral record carries the bar");
         Handler.advance(3500);
-        check(stock.calls==0,"expiry without stock remains empty");
+        neutral[11]=0;
+        check(stock.calls==2 && Arrays.equals(stock.last,neutral),"expiry restores the neutral bar to 0");
+        stock.calls=0;
         legacy(stock,100); legacyEquals(stock,100,111);
         check(stock.calls==1,"own replay guard delivers once");
         ctx.sendBroadcast(message(true,90).setPackage(null));
