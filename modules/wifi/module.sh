@@ -25,7 +25,7 @@ value=3
 id=${HMG_SEOGAEMO_STATE##*/}
 usb_iface=rtwlan0
 ap_ip=192.168.50.1
-ap_channel=36
+ap_channel=6
 usb_devices=${SG_USB_DEVICES_DIR:-/sys/bus/usb/devices}
 net_root=${SG_SYS_NET_ROOT:-/sys/class/net}
 inbox=${HMG_SEOGAEMO_WIFI_INBOX:-/data/data/com.seogaemo.hmg/files/wifi}
@@ -215,7 +215,7 @@ ap_credentials() {
 usb_hostapd_conf() {
     sg_ready || return 1
     sg_print "interface=$usb_iface" driver=nl80211 "ssid=$(state_value usb-ap ssid)" country_code=KR \
-        hw_mode=a "channel=$ap_channel" ieee80211n=1 wmm_enabled=1 auth_algs=1 wpa=2 \
+        "ctrl_interface=$HMG_SEOGAEMO_STATE/hostapd" hw_mode=g "channel=$ap_channel" ieee80211n=1 wmm_enabled=1 auth_algs=1 wpa=2 \
         wpa_key_mgmt=WPA-PSK rsn_pairwise=CCMP "wpa_passphrase=$(state_value usb-ap pass)" \
         > "$HMG_SEOGAEMO_STATE/usb-hostapd.conf"
 }
@@ -274,8 +274,9 @@ usb_apply() {
             sg_daemon_start usb-dhcp || { ua_failed $? 'start usb-dhcp'; return $?; } ;;
         carplay_ap)
             { ap_credentials && usb_hostapd_conf; } || { ua_failed $? 'write hotspot config'; return $?; }
-            sg_daemon_start usb-hostapd || { ua_failed $? 'start usb-hostapd'; return $?; }
+            # The address also brings rtwlan0 up, which hostapd expects before it starts.
             sg_iface_addr "$usb_iface" "$ap_ip/24" || { ua_failed $? "address $usb_iface"; return $?; }
+            sg_daemon_start usb-hostapd || { ua_failed $? 'start usb-hostapd'; return $?; }
             sg_daemon_start usb-dnsmasq || { ua_failed $? 'start usb-dnsmasq'; return $?; }
             sg_net_rule 1 || { ua_failed $? 'add INPUT rule'; return $?; } ;;
     esac

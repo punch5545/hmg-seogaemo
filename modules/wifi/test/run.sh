@@ -520,7 +520,7 @@ grep -Fxq 'interface=rtwlan0' "$state/usb-hostapd.conf"
 [ "$(cat "$work/kernel/iptables")" = 'filter INPUT -i rtwlan0 -j ACCEPT' ]
 [ -d "$work/proc/$(daemon_pid usb-hostapd)" ] && [ -d "$work/proc/$(daemon_pid usb-dnsmasq)" ]
 for key in radio:usb interface:rtwlan0 ip:192.168.50.1 ssid:HMG-Seogaemo-6f1d passphrase:6f1d2e3c4b5a49688776 \
-        channel:36 ready:1; do
+        channel:6 ready:1; do
     [ "$(peer "${key%%:*}")" = "${key#*:}" ] || { echo "peer ${key%%:*}: $(peer "${key%%:*}")"; exit 1; }
 done
 # Credentials stay the same across applies and boots.
