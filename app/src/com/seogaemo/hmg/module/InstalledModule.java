@@ -22,9 +22,12 @@ public final class InstalledModule {
     public final List<Module.Setting> settings;
     public final List<String> uiBlocks;
     public final Map<String, String> strings;
+    /** The raw `module describe` values, kept so the app can cache and re-parse them. */
+    public final Map<String, String> info;
 
     private InstalledModule(String id, Map<String, String> info) {
         this.id = id;
+        this.info = Collections.unmodifiableMap(new HashMap<String, String>(info));
         version = value(info, "version");
         source = value(info, "source");
         restart = value(info, "restart");

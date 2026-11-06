@@ -71,6 +71,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /** Gen5W app: Features, Car and Settings tabs over the built-in and installed modules. */
 public final class MainActivity extends Activity {
@@ -138,6 +141,7 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         applyLocale();
+        restoreInstalledCache();
         getWindow().getDecorView().setSystemUiVisibility(5894 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         sans = Typeface.create("sans-serif", Typeface.NORMAL);
         medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
@@ -470,6 +474,59 @@ public final class MainActivity extends Activity {
         return null;
     }
 
+    /** Refreshes the installed list from root and caches it for the next cold start. */
+    private boolean refreshInstalled(String locale) {
+        if (!ModuleRegistry.refreshInstalled(locale)) return false;
+        try {
+            JSONObject modules = new JSONObject();
+            JSONArray order = new JSONArray();
+            for (InstalledModule module : ModuleRegistry.installed()) {
+                order.put(module.id);
+                modules.put(module.id, new JSONObject(module.info));
+            }
+            moduleCache().edit().putString("locale", locale).putString("order", order.toString())
+                    .putString("modules", modules.toString()).apply();
+        } catch (JSONException ignored) { }
+        return true;
+    }
+
+    /**
+     * A cold start shows the last known modules (status still loading) at once instead of an
+     * empty screen while root lists and describes every package; loadFeatures() replaces them.
+     */
+    private void restoreInstalledCache() {
+        if (!ModuleRegistry.installed().isEmpty()) return;
+        SharedPreferences cache = moduleCache();
+        try {
+            JSONObject groups = new JSONObject(cache.getString("groups", "{}"));
+            for (java.util.Iterator<?> keys = groups.keys(); keys.hasNext();) {
+                String id = (String) keys.next();
+                sortGroups.put(id, groups.getInt(id));
+            }
+            if (!describeLocale().equals(cache.getString("locale", ""))) return;
+            JSONArray order = new JSONArray(cache.getString("order", "[]"));
+            JSONObject modules = new JSONObject(cache.getString("modules", "{}"));
+            List<InstalledModule> found = new ArrayList<InstalledModule>();
+            for (int i = 0; i < order.length(); i++) {
+                String id = order.getString(i);
+                JSONObject values = modules.getJSONObject(id);
+                Map<String, String> info = new HashMap<String, String>();
+                for (java.util.Iterator<?> keys = values.keys(); keys.hasNext();) {
+                    String key = (String) keys.next();
+                    info.put(key, values.getString(key));
+                }
+                InstalledModule module = InstalledModule.parse(id, new RootResult("on", "none", "", 0, info));
+                if (module == null) return;
+                found.add(module);
+            }
+            ModuleRegistry.setInstalled(found);
+        } catch (JSONException ignored) { }
+    }
+
+    private SharedPreferences moduleCache() {
+        return getSharedPreferences("module_cache", MODE_PRIVATE);
+    }
+
     private String describeLocale() {
         String language = locale().getLanguage();
         return language != null && language.matches("[a-z]{2}") ? language : "en";
@@ -554,6 +611,7 @@ public final class MainActivity extends Activity {
             if (!unread) sortGroups.put(feature.id, group(entry.state));
             groups.put(feature.id, unread && known != null ? known : group(entry.state));
         }
+        moduleCache().edit().putString("groups", new JSONObject(sortGroups).toString()).apply();
         final Collator collator = Collator.getInstance(locale());
         Collections.sort(list, new Comparator<FeaturesView.Entry>() {
             public int compare(FeaturesView.Entry left, FeaturesView.Entry right) {
@@ -610,7 +668,7 @@ public final class MainActivity extends Activity {
         final int generation = ++loadGeneration;
         final String locale = describeLocale();
         new Thread(new Runnable() { public void run() {
-            ModuleRegistry.refreshInstalled(locale);
+            refreshInstalled(locale);
             final List<Feature> list = features();
             final Map<String, RootResult> results = new HashMap<String, RootResult>();
             for (Feature feature : list) results.put(feature.id, RootClient.run(feature.id, "status"));
@@ -1344,7 +1402,7 @@ public final class MainActivity extends Activity {
                 if (progress != null) progress.setStep(0, StepProgressDialog.RUNNING);
                 new Thread(new Runnable() { public void run() {
                     final RootResult result = RootClient.moduleRemove(feature.id);
-                    ModuleRegistry.refreshInstalled(describeLocale());
+                    refreshInstalled(describeLocale());
                     runOnUiThread(new Runnable() { public void run() {
                         moduleWorking = false;
                         if (progress != null) progress.dismiss();
@@ -2100,7 +2158,7 @@ public final class MainActivity extends Activity {
                         outcome = new RootResult("failed", "none", getString(R.string.add_failed), 1, null);
                     }
                     if (staged != null && !staged.getParentFile().equals(file.getParentFile())) staged.delete();
-                    ModuleRegistry.refreshInstalled(describeLocale());
+                    refreshInstalled(describeLocale());
                     final RootResult result = outcome;
                     runOnUiThread(new Runnable() { public void run() {
                         moduleWorking = false;
