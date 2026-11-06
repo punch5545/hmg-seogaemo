@@ -1,6 +1,6 @@
 # HMG-API upstream tracking
 
-HMG-Seogaemo's core mapper and hookpoint catalogue are independently implemented. Their behavior follows [VysseCodes/HMG-API](https://github.com/VysseCodes/HMG-API) at commit `4fab437`. Stable hookpoint IDs intentionally match HMG-API so the existing wireless projection hooks consume the published map. The owner supplied the NEEV KOR names and stock MD5s in the bundled map.
+HMG-Seogaemo's core mapper and hookpoint catalogue are independently implemented. Their behavior follows [VysseCodes/HMG-API](https://github.com/VysseCodes/HMG-API) at commit `4fab437`. Upstream-derived hookpoint IDs intentionally match HMG-API so the existing wireless projection hooks consume the published map. The stock-guidance extension below adds our own stable IDs. The owner supplied the NEEV KOR names and stock MD5s in the bundled map.
 
 | Our component | HMG-API path at `4fab437` |
 | --- | --- |
@@ -71,6 +71,28 @@ from exact-stock odex; see [coverage](docs/hookpoints.md) and the bundled eviden
   `framework.cluster_listener`, `framework.cluster_listener_stub`,
   `framework.cluster_listener_stub.as_interface`, `framework.cluster_listener_stub.battery_info`,
   `framework.cluster_service.add_listener`, `framework.cluster_service.battery_info`
+
+## Stock-guidance catalogue extension (2026-11-07)
+
+These six IDs are independently derived from the owner's read-only NEEV KOR
+stock dump, rather than translated from HMG-API. The general upstream baseline
+and the 18 v1.0.1 additions above are unchanged. All six uniquely resolve with
+our DEX scanner without reference-map fallback in
+`/system/framework/automotive.odex`, MD5 `c76b8209ef171739b177eb14e8df61dd`.
+Exact signatures (methods and field are instance members; all methods return void):
+
+| Stable ID | Stock class/member signature |
+| --- | --- |
+| `framework.navigation_cluster.update_tbt_trap_info` | `com.hkmc.cluster.NavigationCluster.updateTBTTrapInfo(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int): void`; argument 12 is barGraphLevel |
+| `framework.navigation_cluster.update_tbt_trap_info_new` | `com.hkmc.cluster.NavigationCluster.updateTBTTrapInfoNew(com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo): void` |
+| `framework.navigation_cluster.update_clu_data_new_14` | `com.hkmc.cluster.NavigationCluster.updateCluDataNew_14(int, int, int, int, int): void` |
+| `framework.tbt_trap_info` | `com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo` |
+| `framework.tbt_trap_info.new` | `com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo.<init>()` |
+| `framework.tbt_trap_info.bar_graph_level` | `com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo.barGraphLevel: int` |
+
+The six additions have exact-stock host evidence in the bundled sidecar and
+still need on-car reflection. No module requirement changes here. Source paths,
+smali cross-checks and Parcelable copying notes: [.agents/car-mapping.md](.agents/car-mapping.md).
 
 ## Startup consent screen reference
 

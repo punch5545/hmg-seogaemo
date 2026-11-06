@@ -31,7 +31,7 @@ The `hmgapi.*` Java namespaces remain internally to preserve the mod's app-part 
 
 ## Exact car map and firmware guards
 
-The map is `maps/hyundai/ioniq5/kor/260902/{map.json,car.json}` in the core package. It contains 324 resolved point names and all 18 stock-file MD5s reported for this car. The module declares 120 point IDs, including owner classes and supporting fields, in `hookpoints.required`. Root precheck requires `map status` to report a verified core map. The zygote loader reads the package API's active pointer under `/data/nemesis/backup/hmg-seogaemo/car-maps/`, checks the exact product, onebin, Android version, boot verification seal, and all map stock MD5s, then loads the published verified entries. The module has no private payload map and installs no map into `/system`. The report has no whole-file hash for `app_process`, `featurexml.cfg`, or native libraries. Native recipes still verify their own byte regions. HMG-API's Dalvik offsets were proven on US EV6; on-car KOR validation remains necessary.
+The map is `maps/hyundai/ioniq5/kor/260902/{map.json,car.json}` in the core package. It contains 348 resolved point names and all 18 stock-file MD5s reported for this car; the original 324 have on-car reflection evidence and the 24 additions have host evidence only (see car-mapping.md). The module declares 120 point IDs, including owner classes and supporting fields, in `hookpoints.required`. Root precheck requires `map status` to report a verified core map. The zygote loader reads the package API's active pointer under `/data/nemesis/backup/hmg-seogaemo/car-maps/`, checks the exact product, onebin, Android version, boot verification seal, and all map stock MD5s, then loads the published verified entries. The module has no private payload map and installs no map into `/system`. The report has no whole-file hash for `app_process`, `featurexml.cfg`, or native libraries. Native recipes still verify their own byte regions. HMG-API's Dalvik offsets were proven on US EV6; on-car KOR validation remains necessary.
 
 Declared hook points and their exact resolved members on this car:
 
@@ -74,7 +74,7 @@ Declared hook points and their exact resolved members on this car:
 | `dipo.iap2.bt_address` | `com.daudio.app.dipo.e.b.K` |
 | `dipo.bt.set_carplay_bt_address` | `com.daudio.app.dipo.f.c.o` |
 
-`Car`, `Cluster`, and `NativePatch` consume supporting framework points from the same 324-point map. A library recipe mismatch leaves that stock library unchanged and logs the failure; it does not prove that the corresponding feature works on KOR.
+`Car`, `Cluster`, and `NativePatch` consume supporting framework points from the same core map. A library recipe mismatch leaves that stock library unchanged and logs the failure; it does not prove that the corresponding feature works on KOR.
 
 ## Complete change/restore inventory
 

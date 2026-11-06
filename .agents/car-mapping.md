@@ -1,4 +1,4 @@
-Status: current — core mapping implemented off-car; on-car timing/reflection for the v1.0.1 additions unverified.
+Status: current — core mapping implemented off-car; on-car timing/reflection for the v1.0.1 and stock-guidance additions unverified.
 
 # Car mapping: NEEV.KOR.260902
 
@@ -36,9 +36,28 @@ The private Car Report is never committed. Operator workflow:
 - 6 iAP2 points in `/system/app/Iap2ServerApp.odex` (`a672fd0e0070414f2eb70a2807117a6f`); 12 framework points in
   `/system/framework/automotive.odex` (`c76b8209ef171739b177eb14e8df61dd`). Per-ID signatures in the bundled `evidence.json`.
   Keep the stock `iAP2UsedVehicelInformation` spelling. No module requires a new ID.
-- Bundle maps 342/343; `themesettings.split_item.type` stays missing. Only the original 324 points have owner-reported
-  on-car reflection (324/324, 2026-11-03); the 18 need it. The sidecar and generated `docs/hookpoints.md` distinguish these claims; the host validator checks
+- Bundle maps 348/349; `themesettings.split_item.type` stays missing. Only the original 324 points have owner-reported
+  on-car reflection (324/324, 2026-11-03); the 24 additions need it. The sidecar and generated `docs/hookpoints.md` distinguish these claims; the host validator checks
   consistency and optional exact-stock MD5s, not that a physical observation happened.
+
+## Stock-guidance additions (2026-11-07)
+
+Six independently authored IDs are listed with exact signatures in UPSTREAM.md and
+the bundled evidence sidecar. Our DEX index/scanner uniquely resolved all six without
+reference-map fallback against the read-only dump at
+`tmp/car-sessions/2026-11-04-devdump/system/` in the main checkout. All 18 existing
+stock MD5s match; every new point is in `/system/framework/automotive.odex`
+(`c76b8209ef171739b177eb14e8df61dd`). No stock hashes or module requirements changed.
+
+Smali cross-checks under `analysis/api-inventory/smali/automotive/com/hkmc/cluster/`:
+`NavigationCluster.smali:1504` (five-int junction view), `:7728` (17-int trap info,
+`:7741` names argument 12 barGraphLevel), `:8186` (NaviTbtTrapInfo object);
+`NavigationCluster$NaviTbtTrapInfo.smali:34` (instance int barGraphLevel), `:94`
+(public no-argument constructor). The stock class implements Parcelable and has
+CREATOR, a Parcel constructor and writeToParcel; a consumer can preserve its other
+fields via a Parcelable round trip rather than mapping every camera/speed field.
+The six additions still need on-car reflection; physical view observations in
+cluster-ar-view.md and hud-junction-view.md do not establish that verification.
 
 ## Verification seal
 

@@ -653,7 +653,13 @@ The stock hash ID is unchanged. Zygote still accepts the first two seal lines
 and checks exact identity and stock MD5s independently, allowing a previously
 verified projection map to load before boot reconciliation completes. Optional
 new points do not expand any module's required set.
-Map IDs include the complete published car metadata and layout; optional reflection failures prune `by_reference` too; generated verification preserves export layout, binds the filtered published result and selects the active generated map before historical directories. Real-JVM fixtures cover these paths, static/reference signatures, required failure, stock mismatch and boot changes. The 18 v1.0.1 additions: [car-mapping.md](car-mapping.md).
+The stock-guidance catalogue also exposes `framework.navigation_cluster.update_tbt_trap_info`
+(17 ints, argument 12 is barGraphLevel), `update_tbt_trap_info_new` (one
+`@framework.tbt_trap_info`), and `update_clu_data_new_14` (five ints), all returning void.
+`framework.tbt_trap_info` names NavigationCluster's NaviTbtTrapInfo; `.new` is
+its no-argument constructor and `.bar_graph_level` is its instance int field.
+These six optional IDs have exact-stock host evidence; on-car reflection is pending.
+Map IDs include the complete published car metadata and layout; optional reflection failures prune `by_reference` too; generated verification preserves export layout, binds the filtered published result and selects the active generated map before historical directories. Real-JVM fixtures cover these paths, static/reference signatures, required failure, stock mismatch and boot changes. The 18 v1.0.1 and six stock-guidance additions: [car-mapping.md](car-mapping.md).
 
 ## Java side
 - `RootClient.run(String moduleId, String verb)` → `RootResult` (state, restart, detail, exit code).
