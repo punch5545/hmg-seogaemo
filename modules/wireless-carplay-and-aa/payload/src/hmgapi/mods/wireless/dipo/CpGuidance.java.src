@@ -27,6 +27,25 @@ final class CpGuidance {
 
     static int[] stock(CpTurns.Maneuver m) { return stock(m, null); }
 
+    /** ARRIVED 3: the flag on the destination ring, car-verified. */
+    static final int[] ARRIVED = {3, 0};
+
+    static boolean arrival(int type) {
+        return type == 10 || type == 12 || type == 24 || type == 25 || type == 27;
+    }
+
+    /** Lanes recommended at the maneuver touch only the left (-1) or right (1) edge, only
+     * middle lanes (0, a branch between two others), or tell nothing (2). Lane 0 is leftmost. */
+    static int laneSide(CpLaneDecoder.Info info) {
+        if (info == null || info.lanes == null || info.lanes.length < 2) return 2;
+        CpLaneDecoder.Lane[] l = info.lanes;
+        boolean any = false;
+        for (CpLaneDecoder.Lane lane : l) any |= lane != null && lane.status != 0;
+        if (!any) return 2;
+        boolean left = l[0] != null && l[0].status != 0, right = l[l.length - 1] != null && l[l.length - 1].status != 0;
+        return left == right ? (left ? 2 : 0) : left ? -1 : 1;
+    }
+
     /**
      * A lane change toward the exit is needed: lanes are known (lane 0 leftmost), some are
      * recommended, and the edge lane on the exit side is not.
@@ -67,15 +86,13 @@ final class CpGuidance {
             if (laneChange(lanes, side)) return side > 0 ? new int[] {19, 90} : new int[] {20, 270};
             return side > 0 ? new int[] {17, 90} : new int[] {18, 270};
         }
-        if (t == 13 || t == 14 || t >= 51 && t <= 53) {
-            // A keep is a Y split: FORK_2 25 with the route on the left (270) or right (90) branch,
-            // car-verified. FORK_3 26 draws nothing. A measured straight is no keep.
-            if (m.hasExit && a == 0) return null;
-            int side = t == 13 || t == 52 ? -1 : t == 14 || t == 53 ? 1
-                    : a < 0 || a == 180 ? 0 : a > 180 ? -1 : 1;
-            if (side == 0) return null;
-            if (m.hasExit && (side < 0 && a > 0 && a < 180 || side > 0 && a > 180)) return null;
-            return new int[] {25, side < 0 ? 270 : 90};
+        // Keeps and highway changes keep the projection icon and the lane frame: the phone's
+        // keep side is a lane recommendation, and a Y split (FORK_2 25) drawn from it showed
+        // splits that were not on the road (car drive 2026-11-07).
+        if (arrival(t)) {
+            // the stock destination arrow: 2 at 90 / 270 points at the side of the road
+            int side = t == 24 ? -1 : t == 25 ? 1 : 0;
+            return side == 0 ? ARRIVED.clone() : new int[] {2, side < 0 ? 270 : 90};
         }
         if (t == 3 || t == 5) {
             if (a > 0) return null;
