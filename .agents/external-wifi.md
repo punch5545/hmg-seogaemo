@@ -108,7 +108,12 @@ checks with the `wifi` USB roles.
 
 The hotspot to project over is published by `wifi` (root side; contract table "Peer info"): `radio`
 (`usb|builtin|none`), `interface`, `ip`, `ssid`, `passphrase`, `channel`, `ready` (`1|0|stock`). The USB hotspot is
-`rtwlan0`, `192.168.50.1/24`, DHCP `192.168.50.10-99`, 5 GHz channel 36, WPA2-PSK, SSID `HMG-Seogaemo-<4 hex>`;
+`rtwlan0`, `192.168.50.1/24`, DHCP `192.168.50.10-99`, 2.4 GHz channel 6 (5 GHz channel 36 failed on the tester's
+RTL8831BU: hostapd exited within seconds), WPA2-PSK, SSID `HMG-Seogaemo-<4 hex>`; `rtwlan0` is up with its address
+before hostapd starts. Stock hostapd (NEEV KOR, MD5 `27f00af8...`) hard-codes the stock hotspot's station list
+`/data/misc/wifi/all_sta.list` (written only when a station joins or leaves), so `wifi` runs a private copy
+(`derived_bin.hostapd`) that writes `usb_sta.list` in its state directory instead. When hostapd fails, `module.log`
+says why it stopped and `daemon.usb-hostapd.logcat.log` keeps its logcat lines (both in the problem report);
 credentials stay fixed across boots. `radio=builtin`, `ready=stock` means the stock hotspot as today.
 
 ## CarPlay side (implemented off-car, 2026-11-07)

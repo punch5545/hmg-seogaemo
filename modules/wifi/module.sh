@@ -276,11 +276,13 @@ usb_apply() {
             { ap_credentials && usb_hostapd_conf; } || { ua_failed $? 'write hotspot config'; return $?; }
             # The address also brings rtwlan0 up, which hostapd expects before it starts.
             sg_iface_addr "$usb_iface" "$ap_ip/24" || { ua_failed $? "address $usb_iface"; return $?; }
-            sg_daemon_start usb-hostapd || { ua_failed $? 'start usb-hostapd'; return $?; }
+            sg_daemon_start usb-hostapd || { ua_rc=$?; hostapd_logcat; ua_failed "$ua_rc" 'start usb-hostapd'; return $?; }
             sg_daemon_start usb-dnsmasq || { ua_failed $? 'start usb-dnsmasq'; return $?; }
             sg_net_rule 1 || { ua_failed $? 'add INPUT rule'; return $?; } ;;
     esac
 }
+# Android hostapd reports to logcat, not to its output; keep its lines beside the daemon logs.
+hostapd_logcat() { logcat -d -v time -t 300 -s hostapd > "$HMG_SEOGAEMO_STATE/daemon.usb-hostapd.logcat.log" 2>/dev/null || :; }
 # Logs which USB bring-up step failed (the app only shows a generic failure); returns its code.
 ua_failed() {
     sg_log "USB Wi-Fi: $2 failed ($1)" || :

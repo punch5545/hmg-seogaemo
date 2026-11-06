@@ -8,6 +8,8 @@ python=$(command -v python3)
 export HMG_SEOGAEMO_TEST_COMMON="$repo/nemesis/package/lib/common.sh"
 . "$HMG_SEOGAEMO_TEST_COMMON"
 work=$(mktemp -d "${TMPDIR:-/tmp}/wifi-test.XXXXXX")
+# Physical path: the runtime refuses symlinked state paths (macOS /var, /tmp).
+work=$(cd "$work" && pwd -P)
 stop_daemons() {
     for proc in "$work"/proc/[0-9]*; do
         [ -d "$proc" ] || continue
@@ -246,6 +248,16 @@ case "$5" in
     *) exit 2 ;;
 esac
 EOF
+# The package helper that derives a private hostapd (core/hsm HmgSeogaemoBinPatch), same rules.
+cat > "$work/bin/app_process" <<EOF
+#!$python
+import sys
+assert sys.argv[1:4] == ["/system/bin", "com.seogaemo.hmg.core.hsm.HmgSeogaemoBinPatch", "patch"], sys.argv
+source, dest, old, new = sys.argv[4:]
+data = open(source, "rb").read()
+open(dest, "xb").write(data.replace(old.encode(), new.encode().ljust(len(old), b"\\0")))
+print("ok count=%d" % data.count(old.encode()))
+EOF
 chmod +x "$work/bin/"* "$work/tools/system/bin/"*
 
 # Rewrite only fixed filesystem roots in a private copy.
@@ -266,7 +278,7 @@ for tool in cat cmp cp dd grep rm mkdir mv chmod ls date sleep; do
 done
 ln -s "$repo/tools/testlib/fakebin/md5" "$work/allowed/md5"
 ln -s "$python" "$work/allowed/python3"
-for tool in getprop setprop pm ifconfig netcfg dmesg; do
+for tool in getprop setprop pm ifconfig netcfg dmesg app_process; do
     ln -s "$work/bin/$tool" "$work/allowed/$tool"
 done
 for tool in awk sed tail head cut tr wc sort uniq xargs find stat readlink sha256sum sha1sum tar unzip busybox toybox; do
@@ -519,6 +531,9 @@ grep -Fxq 'interface=rtwlan0' "$state/usb-hostapd.conf"
 [ "$(cat "$work/kernel/addr.rtwlan0")" = 192.168.50.1/24 ]
 [ "$(cat "$work/kernel/iptables")" = 'filter INPUT -i rtwlan0 -j ACCEPT' ]
 [ -d "$work/proc/$(daemon_pid usb-hostapd)" ] && [ -d "$work/proc/$(daemon_pid usb-dnsmasq)" ]
+# hostapd runs as a private copy that keeps its station list out of the stock hotspot's file.
+[ -x "$state/bin/hostapd" ] && grep -q ' /data/misc/wifi/all_sta.list usb_sta.list$' "$state/bin/hostapd.source"
+grep -q '	bin_derive	hostapd	' "$data/ledger/ledger.tsv"
 for key in radio:usb interface:rtwlan0 ip:192.168.50.1 ssid:HMG-Seogaemo-6f1d passphrase:6f1d2e3c4b5a49688776 \
         channel:6 ready:1; do
     [ "$(peer "${key%%:*}")" = "${key#*:}" ] || { echo "peer ${key%%:*}: $(peer "${key%%:*}")"; exit 1; }
