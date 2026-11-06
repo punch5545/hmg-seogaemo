@@ -205,7 +205,7 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
   `0x0b`; status 0: `0x0f`). The old `lanes` setting modes (`off`/`rec`/`dim0`/`dim3`) were
   removed. While a frame with lanes shows, `NavigationCluster.updateRemainDis(dist, unit, tenths, 0)` carries the distance to
   the next maneuver (the turn's distance and unit; feet and yards as metres; resent every 2 s,
-  `65535, 15, 15, 0` when lanes go away; no toll-gate flag). The trailer bytes 0x43..0x50 stay
+  `65535, 15, 15, 0` when lanes go away, where the empty lane frame removes the box anyway; no toll-gate flag; the box always shows the next-maneuver distance by owner decision, [cluster-lane-frame.md](cluster-lane-frame.md) 1b). The trailer bytes 0x43..0x50 stay
   zero. Not yet seen on the car with this build. Refresh resends
   the last frame. tbt-lanes records contain raw numeric lane fields, description byte count,
   current index/count and all 81 frame bytes. Developer mode logs entries and index matches.
