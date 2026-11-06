@@ -518,9 +518,51 @@ def test_converted_builtin(car):
     assert "info.desired=on" in status, status
 
 
+def line_module(module_id, path, stock, new):
+    return {
+        "module.properties": f"id={module_id}\nversion=1.0.0\napi=1\ncars=NEEV.KOR.*.260902\n",
+        "apply.sh": f'replace_line {path} "{stock}" "{new}"\n',
+        "strings/en.txt": "name=Line\nsummary=Test\n",
+    }
+
+
+def test_installed_shared_line(car):
+    # Modules added from a user .hsm keep their manifest only under installed/; they share one
+    # stock file line by line, and the installer refuses a second owner of the same line.
+    # Shared-line operations act on the literal path; use a scratch file the way
+    # test-line-ownership does.
+    shared = car.temp / "shared.cfg"
+    stock = b"alpha\nbeta\nkeep\n"
+    shared.write_bytes(stock)
+    fake = Path(car.env["PATH"].split(":")[1])
+    for name in ("ls", "chown"):
+        script(fake / name, f'exec {sys.executable} "{ROOT / "tools/testlib/fake-ownership.py"}" {name} "$@"\n')
+    script(fake / "nemesis", "exit 0\n")
+    car.env.update(FAKE_OWNERS=str(car.temp / "owners.json"))
+
+    car.root("module", "install", car.offer(line_module("line-a", shared, "alpha", "A")))
+    car.root("module", "install", car.offer(line_module("line-b", shared, "beta", "B")))
+    assert not (car.base / "modules/line-a.properties").exists()
+    assert f"owns_lines.1={shared}:alpha" in (car.data / "installed/line-a.properties").read_text()
+    assert "line-a" in car.root("module", "install", car.offer(line_module("line-c", shared, "alpha", "C")), code=3)
+
+    assert "state=on" in car.root("line-a", "apply")
+    assert "state=on" in car.root("line-b", "apply")
+    assert shared.read_bytes() == b"A\nB\nkeep\n"
+    car.root("line-a", "revert")
+    assert shared.read_bytes() == b"alpha\nB\nkeep\n"
+    car.root("line-b", "revert")
+    assert shared.read_bytes() == stock
+    car.root("line-a", "apply")
+    car.root("module", "remove", "line-a")
+    car.root("module", "remove", "line-b")
+    assert shared.read_bytes() == stock
+
+
 def main():
     for test in (test_install_validation, test_lifecycle, test_reconcile_reapplies, test_hook_host, test_usb_import,
-                 test_button_action, test_bundled, test_replaces, test_converted_builtin):
+                 test_button_action, test_bundled, test_replaces, test_converted_builtin,
+                 test_installed_shared_line):
         with tempfile.TemporaryDirectory() as directory:
             test(Car(Path(directory).resolve()))
     print("installed module tests passed")
