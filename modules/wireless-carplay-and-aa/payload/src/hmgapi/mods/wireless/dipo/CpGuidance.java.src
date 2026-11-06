@@ -31,7 +31,8 @@ final class CpGuidance {
         int t = m.type, a = m.hasExit ? direction(m.exit) : -1;
         if (t == 4 || t == 18 || t == 26) return new int[] {31, m.side == 1 ? 90 : 270};
         if (t == 6 || t == 7 || t == 19 || t >= 28 && t <= 46) {
-            // Ordinal roundabout exit numbers are not angular positions.
+            // 32 = counter-clockwise travel (right-hand traffic), 33 = clockwise (left-hand); the
+            // direction is the exit's clock position. Ordinal exit numbers are not positions.
             return a < 0 ? null : new int[] {m.side == 1 ? 33 : 32, a};
         }
         if (m.junction == 1) return null;
@@ -47,10 +48,8 @@ final class CpGuidance {
             int side = t == 22 ? -1 : t == 23 ? 1 : a < 0 || a == 0 || a == 180 ? 0 : a > 180 ? -1 : 1;
             if (side == 0) return null;
             if (m.hasExit && (side < 0 && a > 0 && a < 180 || side > 0 && a > 180)) return null;
-            boolean combined = false;
-            if (m.angles != null) for (int other : m.angles)
-                if (side < 0 ? other < -15 && other > -165 : other > 15 && other < 165) combined = true;
-            return new int[] {combined ? (side > 0 ? 19 : 20) : (side > 0 ? 17 : 18), side > 0 ? 90 : 270};
+            // 19/20 are not used: 20 draws a left-side exit on this cluster (car photo review).
+            return side > 0 ? new int[] {17, 90} : new int[] {18, 270};
         }
         if (t == 13 || t == 14 || t >= 51 && t <= 53) {
             // FORK_2 25 draws only at 90 and FORK_3 26 draws nothing (car sweep): a left keep is
@@ -66,8 +65,10 @@ final class CpGuidance {
             if (a > 0) return null;
             if (m.angles != null && m.angles.length == 1 && CpJunctions.highwayCue(m)) {
                 int other = m.angles[0];
-                if (other > 15 && other < 165) return new int[] {17, 270};
-                if (other < -15 && other > -165) return new int[] {18, 90};
+                // SERVICE_ROAD 23/24 draw the main road straight on; 17/18 with the opposite
+                // direction draw no route (car photo review).
+                if (other > 15 && other < 165) return new int[] {23, 270};
+                if (other < -15 && other > -165) return new int[] {24, 90};
             }
             return new int[] {13, 0};
         }

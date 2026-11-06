@@ -27,9 +27,9 @@ public final class CpGuidanceTest {
         mapping(22, null, 18, 270); mapping(23, null, 17, 90);
         mapping(8, -35, 18, 270); mapping(9, 40, 17, 90);
         CpTurns.Maneuver combined = m(23, 45); combined.angles = new int[] {90};
-        require(CpGuidance.stock(combined)[0] == 19, "combined right exits");
+        require(CpGuidance.stock(combined)[0] == 17 && CpGuidance.stock(combined)[1] == 90, "right exit with another road, never 19");
         combined.type = 22; combined.exit = -45; combined.angles = new int[] {-90};
-        require(CpGuidance.stock(combined)[0] == 20, "classified combined left picture");
+        require(CpGuidance.stock(combined)[0] == 18 && CpGuidance.stock(combined)[1] == 270, "left exit with another road, never 20");
         mapping(13, null, 18, 270); mapping(52, null, 18, 270);
         mapping(14, null, 25, 90); mapping(53, null, 25, 90); mapping(51, 30, 25, 90); mapping(51, -30, 18, 270);
         require(CpGuidance.stock(m(14, 0)) == null, "measured straight is no keep");
@@ -47,7 +47,14 @@ public final class CpGuidanceTest {
         CpTurns.Maneuver straight = m(3, 0); straight.angles = new int[] {45};
         require(CpGuidance.stock(straight)[0] == 13 && CpGuidance.stock(straight)[1] == 0, "urban straight past side road");
         straight.afterRoad = "경부고속도로";
-        require(CpGuidance.stock(straight)[0] == 17 && CpGuidance.stock(straight)[1] == 270, "highway straight past right exit");
+        require(CpGuidance.stock(straight)[0] == 23 && CpGuidance.stock(straight)[1] == 270, "highway straight past right exit");
+        straight.angles = new int[] {-45};
+        require(CpGuidance.stock(straight)[0] == 24 && CpGuidance.stock(straight)[1] == 90, "highway straight past left exit");
+        for (int type = 0; type <= 53; type++) for (int angle = -180; angle <= 180; angle += 15) {
+            int[] r = CpGuidance.stock(m(type, angle));
+            require(r == null || r[0] != 26 && r[0] != 19 && r[0] != 20 && !(r[0] == 13 && r[1] == 180)
+                    && !(r[0] == 25 && r[1] != 90), "never unverified shapes " + type + "/" + angle);
+        }
         for (int n = 0; n <= 300; n++) {
             int level = CpGuidance.bar(n, 300);
             require(level >= 0 && level <= 100 && level <= CpGuidance.bar(n + 1, 300), "monotone bar");
