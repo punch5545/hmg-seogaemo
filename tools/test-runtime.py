@@ -2,6 +2,7 @@
 """Isolated checks of the shared root runtime."""
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -27,8 +28,12 @@ def test_toolbox_md5(temp):
 
 
 def script(path, body):
+    # Load common.sh only where the body needs it and does not load it itself:
+    # mksh R59 takes one to two seconds to redefine every function on a second load.
+    sources = re.search(r'^\s*\. .*common\.sh', body, re.M)
+    prefix = '. "' + str(ROOT / 'nemesis/package/lib/common.sh') + '"\n' if 'sg_' in body and not sources else ''
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('#!/bin/sh\n. "' + str(ROOT / 'nemesis/package/lib/common.sh') + '"\n' + host_shell_script(body))
+    path.write_text('#!/bin/sh\n' + prefix + host_shell_script(body))
     path.chmod(0o755)
 
 
@@ -52,7 +57,7 @@ if sg_file_mark_applied /owned; then exit 1; fi
 
 def fake_ownership(fake):
     for name in ("ls", "chown"):
-        script(fake / name, f'exec {sys.executable} "{ROOT / "tools/testlib/fake-ownership.py"}" {name} "$@"\n')
+        script(fake / name, f'exec /bin/sh "{ROOT / "tools/testlib/fake-ownership.sh"}" {name} "$@"\n')
     script(fake / "nemesis", "exit 0\n")
 
 
@@ -2184,6 +2189,51 @@ sg_owned_dirs_prune /system/etc/hmg-seogaemo/m/recipes /system/etc/hmg-seogaemo/
     assert (base / "remounts").read_text().splitlines() == ["remount rw", "remount ro"] * 2
 
 
+def test_ro_holders(temp):
+    """A failed remount ro records, once per boot, which processes hold /system files."""
+    base = temp / "ro"
+    state = base / "data/modules/demo"
+    state.mkdir(parents=True)
+    fake = base / "fake"
+    fake.mkdir()
+    script(fake / "nemesis", '[ "$2" = ro ] && exit 1\nexit 0\n')
+    proc = base / "proc"
+    (proc / "100/fd").mkdir(parents=True)
+    (proc / "200").mkdir()
+    (proc / "mounts").write_text("/dev/block/system /system ext4 rw,relatime 0 0\n/dev/block/data /data ext4 rw 0 0\n")
+    (proc / "100/comm").write_text("zygote\n")
+    (proc / "100/maps").write_text(
+        "7f000000-7f001000 r-xp 00000000 b3:01 12 /system/lib/libleafiaaac.so (deleted)\n"
+        "7f001000-7f002000 r-xp 00000000 b3:01 13 /system/lib/libc.so\n")
+    os.symlink("/system/etc/held.conf", proc / "100/fd/3")
+    (proc / "200/comm").write_text("idle\n")
+    (proc / "200/maps").write_text("7f000000-7f001000 r-xp 00000000 b3:01 13 /system/lib/libc.so\n")
+    boot = base / "boot_id"
+    boot.write_text("boot-1\n")
+    env = dict(os.environ, PATH=str(fake) + ":" + os.environ["PATH"], SG_DATA_ROOT=str(base / "data"),
+               HMG_SEOGAEMO_STATE=str(state), HMG_SEOGAEMO_BASE=str(base), SG_PROC_ROOT=str(proc),
+               SG_BOOT_ID_FILE=str(boot))
+    runner = base / "run-ro"
+    script(runner, f'''
+set -eu
+. "{ROOT / 'nemesis/package/lib/common.sh'}"
+sg_remount_ro
+sg_remount_ro
+''')
+    run(runner, env=env)
+    log = (base / "data/system-rw.log").read_text()
+    assert log.count("== ") == 1, log
+    assert "boot=boot-1 module=demo" in log, log
+    assert "/dev/block/system /system ext4 rw,relatime 0 0" in log and "/data ext4" not in log, log
+    assert "map 100 zygote /system/lib/libleafiaaac.so (deleted)" in log, log
+    assert "libc.so" not in log and " 200 " not in log, log
+    assert "fd 100 zygote /system/etc/held.conf" in log, log
+    assert "remount ro failed" in (state / "module.log").read_text()
+    boot.write_text("boot-2\n")
+    run(runner, env=env)
+    assert (base / "data/system-rw.log").read_text().count("== ") == 2
+
+
 run_tests([
     test_toolbox_md5,
     test_file_key_failures,
@@ -2193,6 +2243,7 @@ run_tests([
     test_automatic_intent_lock,
     test_mutation_api_and_export,
     test_owned_dirs_prune,
+    test_ro_holders,
     test_service_call_api,
     test_reconcile,
     test_watch_dispatch,

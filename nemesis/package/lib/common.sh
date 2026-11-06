@@ -279,8 +279,42 @@ sg_remount_ro() {
     # remount ro would have flushed the write; a car can lose power at ignition off.
     sync || :
     sg_log 'warning: /system stays read-write until restart (remount ro failed)' || :
+    sg_ro_holders || :
     return 0
 }
+# Why /system stayed read-write: once per boot, append to system-rw.log which processes
+# still hold /system files. A replaced or deleted library or jar that a running process
+# has mapped, or a /system file open for writing, keeps the mount busy (EBUSY) until
+# those processes end. Read-only; the diagnostics export copies the log.
+sg_ro_holders() (
+    set +f
+    proc=${SG_PROC_ROOT:-/proc}
+    log=$SG_DATA_ROOT/system-rw.log
+    boot=$(cat "${SG_BOOT_ID_FILE:-/proc/sys/kernel/random/boot_id}" 2>/dev/null) || boot=
+    [ -z "$boot" ] || [ "$(cat "$SG_DATA_ROOT/system-rw.boot" 2>/dev/null)" != "$boot" ] || exit 0
+    {
+        sg_print "== $(date +%s) boot=$boot module=${HMG_SEOGAEMO_STATE##*/}"
+        grep -F ' /system ' "$proc/mounts" 2>/dev/null
+        for dir in "$proc"/[0-9]*; do
+            pid=${dir##*/}
+            name=
+            { IFS= read -r name < "$dir/comm"; } 2>/dev/null || :
+            grep -F ' /system/' "$dir/maps" 2>/dev/null | grep -F '(deleted)' | while IFS= read -r line; do
+                sg_print "map $pid $name /system/${line#* /system/}"
+            done
+            ls -l "$dir/fd" 2>/dev/null | grep -F ' -> /system/' | while IFS= read -r line; do
+                case "$line" in
+                    l?w*|*'(deleted)') sg_print "fd $pid $name /system/${line#* -> /system/}" ;;
+                esac
+            done
+        done
+    } >> "$log" 2>/dev/null || exit 1
+    sg_write "$boot" > "$SG_DATA_ROOT/system-rw.boot" || :
+    size=$(sg_file_size "$log") || exit 1
+    if [ "$size" -gt 65536 ]; then
+        dd if="$log" of="$log.tmp.$$" bs=1 skip="$((size - 49152))" 2>/dev/null && mv "$log.tmp.$$" "$log"
+    fi
+)
 # Leftovers of our own interrupted atomic writes (power loss at ignition off).
 # Exact names only: "<name>.hmg-seogaemo.<digits>" regular files (sg_commit_file
 # temporaries), and zygote-prepare.<digits> / zygote-retired.<digits> directories

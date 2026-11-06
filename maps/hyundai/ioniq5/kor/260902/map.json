@@ -1100,6 +1100,18 @@
         "android.content.Context"
       ]
     },
+    "framework.navigation_cluster.update_clu_data_new_14": {
+      "method": "updateCluDataNew_14",
+      "params": [
+        "int",
+        "int",
+        "int",
+        "int",
+        "int"
+      ],
+      "ret": "void",
+      "static": false
+    },
     "framework.navigation_cluster.update_lane_info": {
       "method": "updateLaneInfo",
       "params": [
@@ -1210,6 +1222,38 @@
         "float",
         "int",
         "int"
+      ],
+      "ret": "void",
+      "static": false
+    },
+    "framework.navigation_cluster.update_tbt_trap_info": {
+      "method": "updateTBTTrapInfo",
+      "params": [
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int"
+      ],
+      "ret": "void",
+      "static": false
+    },
+    "framework.navigation_cluster.update_tbt_trap_info_new": {
+      "method": "updateTBTTrapInfoNew",
+      "params": [
+        "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo"
       ],
       "ret": "void",
       "static": false
@@ -1440,6 +1484,17 @@
       ],
       "ret": "com.hkmc.micom.ISystemService",
       "static": true
+    },
+    "framework.tbt_trap_info": {
+      "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo"
+    },
+    "framework.tbt_trap_info.bar_graph_level": {
+      "field": "barGraphLevel",
+      "static": false,
+      "type": "int"
+    },
+    "framework.tbt_trap_info.new": {
+      "ctor": []
     },
     "framework.turn_list": {
       "class": "com.hkmc.cluster.NavigationCluster$TurnList"

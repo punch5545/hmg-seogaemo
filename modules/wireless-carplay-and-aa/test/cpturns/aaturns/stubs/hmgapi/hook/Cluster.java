@@ -9,6 +9,7 @@ public final class Cluster {
     public final List<String> calls = new ArrayList<String>();
 
     void rec(String s) { calls.add(s); }
+    public void junctionView(int a, int b, int c) { rec("junction " + a + " " + b + " " + c); }
     static String hex(byte[] b) {
         StringBuilder s = new StringBuilder();
         int end = b.length;

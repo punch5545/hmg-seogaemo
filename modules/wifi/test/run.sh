@@ -55,6 +55,9 @@ sg_print NEEV.KOR.0000.V039.001.260902 > "$work/product"
 cat > "$work/base/lib/common.sh" <<'EOF'
 . "$HMG_SEOGAEMO_TEST_COMMON"
 sg_log() { :; }
+# Daemon start/stop polls and the scan wait keep their retry counts; each step is
+# shortened (mksh's builtin sleep cannot be replaced through PATH).
+sleep() { /bin/sleep 0.25; }
 sg_snapshot() {
     name=${1##*/}
     if [ ! -e "$HMG_SEOGAEMO_STATE/$name.saved" ] && [ ! -e "$HMG_SEOGAEMO_STATE/$name.absent" ]; then
@@ -468,7 +471,7 @@ fails action other; [ ! -s "$work/output" ]
 # Unplug and replug: the screen_on watch brings the client back.
 wpa=$(daemon_pid usb-wpa)
 kill "$wpa"
-while [ -d "$work/proc/$wpa" ]; do sleep 1; done
+while [ -d "$work/proc/$wpa" ]; do sleep 0.1; done
 fails status; assert_state failed
 run watch screen_on; assert_state on
 [ "$(daemon_pid usb-wpa)" != "$wpa" ]

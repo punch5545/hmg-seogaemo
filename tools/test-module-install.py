@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
-from testlib import car_env, host_shell_tree, SHELL
+from testlib import car_env, host_shell_tree, run_tests, SHELL
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCT = "NEEV.KOR.0000.V039.001.260902"
@@ -30,6 +30,22 @@ def script(path, body):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("#!/bin/sh\n" + body)
     path.chmod(0o755)
+
+
+def extractor_classes():
+    """Compile the HSM extractor once per source version; shards share the result."""
+    source = ROOT / "core/hsm/src/com/seogaemo/hmg/core/hsm/HmgSeogaemoHsmExtract.java"
+    cache = ROOT / "out/test-cache"
+    classes = cache / ("hsm-extract-" + hashlib.sha256(source.read_bytes()).hexdigest()[:16])
+    if not classes.is_dir():
+        cache.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(dir=cache))
+        subprocess.run(["javac", "-nowarn", "-d", str(staging), str(source)], check=True, capture_output=True)
+        try:
+            staging.rename(classes)
+        except OSError:  # another shard published it first
+            shutil.rmtree(staging)
+    return classes
 
 
 class Car:
@@ -54,10 +70,7 @@ class Car:
         self.inbox = temp / "inbox"
         for path in (self.data, self.live, self.inbox, temp / "property"):
             path.mkdir()
-        classes = temp / "classes"
-        subprocess.run(["javac", "-nowarn", "-d", str(classes),
-                        str(ROOT / "core/hsm/src/com/seogaemo/hmg/core/hsm/HmgSeogaemoHsmExtract.java")],
-                       check=True, capture_output=True)
+        classes = extractor_classes()
         fake = temp / "fake"
         script(fake / "getprop", 'cat "$FAKE_LIVE/$1" 2>/dev/null || true\n')
         script(fake / "setprop", 'printf %s "$2" > "$FAKE_LIVE/$1"\n')
@@ -216,7 +229,7 @@ def test_hook_host(car):
         (data / name).write_bytes(body)
     fake = Path(car.env["PATH"].split(":")[1])
     for name in ("ls", "chown"):
-        script(fake / name, f'exec {sys.executable} "{ROOT / "tools/testlib/fake-ownership.py"}" {name} "$@"\n')
+        script(fake / name, f'exec /bin/sh "{ROOT / "tools/testlib/fake-ownership.sh"}" {name} "$@"\n')
     script(fake / "nemesis", "exit 0\n")
     car.env.update(SG_TARGET_ROOT=str(target), FAKE_OWNERS=str(car.temp / "owners.json"))
     extras = [target / "system/bin/app_process.hmg-seogaemo-stock", target / "system/lib/libhmg_seogaemo_hook.so",
@@ -536,7 +549,7 @@ def test_installed_shared_line(car):
     shared.write_bytes(stock)
     fake = Path(car.env["PATH"].split(":")[1])
     for name in ("ls", "chown"):
-        script(fake / name, f'exec {sys.executable} "{ROOT / "tools/testlib/fake-ownership.py"}" {name} "$@"\n')
+        script(fake / name, f'exec /bin/sh "{ROOT / "tools/testlib/fake-ownership.sh"}" {name} "$@"\n')
     script(fake / "nemesis", "exit 0\n")
     car.env.update(FAKE_OWNERS=str(car.temp / "owners.json"))
 
@@ -559,14 +572,15 @@ def test_installed_shared_line(car):
     assert shared.read_bytes() == stock
 
 
-def main():
-    for test in (test_install_validation, test_lifecycle, test_reconcile_reapplies, test_hook_host, test_usb_import,
-                 test_button_action, test_bundled, test_replaces, test_converted_builtin,
-                 test_installed_shared_line):
-        with tempfile.TemporaryDirectory() as directory:
-            test(Car(Path(directory).resolve()))
-    print("installed module tests passed")
+def on_car(test):
+    def run(folder):
+        test(Car(folder))
+    run.__name__ = test.__name__
+    return run
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run_tests([on_car(test) for test in (
+        test_install_validation, test_lifecycle, test_reconcile_reapplies, test_hook_host, test_usb_import,
+        test_button_action, test_bundled, test_replaces, test_converted_builtin, test_installed_shared_line)],
+        "installed module tests passed")

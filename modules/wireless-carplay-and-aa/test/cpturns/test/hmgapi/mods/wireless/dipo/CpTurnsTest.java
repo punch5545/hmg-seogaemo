@@ -21,7 +21,11 @@ public final class CpTurnsTest {
 
     static void expect(String what, String... want) {
         List<String> got = c.calls;
-        String w = String.join("\n", want), g = String.join("\n", got);
+        // The once-per-session junction clear is asserted on its own (CpJunctionLifecycleTest).
+        String start = "junction 65535 65535 65535";
+        List<String> seen = new java.util.ArrayList<String>(got);
+        if (!seen.isEmpty() && seen.get(0).equals(start) && (want.length == 0 || !want[0].equals(start))) seen.remove(0);
+        String w = String.join("\n", want), g = String.join("\n", seen);
         if (w.equals(g)) {
             System.out.println("ok    " + what);
         } else {
@@ -176,7 +180,8 @@ public final class CpTurnsTest {
         t.disconnected();
         expect("iAP2 session ended: HUD cleared; the cluster is already idle", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("0.5"), 12, ENUM, i(MILES), 13, U16, i(5), 19, STR, s("Maps")));
-        expect("after the session ended: maneuvers gone (HUD distance only), a new source isn't a change", "2c 2 5 0 0 0 0 0 0 0");
+        expect("after the session ended: maneuvers gone (HUD distance only), a new source isn't a change; a new guidance session clears a stock junction view once",
+                "junction 65535 65535 65535", "2c 2 5 0 0 0 0 0 0 0");
         c.calls.clear();
 
         t.maneuver(msg(0, U16, i(7), 1, U16, i(0), 3, ENUM, i(LEFT), 4, STR, s("Comp 7 Rd"), 8, ENUM, i(0), 9, ENUM, i(0), 11, U8, i(-60)));

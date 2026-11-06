@@ -158,7 +158,7 @@ hmg_seogaemo_diagnostics() (
         dd if="$stage/stage" bs=4096 count=16 2>/dev/null > "$diag/$name"
         rm -f "$stage/probe" "$stage/stage"
     }
-    for source in "$SG_DATA_ROOT"/reconcile.log* "$SG_DATA_ROOT"/watcher.log*; do
+    for source in "$SG_DATA_ROOT"/reconcile.log* "$SG_DATA_ROOT"/watcher.log* "$SG_DATA_ROOT"/system-rw.log; do
         copy_log "$source" "logs/${source##*/}" || exit 1
     done
     for area in stock uninstall update; do

@@ -5,3 +5,4 @@ app/build/
 AGENTS.local.md
 CLAUDE.local.md
 .claude/worktrees/
+/datasets/

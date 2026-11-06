@@ -668,7 +668,6 @@ def test_noglob_module_restore(folder):
     car = Car(folder)
     only_module(car, 'a', 'owns_props=demo.a\nwatch=boot,screen_on\n', body='''
 set -efu
-. "$FAKE_COMMON"
 id=${HMG_SEOGAEMO_STATE##*/}
 case "$1" in
     apply) sg_prop_set "demo.$id" ours; sg_status on none enabled ;;
