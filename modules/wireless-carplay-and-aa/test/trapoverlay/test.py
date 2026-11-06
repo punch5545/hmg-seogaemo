@@ -146,7 +146,7 @@ public final class CpTrapOverlayTest {
     public static class BaseTrap { public int inherited=0; }
     public static class Trap extends BaseTrap {
         public static int shared=999;
-        public int camera, speed, toll, bar, extension;
+        public int camera, speed, toll, bar, extension, fixedSpeed;
         public Trap() {}
     }
     public static final class NonIntTrap extends Trap { public String extra="camera"; }
@@ -179,12 +179,18 @@ public final class CpTrapOverlayTest {
         return new Intent(CpTrapOverlay.ACTION).setPackage("com.mnsoft.navi")
             .putExtra("active",active).putExtra("bar",bar);
     }
-    static void legacy(Stock s,int offset) {
-        s.legacy(offset,offset+1,offset+2,offset+3,offset+4,offset+5,offset+6,offset+7,
-            offset+8,offset+9,offset+10,offset+11,offset+12,offset+13,offset+14,offset+15,offset+16);
+    // Camera/trap/toll arguments stay "none" (0) unless a test turns one on.
+    static final java.util.List<Integer> CAMERA=Arrays.asList(0,1,2,3,4,5,6,7,9,10,13);
+    static int value(int offset,int i) { return CAMERA.contains(i) ? 0 : offset+i; }
+    static void legacy(Stock s,int offset) { legacy(s,offset,-1); }
+    static void legacy(Stock s,int offset,int camera) {
+        int[] v=new int[17];
+        for (int i=0;i<17;i++) v[i]=value(offset,i);
+        if (camera>=0) v[camera]=60;
+        s.legacy(v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],v[9],v[10],v[11],v[12],v[13],v[14],v[15],v[16]);
     }
     static void legacyEquals(Stock s,int offset,int bar) {
-        for (int i=0;i<17;i++) check(s.last[i]==(i==11?bar:offset+i),"legacy only bar changed: "+i);
+        for (int i=0;i<17;i++) check(s.last[i]==(i==11?bar:value(offset,i)),"legacy only bar changed: "+i);
     }
     static Trap trap() {
         Trap t=new Trap();
@@ -276,6 +282,29 @@ public final class CpTrapOverlayTest {
         try { legacy(stock,500); throw new AssertionError("stock error swallowed"); }
         catch(RuntimeException expected) {}
         stock.fail=false; legacy(stock,600); legacyEquals(stock,600,611);
+
+        // An active camera/trap owns the bar: no override while the stock record reports one.
+        for (int camera : new int[] {0,3,5,9,13}) {
+            ctx.sendBroadcast(message(true,20)); legacy(stock,700); legacyEquals(stock,700,20);
+            legacy(stock,700,camera);
+            check(stock.last[11]==711 && stock.last[camera]==60,"camera arg "+camera+" passes stock bar");
+            int calls=stock.calls; ctx.sendBroadcast(message(true,10));
+            check(stock.calls==calls && stock.last[11]==711,"lease renewal does not override camera bar");
+            legacy(stock,700); legacyEquals(stock,700,10);
+            ctx.sendBroadcast(message(false,0)); legacyEquals(stock,700,711);
+        }
+        ctx.sendBroadcast(message(true,20)); legacy(stock,800);
+        legacy(stock,800,2); ctx.sendBroadcast(message(false,0));
+        check(stock.last[11]==811,"end after camera keeps stock bar");
+        Trap cam=trap(); cam.fixedSpeed=60; ctx.sendBroadcast(message(true,20)); stock.modern(cam);
+        check(stock.received==cam && cam.bar==26,"object camera record delivered untouched");
+        Trap plain=trap(); stock.modern(plain);
+        check(stock.last[3]==20,"object overlay resumes without camera");
+        ctx.sendBroadcast(message(false,0));
+        check(stock.last[3]==26,"object end restores");
+        Trap negative=trap(); negative.fixedSpeed=-1; ctx.sendBroadcast(message(true,30)); stock.modern(negative);
+        check(stock.last[3]==30,"-1 is no camera");
+        ctx.sendBroadcast(message(false,0));
         check(mod.errors==1,"no errors after supported map installation");
         System.out.println("CpTrapOverlay: "+assertions+" assertions passed");
     }
