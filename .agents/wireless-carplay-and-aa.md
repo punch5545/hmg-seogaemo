@@ -178,6 +178,35 @@ cleanup and retain recovery material.
 Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches, wireless sessions or head-unit boot recovery; the on-car checks in this section stay required for each new payload.
 
 
+## Switching from wireless CarPlay to Android Auto
+
+Status: implemented, off-car tested only (`test/projectionswitch`); needs the on-car check in `backlog.md`.
+
+- **Cause (stock NEEV KOR code, offline dump).** GPM answers a phone's wireless Android Auto start
+  request with `STATUS_PROJECTION_ALREADY_STARTED` while `DiPOManager.getCurrentDiPOStat()` is above 0
+  (`WirelessExplorer.handleStartRequest`; vtable@19 of `DiPOManager`). The bridge starts iAP2 as soon
+  as a registered iPhone connects over Bluetooth, so DiPO's status goes 1 → 4
+  (`tmp/car-sessions/2026-11-04-tbt/live/logcat-mac.log`, 22:48:34-39) and stays above 0 while the
+  iPhone is near. The stock Phone Projection app asks PPService `connectPP`/`disconnectPP`
+  (type 1 CarPlay, 2 Android Auto; transfer 1 wireless), and PPService passes them only to registered
+  `IPPActionListener`s. On this firmware only GPM registers one; DiPO has none, so choosing
+  Android Auto or disconnecting CarPlay never reached the bridged CarPlay. Upstream (HMG-API 1.0.2,
+  Leafia) has the same bridge and no fix; Leafia #143 (CarPlay ignores a profile change, AA does not) is
+  the same gap.
+- **Behavior now.** The DiPO part registers a listener with `phoneprojection` (`Bridge.PpListener`).
+  A wireless `connectPP` for Android Auto, or a wireless `disconnectPP` for CarPlay, while a bridged
+  iAP2/CarPlay session is up sends `BT_DETACHED`, and `dipoIgnoreDisconnect` lets that end reach
+  DiPO so it closes CarPlay as for a USB phone. That iPhone is then held off: no SPP connect, attach or
+  re-attach after the session ends. A wireless `connectPP` for CarPlay releases the hold and connects
+  it again. So does its next Bluetooth connection after its link went down (the next drive). While
+  `GpmManager.isGpmActivated()` is true, the bridge starts no session. This mirrors GPM's rule:
+  one projection at a time.
+- **Known limits.** Phone Projection may send a wireless Android Auto `connectPP` by itself
+  (auto-connection when an Android phone's Bluetooth connects). With two phones in the car,
+  the Android phone may then take the screen from CarPlay. The hold lives in DiPO's process, so a
+  head-unit restart also releases it. GPM may receive the phone's start request before DiPO's status
+  drops to 0. In that case, choose Android Auto again.
+
 ## CarPlay turn-by-turn: lane fix, fallback icons, developer toggle
 
 - **Stock-format guidance (always on with TBT).** Inside the approach window (300 m ordinary

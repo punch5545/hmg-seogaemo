@@ -1,0 +1,24 @@
+package android.phoneprojection;
+
+import android.os.IBinder;
+import android.os.IInterface;
+import android.os.RemoteException;
+
+/** framework.jar: PPService's listener for Phone Projection's connect/disconnect requests */
+public interface IPPActionListener extends IInterface {
+    void cancelConnectionPP(int type, String address, String serial, int transfer) throws RemoteException;
+
+    void connectPP(int type, String address, String serial, int transfer) throws RemoteException;
+
+    void disconnectPP(int type, String address, String serial, int transfer) throws RemoteException;
+
+    void runningPP() throws RemoteException;
+
+    abstract class Stub extends android.os.Binder implements IPPActionListener {
+        public Stub() {}
+
+        public IBinder asBinder() {
+            return this;
+        }
+    }
+}
