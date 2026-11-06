@@ -49,7 +49,7 @@ public final class ReportsSection {
                 RootResult status = RootClient.recorder("status");
                 // A failed read must not loop: treat it as off until the next explicit action.
                 cachedState = status.exitCode == 0 && "on".equals(status.state) ? "on" : "off";
-                cachedUsb = "present".equals(status.info.get("info.usb"));
+                cachedUsb = "present".equals(status.info.get("usb"));
                 fetching = false;
                 activity.runOnUiThread(refresh);
             }
@@ -119,14 +119,14 @@ public final class ReportsSection {
     static CharSequence format(Activity activity, RootResult result) {
         Map<String, String> checks = new TreeMap<String, String>();
         for (Map.Entry<String, String> entry : result.info.entrySet()) {
-            if (entry.getKey().startsWith("info.check_")) checks.put(entry.getKey(), entry.getValue());
+            if (entry.getKey().startsWith("check_")) checks.put(entry.getKey(), entry.getValue());
         }
         if (result.exitCode != 0 || checks.isEmpty()) {
             return result.detail == null || result.detail.length() == 0
                     ? activity.getString(R.string.reports_check_failed) : result.detail;
         }
         StringBuilder text = new StringBuilder();
-        text.append(activity.getString(verdictString(result.info.get("info.verdict")))).append("\n");
+        text.append(activity.getString(verdictString(result.info.get("verdict")))).append("\n");
         for (String line : checks.values()) {
             String[] part = line.split("\\|", 4);
             if (part.length < 4) continue;
