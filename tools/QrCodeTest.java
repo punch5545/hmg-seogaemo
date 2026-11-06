@@ -31,16 +31,16 @@ public class QrCodeTest {
         QrCode auto = QrCode.encode("https://github.com/seogaemo/hmg-seogaemo/issues/new");
         check(auto.mask >= 0 && auto.mask < 8, "mask");
 
-        String link = IssueLink.build(IssueLink.TEMPLATE_MAP, "Map: X", "product", "NEEV.KOR.0000", "onebin", "",
+        String link = IssueLink.build(IssueLink.TEMPLATE_MAP, "Map: X", 700, "product", "NEEV.KOR.0000", "onebin", "",
                 "map-status", "state=on\nfailing=a,b", "modules", "ê\u0001ok");
         check(link.equals(IssueLink.NEW_ISSUE + "?template=new-firmware-map.yml&title=Map%3A%20X&product=NEEV.KOR.0000"
                 + "&map-status=state%3Don%0Afailing%3Da%2Cb&modules=ok"), link);
         StringBuilder huge = new StringBuilder();
         for (int i = 0; i < 1000; i++) huge.append('a');
-        String bounded = IssueLink.build(IssueLink.TEMPLATE_BUG, null, "a", huge.toString(), "b", huge.toString(),
-                "c", huge.toString(), "d", "short");
-        check(bounded.length() <= 700, "link length " + bounded.length());
-        check(bounded.contains("&a=") && !bounded.contains("&d="), bounded);
+        String bounded = IssueLink.build(IssueLink.TEMPLATE_BUG, null, 1100, "a", huge.toString(), "b", huge.toString(),
+                "c", "short");
+        check(bounded.length() <= 1100 && bounded.length() > 1090, "link length " + bounded.length());
+        check(bounded.contains("&a=") && bounded.contains("&b=") && !bounded.contains("&c="), bounded);
         System.out.println("qr code and issue link checks passed");
     }
 

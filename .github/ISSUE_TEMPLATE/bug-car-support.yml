@@ -5,8 +5,9 @@ body:
     attributes:
       value: |
         Include the exact firmware identifiers and a sanitized change ledger export.
-        Settings → Support → "Report on GitHub with a phone" shows a QR code that fills in the
-        firmware, version, map and module fields. 앱의 QR 코드로 해당 항목을 채울 수 있습니다.
+        Settings → Support → Report a problem → "Export as a GitHub issue" shows a QR code that fills
+        in the firmware, version, map, module and app log fields.
+        앱의 지원 → 문제 보고 → "GitHub 이슈로 내보내기" QR 코드로 해당 항목을 채울 수 있습니다.
         Before posting text or attachments, remove personal data: VIN, phone names,
         Wi-Fi SSIDs/passwords, and any other identifying information. GitHub issues are public.
         본문과 첨부 파일에서 VIN, 휴대전화 이름, Wi-Fi SSID/비밀번호 등 개인정보를 삭제하세요.
@@ -70,6 +71,12 @@ body:
       description: Include whether this followed an install, update, reboot, or module change.
     validations:
       required: true
+  - type: textarea
+    id: app-log
+    attributes:
+      label: App log / 앱 로그
+      description: Filled in by the app's QR code (recent errors and environment). Leave empty otherwise.
+      render: text
   - type: textarea
     id: ledger
     attributes:

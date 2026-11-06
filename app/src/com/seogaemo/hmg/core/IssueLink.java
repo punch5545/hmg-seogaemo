@@ -13,21 +13,29 @@ public final class IssueLink {
     public static final String NEW_ISSUE = "https://github.com/seogaemo/hmg-seogaemo/issues/new";
     public static final String TEMPLATE_BUG = "bug-car-support.yml";
     public static final String TEMPLATE_MAP = "new-firmware-map.yml";
-    static final int MAX_VALUE = 240;
-    static final int MAX_LINK = 700;
+    static final int MAX_VALUE = 600;
 
     private IssueLink() { }
 
-    /** fields alternate form field id and value; empty values are left out, the last fields go first when too long. */
-    public static String build(String template, String title, String... fields) {
+    /**
+     * fields alternate form field id and value; empty values are left out. Fields keep their order;
+     * the first one that no longer fits is cut short and later ones are dropped, so put logs last.
+     */
+    public static String build(String template, String title, int maxLink, String... fields) {
         StringBuilder link = new StringBuilder(NEW_ISSUE).append("?template=").append(encode(template));
         if (title != null && title.length() > 0) link.append("&title=").append(encode(clean(title)));
         for (int i = 0; i + 1 < fields.length; i += 2) {
             String value = clean(fields[i + 1]);
             if (value.length() == 0) continue;
-            String part = "&" + encode(fields[i]) + "=" + encode(value);
-            if (link.length() + part.length() > MAX_LINK) break;
+            String head = "&" + encode(fields[i]) + "=";
+            String part = head + encode(value);
+            while (link.length() + part.length() > maxLink && value.length() > 0) {
+                value = value.substring(0, value.length() - 1);
+                part = head + encode(value);
+            }
+            if (value.trim().length() == 0) break;
             link.append(part);
+            if (value.length() < clean(fields[i + 1]).length()) break;
         }
         return link.toString();
     }

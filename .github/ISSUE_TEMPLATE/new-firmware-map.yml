@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Scan the QR code in the app (Car tab → Export result, or Settings → Developer options)
-        to fill in the fields below, then attach the exported `maps` folder as a `.zip`.
+        In the app choose Export map → GitHub issue (Car tab or Settings → Developer options)
+        and scan the QR code to fill in the fields below, then attach the exported `maps` folder as a `.zip`.
         GitHub issues are public. Remove personal data (VIN, phone names, Wi-Fi SSIDs/passwords)
         from the text and attachments first.
         앱의 QR 코드로 아래 항목을 채우고, 내보낸 `maps` 폴더를 `.zip`으로 첨부해 주세요.

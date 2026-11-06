@@ -1145,23 +1145,19 @@ public final class MainActivity extends Activity {
 
     /** Failure dialog with a direct way to send a problem report; the message is kept for that report. */
     private void showFailure(String title, CharSequence detail) {
-        recentErrors.addLast(new java.util.Date() + " " + title + ": " + detail);
+        recentErrors.addLast(new java.text.SimpleDateFormat("MM-dd HH:mm:ss", Locale.US).format(new java.util.Date())
+                + " " + title + ": " + detail);
         while (recentErrors.size() > 20) recentErrors.removeFirst();
         ConfirmDialog.show(this, title, detail, getString(R.string.report_export), getString(R.string.close), false,
                 new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { dialog.dismiss(); confirmReport(); } },
                 null);
     }
 
-    /** Problem report: export everything to USB once, or keep recording to USB until turned off. */
-    private void confirmReport() {
-        if (stockBusy || mapBusy) return;
-        final int[] choice = {0};
+    /** Large choice cards (icon, title, note); the first is selected and choice[0] follows taps. */
+    private LinearLayout choiceCards(String[] icons, int[] titles, int[] notes, final int[] choice) {
         LinearLayout cards = horizontal();
-        final LinearLayout[] boxes = new LinearLayout[2];
-        String[] icons = {"download", "record"};
-        int[] titles = {R.string.report_now, R.string.report_record};
-        int[] notes = {R.string.report_now_note, R.string.report_record_note};
-        for (int i = 0; i < 2; i++) {
+        final LinearLayout[] boxes = new LinearLayout[icons.length];
+        for (int i = 0; i < boxes.length; i++) {
             final int index = i;
             LinearLayout box = vertical();
             box.setGravity(Gravity.CENTER);
@@ -1170,6 +1166,7 @@ public final class MainActivity extends Activity {
             box.addView(glyph, new LinearLayout.LayoutParams(dp(48), dp(48)));
             TextView title = text(getString(titles[i]), 22, WHITE, medium);
             title.setGravity(Gravity.CENTER);
+            title.setPadding(dp(SettingsUi.SM), 0, dp(SettingsUi.SM), 0);
             LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-2, -2);
             titleParams.topMargin = dp(SettingsUi.SM);
             box.addView(title, titleParams);
@@ -1178,31 +1175,47 @@ public final class MainActivity extends Activity {
             box.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View view) {
                     choice[0] = index;
-                    for (int j = 0; j < 2; j++)
+                    for (int j = 0; j < boxes.length; j++)
                         boxes[j].setBackgroundDrawable(shape(SURFACE, j == index ? BLUE : HAIRLINE, Theme.CARD_RADIUS));
                 }
             });
             boxes[i] = box;
             LinearLayout.LayoutParams boxParams = new LinearLayout.LayoutParams(0, dp(170), 1);
-            if (i == 0) boxParams.rightMargin = dp(SettingsUi.MD);
+            if (i < boxes.length - 1) boxParams.rightMargin = dp(SettingsUi.MD);
             cards.addView(box, boxParams);
         }
+        return cards;
+    }
+
+    /**
+     * Problem report: export everything to USB once, export it and open a GitHub issue from a QR code,
+     * or keep recording to USB until turned off.
+     */
+    private void confirmReport() {
+        if (stockBusy || mapBusy) return;
+        final int[] choice = {0};
+        LinearLayout cards = choiceCards(new String[] {"download", "phone", "record"},
+                new int[] {R.string.report_now, R.string.report_issue, R.string.report_record},
+                new int[] {R.string.report_now_note, R.string.report_issue_note, R.string.report_record_note}, choice);
         ConfirmDialog.showView(this, getString(R.string.report_export), cards, getString(R.string.report_start),
                 getString(R.string.cancel), false, new ConfirmDialog.Action() {
             public void run(final ConfirmDialog dialog) {
-                if (choice[0] == 1) {
+                if (choice[0] == 2) {
                     ReportsSection.startRecording(MainActivity.this, dialog, new Runnable() {
                         public void run() { if (tab == Tab.SETTINGS) showSettings(); }
                     });
                     return;
                 }
+                final boolean issue = choice[0] == 1;
                 dialog.showProgress();
                 writeAppState();
                 new Thread(new Runnable() { public void run() {
                     final RootResult result = RootClient.exportReport(true);
                     runOnUiThread(new Runnable() { public void run() {
                         dialog.dismiss();
-                        ConfirmDialog.showResult(MainActivity.this, getString(R.string.report_export),
+                        // The issue still opens without a USB drive; the QR carries the summary and logs.
+                        if (issue) showIssueQr(false, exportMessage(result));
+                        else ConfirmDialog.showResult(MainActivity.this, getString(R.string.report_export),
                                 result.exitCode == 0 ? getString(R.string.report_done, exportMessage(result))
                                         : exportMessage(result), getString(R.string.close));
                     } });
@@ -1215,7 +1228,7 @@ public final class MainActivity extends Activity {
      * Read-only QR code for a prefilled GitHub issue (problem report or new firmware map). It carries only
      * firmware ids, versions and map/module states; the exported folder is attached from the phone or a PC.
      */
-    private void showIssueQr(boolean mapIssue) {
+    private void showIssueQr(boolean mapIssue, String exported) {
         String product = systemProperty("ro.build.product");
         String onebin = systemProperty("ro.mobis.onebindir");
         String versions = "app " + installedVersion();
@@ -1232,27 +1245,43 @@ public final class MainActivity extends Activity {
         }
         String link;
         if (mapIssue) {
-            link = IssueLink.build(IssueLink.TEMPLATE_MAP, "Map: " + product, "product", product, "onebin", onebin,
+            link = IssueLink.build(IssueLink.TEMPLATE_MAP, "Map: " + product, 700, "product", product, "onebin", onebin,
                     "android", Build.VERSION.RELEASE, "versions", versions, "map-status", map.toString());
         } else {
             StringBuilder modules = new StringBuilder();
             for (String id : new java.util.TreeSet<String>(statuses.keySet())) {
+                RootResult status = statuses.get(id);
                 if (modules.length() > 0) modules.append('\n');
-                modules.append(id).append('=').append(statuses.get(id).state);
+                modules.append(id).append('=').append(status.state);
+                if (status.exitCode != 0 || !"on".equals(status.state) && !"off".equals(status.state))
+                    modules.append(" (").append(shorten(status.detail, 60)).append(')');
             }
-            link = IssueLink.build(IssueLink.TEMPLATE_BUG, null, "product", product, "onebin", onebin,
-                    "versions", versions, "map-status", map.toString(), "modules", modules.toString());
+            // Detail last: IssueLink cuts the final field to the QR budget. Newest errors first.
+            StringBuilder logs = new StringBuilder("android=").append(Build.VERSION.RELEASE)
+                    .append(" locale=").append(describeLocale());
+            if (foreignStatus != null) logs.append(" foreign=").append(foreignStatus.info.get("count"));
+            for (java.util.Iterator<String> it = recentErrors.descendingIterator(); it.hasNext(); )
+                logs.append('\n').append(shorten(it.next(), 160));
+            link = IssueLink.build(IssueLink.TEMPLATE_BUG, null, 950, "product", product, "onebin", onebin,
+                    "versions", versions, "map-status", map.toString(), "modules", modules.toString(),
+                    "app-log", logs.toString());
         }
         LinearLayout body = horizontal();
         body.setGravity(Gravity.CENTER_VERTICAL);
-        body.addView(new QrView(this, QrCode.encode(link)), new LinearLayout.LayoutParams(dp(260), dp(260)));
-        TextView hint = text(getString(mapIssue ? R.string.issue_qr_map_hint : R.string.issue_qr_hint), 19, WHITE, sans);
+        body.addView(new QrView(this, QrCode.encode(link)), new LinearLayout.LayoutParams(dp(250), dp(250)));
+        String guide = getString(mapIssue ? R.string.issue_qr_map_hint : R.string.issue_qr_hint);
+        TextView hint = text(exported == null ? guide : exported + "\n\n" + guide, 19, WHITE, sans);
         hint.setLineSpacing(dp(4), 1f);
         LinearLayout.LayoutParams hintParams = new LinearLayout.LayoutParams(0, -2, 1);
         hintParams.leftMargin = dp(SettingsUi.LG);
         body.addView(hint, hintParams);
-        ConfirmDialog.showResultView(this, getString(mapIssue ? R.string.issue_qr_map : R.string.issue_qr_report),
+        ConfirmDialog.showResultView(this, getString(mapIssue ? R.string.issue_qr_map : R.string.report_issue),
                 body, getString(R.string.close));
+    }
+
+    private static String shorten(String value, int max) {
+        if (value == null) return "";
+        return value.length() <= max ? value : value.substring(0, max - 1) + "\u2026";
     }
 
     /** Hidden android.os.SystemProperties read; an empty string when unavailable. */
@@ -2319,13 +2348,6 @@ public final class MainActivity extends Activity {
         export.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { confirmReport(); }
         });
-        TextView issue = action(getString(R.string.issue_qr_report), false);
-        LinearLayout.LayoutParams issueParams = SettingsUi.contentAction(this);
-        issueParams.topMargin = dp(SettingsUi.MD);
-        content.addView(issue, issueParams);
-        issue.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) { showIssueQr(false); }
-        });
         ReportsSection.addRecordingRow(this, content, new Runnable() {
             public void run() { if (tab == Tab.SETTINGS) showSettings(); }
         });
@@ -2355,9 +2377,6 @@ public final class MainActivity extends Activity {
         });
         rows.addLink(getString(R.string.mapping_export), new View.OnClickListener() {
             public void onClick(View v) { confirmMapExport(); }
-        });
-        rows.addLink(getString(R.string.issue_qr_map), new View.OnClickListener() {
-            public void onClick(View v) { showIssueQr(true); }
         });
         rows.addLink(getString(R.string.open_nemesis), new View.OnClickListener() {
             public void onClick(View v) { openNemesis(); }
@@ -2402,11 +2421,17 @@ public final class MainActivity extends Activity {
                 new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { mapOperation("run", dialog); } }, null);
     }
 
+    /** Map export: as a GitHub issue (default; the folder is saved, then a QR code opens the issue) or to USB only. */
     private void confirmMapExport() {
         if (mapBusy || stockBusy) return;
-        ConfirmDialog.show(this, getString(R.string.mapping_export), getString(R.string.mapping_export_confirm),
-                getString(R.string.mapping_export), getString(R.string.cancel), false,
-                new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { mapOperation("export", dialog); } }, null);
+        final int[] choice = {0};
+        LinearLayout cards = choiceCards(new String[] {"phone", "download"},
+                new int[] {R.string.mapping_export_issue, R.string.mapping_export_usb},
+                new int[] {R.string.mapping_export_issue_note, R.string.mapping_export_usb_note}, choice);
+        ConfirmDialog.showView(this, getString(R.string.mapping_export), cards, getString(R.string.report_start),
+                getString(R.string.cancel), false, new ConfirmDialog.Action() {
+            public void run(ConfirmDialog dialog) { mapOperation(choice[0] == 0 ? "issue" : "export", dialog); }
+        }, null);
     }
 
     /** A USB export is reported done only after root flushed and verified the stick. */
@@ -2420,7 +2445,7 @@ public final class MainActivity extends Activity {
         dialog.showProgress();
         if (tab == Tab.CAR && detailId == null && !addVisible) showCar();
         new Thread(new Runnable() { public void run() {
-            final RootResult outcome = RootClient.map(verb);
+            final RootResult outcome = RootClient.map("issue".equals(verb) ? "export" : verb);
             final RootResult observed = RootClient.map("status");
             runOnUiThread(new Runnable() { public void run() {
                 mapBusy = false;
@@ -2428,7 +2453,7 @@ public final class MainActivity extends Activity {
                 if ("run".equals(verb)) { carCheck = null; loadCarCheck(); }
                 mapResult = outcome.exitCode == 0 && "run".equals(verb)
                         ? getString(R.string.mapping_run_done)
-                        : "export".equals(verb) ? exportMessage(outcome) : outcome.detail;
+                        : "run".equals(verb) ? outcome.detail : exportMessage(outcome);
                 dialog.dismiss();
                 if (tab == Tab.CAR && detailId == null && !addVisible) showCar();
                 if (outcome.exitCode == 0 && "run".equals(verb)) {
@@ -2439,13 +2464,8 @@ public final class MainActivity extends Activity {
                                 done.dismiss();
                                 confirmMapExport();
                             } }, null);
-                } else if (outcome.exitCode == 0 && "export".equals(verb)) {
-                    ConfirmDialog.show(MainActivity.this, getString(R.string.mapping_export), mapResult,
-                            getString(R.string.issue_qr_show), getString(R.string.close), false,
-                            new ConfirmDialog.Action() { public void run(ConfirmDialog done) {
-                                done.dismiss();
-                                showIssueQr(true);
-                            } }, null);
+                } else if (outcome.exitCode == 0 && "issue".equals(verb)) {
+                    showIssueQr(true, mapResult);
                 } else ConfirmDialog.showResult(MainActivity.this, getString("run".equals(verb)
                         ? R.string.mapping_run : R.string.mapping_export), mapResult, getString(R.string.close));
                 resumeUpdateWhenReady();
