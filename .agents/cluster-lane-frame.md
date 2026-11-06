@@ -35,7 +35,6 @@ JSON keys read (exact strings): `lane`, `info`, `totalLaneNumber`, `condition`, 
 - The third-party `nav_mapping.py` trailer order does not apply to this firmware. There is no `possibility` u16; `individualDirection` is a JSON key but not one of the seven trailer words (applied elsewhere).
 - Per-lane status byte semantics (2 bits per arrow, internal 0/1/3/2 -> wire 0/1/2/3) and arrow image IDs: [cluster-lane-arrows.md](cluster-lane-arrows.md).
 - Owner observation (2026-11-05, stock navigation, no phone projection): cluster and HUD showed bus-only lanes, hi-pass (ETC) lanes, non-hi-pass toll lanes and recommended-lane highlighting. The 81-byte frame is the only lane payload to the cluster, so the trailer bitmasks and per-arrow recommendation are in use.
-- Still to confirm: exact status/arrow code values against captured stock `source=car-nav` 81-byte frames (recorded by the lane-decoder work), matched to real on-road lanes and to the engine `[Lane]` logs (section 6).
 
 ### For our CpTurns lane builder
 - Status (`0x03+k`) and arrow (`0x13+3k`) layout is consistent with the loop region. Builder fills `0x01` count, `0x02` pockets, status and arrows.
@@ -104,7 +103,7 @@ No named new-frame lane arrow enum or status unpacker exists in the inspected `c
 The stock engine (`com.mnsoft.navi`, `Navi: [NEngRG][P][Lane]`) logs each lane set before it becomes the frame. The log shows producer **input**, not the 81-byte output (`updateLaneInfo` logs only `[B@...`). Format: `[Lane] rd:<m> [lane:<t> level:<l> vari:<v> over:<o> skip:<s> (dir:<d> idx:<i> valid:<vv>)...]... RHD:<r>`.
 - `rd` = distance to lane point in metres (counts down); `RHD` = right-hand-drive flag. Per lane, repeated `dir`/`idx`/`valid` triples are the arrows drawn in that lane; `over` tracks the group (1 = one arrow, 2/3 = multi-arrow). `idx` (1..18) looks like an arrow-sprite index incl. combinations; `dir` a direction class. Mapping to `laneIcon` 0..8 unproven; `dir:9` must not be treated as arrow code 9. M.
 - `vari:1` marks the lane leading along the route (highlighted/recommended). M.
-- `lane:<type>` is the lane category (0 normal, 2 special/ETC/hi-pass/bus, coloured on cluster+HUD) and `skip:1` = closed/unusable: the engine-side origin of the trailer bitmasks (offsets in section 1). Capture stock `source=car-nav` frames at a toll plaza to pin bit order. M.
+- `lane:<type>` is the lane category (0 normal, 2 special/ETC/hi-pass/bus, coloured on cluster+HUD) and `skip:1` = closed/unusable: the engine-side origin of the trailer bitmasks (offsets in section 1). Bit order (bit k = lane k) is car-verified by injection (section 1). M.
 - Native lane model flags, ordering and filtering remain U.
 
 ## 7. CpTurns comparison and recommended changes

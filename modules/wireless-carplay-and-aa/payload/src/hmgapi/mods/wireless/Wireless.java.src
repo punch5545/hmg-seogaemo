@@ -138,7 +138,6 @@ public final class Wireless extends ModEntry {
 
     private void navigation(final ModContext mod, final LoadedApp app) {
         if (!mod.settingBoolean("tbt", true)) return;
-        final CarLaneCapture carLanes = new CarLaneCapture(mod);
         CpTrapOverlay.install(mod, app);
         MethodHook skip = new MethodHook() {
             @Override
@@ -148,16 +147,6 @@ public final class Wireless extends ModEntry {
                     // stock's own junction-view clear (A 65535, or 0 with B 65535) still goes through
                     if ("updateCluDataNew_14".equals(method) && junctionClear(p.args)) return;
                     p.setResult(null);
-                    return;
-                }
-                if ("updateLaneInfo".equals(method) || "updateTPLaneInfo".equals(method)) {
-                    try {
-                        for (Object arg : p.args) if (arg instanceof byte[]) {
-                            byte[] frame = (byte[]) arg;
-                            if (frame.length != 81 || (frame[0] & 255) != 0xf1) continue;
-                            carLanes.record(frame);
-                        }
-                    } catch (Throwable ignored) { /* observation never changes stock delivery */ }
                 }
             }
         };
