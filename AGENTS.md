@@ -138,20 +138,29 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 
 ## Build, test, release
 
-- `make` builds `out/hmg-seogaemo.apk`; `make test` runs generator, package, runtime, update, lint and
-  every `modules/*/test/run.sh` (tests put `tools/testlib/fakebin` first on PATH and use `mksh`
-  when installed); `make package` writes `out/dist/` (`hmg-seogaemo-<v>-nemesis-package.zip`,
+- `make` builds `out/hmg-seogaemo.apk`; `make test` builds the package, then `tools/run-tests.py`
+  runs generator, package, runtime, update, lint, Java and every `modules/*/test/run.sh` in one
+  CPU-sized pool (tests put `tools/testlib/fakebin` first on PATH; root/module suites run on
+  `mksh`, /bin/sh only a smoke set; `HMG_SEOGAEMO_TEST_SHELLS=all` runs both fully;
+  `TESTS_ONLY=word,...` selects tasks; `make test-suites` skips the rebuild); `make package` writes `out/dist/` (`hmg-seogaemo-<v>-nemesis-package.zip`,
   `-nemesis-usb.zip`, `-ota.zip`, `.apk`, `SHA256SUMS`, plus signed manifest when
   `OTA_MANIFEST_PRIVATE_KEY` is set); `make verify-dist`; `make clean`.
 - Local builds are signed with a throwaway debug key. **Install only release-signed builds on a
   car you want to update OTA later**: a signer change forces uninstall and loses app data.
 - Requirements: JDK 17, Android SDK (`platforms;android-19`, `build-tools;34.0.0`), python3,
   clang + lld (carplay native payload), optional `mksh`.
-- CI (`ci.yml`) uses the runner's preinstalled SDK; `android-actions/setup-android@v3` breaks on the
-  removed `tools` package.
-- Release: bump `VERSION`, commit, push tag `vX.Y.Z` (must equal `VERSION`). `release.yml` builds
-  with the release keystore, checks the APK certificate SHA-256, signs the manifest, uploads to a
-  draft release, verifies the asset list, then publishes.
+- CI (`ci.yml`) and release share `.github/actions/setup`: the runner's preinstalled SDK plus a
+  cached API 19 platform and mksh .deb, LLVM 18 from the image; `android-actions/setup-android@v3`
+  breaks on the removed `tools` package.
+- Release order (always): merge everything first, bump `VERSION` in its own commit on `main`, push
+  `main`, wait until CI on that exact commit is green, then tag that commit `vX.Y.Z` (must equal
+  `VERSION`) and push only the tag. Never tag a commit CI has not run on (e.g. a local merge
+  commit), and never move or reuse a pushed tag; a failed release gets the next patch version.
+- Release workflow: `release.yml` builds
+  with the release keystore, checks the APK certificate SHA-256, signs the manifest, waits for CI
+  on the tagged SHA (success: `make test-dist` on the release build; otherwise the full suite via
+  `make test-suites`), uploads to a draft release, verifies the asset list, then publishes. Tag a
+  commit CI tested (pushed to `main`) to get the short path.
 - UI screenshots: AVD `hmg_1920x720` (1920x720, 240 dpi, API 28 image; no NEMESIS, so module
   status shows unavailable). README screenshots are the Korean UI.
 - README: every image is a real app screenshot from `assets/`; no "mock", "demo", "example",

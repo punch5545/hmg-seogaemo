@@ -2,6 +2,7 @@
 """Isolated checks of the shared root runtime."""
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -27,8 +28,12 @@ def test_toolbox_md5(temp):
 
 
 def script(path, body):
+    # Load common.sh only where the body needs it and does not load it itself:
+    # mksh R59 takes one to two seconds to redefine every function on a second load.
+    sources = re.search(r'^\s*\. .*common\.sh', body, re.M)
+    prefix = '. "' + str(ROOT / 'nemesis/package/lib/common.sh') + '"\n' if 'sg_' in body and not sources else ''
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('#!/bin/sh\n. "' + str(ROOT / 'nemesis/package/lib/common.sh') + '"\n' + host_shell_script(body))
+    path.write_text('#!/bin/sh\n' + prefix + host_shell_script(body))
     path.chmod(0o755)
 
 
@@ -52,7 +57,7 @@ if sg_file_mark_applied /owned; then exit 1; fi
 
 def fake_ownership(fake):
     for name in ("ls", "chown"):
-        script(fake / name, f'exec {sys.executable} "{ROOT / "tools/testlib/fake-ownership.py"}" {name} "$@"\n')
+        script(fake / name, f'exec /bin/sh "{ROOT / "tools/testlib/fake-ownership.sh"}" {name} "$@"\n')
     script(fake / "nemesis", "exit 0\n")
 
 
