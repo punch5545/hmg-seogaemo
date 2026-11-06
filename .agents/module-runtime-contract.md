@@ -203,6 +203,7 @@ packages bundled with HMG-Seogaemo may declare them):
 | `daemon.<name>=` | `/system/bin/<x>`, `/system/xbin/<x>` or `@payload@/<rel>`, then up to 15 tokens of `[a-zA-Z0-9_./:=,+@!-]`; `@payload@` / `@state@` (once per token, followed by nothing or `/...`) expand to `HMG_SEOGAEMO_MODULE_DIR` / `HMG_SEOGAEMO_STATE`; no other `@`; two modules never declare the same command |
 | `net_rules.<n>=` | `n` `[1-9][0-9]{0,3}`; `iptables [-t nat|mangle|filter] <chain> <rule spec>` (no command or table options in the spec, no `--modprobe`) or `ip rule <selector and action>` (no `add`/`del`/`flush`/`show`, no options); same token charset without `@`; two modules never declare the same rule |
 | `owns_ifaces=<glob>[,<glob>]` | interface names or `*` globs `[a-z0-9][a-z0-9_.*-]*` (e.g. `rtwlan*`); globs of two modules never overlap |
+| `daemon_user.<name>=wifi` | the daemon drops root for `wifi` (uid 1010) by itself (Android `hostapd`); it starts in `run/<name>` (owned by 1010, mode 700) and each whole `@state@/<file>` argument becomes a 1010-owned mode-600 copy there, passed as `<file>`. Not ownership, like `derived_bin` |
 | `derived_bins=<name>[,<name>]` | derived program names (daemon-name rules), each with one `derived_bin.<name>=` |
 | `derived_bin.<name>=` | `/system/bin/<x>` or `/system/xbin/<x>`, an absolute path string in it (`/[a-zA-Z0-9_./-]`, 4-128 bytes, no `..` or `//`) and a file name `[a-zA-Z0-9_.-]` (not starting with `.`) no longer than that string. Private state-directory files, so not ownership: replacing a bundled module that is on ignores these keys |
 
@@ -224,7 +225,8 @@ on spaces as argv, never evaluated. Tools are fixed absolute paths `/system/bin/
   change. Ledger `bin_derive` (`failed` with the helper's exit code).
 - `sg_daemon_start <name>`: executable must be a regular non-symlink file; a `/system` executable
   named by a `derived_bin.<n>=` runs as `bin/<n>` (made by `sg_bin_derive` first); starts
-  `( cd $HMG_SEOGAEMO_STATE && exec argv ) </dev/null >>daemon.<name>.log 2>&1 &` (log emptied at a start beyond 64 KiB),
+  `( cd <dir> && exec argv ) </dev/null >>daemon.<name>.log 2>&1 &` with `<dir>` the state directory, or
+  `run/<name>` for a `daemon_user` daemon (log emptied at a start beyond 64 KiB),
   records boot id and PID plus the expected `/proc/<pid>/cmdline` bytes (each argument followed
   by NUL; the executable must not rewrite its argv, so payload shell scripts do not qualify),
   then waits up to 5 seconds for an exact match, else fails, logging why in `module.log`
