@@ -63,16 +63,17 @@ hmg_seogaemo_diagnostics() (
         mkdir -p "$diag/${2%/*}" || return 1
         bytes=$(sg_file_size "$1") || return 1
         # Block-sized reads from the regular file (a byte-at-a-time dd on a
-        # head unit is far too slow); keep the last 16 blocks = 64 KiB.
+        # head unit is far too slow); keep the last $keep blocks (default 16 = 64 KiB).
+        keep=${3:-16}
         blocks=$(((bytes + 4095) / 4096))
         skip=0
-        if [ "$blocks" -gt 16 ]; then
-            skip=$((blocks - 16))
-            sg_print "truncated to last 65536 bytes: $2" >> "$diag/manifest.txt"
+        if [ "$blocks" -gt "$keep" ]; then
+            skip=$((blocks - keep))
+            sg_print "truncated to last $((keep * 4096)) bytes: $2" >> "$diag/manifest.txt"
         fi
         # Stage the block read in a file so the line loop reads a seekable
         # descriptor (buffered) instead of a pipe (one syscall per byte).
-        dd if="$1" bs=4096 skip="$skip" count=16 2>/dev/null > "$stage/raw"
+        dd if="$1" bs=4096 skip="$skip" count="$keep" 2>/dev/null > "$stage/raw"
         {
             # A tail can begin inside a credential line: discard that fragment.
             if [ "$skip" -gt 0 ]; then IFS= read -r fragment || :; fi
@@ -81,7 +82,7 @@ hmg_seogaemo_diagnostics() (
         rm -f "$stage/raw"
         # Redaction can lengthen short lines; cap from a file, never a pipe
         # (a short pipe read would make a block-counted dd stop early).
-        dd if="$stage/stage" bs=4096 count=16 2>/dev/null > "$diag/$2"
+        dd if="$stage/stage" bs=4096 count="$keep" 2>/dev/null > "$diag/$2"
         rm -f "$stage/stage"
     }
     probe() {
@@ -188,5 +189,34 @@ hmg_seogaemo_diagnostics() (
         mkdir -p "$diag/tbt" || exit 1
         dd if="$tbt/$name" bs=4096 count=272 2>/dev/null > "$diag/tbt/$name"
     done
+    # Problem report extras: Android log (all, or only lines from our area), NEMESIS log, the
+    # app's own view (fixed file the app writes before exporting) and a one-page summary.
+    case "${HMG_SEOGAEMO_EXPORT_LOGS:-none}" in all|ours)
+        logcat -d -v time > "$stage/logcat.txt" 2>/dev/null || :
+        if [ "$HMG_SEOGAEMO_EXPORT_LOGS" = ours ]; then
+            grep -i -e hmg-seogaemo -e nemesis -e dipo -e iap2 -e projection -e carplay -e AndroidRuntime \
+                "$stage/logcat.txt" > "$stage/logcat.sel" 2>/dev/null || :
+            mv "$stage/logcat.sel" "$stage/logcat.txt"
+        fi
+        copy_log "$stage/logcat.txt" logs/logcat.txt 128 || exit 1
+        rm -f "$stage/logcat.txt"
+        nemesis log dump > "$stage/nemesis.txt" 2>&1 < /dev/null || :
+        copy_log "$stage/nemesis.txt" logs/nemesis.txt 32 || exit 1
+        rm -f "$stage/nemesis.txt"
+        copy_log "${HMG_SEOGAEMO_APP_STATE:-/data/data/com.seogaemo.hmg/files/report/app-state.txt}" app/app-state.txt || exit 1
+        {
+            sg_print "HMG-Seogaemo problem report" "time=$(date)" "logs=$HMG_SEOGAEMO_EXPORT_LOGS"
+            grep '^package-version=' "$base/NEMESIS.data" 2>/dev/null
+            sg_print "product=$(getprop ro.build.product)"
+            for status in "$diag"/map-status.txt "$diag"/module-*-status.txt; do
+                [ -f "$status" ] || continue
+                name=${status##*/}
+                while IFS= read -r line; do
+                    case "$line" in state=*|detail=*) sg_print "${name%.txt}: $line";; esac
+                done < "$status"
+            done
+        } > "$diag/summary.txt"
+        sg_print "report logs: $HMG_SEOGAEMO_EXPORT_LOGS (logcat 512 KiB, NEMESIS 128 KiB)" >> "$diag/manifest.txt" ;;
+    esac
     sg_print 'limits: 32 logs, 64 KiB each; status 64 KiB/10 seconds each; metadata 8 KiB/module; properties 64 KiB; turn-by-turn records 1 MiB + 64 KiB each' >> "$diag/manifest.txt"
 )

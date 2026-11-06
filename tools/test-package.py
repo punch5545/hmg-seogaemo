@@ -36,7 +36,7 @@ def run():
     ota_path = DIST / f"{prefix}-ota.zip"
     with zipfile.ZipFile(package_path) as package, zipfile.ZipFile(usb_path) as usb, zipfile.ZipFile(ota_path) as ota:
         # Every Java root command must explicitly select the device interpreter.
-        for source, expected_count in (("module/RootClient.java", 7),
+        for source, expected_count in (("module/RootClient.java", 9),
                                        ("core/update/UpdateClient.java", 1)):
             java = (ROOT / "app/src/com/seogaemo/hmg" / source).read_text()
             commands = re.findall(r'"([^"\n]*bin/hmg-seogaemo-root [^"\n]*)"', java)
@@ -48,7 +48,7 @@ def run():
         required = {"NEMESIS.data", "app/hmg-seogaemo.apk", "bin/hmg-seogaemo-root", "bin/install-apk.sh",
                     "bin/open.sh", "svc/install-pending.sh", "scripts/postinstall.sh", "scripts/preuninstall.sh",
                     "svc/reconcile.sh", "svc/watcher.sh", "lib/common.sh", "modules.list", "modules.graph",
-                    "core/stock.sh", "lib/stock.sh", "core/uninstall-detached.sh",
+                    "core/stock.sh", "lib/stock.sh", "core/uninstall-detached.sh", "core/foreign.sh",
                     "core/map/hmg-seogaemo-mapper.jar", "core/hmg-seogaemo-map.sh", "hookpoints/framework.json",
                     "hookpoints.required/wireless-carplay-and-aa",
                     "maps/hyundai/ioniq5/kor/260902/map.json",

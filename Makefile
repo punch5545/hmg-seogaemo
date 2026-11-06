@@ -83,6 +83,7 @@ test-root-shells:
 
 test-module-install:
 	python3 tools/test-module-install.py
+	python3 tools/test-foreign.py
 
 test-maps:
 	python3 tools/validate-maps.py all

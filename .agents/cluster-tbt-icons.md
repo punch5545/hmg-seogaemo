@@ -180,6 +180,6 @@ Reproduce with `/opt/homebrew/opt/llvm/bin/llvm-objdump -d --triple=thumbv7 --st
 
 ## To do in our code
 - Highway icons are car-verified on the cluster (2026-11-05): 160 entry straight, 161 entry right, 162 entry left, 163 exit straight, 164 exit right, 165 exit left.
-- Junction view is not feasible: no image path reaches the cluster/HUD, `updateCluDataNew_14` advanced_tbt/pattern_guide had no visible effect, and stock navigation never calls it.
+- Junction view: no image path reaches the cluster/HUD. Stock code does reach `updateCluDataNew_14` (ILS/junction pattern codes, not angles), but our guessed one-shot probes showed nothing and no stock call is in our logs yet; see [navi-ar-guidance.md](navi-ar-guidance.md).
 - Refine `exactIcon`/ramp/roundabout mapping from the 160-165 highway family and the two roundabout families once verified on the car.
 - Still phone-side (field data only): which iAP2 ManeuverType/angle NAVER/Apple actually send ([carplay-tbt-external/apps-and-oems.md](carplay-tbt-external/apps-and-oems.md)).

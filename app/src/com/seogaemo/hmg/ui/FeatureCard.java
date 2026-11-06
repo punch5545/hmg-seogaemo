@@ -14,7 +14,7 @@ import com.seogaemo.hmg.ui.settings.SettingsUi;
 
 /** Full-height Features card: icon, name, optional note, and a bottom status row with its own tap target. */
 public final class FeatureCard extends LinearLayout {
-    public enum State { LOADING, ON, OFF, APPLYING, UNAVAILABLE, UNKNOWN }
+    public enum State { LOADING, ON, OFF, APPLYING, RESTART, UNAVAILABLE, UNKNOWN }
 
     public static final int ICON_BOX = 60;
     public static final int ICON = 34;
@@ -112,6 +112,7 @@ public final class FeatureCard extends LinearLayout {
         if (state == State.ON) { labelRes = R.string.state_on; color = Theme.BLUE; }
         else if (state == State.OFF) { labelRes = R.string.state_off; color = Theme.MUTED; }
         else if (state == State.APPLYING) { labelRes = R.string.state_applying; color = Theme.WARNING; }
+        else if (state == State.RESTART) { labelRes = R.string.state_restart; color = Theme.WARNING; }
         else if (state == State.UNAVAILABLE) { labelRes = R.string.state_unavailable; color = Theme.MUTED; }
         else if (state == State.UNKNOWN) { labelRes = R.string.state_unknown; color = Theme.MUTED; }
         else { labelRes = R.string.state_loading; color = Theme.MUTED; }

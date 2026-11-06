@@ -14,6 +14,8 @@ public final class RootClient {
     static final long STOCK_TIMEOUT_MS = 180000L;
     /** Each module precheck may run a bounded map status (up to 15 s). */
     static final long PREFLIGHT_TIMEOUT_MS = 120000L;
+    /** Thousands of ledger files need copying, diagnostics, sync and USB verification. */
+    static final long EXPORT_TIMEOUT_MS = 600000L;
 
     private RootClient() { }
 
@@ -96,8 +98,10 @@ public final class RootClient {
         return invoke(ROOT + "preflight run", PREFLIGHT_TIMEOUT_MS);
     }
 
-    public static RootResult exportUsb() {
-        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb", WRITE_TIMEOUT_MS);
+    /** Problem report: everything `export usb` writes plus Android/NEMESIS logs; logs is all or ours. */
+    public static RootResult exportReport(boolean allLogs) {
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb "
+                + (allLogs ? "all" : "ours"), EXPORT_TIMEOUT_MS);
     }
 
     public static RootResult stock(String verb) {
@@ -111,11 +115,23 @@ public final class RootClient {
         return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root package uninstall", STOCK_TIMEOUT_MS);
     }
 
+    /** Other NEMESIS packages that overlap ours: read-only status, or clean one catalogue item. */
+    public static RootResult foreignStatus() {
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root foreign status", READ_TIMEOUT_MS);
+    }
+
+    public static RootResult foreignClean(String item) {
+        if (item == null || !item.matches("[a-z0-9-]{1,40}")) return failure("invalid item");
+        return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root foreign clean " + item,
+                STOCK_TIMEOUT_MS);
+    }
+
     public static RootResult map(String verb) {
         if (!("status".equals(verb) || "run".equals(verb) ||
                 "verify".equals(verb) || "export".equals(verb))) return failure("invalid map verb");
         String command = "/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root map " + verb;
-        return invoke(command, "run".equals(verb) ? 600000 : "verify".equals(verb) ? 180000 : 30000);
+        return invoke(command, "export".equals(verb) ? EXPORT_TIMEOUT_MS :
+                "run".equals(verb) ? 600000 : "verify".equals(verb) ? 180000 : 30000);
     }
 
     private static RootResult invoke(String command, long timeoutMs) {

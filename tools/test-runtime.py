@@ -552,6 +552,22 @@ sg_revert_all
         assert str((published / relative).stat().st_size) == size, relative
     adb_result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
     assert "info.export_safe=adb" in adb_result.stdout
+    # Problem report: logs=ours keeps only our area of the Android log and adds NEMESIS log and a summary.
+    script(fake / "logcat", 'echo "I/HMG-Seogaemo( 1): ours"; echo "I/SomeVendorApp( 2): other"\n')
+    script(fake / "nemesis", 'case "$1" in log) echo "nemesis log line";; *) exit 0;; esac\n')
+    time.sleep(1.1)
+    report = run(base / "bin/hmg-seogaemo-root", "export", "adb", "ours", env=env)
+    assert "info.export_safe=adb" in report.stdout, report.stdout
+    folder = Path(report.stdout.split("detail=", 1)[1].split()[0]) / "diagnostics"
+    logcat = (folder / "logs/logcat.txt").read_text()
+    assert "ours" in logcat and "other" not in logcat, logcat
+    assert "nemesis log line" in (folder / "logs/nemesis.txt").read_text()
+    assert "HMG-Seogaemo problem report" in (folder / "summary.txt").read_text()
+    time.sleep(1.1)
+    full = run(base / "bin/hmg-seogaemo-root", "export", "adb", "all", env=env)
+    full_log = (Path(full.stdout.split("detail=", 1)[1].split()[0]) / "diagnostics/logs/logcat.txt").read_text()
+    assert "other" in full_log, full_log
+    assert "Invalid command" in run(base / "bin/hmg-seogaemo-root", "export", "adb", "some", env=env, ok=False).stdout
     sync_log = base / "sync.log"
     script(fake / "sync", 'for m in "$FAKE_USB"/HMG-Seogaemo-export/*/MANIFEST; do [ ! -f "$m" ] || echo manifest >> "$FAKE_SYNC"; done; echo sync >> "$FAKE_SYNC"\n')
     env.update(FAKE_USB=str(usb), FAKE_SYNC=str(sync_log))

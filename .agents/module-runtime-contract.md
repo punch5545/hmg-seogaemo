@@ -97,6 +97,31 @@ packaging and every `modules/<id>/test/run.sh`.
 property before/after values, `ro.build.product`, package version and module desired states into
 `HMG-Seogaemo-export/<timestamp>/` on the first mounted USB drive (`usb`) or into
 `/data/local/tmp/hmg-seogaemo-export/<timestamp>/` readable by the adb shell user (`adb pull`).
+**Other packages (foreign).** The supported setup is NEMESIS + HMG-Seogaemo only. Evidence and
+the full artifact list: `tmp/overlap-inventory.md` (2026-11-06, upstream source only, not car).
+- `hmg-seogaemo-root foreign status` is read-only. It checks a fixed catalogue and prints
+  `info.item_<n>=<item-id>,<class>` plus `info.count`, and writes the same lines to
+  `<data root>/foreign/report`. `svc/reconcile.sh` runs it every boot (after install too).
+  Classes: `remove` = an installed NEMESIS package (or a standalone HMG-API install) whose own
+  uninstall restores its stock; `delete` = harmless leftovers (logs, state, temp) with exact
+  catalogue paths; `report` = leftovers whose stock original we cannot prove (orphan backups,
+  /system residue, `app_process.*-stock`); these are never touched, only shown.
+- `hmg-seogaemo-root foreign clean <item-id>` (item id `[a-z0-9-]+` from the catalogue, and it
+  must be found again at call time). It refuses (`conflict`) while any of our modules that
+  overlap that item is desired on, because foreign restores overwrite without checking.
+  `remove` runs `nemesis uninstall <id>` without `--force`, dependents first (`hmgapi.*` before
+  `hmgapi`, `projection.cardata` before `wireless.carplay.aa`), or `/data/hmgapi/uninstall.sh`
+  for a standalone HMG-API, then reports `pending-restart`/`head_unit`. `delete` removes only
+  the catalogue paths. Every step is a ledger row (`foreign_remove`/`foreign_delete`).
+  `report` items are refused. Calling `nemesis uninstall` from our root verb is unverified on
+  the car. The app shows the findings on the Car tab and cleans them only after a confirm.
+
+Problem report form: `export usb|adb all|ours` adds `diagnostics/logs/logcat.txt` (last 512 KiB of
+`logcat -d -v time`; `ours` keeps only lines matching hmg-seogaemo, nemesis, dipo, iap2, projection,
+carplay or AndroidRuntime), `logs/nemesis.txt` (`nemesis log dump`, 128 KiB),
+`app/app-state.txt` (the app writes `files/report/app-state.txt` first: version, statuses it showed,
+recent failures) and `summary.txt`; the same redaction applies, and it works before any ledger
+exists. The app's Support page and every failure dialog offer it as 문제 보고용 내보내기.
 Read-only for the system; bounded size; refuses if no target. Exposed in Settings (Logs) as
 "Export changes to USB" and documented for adb:
 `adb shell /data/local/tmp/nemesis-d root -c '/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export adb'`.
@@ -411,6 +436,15 @@ before its data does.
 The app shows "it is safe to remove the USB" (`export_usb_done`, KO "USB를 빼도 됩니다")
 only for `info.export_safe=usb`. The check compares sizes the kernel reports; it cannot
 prove the medium, so the instruction to the owner is still to wait for the dialog.
+
+The app allows 10 minutes for ordinary USB export and `map export`, including
+copying, diagnostics, manifest creation, sync and verification. These operations
+must not use the 150-second module-write or 30-second map-status deadline. On
+2026-11-06, each v0.1.30 USB export contained 1,798 files and took 145 seconds
+from its destination timestamp to MANIFEST's modification time, before the USB
+verification pass. The 150-second app deadline could expire while the daemon
+continued exporting. Evidence: `tmp/car-reports/usb-20261106/`. The longer deadline
+is covered off-car; completion of the fixed build still needs car verification.
 
 ## Diagnostic export
 

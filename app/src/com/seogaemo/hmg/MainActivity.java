@@ -107,6 +107,9 @@ public final class MainActivity extends Activity {
     private FeaturesView featuresView;
     private final Map<String, RootResult> statuses = new HashMap<String, RootResult>();
     private final Set<String> settling = new HashSet<String>();
+    /** Modules whose first status read was not definitive (for example right after boot); re-read quietly. */
+    private final Set<String> rechecking = new HashSet<String>();
+    private boolean recheckRunning;
     private final Handler handler = new Handler();
     private boolean restartLater;
     private boolean sortOnLoad;
@@ -116,6 +119,7 @@ public final class MainActivity extends Activity {
     private boolean modulePlanning;
     private boolean moduleWorking;
     private RootResult mapStatus;
+    private RootResult foreignStatus;
     private boolean mapRefreshing;
     private boolean mapBusy;
     private String mapResult;
@@ -507,10 +511,11 @@ public final class MainActivity extends Activity {
             entry.state = FeatureCard.State.APPLYING;
             return entry;
         }
+        if (rechecking.contains(feature.id) && !readable(result)) return entry;
         entry.statusTappable = true;
         if ("pending-restart".equals(result.state)) {
-            entry.state = FeatureCard.State.APPLYING;
-            entry.note = getString(R.string.note_restart_pending);
+            // Already applied on disk; only the head-unit restart is left, so no spinner.
+            entry.state = FeatureCard.State.RESTART;
         } else if (result.exitCode == 0 && "on".equals(result.state)) {
             entry.state = FeatureCard.State.ON;
         } else if (result.exitCode == 0 && "off".equals(result.state)) {
@@ -546,7 +551,8 @@ public final class MainActivity extends Activity {
     }
 
     private static int group(FeatureCard.State state) {
-        if (state == FeatureCard.State.ON || state == FeatureCard.State.APPLYING) return 0;
+        if (state == FeatureCard.State.ON || state == FeatureCard.State.APPLYING
+                || state == FeatureCard.State.RESTART) return 0;
         if (state == FeatureCard.State.OFF || state == FeatureCard.State.LOADING) return 1;
         return 2;
     }
@@ -596,6 +602,13 @@ public final class MainActivity extends Activity {
             for (Feature feature : list) results.put(feature.id, RootClient.run(feature.id, "status"));
             runOnUiThread(new Runnable() { public void run() {
                 statuses.putAll(results);
+                for (Map.Entry<String, RootResult> status : results.entrySet()) {
+                    if (!notReady(status.getValue())) continue;
+                    Log.w("HMG-Seogaemo", "Status not ready for " + status.getKey() + ": " + status.getValue().state
+                            + " " + status.getValue().detail);
+                    rechecking.add(status.getKey());
+                }
+                recheck(1);
                 if (generation != loadGeneration || featuresView == null || !featuresVisible()) return;
                 boolean sameSet = true;
                 for (Feature feature : list) if (!featuresView.shows(feature.id)) sameSet = false;
@@ -616,6 +629,33 @@ public final class MainActivity extends Activity {
         } else if (detailId != null) render();
         else if (settingsVisible) showSettings();
         else if (tab == Tab.CAR) showCar();
+    }
+
+    /** A status that is neither readable nor a definite reason (conflict, incompatible, unsupported, unreachable). */
+    private static boolean notReady(RootResult result) {
+        return !readable(result) && !unreachable(result) && !"conflict".equals(result.state)
+                && !"incompatible".equals(result.state) && !"not-implemented".equals(result.state);
+    }
+
+    /** Re-reads not-ready statuses every 3 s, up to SETTLE_ATTEMPTS times, while the cards show loading. */
+    private void recheck(final int attempt) {
+        if (rechecking.isEmpty() || (attempt == 1 && recheckRunning)) return;
+        recheckRunning = true;
+        handler.postDelayed(new Runnable() { public void run() {
+            if (isFinishing() || rechecking.isEmpty()) { recheckRunning = false; return; }
+            final List<String> ids = new ArrayList<String>(rechecking);
+            new Thread(new Runnable() { public void run() {
+                final Map<String, RootResult> results = new HashMap<String, RootResult>();
+                for (String id : ids) results.put(id, RootClient.run(id, "status"));
+                runOnUiThread(new Runnable() { public void run() {
+                    statuses.putAll(results);
+                    for (String id : ids) if (!notReady(results.get(id)) || attempt >= SETTLE_ATTEMPTS) rechecking.remove(id);
+                    refreshAfterOperation();
+                    if (rechecking.isEmpty()) recheckRunning = false;
+                    else recheck(attempt + 1);
+                } });
+            } }, "hmg-seogaemo-recheck").start();
+        } }, 3000);
     }
 
     /** Modules whose status is momentarily unreadable after an operation show 적용 중 and are re-read. */
@@ -1025,10 +1065,89 @@ public final class MainActivity extends Activity {
                     getSharedPreferences("module_settings", MODE_PRIVATE).edit()
                             .putString(feature.id + "." + setting.key, value).apply();
                     refreshAfterOperation();
-                } else ConfirmDialog.showResult(MainActivity.this, getString(R.string.module_result_failed),
-                        result.detail, getString(R.string.close));
+                } else showFailure(getString(R.string.module_result_failed), result.detail);
             } });
         } }, "hmg-seogaemo-setting").start();
+    }
+
+    private final java.util.LinkedList<String> recentErrors = new java.util.LinkedList<String>();
+
+    /** Failure dialog with a direct way to send a problem report; the message is kept for that report. */
+    private void showFailure(String title, CharSequence detail) {
+        recentErrors.addLast(new java.util.Date() + " " + title + ": " + detail);
+        while (recentErrors.size() > 20) recentErrors.removeFirst();
+        ConfirmDialog.show(this, title, detail, getString(R.string.report_export), getString(R.string.close), false,
+                new ConfirmDialog.Action() { public void run(ConfirmDialog dialog) { dialog.dismiss(); confirmReport(); } },
+                null);
+    }
+
+    /** Choose all Android logs or only HMG-Seogaemo related lines, then export everything to USB. */
+    private void confirmReport() {
+        if (stockBusy || mapBusy) return;
+        final boolean[] all = {true};
+        final LinearLayout list = vertical();
+        final TextView[] markers = new TextView[2];
+        int[] labels = {R.string.report_logs_all, R.string.report_logs_ours};
+        for (int i = 0; i < 2; i++) {
+            final int index = i;
+            LinearLayout row = horizontal();
+            row.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
+            row.addView(text(getString(labels[i]), 22, WHITE, medium), new LinearLayout.LayoutParams(0, -1, 1));
+            markers[i] = text(getString(i == 0 ? R.string.radio_selected : R.string.radio_unselected), 28,
+                    i == 0 ? BLUE : MUTED, sans);
+            markers[i].setGravity(Gravity.CENTER);
+            row.addView(markers[i], new LinearLayout.LayoutParams(dp(60), -1));
+            row.setOnClickListener(new View.OnClickListener() {
+                public void onClick(View view) {
+                    all[0] = index == 0;
+                    for (int j = 0; j < 2; j++) {
+                        markers[j].setText(getString(j == index ? R.string.radio_selected : R.string.radio_unselected));
+                        markers[j].setTextColor(j == index ? BLUE : MUTED);
+                    }
+                }
+            });
+            list.addView(row, new LinearLayout.LayoutParams(-1, dp(Theme.ACTION_HEIGHT)));
+            divider(list, false);
+        }
+        ConfirmDialog.showView(this, getString(R.string.report_export), list, getString(R.string.report_send),
+                getString(R.string.cancel), false, new ConfirmDialog.Action() {
+            public void run(final ConfirmDialog dialog) {
+                dialog.showProgress();
+                writeAppState();
+                new Thread(new Runnable() { public void run() {
+                    final RootResult result = RootClient.exportReport(all[0]);
+                    runOnUiThread(new Runnable() { public void run() {
+                        dialog.dismiss();
+                        ConfirmDialog.showResult(MainActivity.this, getString(R.string.report_export),
+                                result.exitCode == 0 ? getString(R.string.report_done, exportMessage(result))
+                                        : exportMessage(result), getString(R.string.close));
+                    } });
+                } }, "report-export").start();
+            }
+        }, null);
+    }
+
+    /** The app's own view for a problem report: version, what each card showed and recent failures. */
+    private void writeAppState() {
+        StringBuilder state = new StringBuilder();
+        state.append("app=").append(installedVersion()).append('\n');
+        state.append("locale=").append(describeLocale()).append('\n');
+        state.append("android=").append(Build.VERSION.RELEASE).append(" product=").append(Build.PRODUCT).append('\n');
+        for (Map.Entry<String, RootResult> status : statuses.entrySet()) {
+            RootResult result = status.getValue();
+            state.append("status.").append(status.getKey()).append('=').append(result.state).append(" exit=")
+                    .append(result.exitCode).append(" detail=").append(result.detail).append('\n');
+        }
+        if (mapStatus != null) state.append("map=").append(mapStatus.state).append(' ').append(mapStatus.detail).append('\n');
+        for (String error : recentErrors) state.append("error ").append(error).append('\n');
+        try {
+            File dir = new File(getFilesDir(), "report");
+            if (!dir.isDirectory() && !dir.mkdirs()) return;
+            OutputStream out = new FileOutputStream(new File(dir, "app-state.txt"));
+            try { out.write(state.toString().getBytes("UTF-8")); } finally { out.close(); }
+        } catch (java.io.IOException error) {
+            Log.w("HMG-Seogaemo", "Could not write app state for the report", error);
+        }
     }
 
     private void confirmAction(final Feature feature, final String name, final String label, String question) {
@@ -1047,8 +1166,7 @@ public final class MainActivity extends Activity {
                         moduleWorking = false;
                         if (progress != null) progress.dismiss();
                         if (result.exitCode == 0) refreshAfterOperation();
-                        else ConfirmDialog.showResult(MainActivity.this, getString(R.string.module_result_failed),
-                                result.detail, getString(R.string.close));
+                        else showFailure(getString(R.string.module_result_failed), result.detail);
                     } });
                 } }, "hmg-seogaemo-action").start();
             }
@@ -1079,8 +1197,7 @@ public final class MainActivity extends Activity {
                             ConfirmDialog.showResult(MainActivity.this, getString(R.string.detail_remove),
                                     getString(R.string.detail_removed_done, feature.name), getString(R.string.close));
                         }
-                        else ConfirmDialog.showResult(MainActivity.this, getString(R.string.module_result_failed),
-                                result.detail, getString(R.string.close));
+                        else showFailure(getString(R.string.module_result_failed), result.detail);
                     } });
                 } }, "hmg-seogaemo-remove").start();
             }
@@ -1091,6 +1208,27 @@ public final class MainActivity extends Activity {
             final boolean forUpdate) {
         if (modulePlanning || moduleWorking || stockBusy) return;
         modulePlanning = true;
+        // The confirm appears at once with a disabled button; the plan and precheck fill it in.
+        final LinearLayout holder = vertical();
+        LinearLayout loading = horizontal();
+        loading.setGravity(Gravity.CENTER);
+        loading.addView(new android.widget.ProgressBar(this), new LinearLayout.LayoutParams(dp(40), dp(40)));
+        holder.addView(loading, new LinearLayout.LayoutParams(-1, dp(120)));
+        final ModulePlan[] ready = {null};
+        final boolean[] closed = {false};
+        final ConfirmDialog dialog = ConfirmDialog.showView(this,
+                getString(enable ? R.string.confirm_turn_on_title : R.string.confirm_turn_off_title,
+                        module.name, particle(module.name)), holder,
+                getString(forUpdate ? R.string.update_enable_wifi : enable ? R.string.confirm_turn_on : R.string.confirm_turn_off),
+                getString(R.string.cancel), false, new ConfirmDialog.Action() {
+                    public void run(ConfirmDialog confirmed) {
+                        if (ready[0] == null) return;
+                        confirmed.dismiss();
+                        runPlan(module, enable, ready[0], forUpdate);
+                    }
+                }, new Runnable() { public void run() { closed[0] = true; modulePlanning = false; } });
+        if (dialog == null) { modulePlanning = false; return; }
+        dialog.setReady(false);
         new Thread(new Runnable() {
             public void run() {
                 final ModulePlan plan;
@@ -1098,9 +1236,10 @@ public final class MainActivity extends Activity {
                 catch (final IllegalStateException error) {
                     runOnUiThread(new Runnable() {
                         public void run() {
+                            if (closed[0]) return;
                             modulePlanning = false;
-                            ConfirmDialog.showResult(MainActivity.this, getString(R.string.module_result_failed),
-                                    error.getMessage(), getString(R.string.close));
+                            dialog.dismiss();
+                            showFailure(getString(R.string.module_result_failed), error.getMessage());
                         }
                     });
                     return;
@@ -1108,8 +1247,13 @@ public final class MainActivity extends Activity {
                 final RootResult precheck = enable ? RootClient.run(module.id, "precheck") : null;
                 runOnUiThread(new Runnable() {
                     public void run() {
+                        if (closed[0]) return;
                         modulePlanning = false;
-                        confirmModuleChange(module, enable, plan, precheck, forUpdate);
+                        holder.removeAllViews();
+                        holder.addView(planSummary(module, enable, plan, precheck, forUpdate),
+                                new LinearLayout.LayoutParams(-1, -2));
+                        ready[0] = plan;
+                        dialog.setReady(true);
                     }
                 });
             }
@@ -1129,8 +1273,8 @@ public final class MainActivity extends Activity {
         return step.enable ? target.needsHeadUnitRestart() && !target.rebootRestore() : target.needsHeadUnitRestart();
     }
 
-    private void confirmModuleChange(final Feature module, final boolean enable,
-            final ModulePlan plan, RootResult precheck, final boolean forUpdate) {
+    private PlanSummaryView planSummary(Feature module, boolean enable, ModulePlan plan, RootResult precheck,
+            boolean forUpdate) {
         PlanSummaryView summary = new PlanSummaryView(this);
         if (forUpdate) summary.addLine(getString(R.string.update_wifi_required), WHITE);
         boolean restart = false;
@@ -1157,16 +1301,7 @@ public final class MainActivity extends Activity {
             }
             if (precheck.exitCode != 0) summary.addLine(precheck.detail, ERROR);
         }
-        String title = getString(enable ? R.string.confirm_turn_on_title : R.string.confirm_turn_off_title,
-                module.name, particle(module.name));
-        ConfirmDialog.showView(this, title, summary,
-                getString(forUpdate ? R.string.update_enable_wifi : enable ? R.string.confirm_turn_on : R.string.confirm_turn_off),
-                getString(R.string.cancel), false, new ConfirmDialog.Action() {
-                    public void run(final ConfirmDialog dialog) {
-                        dialog.dismiss();
-                        runPlan(module, enable, plan, forUpdate);
-                    }
-                }, null);
+        return summary;
     }
 
     private void runPlan(final Feature module, final boolean enable, final ModulePlan plan, final boolean forUpdate) {
@@ -1352,16 +1487,125 @@ public final class MainActivity extends Activity {
             resultParams.topMargin = dp(SettingsUi.SM);
             right.addView(resultView, resultParams);
         }
+        final List<String[]> foreignItems = foreignItems();
+        if (!foreignItems.isEmpty()) {
+            TextView foreignLine = text(getString(R.string.foreign_found, foreignItems.size()), 18, Theme.WARNING, sans);
+            LinearLayout.LayoutParams foreignParams = new LinearLayout.LayoutParams(-1, -2);
+            foreignParams.topMargin = dp(SettingsUi.MD);
+            right.addView(foreignLine, foreignParams);
+        }
         View spacer = new View(this);
         right.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout actions = horizontal();
         actions.setGravity(Gravity.RIGHT);
-        TextView recheck = Theme.button(this, getString(R.string.car_recheck), false, false);
+        if (!foreignItems.isEmpty()) {
+            TextView clean = Theme.button(this, getString(R.string.foreign_clean), false, false);
+            clean.setEnabled(!mapBusy && !stockBusy);
+            clean.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmForeignClean(foreignItems); } });
+            LinearLayout.LayoutParams cleanParams = new LinearLayout.LayoutParams(dp(180), dp(Theme.ACTION_HEIGHT));
+            cleanParams.rightMargin = dp(SettingsUi.MD);
+            actions.addView(clean, cleanParams);
+        }
+        // A map this car generated (not the bundled one) is what developers need in a Pull Request.
+        if (mapStatus != null && "on".equals(mapStatus.state) && !"bundled".equals(mapStatus.info.get("source"))) {
+            TextView export = Theme.button(this, getString(R.string.car_export), false, false);
+            export.setEnabled(!mapBusy);
+            export.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmMapExport(); } });
+            LinearLayout.LayoutParams exportParams = new LinearLayout.LayoutParams(dp(220), dp(Theme.ACTION_HEIGHT));
+            exportParams.rightMargin = dp(SettingsUi.MD);
+            actions.addView(export, exportParams);
+        }
+        boolean needsMap = mapStatus != null && !"on".equals(mapStatus.state) && !unreachable(mapStatus);
+        TextView recheck = Theme.button(this, getString(R.string.car_recheck), needsMap, false);
         recheck.setEnabled(!mapBusy);
         recheck.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmMapRun(); } });
         actions.addView(recheck, new LinearLayout.LayoutParams(dp(220), dp(Theme.ACTION_HEIGHT)));
         right.addView(actions, new LinearLayout.LayoutParams(-1, -2));
-        if (statuses.isEmpty()) loadStatusesForCar();
+        if (statuses.isEmpty() || foreignStatus == null) loadStatusesForCar();
+    }
+
+    /** {item-id, class} pairs from the last `foreign status`, in root order. */
+    private List<String[]> foreignItems() {
+        List<String[]> items = new ArrayList<String[]>();
+        if (foreignStatus == null || foreignStatus.exitCode != 0) return items;
+        for (int i = 1; ; i++) {
+            String value = foreignStatus.info.get("item_" + i);
+            if (value == null) break;
+            String[] parts = value.split(",", 2);
+            if (parts.length == 2) items.add(parts);
+        }
+        return items;
+    }
+
+    private String foreignName(String id) {
+        int res = getResources().getIdentifier("foreign_item_" + id.replace('-', '_'), "string", getPackageName());
+        return res == 0 ? id : getString(res);
+    }
+
+    /** Lists every finding; cleans only the removable and deletable ones, in order, after one confirm. */
+    private void confirmForeignClean(List<String[]> items) {
+        if (moduleWorking || modulePlanning || stockBusy || mapBusy) return;
+        final List<String[]> cleanable = new ArrayList<String[]>();
+        StringBuilder body = new StringBuilder();
+        for (String[] item : items) {
+            boolean report = "report".equals(item[1]);
+            if (!report) cleanable.add(item);
+            body.append("\u2022 ").append(foreignName(item[0])).append(" \u2014 ").append(getString(
+                    "remove".equals(item[1]) ? R.string.foreign_class_remove
+                            : "delete".equals(item[1]) ? R.string.foreign_class_delete : R.string.foreign_class_report))
+                    .append('\n');
+        }
+        body.append('\n').append(getString(cleanable.isEmpty() ? R.string.foreign_nothing : R.string.foreign_clean_note));
+        if (cleanable.isEmpty()) {
+            ConfirmDialog.showResult(this, getString(R.string.foreign_clean), body, getString(R.string.close));
+            return;
+        }
+        ConfirmDialog.show(this, getString(R.string.foreign_clean_title), body, getString(R.string.foreign_clean),
+                getString(R.string.cancel), true, new ConfirmDialog.Action() {
+            public void run(ConfirmDialog dialog) {
+                dialog.dismiss();
+                runForeignClean(cleanable);
+            }
+        }, null);
+    }
+
+    private void runForeignClean(final List<String[]> items) {
+        moduleWorking = true;
+        List<String> labels = new ArrayList<String>();
+        for (String[] item : items) labels.add(foreignName(item[0]));
+        final StepProgressDialog progress = StepProgressDialog.show(this, getString(R.string.foreign_clean_title), labels);
+        new Thread(new Runnable() { public void run() {
+            boolean restart = false;
+            RootResult failed = null;
+            String failedName = null;
+            for (int i = 0; i < items.size() && failed == null; i++) {
+                final int index = i;
+                runOnUiThread(new Runnable() { public void run() {
+                    if (progress != null) progress.setStep(index, StepProgressDialog.RUNNING);
+                } });
+                final RootResult result = RootClient.foreignClean(items.get(i)[0]);
+                final boolean ok = result.exitCode == 0;
+                if (ok && "pending-restart".equals(result.state)) restart = true;
+                if (!ok) { failed = result; failedName = foreignName(items.get(i)[0]); }
+                runOnUiThread(new Runnable() { public void run() {
+                    if (progress != null) progress.setStep(index, ok ? StepProgressDialog.DONE : StepProgressDialog.FAILED);
+                } });
+            }
+            final RootResult foreign = RootClient.foreignStatus();
+            final boolean needRestart = restart;
+            final RootResult failure = failed;
+            final String failureName = failedName;
+            runOnUiThread(new Runnable() { public void run() {
+                moduleWorking = false;
+                foreignStatus = foreign;
+                if (progress != null) progress.dismiss();
+                if (tab == Tab.CAR && detailId == null && !addVisible) showCar();
+                if (failure != null) showFailure(getString(R.string.foreign_clean_failed, failureName), failure.detail);
+                else if (needRestart) restartNow();
+                else ConfirmDialog.showResult(MainActivity.this, getString(R.string.foreign_clean_title),
+                        getString(R.string.foreign_clean_done), getString(R.string.close));
+            } });
+        } }, "hmg-seogaemo-foreign").start();
     }
 
     private boolean anyReachableStatus() {
@@ -1375,8 +1619,10 @@ public final class MainActivity extends Activity {
             final List<Feature> list = features();
             final Map<String, RootResult> results = new HashMap<String, RootResult>();
             for (Feature feature : list) results.put(feature.id, RootClient.run(feature.id, "status"));
+            final RootResult foreign = RootClient.foreignStatus();
             runOnUiThread(new Runnable() { public void run() {
                 statuses.putAll(results);
+                foreignStatus = foreign;
                 if (generation == loadGeneration && tab == Tab.CAR && detailId == null && !addVisible) showCar();
             } });
         } }, "hmg-seogaemo-car").start();
@@ -1613,8 +1859,7 @@ public final class MainActivity extends Activity {
                             goBack();
                             ConfirmDialog.showResult(MainActivity.this, getString(R.string.add_install),
                                     getString(R.string.add_installed_done), getString(R.string.close));
-                        } else ConfirmDialog.showResult(MainActivity.this, getString(R.string.add_failed),
-                                result.detail, getString(R.string.close));
+                        } else showFailure(getString(R.string.add_failed), result.detail);
                     } });
                 } }, "hmg-seogaemo-install").start();
             }
@@ -1693,34 +1938,14 @@ public final class MainActivity extends Activity {
     }
 
     private void showSupport(LinearLayout content) {
-        TextView explanation = text(getString(R.string.export_changes_hint), 19, MUTED, sans);
+        TextView explanation = text(getString(R.string.report_hint), 19, MUTED, sans);
         explanation.setLineSpacing(dp(4), 1f);
         explanation.setPadding(dp(SettingsUi.PAGE), dp(SettingsUi.LG), dp(SettingsUi.PAGE), dp(SettingsUi.LG));
         content.addView(explanation, new LinearLayout.LayoutParams(-1, -2));
-        TextView export = action(getString(R.string.export_changes_usb), true);
+        TextView export = action(getString(R.string.report_export), true);
         content.addView(export, SettingsUi.contentAction(this));
         export.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                ConfirmDialog.show(MainActivity.this, getString(R.string.export_changes_usb),
-                        getString(R.string.export_changes_hint), getString(R.string.export_changes_usb),
-                        getString(R.string.cancel), false, new ConfirmDialog.Action() {
-                    public void run(final ConfirmDialog dialog) {
-                        dialog.showProgress();
-                        new Thread(new Runnable() {
-                            public void run() {
-                                final RootResult result = RootClient.exportUsb();
-                                runOnUiThread(new Runnable() {
-                                    public void run() {
-                                        dialog.dismiss();
-                                        ConfirmDialog.showResult(MainActivity.this, getString(R.string.export_changes_usb),
-                                                exportMessage(result), getString(R.string.close));
-                                    }
-                                });
-                            }
-                        }, "export-changes").start();
-                    }
-                }, null);
-            }
+            public void onClick(View v) { confirmReport(); }
         });
         com.seogaemo.hmg.ui.settings.ReportsSection.add(this, content, new Runnable() {
             public void run() { showSettings(); }
@@ -1823,7 +2048,15 @@ public final class MainActivity extends Activity {
                         : "export".equals(verb) ? exportMessage(outcome) : outcome.detail;
                 dialog.dismiss();
                 if (tab == Tab.CAR && detailId == null && !addVisible) showCar();
-                ConfirmDialog.showResult(MainActivity.this, getString("run".equals(verb)
+                if (outcome.exitCode == 0 && "run".equals(verb)) {
+                    // A new map goes to the developers through the PR export in Developer options.
+                    ConfirmDialog.show(MainActivity.this, getString(R.string.mapping_run), mapResult,
+                            getString(R.string.car_export), getString(R.string.close), false,
+                            new ConfirmDialog.Action() { public void run(ConfirmDialog done) {
+                                done.dismiss();
+                                confirmMapExport();
+                            } }, null);
+                } else ConfirmDialog.showResult(MainActivity.this, getString("run".equals(verb)
                         ? R.string.mapping_run : R.string.mapping_export), mapResult, getString(R.string.close));
                 resumeUpdateWhenReady();
             } });
