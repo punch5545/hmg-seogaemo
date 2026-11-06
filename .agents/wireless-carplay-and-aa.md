@@ -228,14 +228,10 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
   packaged/owned for compatibility with existing baselines; Wireless.iap2 never applies it.
   No mods class implements a hook interface; the Dalvik cross-dex rule below still applies.
   Physical cluster/HUD rendering, per-app ordering and source transitions need on-car checks.
-  Stock navigation's existing NAVI_TBT hook captures allowed 81-byte 0xF1 calls to
-  updateLaneInfo/updateTPLaneInfo without changing arguments or delivery. CarLaneCapture uses
-  Observations directly in com.mnsoft.navi's own runtime directory, with bounded tbt-lanes
-  records keyed source=car-nav and the full frame hex (including 0x43-0x50 bitmasks). Identical
-  consecutive frames are deduplicated; developer logs are deduplicated and limited to one
-  per three seconds. Suppressed calls are never captured. Compare these ground-truth records
-  before changing encoding: CpTurns.laneIcon is the single angle-to-stock-arrow mapping
-  function. Current HMG-API-derived arrows/statuses are not proven identical to stock bytes.
+  Stock navigation's own lane frames are not recorded: the 81-byte layout, status bits, arrow
+  codes and trailer bitmasks come from the firmware analysis and car-verified frame injection
+  (`cluster-lane-frame.md`, `cluster-lane-arrows.md`). CpTurns.laneIcon is the single
+  angle-to-stock-arrow mapping function.
 - **No silent skips.** An unmapped maneuver uses
   `fallbackIcon` (direction arrow, else straight) and logs `no exact icon for maneuver type ...` once per combination. A missing maneuver
   still sends HUD distance and trip, and asks the phone to resend (Stop then Start), at most once in 30 s.
