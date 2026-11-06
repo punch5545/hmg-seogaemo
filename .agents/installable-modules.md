@@ -63,7 +63,9 @@ class, no Android resources and no `modules.list` entry.
 - The packer (`tools/package.py`) packs only `.hsm` members (`module.properties`, scripts, `ui.txt`,
   `README.md`, `strings/*`, `files/*`); sources, build scripts and tests stay in the repository. Bundled
   modules' declared `module.properties` is also copied to the package's `modules/<id>.properties` (the
-  shared-line and whole-file ownership checks read it there); the generated one is under `installed/`.
+  module's own manifest is resolved there first); the generated one is under `installed/`. Shared-line and
+  whole-file ownership checks read every module's manifest: the package copy, else the one under
+  `installed/` (user-added `.hsm`).
 - Compatibility entry: `modules.list`/`modules.graph` hold only `package-compat` (stub `modules/package-compat.sh`,
   `exit 2`). Installs from 0.1.33 and older check an OTA payload with their own `lib/payload.sh`, which needs at
   least one listed module with a script; the runtime never treats `package-compat` as a module

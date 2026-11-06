@@ -806,12 +806,25 @@ sg_line_text() {
 }
 sg_line_claim() (
     sg_line_text "$2" || exit 2
+    manifest=$(sg_manifest_file) || exit 2
     while IFS='=' read -r key value; do
         case "$key" in owns_lines.*)
             [ "$value" != "$1:$2" ] || exit 0 ;;
         esac
-    done < "$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties"
+    done < "$manifest"
     exit 2
+)
+# Every module's manifest, one per id: the package copy (built-in or bundled), else the
+# one installed from a user-added .hsm. Ownership checks must see both kinds.
+sg_all_manifests() (
+    set +f
+    for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
+        [ ! -f "$manifest" ] || sg_print "$manifest"
+    done
+    for manifest in "$SG_DATA_ROOT"/installed/*.properties; do
+        [ -f "$manifest" ] && [ ! -f "$HMG_SEOGAEMO_BASE/modules/${manifest##*/}" ] || continue
+        sg_print "$manifest"
+    done
 )
 sg_whole_exclusive() (
     set +f
@@ -825,21 +838,25 @@ sg_whole_exclusive() (
         done
         exit 0
     fi
-    for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
-        [ "$manifest" != "$HMG_SEOGAEMO_BASE/modules/${HMG_SEOGAEMO_STATE##*/}.properties" ] || continue
+    while IFS= read -r manifest; do
+        [ -n "$manifest" ] || continue
+        [ "${manifest##*/}" != "${HMG_SEOGAEMO_STATE##*/}.properties" ] || continue
         while IFS='=' read -r key value; do
             case "$key" in
                 owns_files) case ",$value," in *,"$1",*) exit 3;; esac ;;
                 owns_lines.*) [ "${value%%:*}" != "$1" ] || exit 3 ;;
             esac
         done < "$manifest"
-    done
+    done <<EOF
+$(sg_all_manifests)
+EOF
 )
 sg_line_authorize() (
     set +f
     sg_line_claim "$1" "$2" || exit 2
     module=${HMG_SEOGAEMO_STATE##*/}
-    for manifest in "$HMG_SEOGAEMO_BASE"/modules/*.properties; do
+    while IFS= read -r manifest; do
+        [ -n "$manifest" ] || continue
         other=${manifest##*/}; other=${other%.properties}
         while IFS='=' read -r key value; do
             case "$key" in
@@ -850,7 +867,9 @@ sg_line_authorize() (
                         [ "$(cat "$SG_DATA_ROOT/desired/$other" 2>/dev/null)" = on ]; then exit 3; fi ;;
             esac
         done < "$manifest"
-    done
+    done <<EOF
+$(sg_all_manifests)
+EOF
     # Do not reinterpret an earlier runtime's whole-file baseline as stock.
     path_key=$(sg_file_key "$1") || exit 1
     for saved in "$SG_DATA_ROOT"/modules/*/file."$path_key"/ready; do
@@ -994,7 +1013,7 @@ sg_line_transaction() (
         number=
         while IFS='=' read -r key value; do
             case "$key" in owns_lines.*) [ "$value" != "$target:$old" ] || number=${key#owns_lines.};; esac
-        done < "$HMG_SEOGAEMO_BASE/modules/$module.properties"
+        done < "$(sg_manifest_file)"
         case "$number" in ''|*[!0-9]*) exit 2;; esac
         patch=$next/patches/$module/$number
         mkdir -p "$patch" "$next/events/$number" || exit 1
@@ -2620,7 +2639,8 @@ sg_restart_cleanup_run() (
         [ -f "$marker" ] && [ ! -L "$marker" ] || continue
         id=${marker##*/}
         case "$id" in ''|-*|*-|*--*|*[!a-z0-9-]*) rm -f "$marker"; continue;; esac
-        [ -f "$HMG_SEOGAEMO_BASE/modules/$id.properties" ] || { rm -f "$marker"; continue; }
+        [ -f "$HMG_SEOGAEMO_BASE/modules/$id.properties" ] || [ -f "$SG_DATA_ROOT/installed/$id.properties" ] ||
+            { rm -f "$marker"; continue; }
         saved=
         { IFS= read -r saved < "$marker"; } 2>/dev/null || :
         [ -z "$boot" ] || [ "$saved" != "$boot" ] || continue
