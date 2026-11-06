@@ -152,7 +152,11 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 - CI (`ci.yml`) and release share `.github/actions/setup`: the runner's preinstalled SDK plus a
   cached API 19 platform and mksh .deb, LLVM 18 from the image; `android-actions/setup-android@v3`
   breaks on the removed `tools` package.
-- Release: bump `VERSION`, commit, push tag `vX.Y.Z` (must equal `VERSION`). `release.yml` builds
+- Release order (always): merge everything first, bump `VERSION` in its own commit on `main`, push
+  `main`, wait until CI on that exact commit is green, then tag that commit `vX.Y.Z` (must equal
+  `VERSION`) and push only the tag. Never tag a commit CI has not run on (e.g. a local merge
+  commit), and never move or reuse a pushed tag; a failed release gets the next patch version.
+- Release workflow: `release.yml` builds
   with the release keystore, checks the APK certificate SHA-256, signs the manifest, waits for CI
   on the tagged SHA (success: `make test-dist` on the release build; otherwise the full suite via
   `make test-suites`), uploads to a draft release, verifies the asset list, then publishes. Tag a
