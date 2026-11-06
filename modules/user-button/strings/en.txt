@@ -1,0 +1,7 @@
+name=Button shortcuts
+summary=Assign the features you want to your car's buttons.
+swrc=Steering wheel ☆ button
+head=Head unit ☆ button
+assignment=While on, the button runs the feature you assigned instead of its default.
+note_override=While on, this overrides the button setting chosen in the car's settings.
+note_restore=Turn off to restore the button's original feature.

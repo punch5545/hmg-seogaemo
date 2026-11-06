@@ -62,6 +62,10 @@ make test
 
 The comparison lists differing point IDs and file hashes. Resolve differences from the stock files and catalogue; do not assume equal names imply binary compatibility. For on-car behavior, export the ledger before and after enabling one module and verify guarded revert restores exact originals. Physical-car projection and boot recovery remain separate release gates.
 
+## Owner submission (GitHub issue)
+
+Owners without a development setup send a map as a GitHub issue. After **Map this car**, choose **Export map** (Car tab or Settings → Developer options) and pick **GitHub issue**: the app saves the folder to USB (or the adb export directory) and then shows a QR code. The phone camera opens the `new-firmware-map.yml` issue form prefilled with product, onebin, Android release, app version and map counts/failing IDs. The owner attaches the exported `maps` folder as a `.zip`. Maintainers turn the issue into a pull request with the steps below. Support → **Report a problem** → **Export as a GitHub issue** opens `bug-car-support.yml` the same way, with module states and recent app errors.
+
 ## Pull Request
 
 Add a host-side `evidence.json` beside each bundled map, using the existing bundle as the schema reference. Mapping observations bind exact class/member signatures to stock paths and MD5s. Reflection observations list only the point snapshot actually checked on the car, with its date, product, onebin, Android release, stock hashes and signature digest. Keep physical feature outcomes separate, including partial or pending results. An updated map does not inherit reflection or feature claims for new points. The sidecar does not change runtime `car.json` or grant runtime verification.

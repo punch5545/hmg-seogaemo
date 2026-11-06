@@ -40,7 +40,9 @@ assert "confirmReport()" in method("showSupport") and "ConfirmDialog.show" in me
 assert "ConfirmDialog.show" in method("confirmMapRun")
 assert "ConfirmDialog.show" in method("confirmMapExport")
 assert "mapOperation(\"run\", dialog)" in method("confirmMapRun")
-assert "mapOperation(\"export\", dialog)" in method("confirmMapExport")
+assert 'mapOperation(choice[0] == 0 ? "issue" : "export", dialog)' in method("confirmMapExport")
+# The GitHub issue QR is read-only: it only shows a link, so it uses the result surface.
+assert "ConfirmDialog.showResultView" in method("showIssueQr") and "RootClient" not in method("showIssueQr")
 assert "confirmStock(false)" in method("showStock")
 assert "confirmStock(true)" in method("showStock")
 assert "RootClient.stock(" not in method("showStock").replace('RootClient.stock("status")', '')

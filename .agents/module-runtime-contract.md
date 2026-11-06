@@ -49,6 +49,7 @@ baseline on first touch, perform, verify, mark applied, append ledger; non-zero 
 | `sg_dex_cache_track <system-jar> <app-package>` | track the Dalvik cache entry for an owned `/system/framework/*.jar` and the package's `app_hmg-seogaemo-wireless-dex` files; these two derived cache namespaces are the sole exception to explicit `owns_files` listing |
 | `sg_kmod_load <name>` | load a payload kernel module listed in `kmods=` (see [Transient effects](#transient-effects)) |
 | `sg_daemon_start <name>` | start the fixed `daemon.<name>=` command detached; idempotent while it runs |
+| `sg_bin_derive <name>` | make `$HMG_SEOGAEMO_STATE/bin/<name>`, a private copy of the `derived_bin.<name>=` stock program with one fixed string replaced; `sg_daemon_start` calls it for a daemon whose executable is that stock program |
 | `sg_net_rule <n>` | insert the exact `net_rules.<n>=` iptables rule or `ip rule` once per boot |
 | `sg_iface_addr <iface> <a.b.c.d/prefix>` | add an IPv4 address to an interface matching `owns_ifaces=` and bring its link up |
 | `sg_revert_transient` | undo only this module's transient effects, newest first, and drop them from `changes`; files and properties stay applied |
@@ -202,6 +203,8 @@ packages bundled with HMG-Seogaemo may declare them):
 | `daemon.<name>=` | `/system/bin/<x>`, `/system/xbin/<x>` or `@payload@/<rel>`, then up to 15 tokens of `[a-zA-Z0-9_./:=,+@!-]`; `@payload@` / `@state@` (once per token, followed by nothing or `/...`) expand to `HMG_SEOGAEMO_MODULE_DIR` / `HMG_SEOGAEMO_STATE`; no other `@`; two modules never declare the same command |
 | `net_rules.<n>=` | `n` `[1-9][0-9]{0,3}`; `iptables [-t nat|mangle|filter] <chain> <rule spec>` (no command or table options in the spec, no `--modprobe`) or `ip rule <selector and action>` (no `add`/`del`/`flush`/`show`, no options); same token charset without `@`; two modules never declare the same rule |
 | `owns_ifaces=<glob>[,<glob>]` | interface names or `*` globs `[a-z0-9][a-z0-9_.*-]*` (e.g. `rtwlan*`); globs of two modules never overlap |
+| `derived_bins=<name>[,<name>]` | derived program names (daemon-name rules), each with one `derived_bin.<name>=` |
+| `derived_bin.<name>=` | `/system/bin/<x>` or `/system/xbin/<x>`, an absolute path string in it (`/[a-zA-Z0-9_./-]`, 4-128 bytes, no `..` or `//`) and a file name `[a-zA-Z0-9_.-]` (not starting with `.`) no longer than that string. Private state-directory files, so not ownership: replacing a bundled module that is on ignores these keys |
 
 No value may contain `*`, `?`, `[`, tabs or newlines except interface globs; values are split
 on spaces as argv, never evaluated. Tools are fixed absolute paths `/system/bin/insmod`,
@@ -212,11 +215,20 @@ on spaces as argv, never evaluated. Tools are fixed absolute paths `/system/bin/
   otherwise 4); records, `insmod <ko> <params>`, verifies `/proc/modules`; ledger `kmod_load`.
   Revert: `rmmod` only while loaded and recorded this boot, verified gone; ledger
   `kmod_unload` (`absent` when nothing was left).
-- `sg_daemon_start <name>`: executable must be a regular non-symlink file; starts
-  `( exec argv ) </dev/null >>daemon.<name>.log 2>&1 &` (log emptied at a start beyond 64 KiB),
+- `sg_bin_derive <name>`: reads the stock program (never writes it) and, in a root `app_process`
+  running the package helper `core/hsm/hmg-seogaemo-hsm.jar` (`HmgSeogaemoBinPatch`, 60-second
+  limit), writes `bin/<name>` (mode 700) with every occurrence of the path string replaced by the
+  file name padded with NUL bytes to the same length, so no offset moves and the program opens that
+  file relative to its working directory. A stock program without the string is copied unchanged.
+  `bin/<name>.source` holds the stock MD5 and both strings; the copy is rebuilt only when they
+  change. Ledger `bin_derive` (`failed` with the helper's exit code).
+- `sg_daemon_start <name>`: executable must be a regular non-symlink file; a `/system` executable
+  named by a `derived_bin.<n>=` runs as `bin/<n>` (made by `sg_bin_derive` first); starts
+  `( cd $HMG_SEOGAEMO_STATE && exec argv ) </dev/null >>daemon.<name>.log 2>&1 &` (log emptied at a start beyond 64 KiB),
   records boot id and PID plus the expected `/proc/<pid>/cmdline` bytes (each argument followed
   by NUL; the executable must not rewrite its argv, so payload shell scripts do not qualify),
-  then waits up to 5 seconds for an exact match, else kills that PID and fails. Running means
+  then waits up to 5 seconds for an exact match, else fails, logging why in `module.log`
+  (`exited <status>`, or still running with another command line, which it then kills). Running means
   current record, live PID and identical cmdline. Revert: TERM, up to 5 seconds, then KILL and
   another 5 seconds, only while it still matches; a reused PID is never signalled; ledger
   `daemon_start` / `daemon_stop`.
@@ -289,13 +301,22 @@ such a snapshot follows a role change after the next head-unit restart.
 module (read-only). Exit 0 or 2 (no such check) saves the value; any other exit refuses with `state=conflict` and the
 module's detail, so a value that clashes with another setting is never saved.
 
-`replaces=<old id>` (bundled packages only) renames a bundled module. When the bundled check installs the new id and
-`installed/<old>.properties` exists, the old package must be bundled, must not own lines, and its generated persistent
-ownership (`owns_props`, `reassert_props`, `owns_files`, `owns_generated_dirs`, `services`, `service_calls`, `restore`,
-`hooks`, `owns_lines.*`) must equal the new one's; otherwise conflict and the old module stays. The takeover writes
+`replaces=<old id>[,<old id>...]` (bundled packages only) renames a bundled module or merges several into one. When
+the bundled check installs the new id and any listed `installed/<old>.properties` exists, every present old package
+must be bundled and must not own lines, and the persistent ownership (`owns_props`, `reassert_props`, `owns_files`,
+`owns_generated_dirs`, `services`, `service_calls`, `restore`, `hooks`, `owns_lines.*`) of every present old package
+must also be declared by the new one, item by item (comma lists are split; `owns_lines` compare by value), so no
+baseline loses its owner; the new one may own more. Otherwise conflict and the old modules stay. Old ids that are not installed are skipped; the new one is recorded as removed
+only when every listed old id was removed by the owner (`bundled-removed/<old>`) and none is installed.
+Merging state: `modules/<old>/` entries move into `modules/<new>/`; an entry that already exists stays when it is
+byte-identical, `changes` gains the missing lines, `module.log` is appended, and any other clash is a conflict found
+before anything moves. `desired/<new>` is `on` when any old one was on. `settings/` (only one old id may have
+settings), `restart-cleanup/` and `peer/` move from at most one old id; two would conflict.
+`replaces_setting.<old>=<key>:<value>` sets the new module's setting `<key>` (declared by `setting.N`) to `<value>` when
+`<old>` was on, so a merged module keeps what each old one did. The takeover writes
 `<data root>/migrate/<new>` (journal: old id), moves `modules/`, `desired/`, `settings/`, `restart-cleanup/` and
 `peer/` entries from the old id to the new one, publishes the new package in the old one's catalog position, deletes
-the old package and appends a `module_takeover` ledger row (module = new id, target = old id). It never writes the
+the old packages and appends one `module_takeover` ledger row per old id (module = new id, target = old id). It never writes the
 system: baselines and applied records move with the state directory and keep their meaning because the targets are
 identical. An interrupted takeover finishes at the next bundled check (the journal also forces it). If the owner had
 removed the old module (`bundled-removed/<old>`), the new one is recorded as removed too. Earlier ledger rows keep the

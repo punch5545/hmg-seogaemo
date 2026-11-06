@@ -30,6 +30,8 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="com.seogaemo.hmg.USER_BUTTON_SHORTCUT" />
+                <action android:name="com.seogaemo.hmg.USER_BUTTON_HEAD" />
+                <action android:name="com.seogaemo.hmg.USER_BUTTON_SWRC" />
             </intent-filter>
         </receiver>
     </application>

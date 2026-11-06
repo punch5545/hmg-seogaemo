@@ -120,6 +120,7 @@
     <string name="nav_back_glyph">‹</string>
     <string name="nav_close_glyph">×</string>
     <string name="radio_selected">●</string>
+    <string name="user_button_stock">Default function</string>
     <string name="radio_unselected">○</string>
     <string name="module_status_unknown">Status could not be checked</string>
     <string name="module_status_conflict">Changes conflict with the saved original</string>
@@ -193,10 +194,16 @@
     <string name="car_recheck">Check again</string>
     <string name="car_export">Export result</string>
     <string name="mapping_run_confirm">Scan the stock firmware and verify its hook points? This can take several minutes. Keep the head unit powered on.</string>
-    <string name="mapping_run_done">The verified map is active. Export the result and send it to GitHub in a Pull Request.</string>
-    <string name="mapping_export">Export map for PR</string>
-    <string name="mapping_export_confirm">Copy the verified map to USB, or to the adb export directory when USB is unavailable?</string>
-    <string name="mapping_pr_hint">To support this firmware in future builds, submit the exported maps folder through a GitHub Pull Request.</string>
+    <string name="mapping_run_done">The verified map is active. Export the result and send it to us as a GitHub issue.</string>
+    <string name="mapping_export">Export map</string>
+    <string name="mapping_issue_hint">To support this firmware in future builds, export the map and send it as a GitHub issue.</string>
+    <string name="mapping_export_issue">GitHub issue</string>
+    <string name="mapping_export_issue_note">Scan a QR code with your phone</string>
+    <string name="mapping_export_usb">Export to USB</string>
+    <string name="mapping_export_usb_note">Save the maps folder only</string>
+    <string name="issue_qr_map">Send map as a GitHub issue</string>
+    <string name="issue_qr_hint">Scan this with your phone camera to open a prefilled GitHub issue. It holds only the firmware IDs, versions, map/module states and recent app errors. Describe the problem, then attach the exported USB folder from your phone or a computer after removing personal data.</string>
+    <string name="issue_qr_map_hint">Scan this with your phone camera to open a prefilled GitHub issue for this firmware. Zip the maps folder from the export and attach it from your phone or a computer.</string>
     <string name="stock_restore">Restore stock state</string>
     <string name="stock_uninstall">Uninstall HMG-Seogaemo</string>
     <string name="stock_hint">Restore every module while keeping HMG-Seogaemo installed, or remove it through NEMESIS.</string>
@@ -248,6 +255,8 @@
     <string name="foreign_item_pkg_vr_gates">voicehandler.vr-gates</string>
     <string name="report_now">Export now</string>
     <string name="report_now_note">Once, to USB</string>
+    <string name="report_issue">Export as a GitHub issue</string>
+    <string name="report_issue_note">Scan a QR code with your phone</string>
     <string name="report_record">Keep recording</string>
     <string name="report_record_note">Until turned off</string>
     <string name="report_start">Start</string>

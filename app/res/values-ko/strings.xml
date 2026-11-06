@@ -120,6 +120,7 @@
     <string name="nav_back_glyph">‹</string>
     <string name="nav_close_glyph">×</string>
     <string name="radio_selected">●</string>
+    <string name="user_button_stock">기본 기능</string>
     <string name="radio_unselected">○</string>
     <string name="module_status_unknown">상태를 확인할 수 없음</string>
     <string name="module_status_conflict">변경 내용이 저장된 원본과 충돌합니다</string>
@@ -193,10 +194,16 @@
     <string name="car_recheck">다시 검사</string>
     <string name="car_export">결과 내보내기</string>
     <string name="mapping_run_confirm">기본 펌웨어를 검사하고 훅 지점을 검증할까요? 몇 분이 걸릴 수 있습니다. 헤드 유닛 전원을 유지하세요.</string>
-    <string name="mapping_run_done">검증된 매핑을 적용했습니다. 결과를 내보내 GitHub Pull Request로 보내 주세요.</string>
-    <string name="mapping_export">PR용 매핑 내보내기</string>
-    <string name="mapping_export_confirm">검증된 매핑을 USB로 복사할까요? USB가 없으면 adb 내보내기 폴더로 복사합니다.</string>
-    <string name="mapping_pr_hint">이 펌웨어를 다음 버전에서 지원하려면 내보낸 maps 폴더를 GitHub Pull Request로 제출해 주세요.</string>
+    <string name="mapping_run_done">검증된 매핑을 적용했습니다. 결과를 내보내 GitHub 이슈로 보내 주세요.</string>
+    <string name="mapping_export">매핑 내보내기</string>
+    <string name="mapping_issue_hint">이 펌웨어를 다음 버전에서 지원하려면 매핑을 내보내 GitHub 이슈로 올려 주세요.</string>
+    <string name="mapping_export_issue">GitHub 이슈</string>
+    <string name="mapping_export_issue_note">휴대전화로 QR 코드를 찍어 올리기</string>
+    <string name="mapping_export_usb">USB로 내보내기</string>
+    <string name="mapping_export_usb_note">maps 폴더만 저장</string>
+    <string name="issue_qr_map">GitHub 이슈로 매핑 보내기</string>
+    <string name="issue_qr_hint">휴대전화 카메라로 찍으면 내용이 미리 채워진 GitHub 이슈가 열립니다. 펌웨어 식별자, 버전, 매핑·모듈 상태와 최근 앱 오류만 담겨 있습니다. 문제를 설명하고, 개인정보를 지운 USB 내보내기 폴더를 휴대전화나 컴퓨터에서 첨부해 주세요.</string>
+    <string name="issue_qr_map_hint">휴대전화 카메라로 찍으면 이 펌웨어용 GitHub 이슈가 미리 채워져 열립니다. 내보낸 maps 폴더를 압축해 휴대전화나 컴퓨터에서 첨부해 주세요.</string>
     <string name="stock_restore">순정 상태로 되돌리기</string>
     <string name="stock_uninstall">HMG-Seogaemo 제거</string>
     <string name="stock_hint">모든 모듈을 순정 상태로 되돌리거나 NEMESIS를 통해 HMG-Seogaemo를 제거합니다.</string>
@@ -248,6 +255,8 @@
     <string name="foreign_item_pkg_vr_gates">voicehandler.vr-gates</string>
     <string name="report_now">지금 내보내기</string>
     <string name="report_now_note">USB로 한 번</string>
+    <string name="report_issue">GitHub 이슈로 내보내기</string>
+    <string name="report_issue_note">휴대전화로 QR 코드 찍기</string>
     <string name="report_record">계속 기록하기</string>
     <string name="report_record_note">끌 때까지</string>
     <string name="report_start">시작</string>

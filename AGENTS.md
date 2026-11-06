@@ -117,7 +117,7 @@ installs from 0.1.33 and older accept an OTA payload; the runtime ignores it. Cu
 adapter; the built-in client role excludes `wireless-carplay-and-aa`),
 `wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`,
 `skip-consent-screen` (factory Binder call on boot and screen wake), and
-`user-button-shortcut` / `user-button-head-unit`.
+`user-button` (both star buttons; merged from `user-button-shortcut` / `user-button-head-unit` with `replaces=`).
 `wireless-carplay-and-aa` claims `featurexml.cfg` stock lines; `wifi` owns only
 `android.hardware.wifi.xml` and `persist.wifi.state` (the NEEV KOR `featurexml.cfg` has no Wi-Fi
 removal line, verified on the car) plus transient USB adapter effects. Their exclusion is for STA versus AP on one radio.
@@ -133,7 +133,9 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   Unknown firmware requires the confirmed **Map this car** action in Settings → Car mapping.
   `map run` scans the full catalogue in a separate root `app_process`; it publishes only verified
   points through the package API and ledger. Modules stay off unless all their required IDs pass.
-- `map export` and ordinary USB/adb ledger export include a PR-ready `maps/...` folder. See
+- `map export` and ordinary USB/adb ledger export include a PR-ready `maps/...` folder. Owners send it
+  through the `new-firmware-map.yml` issue form, opened from the app's QR code (only firmware ids,
+  versions and map/module states; never personal data); maintainers turn it into a PR. See
   `docs/mapping-new-firmware.md` for adb, host baksmali mapping, comparison, and PR steps.
 
 ## Build, test, release

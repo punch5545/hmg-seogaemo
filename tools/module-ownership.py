@@ -33,6 +33,16 @@ def params_ok(value):
         re.fullmatch(r'[a-zA-Z_][a-zA-Z0-9_]*=[a-zA-Z0-9_.,:+-]+', token) for token in split)
 
 
+def derived_ok(value):
+    """derived_bin.<name>=: stock program, absolute path string in it, shorter-or-equal file name."""
+    split = value.split(' ')
+    return (len(value) <= 200 and len(split) == 3
+            and bool(re.fullmatch(r'/system/x?bin/[a-zA-Z0-9_-][a-zA-Z0-9_.-]*', split[0]))
+            and bool(re.fullmatch(r'/[a-zA-Z0-9_./-]{3,127}', split[1]))
+            and '..' not in split[1] and '//' not in split[1]
+            and bool(re.fullmatch(r'[a-zA-Z0-9_-][a-zA-Z0-9_.-]*', split[2])) and len(split[2]) <= len(split[1]))
+
+
 def daemon_ok(value):
     split = words(value, 16)
     if not split:
@@ -85,6 +95,7 @@ def transient(module, fields, owners):
         return items
     kmods = csv('kmods', KMOD)
     daemons = csv('daemons', DAEMON)
+    derived = csv('derived_bins', DAEMON)
     ifaces = csv('owns_ifaces', IFACE_GLOB)
     paths = set()
     for key, value in fields.items():
@@ -100,11 +111,15 @@ def transient(module, fields, owners):
         elif key.startswith('daemon.'):
             if key[7:] not in daemons or not daemon_ok(value):
                 raise ValueError(f'invalid daemon: {module}:{key}')
+        elif key.startswith('derived_bin.'):
+            if key[12:] not in derived or not derived_ok(value):
+                raise ValueError(f'invalid derived program: {module}:{key}')
         elif key.startswith('net_rules.'):
             if not re.fullmatch(r'[1-9][0-9]{0,3}', key[10:]) or not net_rule_ok(value):
                 raise ValueError(f'invalid network rule: {module}:{key}')
-    if set(kmods) - paths or set(daemons) - {key[7:] for key in fields if key.startswith('daemon.')}:
-        raise ValueError(f'kernel module or daemon without a definition: {module}')
+    if (set(kmods) - paths or set(daemons) - {key[7:] for key in fields if key.startswith('daemon.')}
+            or set(derived) - {key[12:] for key in fields if key.startswith('derived_bin.')}):
+        raise ValueError(f'kernel module, daemon or derived program without a definition: {module}')
     claims = [('kernel module', name) for name in kmods]
     claims += [('daemon', value) for key, value in fields.items() if key.startswith('daemon.')]
     claims += [('network rule', value) for key, value in fields.items() if key.startswith('net_rules.')]
@@ -131,8 +146,9 @@ def generate(root, order, output):
             if raw.startswith('#') or '=' not in raw:
                 continue
             key, value = raw.split('=', 1)
-            if (key in ('owns_files', 'owns_props', 'reassert_props', 'owns_generated_dirs', 'kmods', 'daemons', 'owns_ifaces')
-                    or key.startswith(('kmod.', 'kmod_params.', 'daemon.', 'net_rules.'))) and key in fields:
+            if (key in ('owns_files', 'owns_props', 'reassert_props', 'owns_generated_dirs', 'kmods', 'daemons',
+                        'derived_bins', 'owns_ifaces')
+                    or key.startswith(('kmod.', 'kmod_params.', 'daemon.', 'derived_bin.', 'net_rules.'))) and key in fields:
                 raise ValueError(f'duplicate ownership key: {module}:{key}')
             if key.startswith('owns_lines'):
                 if not re.fullmatch(r'owns_lines\.[1-9][0-9]*', key) or key in fields:

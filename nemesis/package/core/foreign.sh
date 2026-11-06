@@ -113,7 +113,7 @@ scan() {
 overlap() {
     case "$1" in
         pkg-hmgapi-mods|pkg-hmgapi|hmgapi-standalone|pkg-leafia)
-            sg_print wireless-carplay-and-aa wifi wifi-client wireless-adb user-button-head-unit user-button-shortcut ;;
+            sg_print wireless-carplay-and-aa wifi wifi-client wireless-adb user-button user-button-head-unit user-button-shortcut ;;
         pkg-adb-tcp) sg_print wireless-adb wireless-carplay-and-aa ;;
         pkg-wireless-projection|pkg-carplay-session) sg_print wireless-carplay-and-aa wifi wifi-client ;;
         pkg-vr-gates) sg_print wireless-carplay-and-aa ;;

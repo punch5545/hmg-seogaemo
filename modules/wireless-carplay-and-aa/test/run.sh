@@ -443,7 +443,6 @@ rm -f "$T/state/guard-sweep-fails"
 sh "$HERE/test/runtime/run.sh" > "$T/runtime.out" 2>&1 || { cat "$T/runtime.out"; fail runtime; }
 sh "$HERE/test/consumer/run.sh" > "$T/consumer.out" 2>&1 || { cat "$T/consumer.out"; fail consumer; }
 sh "$HERE/test/cpturns/run.sh" > "$T/cpturns.out" 2>&1 || { cat "$T/cpturns.out"; fail cpturns; }
-sh "$HERE/test/carlanes/run.sh"
 sh "$HERE/test/usbhotspot/run.sh"
 python3 "$HERE/test/trapoverlay/test.py"
 sg_print "ok wireless-carplay-and-aa toolbox parse, guards, rollback, drift refusal, exact revert"

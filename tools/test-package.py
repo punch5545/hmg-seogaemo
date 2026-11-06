@@ -52,7 +52,7 @@ def run():
                     "core/map/hmg-seogaemo-mapper.jar", "core/hmg-seogaemo-map.sh", "hookpoints/framework.json",
                     "hookpoints.required/wireless-carplay-and-aa",
                     "bundled/skip-consent-screen.hsm", "bundled/skip-consent-screen.sha256",
-                    "bundled/user-button-head-unit.hsm", "bundled/user-button-shortcut.hsm",
+                    "bundled/user-button.hsm",
                     "bundled/wireless-carplay-and-aa.hsm", "modules/package-compat.sh",
                     "modules/package-compat.properties",
                     "maps/hyundai/ioniq5/kor/260902/map.json",
