@@ -133,7 +133,9 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   Unknown firmware requires the confirmed **Map this car** action in Settings → Car mapping.
   `map run` scans the full catalogue in a separate root `app_process`; it publishes only verified
   points through the package API and ledger. Modules stay off unless all their required IDs pass.
-- `map export` and ordinary USB/adb ledger export include a PR-ready `maps/...` folder. See
+- `map export` and ordinary USB/adb ledger export include a PR-ready `maps/...` folder. Owners send it
+  through the `new-firmware-map.yml` issue form, opened from the app's QR code (only firmware ids,
+  versions and map/module states; never personal data); maintainers turn it into a PR. See
   `docs/mapping-new-firmware.md` for adb, host baksmali mapping, comparison, and PR steps.
 
 ## Build, test, release

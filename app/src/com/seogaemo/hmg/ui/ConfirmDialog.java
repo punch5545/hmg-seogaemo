@@ -174,9 +174,19 @@ public final class ConfirmDialog extends Dialog {
     /** Read-only result using the same typography and touch targets as confirmations. */
     public static ConfirmDialog showResult(Activity activity, String title, CharSequence message,
             String closeLabel) {
+        return showResult(activity, title, message, null, closeLabel);
+    }
+
+    /** Read-only result with a caller-built body (for example a QR code). */
+    public static ConfirmDialog showResultView(Activity activity, String title, View content, String closeLabel) {
+        return showResult(activity, title, null, content, closeLabel);
+    }
+
+    private static ConfirmDialog showResult(Activity activity, String title, CharSequence message, View content,
+            String closeLabel) {
         if (activity.isFinishing()) return null;
         // Close does nothing destructive, so it is never delayed by the confirm tap guard.
-        ConfirmDialog dialog = show(activity, title, message, null, closeLabel, closeLabel, false, false,
+        ConfirmDialog dialog = show(activity, title, message, content, closeLabel, closeLabel, false, false,
                 new Action() { public void run(ConfirmDialog dialog) { dialog.dismiss(); } }, null);
         dialog.cancel.setVisibility(View.GONE);
         dialog.confirm.requestFocus();

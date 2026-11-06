@@ -1,0 +1,75 @@
+name: New firmware map / 새 펌웨어 매핑
+description: Send a map the app verified on your car so future builds support this firmware.
+title: "Map: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        In the app choose Export map → GitHub issue (Car tab or Settings → Developer options)
+        and scan the QR code to fill in the fields below, then attach the exported `maps` folder as a `.zip`.
+        GitHub issues are public. Remove personal data (VIN, phone names, Wi-Fi SSIDs/passwords)
+        from the text and attachments first.
+        앱의 QR 코드로 아래 항목을 채우고, 내보낸 `maps` 폴더를 `.zip`으로 첨부해 주세요.
+        GitHub 이슈는 공개됩니다. VIN, 휴대전화 이름, Wi-Fi SSID/비밀번호 등 개인정보를 먼저 지워 주세요.
+  - type: input
+    id: vehicle
+    attributes:
+      label: Vehicle model, region, year / 차량 모델, 지역, 연식
+    validations:
+      required: true
+  - type: input
+    id: product
+    attributes:
+      label: ro.build.product / 펌웨어 식별자
+      placeholder: NEEV.KOR.0000.V039.001.260902
+    validations:
+      required: true
+  - type: input
+    id: onebin
+    attributes:
+      label: onebin (ro.mobis.onebindir)
+      placeholder: neev_kr
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version / Android 버전
+      placeholder: 4.4.2
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: HMG-Seogaemo version / HMG-Seogaemo 버전
+    validations:
+      required: true
+  - type: textarea
+    id: map-status
+    attributes:
+      label: Map status / 매핑 상태
+      description: Mapped / verified / failed counts and failing point IDs.
+    validations:
+      required: true
+  - type: textarea
+    id: maps
+    attributes:
+      label: Exported maps folder / 내보낸 maps 폴더
+      description: |
+        Attach the `maps` folder from the USB export as a `.zip` (drag it here or use the attach button).
+        Do not attach stock firmware files or a full car report.
+        USB에 내보낸 `maps` 폴더를 `.zip`으로 첨부해 주세요. 순정 펌웨어 파일이나 전체 차량 리포트는 올리지 마세요.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / 메모
+      description: Which features you tried and what happened, if any.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Personal data / 개인정보
+      options:
+        - label: I reviewed the report and attachments and removed personal data, including VIN, phone names, and Wi-Fi SSIDs/passwords.
+          required: true
