@@ -42,6 +42,7 @@ import com.seogaemo.hmg.module.RootClient;
 import com.seogaemo.hmg.module.RootResult;
 import com.seogaemo.hmg.module.Warning;
 import com.seogaemo.hmg.ui.ConfirmDialog;
+import com.seogaemo.hmg.ui.settings.ReportsSection;
 import com.seogaemo.hmg.ui.Feature;
 import com.seogaemo.hmg.ui.FeatureCard;
 import com.seogaemo.hmg.ui.FeaturesView;
@@ -120,6 +121,8 @@ public final class MainActivity extends Activity {
     private boolean moduleWorking;
     private RootResult mapStatus;
     private RootResult foreignStatus;
+    private RootResult carCheck;
+    private boolean carCheckLoading;
     private boolean mapRefreshing;
     private boolean mapBusy;
     private String mapResult;
@@ -1081,41 +1084,54 @@ public final class MainActivity extends Activity {
                 null);
     }
 
-    /** Choose all Android logs or only HMG-Seogaemo related lines, then export everything to USB. */
+    /** Problem report: export everything to USB once, or keep recording to USB until turned off. */
     private void confirmReport() {
         if (stockBusy || mapBusy) return;
-        final boolean[] all = {true};
-        final LinearLayout list = vertical();
-        final TextView[] markers = new TextView[2];
-        int[] labels = {R.string.report_logs_all, R.string.report_logs_ours};
+        final int[] choice = {0};
+        LinearLayout cards = horizontal();
+        final LinearLayout[] boxes = new LinearLayout[2];
+        String[] icons = {"download", "record"};
+        int[] titles = {R.string.report_now, R.string.report_record};
+        int[] notes = {R.string.report_now_note, R.string.report_record_note};
         for (int i = 0; i < 2; i++) {
             final int index = i;
-            LinearLayout row = horizontal();
-            row.setBackgroundDrawable(selectable(SURFACE, Color.TRANSPARENT, 0, false));
-            row.addView(text(getString(labels[i]), 22, WHITE, medium), new LinearLayout.LayoutParams(0, -1, 1));
-            markers[i] = text(getString(i == 0 ? R.string.radio_selected : R.string.radio_unselected), 28,
-                    i == 0 ? BLUE : MUTED, sans);
-            markers[i].setGravity(Gravity.CENTER);
-            row.addView(markers[i], new LinearLayout.LayoutParams(dp(60), -1));
-            row.setOnClickListener(new View.OnClickListener() {
+            LinearLayout box = vertical();
+            box.setGravity(Gravity.CENTER);
+            ImageView glyph = new ImageView(this);
+            glyph.setImageDrawable(new LineIcon(this, icons[i], BLUE, 40));
+            box.addView(glyph, new LinearLayout.LayoutParams(dp(48), dp(48)));
+            TextView title = text(getString(titles[i]), 22, WHITE, medium);
+            title.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-2, -2);
+            titleParams.topMargin = dp(SettingsUi.SM);
+            box.addView(title, titleParams);
+            box.addView(text(getString(notes[i]), 18, MUTED, sans), new LinearLayout.LayoutParams(-2, -2));
+            box.setBackgroundDrawable(shape(SURFACE, i == 0 ? BLUE : HAIRLINE, Theme.CARD_RADIUS));
+            box.setOnClickListener(new View.OnClickListener() {
                 public void onClick(View view) {
-                    all[0] = index == 0;
-                    for (int j = 0; j < 2; j++) {
-                        markers[j].setText(getString(j == index ? R.string.radio_selected : R.string.radio_unselected));
-                        markers[j].setTextColor(j == index ? BLUE : MUTED);
-                    }
+                    choice[0] = index;
+                    for (int j = 0; j < 2; j++)
+                        boxes[j].setBackgroundDrawable(shape(SURFACE, j == index ? BLUE : HAIRLINE, Theme.CARD_RADIUS));
                 }
             });
-            list.addView(row, new LinearLayout.LayoutParams(-1, dp(Theme.ACTION_HEIGHT)));
-            divider(list, false);
+            boxes[i] = box;
+            LinearLayout.LayoutParams boxParams = new LinearLayout.LayoutParams(0, dp(170), 1);
+            if (i == 0) boxParams.rightMargin = dp(SettingsUi.MD);
+            cards.addView(box, boxParams);
         }
-        ConfirmDialog.showView(this, getString(R.string.report_export), list, getString(R.string.report_send),
+        ConfirmDialog.showView(this, getString(R.string.report_export), cards, getString(R.string.report_start),
                 getString(R.string.cancel), false, new ConfirmDialog.Action() {
             public void run(final ConfirmDialog dialog) {
+                if (choice[0] == 1) {
+                    ReportsSection.startRecording(MainActivity.this, dialog, new Runnable() {
+                        public void run() { if (tab == Tab.SETTINGS) showSettings(); }
+                    });
+                    return;
+                }
                 dialog.showProgress();
                 writeAppState();
                 new Thread(new Runnable() { public void run() {
-                    final RootResult result = RootClient.exportReport(all[0]);
+                    final RootResult result = RootClient.exportReport(true);
                     runOnUiThread(new Runnable() { public void run() {
                         dialog.dismiss();
                         ConfirmDialog.showResult(MainActivity.this, getString(R.string.report_export),
@@ -1446,6 +1462,9 @@ public final class MainActivity extends Activity {
             if (!unreachable(status)) known = true;
             if (readable(status)) available++;
         }
+        LinearLayout split = horizontal();
+        LinearLayout summary = vertical();
+        split.addView(summary, new LinearLayout.LayoutParams(0, -2, 1));
         LinearLayout count = horizontal();
         count.setGravity(Gravity.BOTTOM);
         count.addView(text(known ? String.valueOf(available) : "\u2014", 60, WHITE, medium), new LinearLayout.LayoutParams(-2, -2));
@@ -1456,7 +1475,7 @@ public final class MainActivity extends Activity {
         count.addView(total, totalParams);
         LinearLayout.LayoutParams countParams = new LinearLayout.LayoutParams(-1, -2);
         countParams.topMargin = dp(SettingsUi.SM);
-        right.addView(count, countParams);
+        summary.addView(count, countParams);
         LinearLayout bar = horizontal();
         bar.setBackgroundDrawable(shape(HAIRLINE, Color.TRANSPARENT, 3));
         View fill = new View(this);
@@ -1466,7 +1485,7 @@ public final class MainActivity extends Activity {
         bar.addView(new View(this), new LinearLayout.LayoutParams(0, -1, Math.max(0, features.size() - filled)));
         LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(-1, dp(6));
         barParams.topMargin = dp(SettingsUi.MD);
-        right.addView(bar, barParams);
+        summary.addView(bar, barParams);
         int status = R.string.mapping_loading;
         if (mapStatus != null) {
             if ("on".equals(mapStatus.state)) status = R.string.mapping_ready;
@@ -1480,20 +1499,22 @@ public final class MainActivity extends Activity {
         TextView check = text(checkLine, 18, MUTED, sans);
         LinearLayout.LayoutParams checkParams = new LinearLayout.LayoutParams(-1, -2);
         checkParams.topMargin = dp(SettingsUi.MD);
-        right.addView(check, checkParams);
+        summary.addView(check, checkParams);
         if (mapResult != null) {
             TextView resultView = text(mapResult, 18, WHITE, sans);
             LinearLayout.LayoutParams resultParams = new LinearLayout.LayoutParams(-1, -2);
             resultParams.topMargin = dp(SettingsUi.SM);
-            right.addView(resultView, resultParams);
+            summary.addView(resultView, resultParams);
         }
         final List<String[]> foreignItems = foreignItems();
         if (!foreignItems.isEmpty()) {
             TextView foreignLine = text(getString(R.string.foreign_found, foreignItems.size()), 18, Theme.WARNING, sans);
             LinearLayout.LayoutParams foreignParams = new LinearLayout.LayoutParams(-1, -2);
             foreignParams.topMargin = dp(SettingsUi.MD);
-            right.addView(foreignLine, foreignParams);
+            summary.addView(foreignLine, foreignParams);
         }
+        addCarChecks(split);
+        right.addView(split, new LinearLayout.LayoutParams(-1, -2));
         View spacer = new View(this);
         right.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout actions = horizontal();
@@ -1522,6 +1543,80 @@ public final class MainActivity extends Activity {
         actions.addView(recheck, new LinearLayout.LayoutParams(dp(220), dp(Theme.ACTION_HEIGHT)));
         right.addView(actions, new LinearLayout.LayoutParams(-1, -2));
         if (statuses.isEmpty() || foreignStatus == null) loadStatusesForCar();
+        if (carCheck == null) loadCarCheck();
+    }
+
+    /** Read-only car check (preflight) for the Car tab; slow, so it runs once and after a recheck or cleanup. */
+    private void loadCarCheck() {
+        if (carCheckLoading) return;
+        carCheckLoading = true;
+        new Thread(new Runnable() { public void run() {
+            final RootResult result = RootClient.preflight();
+            runOnUiThread(new Runnable() { public void run() {
+                carCheck = result;
+                carCheckLoading = false;
+                if (tab == Tab.CAR && detailId == null && !addVisible) showCar();
+            } });
+        } }, "hmg-seogaemo-car-check").start();
+    }
+
+    private static int checkRank(String level) {
+        return "block".equals(level) ? 3 : "warn".equals(level) ? 2 : "unknown".equals(level) ? 1 : 0;
+    }
+
+    /** One icon row per constraint; library and module checks fold into one row each; problems first. */
+    private void addCarChecks(LinearLayout split) {
+        if (carCheck != null && (carCheck.exitCode != 0 || carCheck.info.isEmpty())) return;
+        LinearLayout column = vertical();
+        LinearLayout.LayoutParams columnParams = new LinearLayout.LayoutParams(0, -2, 1);
+        columnParams.leftMargin = dp(SettingsUi.LG);
+        split.addView(column, columnParams);
+        if (carCheck == null) {
+            column.addView(text(getString(R.string.car_check_loading), 18, MUTED, sans), new LinearLayout.LayoutParams(-1, dp(44)));
+            return;
+        }
+        Map<String, String> checks = new java.util.TreeMap<String, String>();
+        for (Map.Entry<String, String> entry : carCheck.info.entrySet())
+            if (entry.getKey().startsWith("check_")) checks.put(entry.getKey(), entry.getValue());
+        Map<String, String> levels = new java.util.LinkedHashMap<String, String>();
+        for (String line : checks.values()) {
+            String[] part = line.split("\\|", 4);
+            if (part.length < 4) continue;
+            String label = part[0].startsWith("lib_") ? getString(R.string.car_check_libs)
+                    : part[0].startsWith("module_") ? getString(R.string.car_check_modules)
+                    : ReportsSection.title(this, part[0]);
+            String known = levels.get(label);
+            if (known == null || checkRank(part[1]) > checkRank(known)) levels.put(label, part[1]);
+        }
+        List<String> order = new ArrayList<String>();
+        for (int rank = 3; rank >= 0; rank--)
+            for (Map.Entry<String, String> entry : levels.entrySet())
+                if (checkRank(entry.getValue()) == rank) order.add(entry.getKey());
+        int shown = 0;
+        for (String label : order) {
+            String level = levels.get(label);
+            if (shown >= 5 && checkRank(level) == 0) {
+                addCheckRow(column, "check", BLUE, getString(R.string.car_check_more, order.size() - shown));
+                break;
+            }
+            int rank = checkRank(level);
+            addCheckRow(column, rank == 3 ? "cross" : rank == 2 ? "alert" : rank == 1 ? "help" : "check",
+                    rank == 3 ? Theme.ERROR : rank == 2 ? Theme.WARNING : rank == 1 ? MUTED : BLUE, label);
+            shown++;
+        }
+    }
+
+    private void addCheckRow(LinearLayout column, String icon, int color, String label) {
+        LinearLayout row = horizontal();
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView glyph = new ImageView(this);
+        glyph.setImageDrawable(new LineIcon(this, icon, color, 20));
+        row.addView(glyph, new LinearLayout.LayoutParams(dp(28), dp(28)));
+        TextView name = text(label, 19, WHITE, sans);
+        name.setPadding(dp(SettingsUi.SM), 0, 0, 0);
+        row.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+        column.addView(row, new LinearLayout.LayoutParams(-1, dp(42)));
+        divider(column, false);
     }
 
     /** {item-id, class} pairs from the last `foreign status`, in root order. */
@@ -1598,6 +1693,7 @@ public final class MainActivity extends Activity {
             runOnUiThread(new Runnable() { public void run() {
                 moduleWorking = false;
                 foreignStatus = foreign;
+                carCheck = null;
                 if (progress != null) progress.dismiss();
                 if (tab == Tab.CAR && detailId == null && !addVisible) showCar();
                 if (failure != null) showFailure(getString(R.string.foreign_clean_failed, failureName), failure.detail);
@@ -1947,8 +2043,8 @@ public final class MainActivity extends Activity {
         export.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) { confirmReport(); }
         });
-        com.seogaemo.hmg.ui.settings.ReportsSection.add(this, content, new Runnable() {
-            public void run() { showSettings(); }
+        ReportsSection.addRecordingRow(this, content, new Runnable() {
+            public void run() { if (tab == Tab.SETTINGS) showSettings(); }
         });
         TextView about = text(getString(R.string.support_about, getString(R.string.app_name), installedVersion(),
                 getString(R.string.value_gen5w)), 18, MUTED, sans);
@@ -2043,6 +2139,7 @@ public final class MainActivity extends Activity {
             runOnUiThread(new Runnable() { public void run() {
                 mapBusy = false;
                 mapStatus = observed;
+                if ("run".equals(verb)) { carCheck = null; loadCarCheck(); }
                 mapResult = outcome.exitCode == 0 && "run".equals(verb)
                         ? getString(R.string.mapping_run_done)
                         : "export".equals(verb) ? exportMessage(outcome) : outcome.detail;

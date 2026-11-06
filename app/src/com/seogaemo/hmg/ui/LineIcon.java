@@ -123,6 +123,15 @@ public final class LineIcon extends Drawable {
             line(canvas, 4, 12, 20, 12);
         } else if ("check".equals(name)) {
             poly(canvas, false, 4, 12.5f, 9.5f, 18, 20, 6.5f);
+        } else if ("cross".equals(name)) {
+            line(canvas, 6, 6, 18, 18);
+            line(canvas, 18, 6, 6, 18);
+        } else if ("alert".equals(name)) {
+            line(canvas, 12, 4, 12, 14);
+            dot(canvas, 12, 19, 1.3f);
+        } else if ("record".equals(name)) {
+            circle(canvas, 12, 12, 9);
+            dot(canvas, 12, 12, 3.5f);
         } else if ("restart".equals(name)) {
             arc(canvas, 12, 12, 8, -30, 300);
             poly(canvas, false, 15, 2, 19, 6, 14.5f, 9);

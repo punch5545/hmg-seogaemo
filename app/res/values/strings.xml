@@ -130,11 +130,8 @@
     <string name="module_confirm">Apply module changes?</string>
     <string name="module_no_changes">No changes needed.</string>
     <string name="export_usb_done">Export saved to %1$s. It is safe to remove the USB.</string>
-    <string name="report_export">Export for a problem report</string>
+    <string name="report_export">Report a problem</string>
     <string name="report_hint">If something goes wrong, plug in a USB drive, export, and send us the folder it creates. Passwords and Wi-Fi names are hidden.</string>
-    <string name="report_logs_all">All logs</string>
-    <string name="report_logs_ours">HMG-Seogaemo logs only</string>
-    <string name="report_send">Export</string>
     <string name="report_done">%1$s Please send this folder.</string>
     <string name="update_current">Current version</string>
     <string name="update_current_hint">Installed HMG-Seogaemo build</string>
@@ -249,4 +246,16 @@
     <string name="foreign_item_factory82_state">factory82 state files</string>
     <string name="foreign_item_pkg_carplay_session">carplay.session</string>
     <string name="foreign_item_pkg_vr_gates">voicehandler.vr-gates</string>
+    <string name="report_now">Export now</string>
+    <string name="report_now_note">Once, to USB</string>
+    <string name="report_record">Keep recording</string>
+    <string name="report_record_note">Until turned off</string>
+    <string name="report_start">Start</string>
+    <string name="reports_recording">Recording to USB</string>
+    <string name="reports_stop">Turn off</string>
+    <string name="reports_failed">Could not change recording.</string>
+    <string name="car_check_loading">Checking the car</string>
+    <string name="car_check_libs">Native libraries</string>
+    <string name="car_check_modules">Module checks</string>
+    <string name="car_check_more">%1$d more OK</string>
 </resources>

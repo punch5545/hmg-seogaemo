@@ -1,29 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="reports_section">USB reports</string>
     <string name="reports_record">Record reports to USB</string>
-    <string name="reports_waiting">On · no USB drive</string>
-    <string name="reports_record_on_confirm">Writes status, logs and a car check to the HSM-REPORTS folder on the USB drive while it is plugged in. It starts now and continues after every restart until you turn it off. Serial numbers, Bluetooth and Wi-Fi addresses, network names and passwords are removed. A USB drive must be inserted to turn this on.</string>
+    <string name="reports_waiting">Recording · no USB drive</string>
     <string name="reports_record_off_confirm">Stops writing to the USB drive. Reports already on it are kept.</string>
     <string name="reports_need_usb">No USB drive is mounted. Insert a USB drive first.</string>
     <string name="reports_on_done">Recording to the HSM-REPORTS folder on the USB drive.</string>
     <string name="reports_off_done">Recording is off. Reports already on the USB drive were kept.</string>
-    <string name="reports_check">Check this car</string>
-    <string name="reports_check_title">Car check</string>
-    <string name="reports_check_confirm">Reads this unit and checks what limits HMG-Seogaemo: firmware, Wi-Fi hardware, other packages, native libraries and each module. It changes nothing and can take about a minute.</string>
-    <string name="reports_hint">Turn recording on while you test a problem, then send the HSM-REPORTS folder from the USB drive.</string>
-    <string name="reports_verdict_ok">All checks passed.</string>
-    <string name="reports_verdict_warn">Some checks need attention.</string>
-    <string name="reports_verdict_block">Something blocks a feature on this unit.</string>
-    <string name="reports_verdict_unknown">Some checks could not be decided.</string>
-    <string name="reports_level_ok">OK</string>
-    <string name="reports_level_warn">Caution</string>
-    <string name="reports_level_block">Blocked</string>
-    <string name="reports_level_unknown">Unknown</string>
-    <string name="reports_guess">(a guess)</string>
-    <string name="reports_check_failed">The car check could not run.</string>
-    <string name="reports_check_lib">Native library %1$s</string>
-    <string name="reports_check_module">Module %1$s</string>
     <string name="reports_check_firmware">Firmware</string>
     <string name="reports_check_android">Android</string>
     <string name="reports_check_onebin">onebin</string>

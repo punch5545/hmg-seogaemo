@@ -130,11 +130,8 @@
     <string name="module_confirm">모듈 변경을 적용할까요?</string>
     <string name="module_no_changes">변경할 내용이 없습니다.</string>
     <string name="export_usb_done">%1$s에 저장했습니다. USB를 빼도 됩니다.</string>
-    <string name="report_export">문제 보고용 내보내기</string>
+    <string name="report_export">문제 보고</string>
     <string name="report_hint">문제가 생기면 USB를 꽂고 내보낸 뒤, 생긴 폴더를 그대로 보내 주세요. 비밀번호와 Wi-Fi 이름은 가려집니다.</string>
-    <string name="report_logs_all">전체 로그</string>
-    <string name="report_logs_ours">HMG-Seogaemo 관련 로그만</string>
-    <string name="report_send">내보내기</string>
     <string name="report_done">%1$s 이 폴더를 보내 주세요.</string>
     <string name="update_current">현재 버전</string>
     <string name="update_current_hint">설치된 HMG-Seogaemo 버전</string>
@@ -249,4 +246,16 @@
     <string name="foreign_item_factory82_state">factory82 상태 파일</string>
     <string name="foreign_item_pkg_carplay_session">carplay.session</string>
     <string name="foreign_item_pkg_vr_gates">voicehandler.vr-gates</string>
+    <string name="report_now">지금 내보내기</string>
+    <string name="report_now_note">USB로 한 번</string>
+    <string name="report_record">계속 기록하기</string>
+    <string name="report_record_note">끌 때까지</string>
+    <string name="report_start">시작</string>
+    <string name="reports_recording">USB에 기록 중</string>
+    <string name="reports_stop">끄기</string>
+    <string name="reports_failed">기록을 바꾸지 못했습니다.</string>
+    <string name="car_check_loading">차량 점검 중</string>
+    <string name="car_check_libs">네이티브 라이브러리</string>
+    <string name="car_check_modules">모듈 점검</string>
+    <string name="car_check_more">그 외 %1$d개 정상</string>
 </resources>

@@ -8,8 +8,12 @@ hashes, module state, boot logs). Developers read the files; users never type a 
 
 ## Behaviour
 
-- Settings > Support > **USB reports**: "Record reports to USB" (confirmed like any state change) and
-  "Check this car" (confirmed, read-only, up to about a minute).
+- Settings > Support has one **Report a problem** button (mockup `tmp/ui-mock/v21.png`). Its dialog offers two
+  cards: **Export now** (one problem-report export to USB, all logs) or **Keep recording** (`recorder enable`).
+  While recording is on, Support shows one "Recording to USB · Turn off" row (confirmed `recorder disable`).
+- The car check runs on the **Car tab**: read-only `preflight run` when the tab first loads and again after
+  Recheck or a cleanup. Results are icon rows next to compatibility (✕ block, ! warn, ? unknown, ✓ ok), problems
+  first; library and module checks fold into one row each; the root's English messages are not shown.
 - **Turning recording on needs a mounted USB drive.** Without one `recorder enable` fails with
   `No USB drive is mounted...` and nothing is written or left on. Once on it stays on across restarts
   (flag `$SG_DATA_ROOT/recorder/enabled`) until the owner turns it off; with no drive mounted it only
@@ -49,7 +53,7 @@ hashes, module state, boot logs). Developers read the files; users never type a 
 ## Car check (`lib/preflight.sh`)
 
 One line per check: `id|level|evidence|message`, level `ok|warn|block|unknown`, evidence `observed|inferred`.
-The app shows `[level] title: message (a guess)`. Checks: firmware, Android, onebin, boot, ADB over network
+Checks: firmware, Android, onebin, boot, ADB over network
 switch, other packages (one catalogue:
 `core/foreign.sh status`, the same findings the Car tab cleans; harmless leftover logs are not reported
 as a constraint), **Wi-Fi hardware**, Wi-Fi driver state,
