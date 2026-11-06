@@ -1,4 +1,4 @@
-Status: current — implemented AGPL port. Wireless CarPlay with music, Siri and calls is verified working on the car (since 0.1.25, 2026-11-04). Items below that are not stated as verified (wireless Android Auto, cluster/HUD rendering, boot-guard recovery) still need on-car evidence.
+Status: current — implemented AGPL port. Wireless CarPlay with music, Siri and calls is verified working on the car (since 0.1.25, 2026-11-04). Wireless Android Auto and cluster/HUD lane rendering are owner-verified on the car (2026-11-07). Boot-guard recovery still needs on-car evidence.
 
 # Wireless CarPlay and Android Auto: NEEV.KOR.260902 port
 

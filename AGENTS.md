@@ -39,7 +39,9 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 - Owner-verified: HMG-API's car map + wireless mod gave a working hotspot + wireless CarPlay on this
   car; the stock firmware has no Wi-Fi client menu.
 - Car-verified: wireless CarPlay music, Siri and calls/mic; `wifi-client` STA (adb over a router);
-  user-button shortcut; boot reconcile and readiness status; 324/324 original map points reflect (2026-11-03).
+  user-button shortcut; boot reconcile and readiness status; 324/324 original map points reflect
+  (2026-11-03). Owner-verified 2026-11-07: wireless Android Auto, cluster/HUD lane rendering, and
+  the user-button shortcut kept after a restart.
 
 ## Hard rules
 
@@ -185,8 +187,7 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 ## Known gaps / risks (unverified on a car)
 
 - The 18 v1.0.1 map additions have exact-stock host evidence and still need on-car reflection.
-  Wireless Android Auto and cluster/HUD lane rendering have no car evidence; user-button
-  reassertion after restart is unverified. Other feature claims require their own evidence.
+  Other feature claims require their own evidence.
 - The core hook host replaces `/system/bin/app_process` for every hook module, `wireless-carplay-and-aa`
   included (boot guard disables it after 3 quick restarts). Keep an adb recovery path ready. CarPlay on the
   host and the migration from its old self-installed wrapper are car-verified; turning CarPlay off on the
