@@ -85,6 +85,8 @@ final class CpTurns {
     Integer activeId;
     long lastSendAt;
     private byte[] lastLane;
+    /** a phone turn is on the cluster (cleared by clusterIdle) */
+    private boolean clusterTurn;
     private int refreshes;
 
     /**
@@ -539,6 +541,7 @@ final class CpTurns {
         Dipo.flushObservations(true);
         reset();
         hudBlank();
+        clusterIdle();
         source = null;
     }
 
@@ -547,6 +550,7 @@ final class CpTurns {
         laneInfos.clear();
         activeId = null;
         hudBlank();
+        clusterIdle();
         Dipo.flushObservations(true);
     }
 
@@ -642,6 +646,7 @@ final class CpTurns {
         }
         if (sample("tn", id + "|" + icon + "|" + u.state + "|" + list[0])) d("turn comp=" + id + " state=" + u.state + " index=" + list[0] + " type=" + x.type + " side=" + x.side + " junction=" + x.junction + " exit=" + x.exit + " -> icon " + icon + " dist=" + dist + " unit=" + unit);
         cluster.tbtInfo(icon, 0, 0f, dist, 0, 0, unit, 0, 0);
+        clusterTurn = true;
         sendHud(icon, id, u);
         sendHudDist(dist, unit);
         sendLaneDist(dist, unit);
@@ -1029,6 +1034,20 @@ final class CpTurns {
         if (laneDist == null) return;
         laneDist = null;
         cluster.remainDis(65535, 15, 15, 0);
+    }
+
+    /**
+     * Guidance over: the cluster's turn back to the stock idle compass (NO_ROUTE_GUIDE 8; 0 draws a
+     * spinning loading icon on NEEV KOR) and the trip distance/arrival invalid. The car navigation
+     * is no longer skipped then, but it only sends on change, so without this the last phone turn
+     * stays on the cluster while parked (car-verified 2026-11-07). Only after a phone turn was sent,
+     * so an idle stock compass keeps its heading.
+     */
+    void clusterIdle() {
+        if (!clusterTurn) return;
+        clusterTurn = false;
+        cluster.tbtInfo(8, 0, 0f, 0f, -1, 0, 0, 0, -1);
+        cluster.tbtSubInfo(0f, -1, 0, 0, 0, 0, 0, 0f, -1, 0);
     }
 
     /** HUD list and extras cleared (the build's sendHudBlank) */

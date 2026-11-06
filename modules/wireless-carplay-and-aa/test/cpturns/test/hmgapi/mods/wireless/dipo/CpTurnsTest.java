@@ -150,8 +150,9 @@ public final class CpTurnsTest {
 
         t.routeGuidance(msg(0, U16, i(1), 19, STR, s("Waze"), 5, U64, l(0)));
         check("source change: route guidance restarted", restarted.await(2, TimeUnit.SECONDS));
-        expect("source change (Maps to Waze): HUD cleared; the reset state is 0 until the phone resends it, so cleared again",
-                "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        expect("source change (Maps to Waze): HUD cleared; the reset state is 0 until the phone resends it, so cleared again and the cluster goes idle",
+                "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2",
+                "tbt 8 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0");
 
         t.maneuver(maneuver(5, ARRIVE, 0, 0, 0, "Home Rd", 100));
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(6), 4, STR, s("Home"), 11, STR, s("300"), 12, ENUM, i(FEET), 13, U16, i(5)));
@@ -163,16 +164,17 @@ public final class CpTurnsTest {
         expect("arrived (state 2): icon 3, no HUD list for it", "road [Home Rd]", "tbt 3 0 0.0 300.0 0 0 3 0 0", "2c 3 0 300 0 0 0 0 0 0");
 
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(0)));
-        expect("state 0: HUD cleared", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        expect("state 0: HUD cleared, cluster back to the idle compass", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2",
+                "tbt 8 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0");
 
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1)));
         t.stop();
         c.calls.clear();
         t.stop();
-        expect("route guidance stopped (car took turn-by-turn back): HUD cleared", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        expect("route guidance stopped (car took turn-by-turn back): HUD cleared; the cluster is already idle", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
 
         t.disconnected();
-        expect("iAP2 session ended: HUD cleared", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        expect("iAP2 session ended: HUD cleared; the cluster is already idle", "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
         t.routeGuidance(msg(0, U16, i(1), 1, ENUM, i(1), 11, STR, s("0.5"), 12, ENUM, i(MILES), 13, U16, i(5), 19, STR, s("Maps")));
         expect("after the session ended: maneuvers gone (HUD distance only), a new source isn't a change", "2c 2 5 0 0 0 0 0 0 0");
         c.calls.clear();
@@ -189,8 +191,9 @@ public final class CpTurnsTest {
                 "road [Any Rd]", "tbt 65 0 0.0 0.4 0 0 2 0 0", "2c 2 4 0 0 0 0 0 0 0");
 
         t.routeGuidance(msg(0, U16, i(0), 1, ENUM, i(1), 11, STR, s("0.4"), 13, U16, i(0)));
-        expect("component 0's first update: DiPO starts it empty (state 0), so the HUD is cleared",
-                "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2");
+        expect("component 0's first update: DiPO starts it empty (state 0), so the HUD is cleared and the cluster goes idle",
+                "2c 0 0 0 0 0 0 0 0 0", "lanes f1", "hud f2", "hud f2",
+                "tbt 8 0 0.0 0.0 -1 0 0 0 -1", "sub 0.0 -1 0 0 0 0 0 0.0 -1 0");
 
         check("icons: sharp left 69, slight right 66, roundabout exit 96/97, U-turn left-hand traffic 73",
                 CpTurns.icon(1, 0, 0, -120, 1) == 69 && CpTurns.icon(2, 0, 0, 60, 1) == 66 && CpTurns.icon(2, 0, 1, 0, 1) == 96
