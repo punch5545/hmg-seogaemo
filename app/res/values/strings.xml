@@ -120,6 +120,7 @@
     <string name="nav_back_glyph">‹</string>
     <string name="nav_close_glyph">×</string>
     <string name="radio_selected">●</string>
+    <string name="user_button_stock">Default function</string>
     <string name="radio_unselected">○</string>
     <string name="module_status_unknown">Status could not be checked</string>
     <string name="module_status_conflict">Changes conflict with the saved original</string>

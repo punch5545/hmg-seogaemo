@@ -424,9 +424,9 @@ def test_replaces(car):
     before = (car.data / "ledger/ledger.tsv").read_text().count("prop_set")
     renamed = raw_package("new-raw", "persist.raw.demo", owned + "replaces=old-raw\nkmods=x8188\nkmod.x8188=files/x.ko\n")
     renamed["files/x.ko"] = "ko"
-    # Different persistent targets: the old module stays and nothing moves.
+    # A target the old module owns is missing from the new one: the old module stays and nothing moves.
     wider = dict(renamed, **{"module.properties": renamed["module.properties"].replace(
-        "owns_props=persist.raw.demo", "owns_props=persist.raw.demo,persist.raw.more")})
+        "owns_props=persist.raw.demo", "owns_props=persist.raw.other")})
     bundle_as(car, "new-raw", wider)
     assert "does not touch the same targets" in car.root("module", "install-bundled")
     assert "old-raw,1.0.0,bundled" in car.root("module", "list") and (car.data / "modules/old-raw").is_dir()
@@ -484,10 +484,9 @@ def test_converted_builtin(car):
     from package import bundled_hsm
     expected = {
         "skip-consent-screen": ("raw_shell=1", "restore=reboot", "service_calls=com.hkmc.factory:82", "watch=boot,screen_on"),
-        "user-button-head-unit": ("raw_shell=1", "owns_props=persist.sys.key.custom",
-                                  "reassert_props=persist.sys.key.custom", "watch=boot,screen_on", "restart=none"),
-        "user-button-shortcut": ("raw_shell=1", "owns_props=persist.sys.key.swrccustom",
-                                 "reassert_props=persist.sys.key.swrccustom", "watch=boot,screen_on", "restart=none"),
+        "user-button": ("raw_shell=1", "owns_props=persist.sys.key.custom,persist.sys.key.swrccustom",
+                        "reassert_props=persist.sys.key.custom,persist.sys.key.swrccustom", "watch=boot,screen_on",
+                        "restart=none"),
         "wireless-adb": ("raw_shell=1", "owns_props=persist.service.adb.tcp.enable,persist.adb.tcp.port",
                          "services=adbd", "restart=adbd"),
         "wifi": ("raw_shell=1", "owns_props=persist.wifi.state",
@@ -574,6 +573,55 @@ def test_installed_shared_line(car):
     assert shared.read_bytes() == stock
 
 
+MERGED_SH = ('. "$HMG_SEOGAEMO_BASE/lib/common.sh"\n'
+             'on() { [ "$(cat "$SG_DATA_ROOT/settings/merged-btn/$1" 2>/dev/null)" = on ]; }\n'
+             'case "$1" in\n'
+             '    status) sg_status on none on ;;\n'
+             '    precheck) sg_status off none ready ;;\n'
+             '    apply) if on a; then sg_prop_set persist.btn.a mine || exit 1; fi\n'
+             '           if on b; then sg_prop_set persist.btn.b mine || exit 1; fi; sg_status on none on ;;\n'
+             '    revert) sg_revert_all && sg_status off none off ;;\n'
+             '    *) exit 2 ;;\n'
+             'esac\nexit $?\n')
+
+
+def test_merged_takeover(car):
+    # Two bundled modules merge into one; each old module's state, baseline and on/off choice survive.
+    for a_on in (False, True):
+        for b_on in (False, True):
+            c = Car(Path(tempfile.mkdtemp(dir=car.temp)))
+            for key in ("a", "b"):
+                c.prop(f"persist.btn.{key}", f"stock-{key}")
+                bundle_as(c, f"old-{key}", raw_package(f"old-{key}", f"persist.btn.{key}"))
+                c.root("module", "install-bundled")
+            for key, on in (("a", a_on), ("b", b_on)):
+                if on:
+                    assert "state=on" in c.root(f"old-{key}", "apply")
+            merged = {"module.properties": "id=merged-btn\nversion=1.0.0\napi=1\ncars=NEEV.KOR.*.260902\nraw_shell=1\n"
+                      "owns_props=persist.btn.a,persist.btn.b\nsetting.1=a:toggle:off\nsetting.2=b:toggle:off\n"
+                      "replaces=old-a,old-b\nreplaces_setting.old-a=a:on\nreplaces_setting.old-b=b:on\n",
+                      "module.sh": MERGED_SH, "strings/en.txt": "name=Merged\nsummary=Test\n"}
+            bundle_as(c, "merged-btn", merged)
+            out = c.root("module", "install-bundled")
+            listed = c.root("module", "list")
+            assert "merged-btn,1.0.0,bundled" in listed and "old-a" not in listed and "old-b" not in listed, (out, listed)
+            assert (c.data / "installed.list").read_text().split() == ["merged-btn"]
+            desired = c.data / "desired/merged-btn"
+            assert (desired.read_text() if desired.exists() else "") == ("on" if a_on or b_on else ""), (a_on, b_on)
+            for key, on in (("a", a_on), ("b", b_on)):
+                setting = c.data / "settings/merged-btn" / key
+                assert (setting.read_text() if setting.exists() else "off") == ("on" if on else "off")
+                assert (c.data / "modules/merged-btn" / f"prop.persist.btn.{key}").is_dir() == on
+                assert not (c.data / f"modules/old-{key}").exists() and not (c.data / f"desired/old-{key}").exists()
+                assert c.prop(f"persist.btn.{key}") == ("on" if on else f"stock-{key}")  # takeover writes nothing
+            ledger = (c.data / "ledger/ledger.tsv").read_text()
+            assert "\tmerged-btn\tmodule_takeover\told-a\t" in ledger and "\tmerged-btn\tmodule_takeover\told-b\t" in ledger
+            assert not (c.data / "migrate/merged-btn").exists()
+            if a_on or b_on:
+                assert "state=off" in c.root("merged-btn", "revert")
+            assert c.prop("persist.btn.a") == "stock-a" and c.prop("persist.btn.b") == "stock-b"
+
+
 def on_car(test):
     def run(folder):
         test(Car(folder))
@@ -584,5 +632,5 @@ def on_car(test):
 if __name__ == "__main__":
     run_tests([on_car(test) for test in (
         test_install_validation, test_lifecycle, test_reconcile_reapplies, test_hook_host, test_usb_import,
-        test_button_action, test_bundled, test_replaces, test_converted_builtin, test_installed_shared_line)],
+        test_button_action, test_bundled, test_replaces, test_merged_takeover, test_converted_builtin, test_installed_shared_line)],
         "installed module tests passed")

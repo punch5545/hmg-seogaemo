@@ -120,6 +120,7 @@
     <string name="nav_back_glyph">‹</string>
     <string name="nav_close_glyph">×</string>
     <string name="radio_selected">●</string>
+    <string name="user_button_stock">기본 기능</string>
     <string name="radio_unselected">○</string>
     <string name="module_status_unknown">상태를 확인할 수 없음</string>
     <string name="module_status_conflict">변경 내용이 저장된 원본과 충돌합니다</string>

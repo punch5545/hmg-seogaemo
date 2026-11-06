@@ -13,7 +13,9 @@ sys.path.insert(0, str(ROOT / 'tools'))
 from testlib import SHELL, car_env
 KEY = sys.argv[2] if len(sys.argv) > 2 else 'persist.sys.key.swrccustom'
 INITIAL = sys.argv[3] if len(sys.argv) > 3 else 'gohome'
-ACTION = 'com.seogaemo.hmg.USER_BUTTON_SHORTCUT'
+ACTION = 'com.seogaemo.hmg.USER_BUTTON_SWRC'
+OTHER_KEY = 'persist.sys.key.custom'
+OTHER_ACTION = 'com.seogaemo.hmg.USER_BUTTON_HEAD'
 with tempfile.TemporaryDirectory() as directory:
     base = Path(directory).resolve()
     state = base / 'state' / MODULE_ID
@@ -33,6 +35,9 @@ with tempfile.TemporaryDirectory() as directory:
         HMG_SEOGAEMO_STATE=str(state), SG_DATA_ROOT=str(base / 'data'),
         SG_PROPERTY_ROOT=str(base / 'backing')))
     (base / "data/desired").mkdir(parents=True)
+    settings = base / 'data/settings' / MODULE_ID
+    settings.mkdir(parents=True)
+    def setting(key, value): (settings / key).write_text(value)
     def prop(key, value): (base / 'props' / key).write_text(value)
     def run(verb, expected, code=0, module=MODULE, module_state=state, event=None):
         module_env = dict(env, HMG_SEOGAEMO_STATE=str(module_state))
@@ -50,6 +55,11 @@ with tempfile.TemporaryDirectory() as directory:
     prop(KEY, INITIAL)
     original = INITIAL.encode() + b'\x00'
     (base / 'backing' / KEY).write_bytes(original)
+    run('status', 'off')
+    run('apply', 'on')  # no button chosen: nothing is assigned
+    assert not list(state.iterdir()) and (base / 'props' / KEY).read_text() == INITIAL
+    run('revert', 'off')
+    setting('swrc', 'on')
     run('status', 'off')
     assert not list(state.iterdir())
     assert 'warn.assignment=1' in run('precheck', 'off')
@@ -103,32 +113,31 @@ with tempfile.TemporaryDirectory() as directory:
     run('apply', 'failed', 1)
     (base / 'props/fail').unlink()
     run('revert', 'off')
-    # Two independent module states and property baselines share one action.
-    other_id = 'user-button-head-unit' if MODULE_ID == 'user-button-shortcut' else 'user-button-shortcut'
-    other = ROOT / 'modules' / other_id
-    other_key = 'persist.sys.key.custom' if KEY.endswith('swrccustom') else 'persist.sys.key.swrccustom'
-    other_state = base / 'state' / other_id
-    other_state.mkdir()
-    shutil.copy(other / 'module.properties', base / 'modules' / (other_id + '.properties'))
+    # Each button is its own setting: turning one off (revert, then apply, as a setting change
+    # does) restores only that button, and the watcher reasserts only enabled buttons.
     prop(KEY, INITIAL)
-    prop(other_key, 'other.original')
-    (base / 'backing' / other_key).write_bytes(b'other.original\x00')
+    prop(OTHER_KEY, 'other.original')
+    (base / 'backing' / OTHER_KEY).write_bytes(b'other.original\x00')
     run('apply', 'on')
-    run('status', 'off', module=other, module_state=other_state)
-    assert (base / 'props' / other_key).read_text() == 'other.original'
-    run('apply', 'on', module=other, module_state=other_state)
-    run('revert', 'off')
-    run('status', 'on', module=other, module_state=other_state)
-    run('apply', 'on')
+    assert (base / 'props' / OTHER_KEY).read_text() == 'other.original'
+    setting('head', 'on')
+    run('revert', 'off'); run('apply', 'on')
+    assert (base / 'props' / OTHER_KEY).read_text() == OTHER_ACTION and (base / 'props' / KEY).read_text() == ACTION
+    assert 'info.button_head=on' in run('status', 'on')
+    setting('head', 'off')
+    run('revert', 'off'); run('apply', 'on')
+    assert (base / 'props' / OTHER_KEY).read_text() == 'other.original'
+    assert (base / 'backing' / OTHER_KEY).read_bytes() == b'other.original\x00'
     prop(KEY, 'external.choice')
-    prop(other_key, 'other.drift')
+    prop(OTHER_KEY, 'other.drift')
     run('watch', 'on', event='screen_on')
     assert (base / 'props' / KEY).read_text() == ACTION
-    assert (base / 'props' / other_key).read_text() == 'other.drift'
-    run('revert', 'off', module=other, module_state=other_state)
-    assert (base / 'props' / other_key).read_text() == 'other.original'
-    assert (base / 'backing' / other_key).read_bytes() == b'other.original\x00'
-    assert (base / 'props' / KEY).read_text() == ACTION
+    assert (base / 'props' / OTHER_KEY).read_text() == 'other.drift'
+    # The shortcut the separate modules wrote before the merge counts as ours: without a
+    # baseline it is a conflict, never a stock value to save as the original.
+    prop(OTHER_KEY, 'com.seogaemo.hmg.USER_BUTTON_SHORTCUT')
+    run('status', 'conflict', 3)
+    prop(OTHER_KEY, 'other.original')
     prop(KEY, 'final.drift')
     run('revert', 'off')
     assert (base / 'props' / KEY).read_text() == INITIAL

@@ -110,7 +110,8 @@ limits and writes only into the staging extraction directory.
 | `hookpoints` | member name of a text file of stable IDs | | `hookpoints.required` |
 | `setting.N` | `key:type:default` | types `toggle`, `choice(a\|b\|...)`, `number(min..max)` | `Module.settings()` |
 | `raw_shell` | `1` | see Restricted scripts | |
-| `replaces` | module ID | bundled packages only: take over a renamed bundled module's state (runtime contract, "Settings check and module takeover") | |
+| `replaces` | module ID list | bundled packages only: take over one renamed bundled module's state, or merge several into this one (runtime contract, "Settings check and module takeover") | |
+| `replaces_setting.<old>` | `key:value` | bundled packages only: when the replaced module `<old>` was on, the takeover sets this module's setting `key` to `value` | |
 | `icon` | one of `box`, `wifi`, `phone`, `terminal`, `car`, `gear`, `display`, `speaker`, `camera`, `map`, `power`, `key`, `skip`, `button`, `link`, `bolt` | app-drawn line icon on the module card and detail panel; default `box`; modules cannot ship images | `icon` |
 
 Example (`wireless-carplay-and-aa`, design sketch): `id`, `version=1.0.0`, `api=1`, `cars=NEEV.KOR.*.260902`,
@@ -366,7 +367,9 @@ shows status, the on/off switch and the summary. Blocks: `status`; `toggle setti
 `apply.sh` where `action_is N` is true); `enable module=ID label=@s` (normal enable plan for another module;
 replaces Java `ENABLE_MODULE`); `open screen=wifi_settings` (opens a stock screen from a fixed core list;
 replaces `OPEN_STOCK_WIFI_SETTINGS`; `open screen=wifi_networks` opens the app's USB Wi-Fi network picker, which runs the
-module's `wifi_scan` and `wifi_join` actions). Any block may add `when=K`: it is shown only while the last status
+module's `wifi_scan` and `wifi_join` actions); `pick_app slot=head|swrc setting=K label=@s` (one row per user button: 기본 기능 turns toggle
+setting `K` off; HMG-Seogaemo or a launcher app turns it on, and the chosen app is stored in the app, never sent to
+root; changing it is confirmed). Any block may add `when=K`: it is shown only while the last status
 reports `info.K=1`. Unknown blocks refuse install. State-changing blocks go through
 `ui.ConfirmDialog`. No Java from modules in API 1, so the app process stays free of third-party code. Home
 tiles (`Module.homeTiles`) are dropped: no module uses them and the Home redesign does not need them.
