@@ -192,7 +192,7 @@ hmg_seogaemo_diagnostics() (
     # Problem report extras: Android log (all, or only lines from our area), NEMESIS log, the
     # app's own view (fixed file the app writes before exporting) and a one-page summary.
     case "${HMG_SEOGAEMO_EXPORT_LOGS:-none}" in all|ours)
-        logcat -d -v time > "$stage/logcat.txt" 2>/dev/null || :
+        logcat -d -v time 2>/dev/null | sg_redact > "$stage/logcat.txt" || :
         if [ "$HMG_SEOGAEMO_EXPORT_LOGS" = ours ]; then
             grep -i -e hmg-seogaemo -e nemesis -e dipo -e iap2 -e projection -e carplay -e AndroidRuntime \
                 "$stage/logcat.txt" > "$stage/logcat.sel" 2>/dev/null || :
@@ -200,7 +200,7 @@ hmg_seogaemo_diagnostics() (
         fi
         copy_log "$stage/logcat.txt" logs/logcat.txt 128 || exit 1
         rm -f "$stage/logcat.txt"
-        nemesis log dump > "$stage/nemesis.txt" 2>&1 < /dev/null || :
+        nemesis log dump 2>&1 < /dev/null | sg_redact > "$stage/nemesis.txt" || :
         copy_log "$stage/nemesis.txt" logs/nemesis.txt 32 || exit 1
         rm -f "$stage/nemesis.txt"
         copy_log "${HMG_SEOGAEMO_APP_STATE:-/data/data/com.seogaemo.hmg/files/report/app-state.txt}" app/app-state.txt || exit 1

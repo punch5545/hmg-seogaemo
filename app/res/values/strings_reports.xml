@@ -2,7 +2,7 @@
 <resources>
     <string name="reports_section">USB reports</string>
     <string name="reports_record">Record reports to USB</string>
-    <string name="reports_waiting">ON, no USB drive</string>
+    <string name="reports_waiting">On · no USB drive</string>
     <string name="reports_record_on_confirm">Writes status, logs and a car check to the HSM-REPORTS folder on the USB drive while it is plugged in. It starts now and continues after every restart until you turn it off. Serial numbers, Bluetooth and Wi-Fi addresses, network names and passwords are removed. A USB drive must be inserted to turn this on.</string>
     <string name="reports_record_off_confirm">Stops writing to the USB drive. Reports already on it are kept.</string>
     <string name="reports_need_usb">No USB drive is mounted. Insert a USB drive first.</string>

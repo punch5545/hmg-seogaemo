@@ -35,22 +35,6 @@ usb_base() {
     return 1
 }
 
-# One redaction pass for everything that reaches the USB drive (never per collector).
-hsm_redact() {
-    while IFS= read -r rc_line || [ -n "$rc_line" ]; do
-        case "$rc_line" in
-            *wifimac:' 'EMPTY|*wifimac:' 'SET) sg_print "$rc_line" ;;
-            *wifimac*"[]") sg_print 'ro.boot.wifimac: EMPTY' ;;
-            *wifimac*"[]"*|*wifimac=) sg_print 'wifimac: EMPTY' ;;
-            *wifimac*) sg_print 'wifimac: SET' ;;
-            *[Ss][Ee][Rr][Ii][Aa][Ll]*|*[Bb][Tt][Aa][Dd][Dd][Rr]*|*[Ss][Ss][Ii][Dd]*|*[Pp][Ss][Kk]*|*[Pp][Aa][Ss][Ss][Ww]*|*[Ss][Ee][Cc][Rr][Ee][Tt]*|*[Tt][Oo][Kk][Ee][Nn]*|*[Cc][Rr][Ee][Dd][Ee][Nn]*|*[Ii][Mm][Ee][Ii]*|*[Ii][Mm][Ss][Ii]*|*[Ii][Cc][Cc][Ii][Dd]*|*[Vv][Ii][Nn]=*|*[Hh][Ww][Aa][Dd][Dd][Rr]*|*link/ether*|*[Pp][Hh][Oo][Nn][Ee]?[Nn][Uu][Mm]*)
-                sg_print '[redacted]' ;;
-            *[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]:[0-9a-fA-F][0-9a-fA-F]*)
-                sg_print '[redacted]' ;;
-            *) sg_print "$rc_line" ;;
-        esac
-    done
-}
 
 # Keep the last $3 blocks of 4 KiB of $1 in $2 (redacted); a partial first line is dropped.
 put_tail() {
@@ -62,7 +46,7 @@ put_tail() {
     dd if="$1" bs=4096 skip="$rc_skip" count="$3" 2>/dev/null > "$state/put.raw.$$" || return 1
     {
         if [ "$rc_skip" -gt 0 ]; then IFS= read -r rc_frag || :; fi
-        hsm_redact
+        sg_redact
     } < "$state/put.raw.$$" > "$2.tmp.$$" || { rm -f "$state/put.raw.$$" "$2.tmp.$$"; return 1; }
     rm -f "$state/put.raw.$$"
     mv "$2.tmp.$$" "$2"
@@ -70,7 +54,7 @@ put_tail() {
 
 # Redact stdin into $1 atomically.
 put_stdin() {
-    hsm_redact > "$1.tmp.$$" && mv "$1.tmp.$$" "$1" || { rm -f "$1.tmp.$$"; return 1; }
+    sg_redact > "$1.tmp.$$" && mv "$1.tmp.$$" "$1" || { rm -f "$1.tmp.$$"; return 1; }
 }
 
 event() { sg_print "$(date +%s) $1" >> "$spool/events.log" 2>/dev/null || :; }
@@ -275,7 +259,11 @@ do_tick() {
         event "usb mounted"
         rm -f "$state/last-snapshot" "$state/last-flush"
     fi
-    prepare_usb "$rc_usb" || { event "usb not writable"; return 1; }
+    # The folder header and the write test cost a flash write each: do them when a drive appears
+    # or was swapped, never on every tick.
+    if [ ! -f "$rc_usb/$FOLDER/README.txt" ]; then
+        prepare_usb "$rc_usb" || { event "usb not writable"; return 1; }
+    fi
     rc_product=$(getprop ro.build.product)
     case "$rc_product" in ''|*[!a-zA-Z0-9._-]*) rc_product=unknown-car;; esac
     rc_car=$rc_usb/$FOLDER/$rc_product

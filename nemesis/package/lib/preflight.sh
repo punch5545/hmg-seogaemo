@@ -73,22 +73,41 @@ pf_wifi_radio() {
     esac
 }
 
+# Other packages: one catalogue, core/foreign.sh. The check only reports; cleaning is the Car tab's.
 pf_conflicts() {
-    pf_root=${SG_TARGET_ROOT:-}
-    if sg_owner_present hmgapi || [ -e "$pf_root/system/bin/app_process.hmgapi-stock" ] ||
-            [ -e "$pf_root/system/bin/hmgapid" ]; then
-        pf_line conflict_hmgapi block observed 'HMG-API is installed; remove it before using HMG-Seogaemo'
+    pf_cf_out=$(SG_SYSTEM_ROOT=${SG_TARGET_ROOT:-} /system/bin/sh "${HMG_SEOGAEMO_BASE:-}/core/foreign.sh" status 2>/dev/null)
+    case "$pf_cf_out" in *info.count=*) ;; *)
+        pf_line conflict_scan unknown inferred 'Could not read the other-package scan'
+        return 0 ;;
+    esac
+    pf_cf_api= ; pf_cf_leafia= ; pf_cf_adb= ; pf_cf_other=
+    while IFS= read -r pf_cf_line; do
+        case "$pf_cf_line" in info.item_*) ;; *) continue;; esac
+        # "<item-id>,<class>", so every pattern ends at the comma.
+        case "${pf_cf_line#*=}" in
+            pkg-hmgapi*|hmgapi-*) pf_cf_api=1 ;;
+            pkg-leafia,*|leafia-*|app-process-leafia,*) pf_cf_leafia=1 ;;
+            pkg-adb-tcp,*|adb-tcp-orphan,*) pf_cf_adb=1 ;;
+            foreign-logs,*) ;;
+            *) pf_cf_other=1 ;;
+        esac
+    done <<EOF
+$pf_cf_out
+EOF
+    if [ -n "$pf_cf_api" ]; then
+        pf_line conflict_hmgapi block observed 'HMG-API is installed or left files behind; clean it in Car settings first'
     else
         pf_line conflict_hmgapi ok observed 'HMG-API not installed'
     fi
-    if sg_owner_present leafia || [ -e "$pf_root/system/bin/app_process.leafia-stock" ]; then
-        pf_line conflict_leafia block observed 'HMG Leafia Plus is installed; remove it before using HMG-Seogaemo'
+    if [ -n "$pf_cf_leafia" ]; then
+        pf_line conflict_leafia block observed 'HMG Leafia Plus is installed or left files behind; clean it in Car settings first'
     else
         pf_line conflict_leafia ok observed 'HMG Leafia Plus not installed'
     fi
-    if sg_owner_present nemesis-adb-tcp; then
+    [ -z "$pf_cf_adb" ] ||
         pf_line conflict_adbtcp warn observed 'A NEMESIS ADB TCP package is installed and may hold the network settings'
-    fi
+    [ -z "$pf_cf_other" ] ||
+        pf_line conflict_other warn observed 'Another package left items behind; see Car settings to clean them'
 }
 
 pf_native_libs() {

@@ -22,6 +22,8 @@ hashes, module state, boot logs). Developers read the files; users never type a 
   `check.txt` (car check), `status.txt` (map and module status), `dmesg.txt` (filtered kernel log),
   `logcat.txt` (filtered log stream window), `runtime/` (the hook's per-process records and log ring,
   same fixed area as the changes export), `reconcile.log`, `modules/<id>/module.log`, `events.log`.
+- The folder header (`README.txt`) and the write test run when a drive appears or was swapped, never
+  per tick: a tick that has nothing to flush writes nothing to the drive.
 - Cadence: status snapshot at the first tick of a boot, when a drive appears and every 10 minutes;
   logs every 2 minutes (`HMG_SEOGAEMO_RECORDER_SNAPSHOT`/`_FLUSH` override for tests); one `sync` per write.
 
@@ -29,14 +31,14 @@ hashes, module state, boot logs). Developers read the files; users never type a 
 
 - **Where it runs.** The recorder is not a new NEMESIS service. OTA updates do not register new NEMESIS
   services, so the existing `watcher` service starts a detached, locked `recorder tick` each loop while
-  `recorder/enabled` exists (loop interval capped at 15 s). A slow USB drive can never delay a module's
+  `recorder/enabled` exists (loop interval capped at 60 s, below the 120 s log flush). A slow USB drive can never delay a module's
   watch events. `tick` is not an app verb.
 - **Log stream.** The main log buffer holds seconds, so a `logcat -f ... -r 128 -n 2` process with a fixed
   tag list (`*:S` plus our tags, Wi-Fi tags, `AndroidRuntime:E`, `*:F`) runs while recording is on
   (`recorder/logcat.pid`, validated against `/proc/<pid>/cmdline` before any kill). Disable and the
   uninstall hook stop it.
-- **One redaction pass for everything that reaches the drive** (`hsm_redact` in `core/recorder.sh`), not
-  per collector: lines with serial, Bluetooth address, Wi-Fi address (`wifimac` becomes `EMPTY`/`SET`),
+- **One redaction pass for everything that leaves the car** (`sg_redact` in `lib/common.sh`): the
+  recorder and the changes/problem export share it, not per collector: lines with serial, Bluetooth address, Wi-Fi address (`wifimac` becomes `EMPTY`/`SET`),
   SSID, passwords, tokens, IMEI/IMSI/ICCID, VIN, hardware addresses or any `xx:xx:xx:xx:xx:xx` are replaced
   by `[redacted]`. (A kernel-log filter once leaked the unit serial through the boot command line; the
   collectors now never copy that line and the pass would still remove it.)
@@ -48,7 +50,9 @@ hashes, module state, boot logs). Developers read the files; users never type a 
 
 One line per check: `id|level|evidence|message`, level `ok|warn|block|unknown`, evidence `observed|inferred`.
 The app shows `[level] title: message (a guess)`. Checks: firmware, Android, onebin, boot, ADB over network
-switch, HMG-API and HMG Leafia Plus leftovers, NEMESIS ADB TCP package, **Wi-Fi hardware**, Wi-Fi driver state,
+switch, other packages (one catalogue:
+`core/foreign.sh status`, the same findings the Car tab cleans; harmless leftover logs are not reported
+as a constraint), **Wi-Fi hardware**, Wi-Fi driver state,
 five native library hashes (against the `native <md5>` lines of the wireless recipes), and each module's own
 `precheck`. Wi-Fi hardware is `ok` only when a device is on the SDIO or `mmc1` bus; `block` (observed) when the
 kernel log shows failed power-up tries; otherwise a guess (`warn` with an empty factory Wi-Fi address,
