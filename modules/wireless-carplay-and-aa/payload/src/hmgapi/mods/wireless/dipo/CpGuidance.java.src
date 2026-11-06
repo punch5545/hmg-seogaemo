@@ -25,8 +25,22 @@ final class CpGuidance {
         return ((Math.round(angle / 45f) * 45) % 360 + 360) % 360;
     }
 
+    static int[] stock(CpTurns.Maneuver m) { return stock(m, null); }
+
+    /**
+     * A lane change toward the exit is needed: lanes are known (lane 0 leftmost), some are
+     * recommended, and the edge lane on the exit side is not.
+     */
+    static boolean laneChange(CpLaneDecoder.Info info, int side) {
+        if (info == null || info.lanes == null || info.lanes.length < 2) return false;
+        boolean any = false;
+        for (CpLaneDecoder.Lane l : info.lanes) any |= l != null && l.status != 0;
+        CpLaneDecoder.Lane edge = info.lanes[side > 0 ? info.lanes.length - 1 : 0];
+        return any && edge != null && edge.status == 0;
+    }
+
     /** {DisplayType, direction}, or null when the available geometry is ambiguous. */
-    static int[] stock(CpTurns.Maneuver m) {
+    static int[] stock(CpTurns.Maneuver m, CpLaneDecoder.Info lanes) {
         if (m.hasExit && (m.exit < -180 || m.exit > 180)) return null;
         int t = m.type, a = m.hasExit ? direction(m.exit) : -1;
         if (t == 4 || t == 18 || t == 26) return new int[] {31, m.side == 1 ? 90 : 270};
@@ -48,18 +62,20 @@ final class CpGuidance {
             int side = t == 22 ? -1 : t == 23 ? 1 : a < 0 || a == 0 || a == 180 ? 0 : a > 180 ? -1 : 1;
             if (side == 0) return null;
             if (m.hasExit && (side < 0 && a > 0 && a < 180 || side > 0 && a > 180)) return null;
-            // 19/20 are not used: 20 draws a left-side exit on this cluster (car photo review).
+            // 19 at 90 / 20 at 270 draw the exit after a lane change toward it (car-verified; the
+            // name EXIT_RIGHT_COMBI_2 of 20 is misleading); otherwise the plain exit 17 / 18.
+            if (laneChange(lanes, side)) return side > 0 ? new int[] {19, 90} : new int[] {20, 270};
             return side > 0 ? new int[] {17, 90} : new int[] {18, 270};
         }
         if (t == 13 || t == 14 || t >= 51 && t <= 53) {
-            // FORK_2 25 draws only at 90 and FORK_3 26 draws nothing (car sweep): a left keep is
-            // EXIT_LEFT 18 at 270, a right keep FORK_2 25 at 90. A measured straight is no keep.
+            // A keep is a Y split: FORK_2 25 with the route on the left (270) or right (90) branch,
+            // car-verified. FORK_3 26 draws nothing. A measured straight is no keep.
             if (m.hasExit && a == 0) return null;
             int side = t == 13 || t == 52 ? -1 : t == 14 || t == 53 ? 1
                     : a < 0 || a == 180 ? 0 : a > 180 ? -1 : 1;
             if (side == 0) return null;
             if (m.hasExit && (side < 0 && a > 0 && a < 180 || side > 0 && a > 180)) return null;
-            return side < 0 ? new int[] {18, 270} : new int[] {25, 90};
+            return new int[] {25, side < 0 ? 270 : 90};
         }
         if (t == 3 || t == 5) {
             if (a > 0) return null;

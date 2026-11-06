@@ -25,13 +25,26 @@ public final class CpGuidanceTest {
         CpTurns.Maneuver leftTraffic = m(4, null); leftTraffic.side = 1;
         require(CpGuidance.stock(leftTraffic)[1] == 90, "LHT U loop");
         mapping(22, null, 18, 270); mapping(23, null, 17, 90);
+        CpLaneDecoder.Info keepLeft = new CpLaneDecoder.Info(1, 0, new CpLaneDecoder.Lane[] {
+            new CpLaneDecoder.Lane(0, 2, new int[] {0}, 0), new CpLaneDecoder.Lane(1, 0, new int[] {0, 45}, 1000)}, 0);
+        int[] change = CpGuidance.stock(m(23, null), keepLeft);
+        require(change[0] == 19 && change[1] == 90, "right exit after a lane change");
+        change = CpGuidance.stock(m(22, null), new CpLaneDecoder.Info(1, 0, new CpLaneDecoder.Lane[] {
+            new CpLaneDecoder.Lane(0, 0, new int[] {-45, 0}, 1000), new CpLaneDecoder.Lane(1, 2, new int[] {0}, 0)}, 0));
+        require(change[0] == 20 && change[1] == 270, "left exit after a lane change");
+        CpLaneDecoder.Info onExitSide = new CpLaneDecoder.Info(1, 0, new CpLaneDecoder.Lane[] {
+            new CpLaneDecoder.Lane(0, 0, new int[] {0}, 1000), new CpLaneDecoder.Lane(1, 2, new int[] {45}, 45)}, 0);
+        require(CpGuidance.stock(m(23, null), onExitSide)[0] == 17, "already in the exit lane");
+        require(CpGuidance.stock(m(23, null), new CpLaneDecoder.Info(1, 0, new CpLaneDecoder.Lane[] {
+            new CpLaneDecoder.Lane(0, 0, new int[] {0}, 1000), new CpLaneDecoder.Lane(1, 0, new int[] {45}, 1000)}, 0))[0] == 17,
+            "no recommendation, plain exit");
         mapping(8, -35, 18, 270); mapping(9, 40, 17, 90);
         CpTurns.Maneuver combined = m(23, 45); combined.angles = new int[] {90};
-        require(CpGuidance.stock(combined)[0] == 17 && CpGuidance.stock(combined)[1] == 90, "right exit with another road, never 19");
+        require(CpGuidance.stock(combined)[0] == 17 && CpGuidance.stock(combined)[1] == 90, "right exit with another road");
         combined.type = 22; combined.exit = -45; combined.angles = new int[] {-90};
-        require(CpGuidance.stock(combined)[0] == 18 && CpGuidance.stock(combined)[1] == 270, "left exit with another road, never 20");
-        mapping(13, null, 18, 270); mapping(52, null, 18, 270);
-        mapping(14, null, 25, 90); mapping(53, null, 25, 90); mapping(51, 30, 25, 90); mapping(51, -30, 18, 270);
+        require(CpGuidance.stock(combined)[0] == 18 && CpGuidance.stock(combined)[1] == 270, "left exit with another road");
+        mapping(13, null, 25, 270); mapping(52, null, 25, 270);
+        mapping(14, null, 25, 90); mapping(53, null, 25, 90); mapping(51, 30, 25, 90); mapping(51, -30, 25, 270);
         require(CpGuidance.stock(m(14, 0)) == null, "measured straight is no keep");
         require(CpGuidance.stock(m(51, null)) == null, "highway change without side");
         require(CpGuidance.stock(m(51, 0)) == null, "highway change straight"); 
@@ -53,7 +66,7 @@ public final class CpGuidanceTest {
         for (int type = 0; type <= 53; type++) for (int angle = -180; angle <= 180; angle += 15) {
             int[] r = CpGuidance.stock(m(type, angle));
             require(r == null || r[0] != 26 && r[0] != 19 && r[0] != 20 && !(r[0] == 13 && r[1] == 180)
-                    && !(r[0] == 25 && r[1] != 90), "never unverified shapes " + type + "/" + angle);
+                    && !(r[0] == 25 && r[1] != 90 && r[1] != 270), "never unverified shapes " + type + "/" + angle);
         }
         for (int n = 0; n <= 300; n++) {
             int level = CpGuidance.bar(n, 300);

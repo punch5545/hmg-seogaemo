@@ -673,7 +673,8 @@ final class CpTurns {
         }
         if (sample("tn", id + "|" + icon + "|" + u.state + "|" + list[0])) d("turn comp=" + id + " state=" + u.state + " index=" + list[0] + " type=" + x.type + " side=" + x.side + " junction=" + x.junction + " exit=" + x.exit + " -> icon " + icon + " dist=" + dist + " unit=" + unit);
         lastProjection = icon;
-        int[] stock = CpGuidance.approach(u, x) ? CpGuidance.stock(x) : null;
+        CpLaneDecoder.Info shownLanes = u.lanesShown ? laneInfos.get(laneKey(id, u.laneIndex)) : null;
+        int[] stock = CpGuidance.approach(u, x) ? CpGuidance.stock(x, shownLanes) : null;
         if (stock == null) clearApproach();
         else {
             if (approachComponent != null && (!approachComponent.equals(id) || approachIndex != x.index)) clearApproach();
