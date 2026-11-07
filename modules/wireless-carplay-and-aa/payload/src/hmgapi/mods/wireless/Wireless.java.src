@@ -398,6 +398,11 @@ public final class Wireless extends ModEntry {
                     p.setResult(Integer.valueOf(mode));
                 }
             });
+            try {
+                advertiseHotspotBand(mod, app.classLoader);
+            } catch (Throwable t) {
+                mod.error("USB hotspot band", t);
+            }
             MethodHook rename = new MethodHook() {
                 @Override
                 protected void afterHookedMethod(Param p) {
@@ -409,6 +414,36 @@ public final class Wireless extends ModEntry {
             Hooks.findAndHookMethod(NetworkInterface.class, "getDisplayName", rename);
         }
         mod.log("USB hotspot " + UsbHotspot.iface() + " for wireless projection in " + app.processName);
+    }
+
+    /**
+     * GPM's WifiVersionRequest builder: stock sets CHANNELS_5GHZ_ONLY and adds 5745 and 5180 (MHz); the hotspot's
+     * band and frequency go there instead while its interface is up (UsbHotspot.gpmChannelType / gpmFrequency).
+     * Classes by name in GPM's loader: they are not hookpoints, so there is no map point.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void advertiseHotspotBand(final ModContext mod, ClassLoader cl) {
+        String builder = "com.google.android.projection.proto.WifiDiscoveryProtos$WifiVersionRequest$Builder";
+        Hooks.findAndHookMethod(builder, cl, "setSupportedWifiChannelType",
+            "com.google.android.projection.proto.WifiDiscoveryProtos$WifiChannelType", new MethodHook() {
+                @Override
+                protected void beforeHookedMethod(Param p) {
+                    String name = UsbHotspot.gpmChannelType();
+                    if (name == null || p.args[0] == null) return;
+                    p.args[0] = Enum.valueOf(((Enum) p.args[0]).getDeclaringClass(), name);
+                    mod.log("GPM version request: " + name + " " + UsbHotspot.frequency() + " MHz");
+                }
+            });
+        Hooks.findAndHookMethod(builder, cl, "addSupportedWifiChannels", int.class, new MethodHook() {
+            @Override
+            protected void beforeHookedMethod(Param p) {
+                int stock = (Integer) p.args[0];
+                int mhz = UsbHotspot.gpmFrequency(stock);
+                if (mhz == stock) return;
+                if (mhz < 0) p.setResult(p.thisObject);
+                else p.args[0] = Integer.valueOf(mhz);
+            }
+        });
     }
 
     private static volatile boolean apOverrideLogged;

@@ -141,6 +141,13 @@ Normative rules: contract [Peer info](module-runtime-contract.md#peer-info). In 
   no Wi-Fi credentials were sent. The first override is logged once per process (`GPM isWifiApEnabled answered for the
   USB hotspot`) in the module log ring. Same symptom upstream: HMG-Leafia-Plus issue 171
   (`wifiManager.isWifiApEnabled() = false`, `APMode.UNKNOWN`, stuck at "Connecting").
+  GPM's version request (`WirelessExplorer.sendVersionRequestMessage`, stock smali) hard-codes
+  `CHANNELS_5GHZ_ONLY` with 5745 and 5180 MHz (the older protocol path only the type), so a phone would not look for the
+  2.4 GHz hotspot either. While the interface is up, the `WifiVersionRequest$Builder` hooks (by class name in GPM's loader, no
+  map point) set `CHANNELS_24GHZ_ONLY`/`CHANNELS_5GHZ_ONLY` from the published `channel` and replace 5745 by the hotspot's
+  frequency (2437 MHz for channel 6) and drop 5180; a missing or invalid `channel` falls back to 6. `WifiData.setSupportedChannels`
+  (stock 5745/5180) has no reader, so the Wi-Fi info response (SSID, PSK, BSSID, security) needs no change. The
+  HMG-Leafia-Plus r8.2 package does the same in its patched GPM (`aaVersion`: type from the frequency, one frequency).
 - Without a published USB hotspot nothing loads or changes: the stock `wlan0` path is the car-verified one.
 - Root: `info.hotspot_radio` and the built-in client refusal in `apply` (warning in `precheck`).
 

@@ -57,6 +57,21 @@ public final class UsbHotspotTest {
         UsbHotspot.clear();
         check(!UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApMode(1) == 1, "no USB hotspot: stock answers");
         UsbHotspot.use(UsbHotspot.parse(USB));
+        // GPM's version request: the hotspot's band and frequency instead of stock 5 GHz 5745/5180 (channel 36 in USB above).
+        flags(sys, "0x1002\n");
+        check(UsbHotspot.gpmChannelType() == null && UsbHotspot.gpmFrequency(5745) == 5745 && UsbHotspot.gpmFrequency(5180) == 5180, "interface down: stock request");
+        flags(sys, "0x1003\n");
+        check(UsbHotspot.frequency() == 5180 && "CHANNELS_5GHZ_ONLY".equals(UsbHotspot.gpmChannelType()), "channel 36 is 5 GHz");
+        check(UsbHotspot.gpmFrequency(5745) == 5180 && UsbHotspot.gpmFrequency(5180) == -1 && UsbHotspot.gpmFrequency(2412) == 2412, "5 GHz list");
+        UsbHotspot.use(UsbHotspot.parse(USB.replace("channel=36", "channel=6")));
+        check(UsbHotspot.frequency() == 2437 && "CHANNELS_24GHZ_ONLY".equals(UsbHotspot.gpmChannelType()), "channel 6 is 2.4 GHz");
+        check(UsbHotspot.gpmFrequency(5745) == 2437 && UsbHotspot.gpmFrequency(5180) == -1, "2.4 GHz list: one frequency");
+        for (String none : new String[] { USB.replace("channel=36\n", ""), USB.replace("channel=36", "channel="), USB.replace("channel=36", "channel=99"), USB.replace("channel=36", "channel=x") }) {
+            UsbHotspot.use(UsbHotspot.parse(none));
+            check(UsbHotspot.frequency() == 2437, "no usable channel: documented fallback channel 6");
+        }
+        check(UsbHotspot.frequencyMhz(1) == 2412 && UsbHotspot.frequencyMhz(14) == 2484 && UsbHotspot.frequencyMhz(149) == 5745 && UsbHotspot.frequencyMhz(15) == 0, "channel frequencies");
+        UsbHotspot.use(UsbHotspot.parse(USB));
         // The first value of a key wins, as sg_peer_info reads it.
         check(UsbHotspot.parse("radio=usb\nradio=none\n").get("radio").equals("usb"), "first wins");
 
@@ -72,6 +87,6 @@ public final class UsbHotspotTest {
         // A valid snapshot followed by an invalid one leaves nothing behind.
         UsbHotspot.use(UsbHotspot.parse(USB));
         stock(USB.replace("ssid=HMG-Seogaemo-6f1d", "ssid=" + new String(new char[33]).replace('\0', 'x')), "long ssid");
-        System.out.println("ok usb hotspot snapshot, configuration, GPM names and AP state");
+        System.out.println("ok usb hotspot snapshot, configuration, GPM names and AP state and band");
     }
 }
