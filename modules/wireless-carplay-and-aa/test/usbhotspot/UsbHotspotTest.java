@@ -17,7 +17,21 @@ public final class UsbHotspotTest {
         catch (IllegalStateException expected) { }
     }
 
-    public static void main(String[] args) {
+    static void hostapd(java.io.File proc, String pid, String cmdline) throws Exception {
+        java.io.File d = new java.io.File(proc, pid);
+        d.mkdirs();
+        java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(d, "cmdline"));
+        o.write(cmdline.getBytes("UTF-8"));
+        o.close();
+    }
+
+    static void flags(java.io.File sys, String text) throws Exception {
+        java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(new java.io.File(sys, "rtwlan0"), "flags"));
+        o.write(text.getBytes("UTF-8"));
+        o.close();
+    }
+
+    public static void main(String[] args) throws Exception {
         // No peer file on the host: the stock hotspot, nothing thrown.
         check(UsbHotspot.snapshot().startsWith("stock") && !UsbHotspot.active(), "missing file");
 
@@ -33,6 +47,57 @@ public final class UsbHotspotTest {
         check("wlan0".equals(UsbHotspot.gpmName("rtwlan0")), "adapter as wlan0");
         check("wlan0-builtin".equals(UsbHotspot.gpmName("wlan0")), "built-in renamed");
         check("lo".equals(UsbHotspot.gpmName("lo")) && UsbHotspot.gpmName(null) == null, "others unchanged");
+        // GPM's start check (isWifiApEnabled && getWifiApMode == 2) passes only while the adapter's interface is up.
+        java.io.File sys = java.io.File.createTempFile("sysnet", "");
+        sys.delete();
+        new java.io.File(sys, "rtwlan0").mkdirs();
+        UsbHotspot.sysNet = sys;
+        java.io.File proc = java.io.File.createTempFile("proc", "");
+        proc.delete();
+        new java.io.File(proc, "self").mkdirs();
+        UsbHotspot.procRoot = proc;
+        hostapd(proc, "100", "/data/nemesis/backup/hmg-seogaemo/modules/wifi/bin/hostapd\u0000usb-hostapd.conf\u0000");
+        check(!UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApMode(0) == 0, "no flags file: stock answers");
+        flags(sys, "0x1002\n");
+        check(!UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false), "interface down");
+        flags(sys, "0x1003\n");
+        check(UsbHotspot.apUp() && UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApEnabled(true), "interface up");
+        check(UsbHotspot.gpmApMode(0) == 2 && UsbHotspot.gpmApMode(1) == 2 && UsbHotspot.gpmApMode(2) == 2, "mode 2 while up");
+        flags(sys, "garbage");
+        check(!UsbHotspot.apUp(), "unparsable flags");
+        flags(sys, "0x1003\n");
+        check(UsbHotspot.gpmApEnabled(true) && UsbHotspot.gpmApEnabled(false), "up again after garbage");
+        // The interface is up before hostapd starts, and stays up if it dies: not serving without the daemon.
+        new java.io.File(proc, "100/cmdline").delete();
+        hostapd(proc, "101", "/system/bin/dnsmasq\u0000-k\u0000--interface=rtwlan0\u0000");
+        hostapd(proc, "102", "/system/bin/hostapd\u0000/data/misc/wifi/hostapd.conf\u0000");
+        check(UsbHotspot.ifaceUp() && !UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApMode(0) == 0, "no hostapd: stock answers");
+        check(UsbHotspot.gpmChannelType() == null && UsbHotspot.gpmFrequency(5745) == 5745, "no hostapd: stock version request");
+        hostapd(proc, "103", "hostapd\u0000/data/nemesis/backup/hmg-seogaemo/modules/wifi/usb-hostapd.conf");
+        check(UsbHotspot.apUp(), "hostapd running (last argument without a trailing NUL)");
+        UsbHotspot.clear();
+        check(!UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApMode(1) == 1, "no USB hotspot: stock answers");
+        UsbHotspot.use(UsbHotspot.parse(USB));
+        // GPM's version request: the hotspot's band and frequency instead of stock 5 GHz 5745/5180 (channel 36 in USB above).
+        flags(sys, "0x1002\n");
+        check(UsbHotspot.gpmChannelType() == null && UsbHotspot.gpmFrequency(5745) == 5745 && UsbHotspot.gpmFrequency(5180) == 5180, "interface down: stock request");
+        flags(sys, "0x1003\n");
+        check(UsbHotspot.frequency() == 5180 && "CHANNELS_5GHZ_ONLY".equals(UsbHotspot.gpmChannelType()), "channel 36 is 5 GHz");
+        int[] stockList = { 5745, 5180 };
+        check(UsbHotspot.gpmChannels(stockList).length == 1 && UsbHotspot.gpmChannels(stockList)[0] == 5180, "WifiData channels: the hotspot's");
+        flags(sys, "0x1002\n");
+        check(UsbHotspot.gpmChannels(stockList) == stockList, "WifiData channels: stock while down");
+        flags(sys, "0x1003\n");
+        check(UsbHotspot.gpmFrequency(5745) == 5180 && UsbHotspot.gpmFrequency(5180) == -1 && UsbHotspot.gpmFrequency(2412) == 2412, "5 GHz list");
+        UsbHotspot.use(UsbHotspot.parse(USB.replace("channel=36", "channel=6")));
+        check(UsbHotspot.frequency() == 2437 && "CHANNELS_24GHZ_ONLY".equals(UsbHotspot.gpmChannelType()), "channel 6 is 2.4 GHz");
+        check(UsbHotspot.gpmFrequency(5745) == 2437 && UsbHotspot.gpmFrequency(5180) == -1, "2.4 GHz list: one frequency");
+        for (String none : new String[] { USB.replace("channel=36\n", ""), USB.replace("channel=36", "channel="), USB.replace("channel=36", "channel=99"), USB.replace("channel=36", "channel=x") }) {
+            UsbHotspot.use(UsbHotspot.parse(none));
+            check(UsbHotspot.frequency() == 2437, "no usable channel: documented fallback channel 6");
+        }
+        check(UsbHotspot.frequencyMhz(1) == 2412 && UsbHotspot.frequencyMhz(14) == 2484 && UsbHotspot.frequencyMhz(149) == 5745 && UsbHotspot.frequencyMhz(15) == 0, "channel frequencies");
+        UsbHotspot.use(UsbHotspot.parse(USB));
         // The first value of a key wins, as sg_peer_info reads it.
         check(UsbHotspot.parse("radio=usb\nradio=none\n").get("radio").equals("usb"), "first wins");
 
@@ -48,6 +113,6 @@ public final class UsbHotspotTest {
         // A valid snapshot followed by an invalid one leaves nothing behind.
         UsbHotspot.use(UsbHotspot.parse(USB));
         stock(USB.replace("ssid=HMG-Seogaemo-6f1d", "ssid=" + new String(new char[33]).replace('\0', 'x')), "long ssid");
-        System.out.println("ok usb hotspot snapshot, configuration and GPM names");
+        System.out.println("ok usb hotspot snapshot, configuration, GPM names and AP state and band");
     }
 }

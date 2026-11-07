@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.hardware.usb.UsbDevice;
+import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 
 import hmgapi.hook.Car;
@@ -42,6 +43,7 @@ import java.net.NetworkInterface;
 public final class Wireless extends ModEntry {
     static final String BTSETTINGS = "com.android.btsettings";
     static final String GPM = "com.google.android.projection.sink";
+    static final String PHONE_PROJECTION = "com.daudio.app.phoneprojection";
     static final String GAL_SERVICE = "com.google.android.projection.service.GalReceiverService";
     static final int USB_CLASS_MASS_STORAGE = 8, USB_CLASS_HUB = 9;
     static final String HELPER = "btsettings.projection_helper";
@@ -79,7 +81,8 @@ public final class Wireless extends ModEntry {
     @Override
     public void appLoaded(final ModContext mod, LoadedApp app) {
         String pkg = app.packageName;
-        if (!NAVIGATION.equals(pkg) && !IAP2.equals(pkg) && !GPM.equals(pkg) && !BTSETTINGS.equals(pkg) && !DIPO.equals(pkg)) return;
+        if (!NAVIGATION.equals(pkg) && !IAP2.equals(pkg) && !GPM.equals(pkg) && !BTSETTINGS.equals(pkg) && !DIPO.equals(pkg)
+                && !PHONE_PROJECTION.equals(pkg)) return;
         WirelessSupport.beginRuntime(app);
         if (NAVIGATION.equals(pkg)) loadPart("navigation", "navigation", mod, app);
         if (IAP2.equals(pkg)) {
@@ -91,6 +94,7 @@ public final class Wireless extends ModEntry {
             loadPart("gpm_tbt", "gpm", mod, app);
             if (UsbHotspot.active()) loadPart("usb_hotspot", null, mod, app);
         }
+        if (PHONE_PROJECTION.equals(pkg) && UsbHotspot.active()) loadPart("usb_hotspot", null, mod, app);
         if (BTSETTINGS.equals(pkg)) loadPart("btsettings", "btsettings", mod, app);
         if (DIPO.equals(pkg)) loadPart("dipo", "dipo", mod, app);
     }
@@ -362,9 +366,15 @@ public final class Wireless extends ModEntry {
      * map points. The iAP2 server and GPM read the hotspot credentials from
      * WifiManager.getWifiApConfiguration(): they get the published SSID and passphrase as WPA2-PSK.
      * GPM's host locator takes the interface named "wlan0" (host IP, BSSID from its MAC, AA port 40515):
-     * in GPM only, the USB interface is called "wlan0" and a real wlan0 another name.
+     * in GPM only, the USB interface is called "wlan0" and a real wlan0 another name. GPM's start request also
+     * wants isWifiApEnabled() and getWifiApMode() == 2 (else it answers the phone STATUS_WIFI_DISABLED), and so does
+     * PhoneProjection's wireless service (a/f.getWiFiApMode: mode 2 "CONNECTIVITY" before it starts a wireless
+     * connection; else APMode.UNKNOWN and nothing starts): in those two apps both report the adapter's hotspot while it
+     * is serving (UsbHotspot.apUp). PhoneProjection also turns the stock hotspot off and on around a connection
+     * (a/f.l and a/f.k, setWifiApEnabledForConnectivity): there it is a no-op while the adapter's hotspot serves.
      */
     private void usbHotspot(final ModContext mod, LoadedApp app) {
+        final String proc = app.processName;
         Hooks.findAndHookMethod(WifiManager.class, "getWifiApConfiguration", new MethodHook() {
             @Override
             protected void afterHookedMethod(Param p) {
@@ -375,7 +385,48 @@ public final class Wireless extends ModEntry {
                 }
             }
         });
+        if (GPM.equals(app.packageName) || PHONE_PROJECTION.equals(app.packageName)) {
+            Hooks.findAndHookMethod(WifiManager.class, "isWifiApEnabled", new MethodHook() {
+                @Override
+                protected void afterHookedMethod(Param p) {
+                    boolean real = Boolean.TRUE.equals(p.getResult());
+                    if (UsbHotspot.gpmApEnabled(real) == real) return;
+                    noteApOverride(mod, proc, "isWifiApEnabled");
+                    p.setResult(Boolean.TRUE);
+                }
+            });
+            Hooks.findAndHookMethod(WifiManager.class, "getWifiApMode", new MethodHook() {
+                @Override
+                protected void afterHookedMethod(Param p) {
+                    Object real = p.getResult();
+                    int mode = UsbHotspot.gpmApMode(real instanceof Integer ? (Integer) real : 0);
+                    if (real instanceof Integer && (Integer) real == mode) return;
+                    noteApOverride(mod, proc, "getWifiApMode");
+                    p.setResult(Integer.valueOf(mode));
+                }
+            });
+        }
+        if (PHONE_PROJECTION.equals(app.packageName)) {
+            try {
+                Hooks.findAndHookMethod(WifiManager.class, "setWifiApEnabledForConnectivity", WifiConfiguration.class, boolean.class,
+                    new MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(Param p) {
+                            if (!UsbHotspot.apUp()) return;
+                            mod.log("stock hotspot " + p.args[1] + " skipped, the USB hotspot serves");
+                            p.setResult(Boolean.TRUE);
+                        }
+                    });
+            } catch (Throwable t) {
+                mod.error("USB hotspot stock switch", t);
+            }
+        }
         if (GPM.equals(app.packageName)) {
+            try {
+                advertiseHotspotBand(mod, app.classLoader);
+            } catch (Throwable t) {
+                mod.error("USB hotspot band", t);
+            }
             MethodHook rename = new MethodHook() {
                 @Override
                 protected void afterHookedMethod(Param p) {
@@ -387,6 +438,56 @@ public final class Wireless extends ModEntry {
             Hooks.findAndHookMethod(NetworkInterface.class, "getDisplayName", rename);
         }
         mod.log("USB hotspot " + UsbHotspot.iface() + " for wireless projection in " + app.processName);
+    }
+
+    /**
+     * GPM's WifiVersionRequest builder: stock sets CHANNELS_5GHZ_ONLY and adds 5745 and 5180 (MHz); the hotspot's
+     * band and frequency go there instead while its interface is up (UsbHotspot.gpmChannelType / gpmFrequency).
+     * The same list in WifiData.setSupportedChannels, which CarWifiStub reads for the CarWifiCredentials.
+     * Classes by name in GPM's loader: they are not hookpoints, so there is no map point.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void advertiseHotspotBand(final ModContext mod, ClassLoader cl) {
+        String builder = "com.google.android.projection.proto.WifiDiscoveryProtos$WifiVersionRequest$Builder";
+        Hooks.findAndHookMethod(builder, cl, "setSupportedWifiChannelType",
+            "com.google.android.projection.proto.WifiDiscoveryProtos$WifiChannelType", new MethodHook() {
+                @Override
+                protected void beforeHookedMethod(Param p) {
+                    String name = UsbHotspot.gpmChannelType();
+                    if (name == null || p.args[0] == null) return;
+                    p.args[0] = Enum.valueOf(((Enum) p.args[0]).getDeclaringClass(), name);
+                    mod.log("GPM version request: " + name + " " + UsbHotspot.frequency() + " MHz");
+                }
+            });
+        Hooks.findAndHookMethod("com.google.android.projection.sink.wireless.WifiData", cl, "setSupportedChannels",
+            int[].class, new MethodHook() {
+                @Override
+                protected void beforeHookedMethod(Param p) {
+                    int[] stock = (int[]) p.args[0];
+                    int[] mine = UsbHotspot.gpmChannels(stock);
+                    if (mine != stock) p.args[0] = mine;
+                }
+            });
+        Hooks.findAndHookMethod(builder, cl, "addSupportedWifiChannels", int.class, new MethodHook() {
+            @Override
+            protected void beforeHookedMethod(Param p) {
+                int stock = (Integer) p.args[0];
+                int mhz = UsbHotspot.gpmFrequency(stock);
+                if (mhz == stock) return;
+                if (mhz < 0) p.setResult(p.thisObject);
+                else p.args[0] = Integer.valueOf(mhz);
+            }
+        });
+    }
+
+    private static final java.util.Set<String> AP_OVERRIDE_LOGGED = new java.util.HashSet<String>();
+
+    /** Evidence for a problem report: the first time each app is told the adapter's hotspot is the enabled one. */
+    private static void noteApOverride(ModContext mod, String app, String call) {
+        synchronized (AP_OVERRIDE_LOGGED) {
+            if (!AP_OVERRIDE_LOGGED.add(app)) return;
+        }
+        mod.log(app + " " + call + " answered for the USB hotspot " + UsbHotspot.iface());
     }
 
     private void usbDrives(final ModContext mod, LoadedApp app) {

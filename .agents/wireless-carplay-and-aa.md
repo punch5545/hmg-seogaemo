@@ -22,7 +22,7 @@ Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902`, o
 | `feature_flags` generates CarPlay/AA wireless permission XMLs and comments their removal lines; `patches.json` comments the hotspot removal line. | `sg_file_put` only for absent XMLs and `sg_file_replace_line` for exact active lines. Missing removal lines are no-ops, as in the upstream engine; duplicate lines are refused. An existing XML must declare the expected feature. We also add hotspot XML if absent on this KOR build. |
 | `persist.ium.support=carplay`; bridge `persist.sys.iap2.wifi=t`, `persist.iap2.iden.wireless=t`. | Same values via `sg_prop_set`; ledger restores live values and `/data/property` existence/content. |
 | `Wireless`, `AaTurns`, `dipo/{Dipo,Bridge,CpTurns}` Java hooks DiPO, iAP2, GPM, navigation, USB startService, BtSettings. | Copied with fixed upstream default settings. Korean BtSettings menu hook is a no-op; upstream changes only US/CAN. |
-| Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | The core hook host owns wrapper, loader and engine JAR (ledger owner `core-hook`); this module registers its mod jar (`hmgapi.mods.wireless.Wireless`, five apps) with `sg_hook_register`, ships a world-readable parts copy, and the core selects and publishes the verified map. Car-verified 2026-11-07: migration from the self-installed wrapper, wireless CarPlay, status `on`. |
+| Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | The core hook host owns wrapper, loader and engine JAR (ledger owner `core-hook`); this module registers its mod jar (`hmgapi.mods.wireless.Wireless`, six apps) with `sg_hook_register`, ships a world-readable parts copy, and the core selects and publishes the verified map. Car-verified 2026-11-07: migration from the self-installed wrapper, wireless CarPlay, status `on`. |
 | Native `MemRecipe` on `libautoreceiver_infobank.so`, `libCarPlayCore.so`, `libCarPlayAudio.so`, `libCarPlayUtils.so`. | Same 5 recipes applied **in memory** after exact byte-region verification. Stock libraries stay untouched. No `lpatch` binary or rebuilt OEM APK/odex. KOR CarPlayCore hash `ef49c09b7ab5eb72298f9973443b66b3` is listed as Wi-Fi native; Utils hash `e85385d70194efe82cc8a6d0f66f5115` as converter native. Other builds may reject recipes. |
 | `libleafiaaac.so` for AAC/Opus. | Rebuilt from upstream `leafiaaac.c` with local clang/lld and installed through the package API. No manufacturer binary is bundled. |
 | Generic settings UI, HMG-API `hmgapid`, mod engine, APK patch transaction, network keeper. | Dropped. The upstream mod declares no network rule; this car's pre-install firewall report is permissive. No Wi-Fi client property or feature is requested. |
@@ -107,8 +107,8 @@ Not part of the firmware transaction but removed at revert through the package A
 (`owns_generated_dirs`, advisory, never a conflict): the hook's own
 `app_hmg-seogaemo-wireless-runtime` diagnostic directory and its
 `app_hmg-seogaemo-wireless-dex` Dalvik output directory in each of `com.daudio.app.dipo`,
-`com.tcc.iap2server`, `com.google.android.projection.sink`, `com.mnsoft.navi` and
-`com.android.btsettings`. Running apps rewrite them until the next restart, so the revert
+`com.tcc.iap2server`, `com.google.android.projection.sink`, `com.mnsoft.navi`,
+`com.android.btsettings` and `com.daudio.app.phoneprojection`. Running apps rewrite them until the next restart, so the revert
 records `restart-cleanup/wireless-carplay-and-aa` and boot reconcile finishes the removal. If the app_process swap has no
 ownership record (stock backup or hook `.so`/`.jar` present, or an `app_process`
 other than the declared stock MD5 `33f798115689d1859e8d2159dc88e7dc` seen on this car),
@@ -386,7 +386,8 @@ world-writable directory is needed. These are generated diagnostics, never stock
 baselines or an authorization channel. Root prepares the private runtime parent
 through the package API before enabling the loader. Root reads only the fixed projection app
 packages: `com.daudio.app.dipo`, `com.tcc.iap2server`,
-`com.google.android.projection.sink`, `com.mnsoft.navi`, `com.android.btsettings`.
+`com.google.android.projection.sink`, `com.mnsoft.navi`, `com.android.btsettings`,
+`com.daudio.app.phoneprojection` (no parts of its own; it only loads `usb_hotspot` with a USB hotspot).
 
 Each process writes `p-<pid>-<start_ticks>.txt` atomically via `.txt.tmp`.
 UTF-8 `key=value` lines, first `=` is the separator; keys `[a-zA-Z0-9_.-]+`,
@@ -502,7 +503,7 @@ KitKat libcore lstat for UID/type); it never executes record contents. Expected
 app UID comes from the fixed package's data directory, and proc UID, cmdline,
 record process and start ticks must agree. Only the package main process or its
 colon subprocesses qualify. Every current record is considered, so a ready
-record cannot hide another current failure. Zygote plus all five packages and
+record cannot hide another current failure. Zygote plus all six packages and
 their relevant parts/native recipes are required for `on`. Missing evidence is
 `unknown`; an apply receipt uses `pending-restart` for missing evidence so the
 dispatcher can retain enabled intent. Old loaded hashes mean `pending-restart`.

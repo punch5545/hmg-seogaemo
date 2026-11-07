@@ -134,6 +134,32 @@ Normative rules: contract [Peer info](module-runtime-contract.md#peer-info). In 
   In GPM only, `NetworkInterface.getName()`/`getDisplayName()` report the adapter as `wlan0` and a real `wlan0` as
   `wlan0-builtin`, so GPM's host locator (first site-local IPv4 interface named `wlan0`; BSSID from its MAC) picks
   `rtwlan0`/`192.168.50.1`. A failed part shows in the module status; it never disables other parts.
+  Also in GPM only: `WifiManager.isWifiApEnabled()` and `getWifiApMode()` answer true / 2 while the hotspot is serving:
+  `/sys/class/net/<iface>` has `IFF_UP` and a process has the argument `usb-hostapd.conf` (the module brings `rtwlan0` up
+  before it starts hostapd, so `IFF_UP` alone is true too early; hostapd runs as `wifi` in its run directory, hence the
+  relative argument). Every hook that follows uses the same check.
+  The same two answers in PhoneProjection (`com.daudio.app.phoneprojection`, registered as the sixth app of the module): its
+  wireless service decides on `a/f.getWiFiApMode()` = `isWifiApEnabled() ? getWifiApMode() : UNKNOWN` and starts a wireless
+  connection only for mode 2 ("CONNECTIVITY"; mode 1 "HOTSPOT" is the other accepted one), silently doing nothing otherwise
+  (stock smali `wireless/a/f.j` and `b`; upstream log "getWiFiApMode ... APMode.UNKNOWN"). It also cycles the stock AP around a
+  connection (`a/f.l` turn off, `a/f.k` turn on = `setWifiApEnabledForConnectivity(config, false/true)`); that call is a
+  no-op returning true there while the USB hotspot serves (`turnOnWiFi` is already a no-op once the AP reads as enabled).
+  `renewWirelessPasskey` and `isNewWirelessKey` read `getWifiApConfiguration`, which returns the fixed USB credentials, so the key
+  never looks new. PhoneProjection gets no map point and no other hook. GPM's start request (`WirelessExplorer.handleStartRequest`, stock smali) calls `isWifiApEnable()`
+  = `isWifiApEnabled() && getWifiApMode() == 2` first and answers the phone `STATUS_WIFI_DISABLED` otherwise, so with the
+  stock AP off (the tester car has no built-in chip) the phone showed the Android Auto popup (0.1.44) and never went on:
+  no Wi-Fi credentials were sent. The first override is logged once per process (`GPM isWifiApEnabled answered for the
+  USB hotspot`) in the module log ring. Same symptom upstream: HMG-Leafia-Plus issue 171
+  (`wifiManager.isWifiApEnabled() = false`, `APMode.UNKNOWN`, stuck at "Connecting").
+  GPM's version request (`WirelessExplorer.sendVersionRequestMessage`, stock smali) hard-codes
+  `CHANNELS_5GHZ_ONLY` with 5745 and 5180 MHz (the older protocol path only the type), so a phone would not look for the
+  2.4 GHz hotspot either. While the interface is up, the `WifiVersionRequest$Builder` hooks (by class name in GPM's loader, no
+  map point) set `CHANNELS_24GHZ_ONLY`/`CHANNELS_5GHZ_ONLY` from the published `channel` and replace 5745 by the hotspot's
+  frequency (2437 MHz for channel 6) and drop 5180; a missing or invalid `channel` falls back to 6. `WifiData.setSupportedChannels`
+  (stock 5745/5180) is read by `CarWifiStub`, which builds the `CarWifiCredentials` for the phone over the projection
+  channel, so that hook returns `{hotspot frequency}` too. The BT Wi-Fi info response (SSID, PSK, BSSID, security) carries
+  no channel list. The
+  HMG-Leafia-Plus r8.2 package does the same in its patched GPM (`aaVersion`: type from the frequency, one frequency).
 - Without a published USB hotspot nothing loads or changes: the stock `wlan0` path is the car-verified one.
 - Root: `info.hotspot_radio` and the built-in client refusal in `apply` (warning in `precheck`).
 
@@ -141,7 +167,7 @@ Normative rules: contract [Peer info](module-runtime-contract.md#peer-info). In 
 
 1. The whole USB path: hostapd/dnsmasq on `rtwlan0`, the iPhone joining with the credentials iAP2 sends, and whether
    CarPlay Bonjour/AirPlay (native) binds or advertises on `rtwlan0`.
-2. Android Auto reaching `192.168.50.1:40515` (GPM logs `findHostInterfaceAndIp`), and the phone accepting the adapter's
+2. Android Auto getting past the popup now that GPM sees an enabled hotspot (needs a car run), then reaching `192.168.50.1:40515` (GPM logs `findHostInterfaceAndIp`), and the phone accepting the adapter's
    MAC as BSSID.
 3. Whether the car firewall (`iptrules`) still drops anything on `rtwlan0` beyond the `wifi` module's INPUT accept rule.
 4. That Dalvik hooks on `NetworkInterface` getters and `WifiManager.getWifiApConfiguration` take effect in those apps

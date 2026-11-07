@@ -42,7 +42,8 @@ public final class RuntimeConsumerTest {
         root = new File(args[0]); runtime = path("state/runtime/wireless-carplay-and-aa"); runtime.mkdirs();
         put(path("proc/sys/kernel/random/boot_id"), "boot-two\n"); put(path("system/framework/hmg-seogaemo-hook.jar"), "jar-A");
         put(path("system/lib/libhmg_seogaemo_hook.so"), "loader-A"); expect("unknown", "zygote");
-        for (int i = -1; i < 5; i++) put(record(i, 101 + i), contents(i, 101 + i)); expect("on", "ready");
+        for (int i = -1; i < HmgSeogaemoProjectionRuntime.PACKAGES.length; i++) put(record(i, 101 + i), contents(i, 101 + i)); expect("on", "ready");
+        File phone = record(5, 106); String phoneReady = contents(5, 106); phone.delete(); expect("unknown", "phoneprojection"); put(phone, phoneReady); expect("on", "ready");
         File dipo = record(0, 101); String ready = contents(0, 101);
         put(dipo, ready.replace("boot-two", "boot-one")); expect("unknown", "dipo");
         put(dipo, ready); put(path("proc/101/stat"), "101 (old) S 1\n"); expect("unknown", "dipo");

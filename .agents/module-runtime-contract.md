@@ -552,7 +552,7 @@ never by a module directly and never with a caller-supplied path:
 - `owns_generated_dirs=<csv>` in `module.properties` declares exact
   `/data/data/<package>/app_hmg-seogaemo-<name>` directories that a loaded hook creates
   with `Context.getDir` (the wireless module declares the `-wireless-runtime` and the
-  `-wireless-dex` directory of its five fixed packages; for `com.daudio.app.dipo` the dex
+  `-wireless-dex` directory of its six fixed packages; for `com.daudio.app.dipo` the dex
   files are additionally tracked by `sg_dex_cache_track`). The generator rejects anything
   else. `sg_generated_dirs_remove` is advisory and never fails a revert, restore or
   uninstall: hook processes keep writing until the head unit restarts, and every stock byte

@@ -10,7 +10,7 @@ RESTART_DETAIL='restart unit to start wireless CarPlay and Android Auto'
 # The hooks load through the core hook host; apps read the world-readable copy of the jar.
 PARTS=/system/framework/hmg-seogaemo-wireless-parts.jar
 ENTRY=hmgapi.mods.wireless.Wireless
-PROCESSES='com.mnsoft.navi com.tcc.iap2server com.google.android.projection.sink com.android.btsettings com.daudio.app.dipo'
+PROCESSES='com.mnsoft.navi com.tcc.iap2server com.google.android.projection.sink com.android.btsettings com.daudio.app.dipo com.daudio.app.phoneprojection'
 
 path() { sg_print "${SG_WIRELESS_TEST_ROOT:-}$1"; }
 exists() { [ -f "$(path "$1")" ]; }
