@@ -13,7 +13,7 @@ import time
 import zipfile
 
 from package import DIST, ROOT, HOST_SHELL, apk_version, verify
-from version import read_version
+from version import read_label, read_version
 from testlib import car_env, SHELL, host_shell_script
 
 
@@ -326,7 +326,7 @@ def run():
         with tempfile.NamedTemporaryFile(suffix=".apk") as temp:
             temp.write(package.read("app/hmg-seogaemo.apk"))
             temp.flush()
-            assert apk_version(Path(temp.name), args.aapt) == (version, code)
+            assert apk_version(Path(temp.name), args.aapt) == (read_label(ROOT / "VERSION")[0], code)
         # Exercise the fixed updater transaction against a fake root tree.
         with tempfile.TemporaryDirectory() as fake_temp:
             fake_root = Path(fake_temp).resolve()
@@ -360,7 +360,7 @@ def run():
 [ "$ANDROID_DATA" = "$SG_STATE_FOR_TEST/core/vm" ] && [ -d "$ANDROID_DATA/dalvik-cache" ] || exit 9
 case "$3" in
   copy) mkdir "$5"; cp "$4"/hmg-seogaemo-* "$5/"; cp -R "$4/payload" "$5/";;
-  verify) echo 0.1.1;;
+  verify) echo "$5" > "$SG_STATE_FOR_TEST/verify-installed"; echo 0.1.1;;
   extract) mkdir -p "$6/app" "$6/bin" "$6/svc"; cp "$4/payload/VERSION" "$6/VERSION"; cp "$4/payload/modules.graph" "$6/modules.graph"; cp "$4/payload/modules.lines" "$6/modules.lines"; cp "$4/payload/modules.list" "$6/modules.list"; cp "$4/payload/app/hmg-seogaemo.apk" "$6/app/hmg-seogaemo.apk"; echo '#!/bin/sh' > "$6/bin/install-apk.sh"; echo 'exit 0' >> "$6/bin/install-apk.sh"; echo '#!/bin/sh' > "$6/bin/hmg-seogaemo-root"; echo 'exit 0' >> "$6/bin/hmg-seogaemo-root"; echo '#!/bin/sh' > "$6/svc/reconcile.sh"; echo 'exit 0' >> "$6/svc/reconcile.sh"; cp "$4/payload/files.md5" "$6/files.md5";;
   switch) python3 -c 'import os,sys; os.replace(sys.argv[1],sys.argv[2])' "$4" "$5";;
 esac
@@ -371,6 +371,9 @@ esac
             env = dict(os.environ, PATH=f"{fake_bin}:{os.environ['PATH']}", SG_STATE_FOR_TEST=str(state))
             updater_cmd = [SHELL, str(package_root / "core/update.sh")]
             for verb in ("stage", "apply", "rollback"):
+                if verb == 'stage':
+                    # a beta USB package compares as older than the release of its version
+                    (package_root / "PRERELEASE").write_text("beta.2\n")
                 if verb == 'apply':
                     health = state / 'update/versions/0.1.1/svc/reconcile.sh'
                     health.write_text('#!/bin/sh\n[ "$HMG_SEOGAEMO_UPDATE_HEALTH" = 1 ] && '
@@ -389,6 +392,9 @@ esac
                     (projection / 'changes').unlink()
                 result = subprocess.run(updater_cmd + [verb], env=env, capture_output=True, text=True)
                 assert result.returncode == 0, (verb, result.stdout, result.stderr)
+                if verb == 'stage':
+                    assert (state / "verify-installed").read_text().strip() == version + "-beta.2"
+                    (package_root / "PRERELEASE").unlink()
             assert "package-version=" + version in (package_root / "NEMESIS.data").read_text(), (package_root / "NEMESIS.data").read_text()
             assert (state / "update/journal").read_text().strip() == "phase=rolled-back"
             (state / "update/staged").write_text("0.1.1\n")

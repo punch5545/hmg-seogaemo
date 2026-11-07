@@ -24,9 +24,12 @@ only the NEMESIS package installer.
 
 ## Release pipeline
 
-- `VERSION` (`MAJOR.MINOR.PATCH`) is the only edited version; tag must equal `v$(cat VERSION)`; versions are monotonic.
-  Android `versionName`, 31-bit `versionCode`, NEMESIS `package-version`, module versions and the root
-  `installed-version` file derive from it. `NEMESIS.data` descriptor `version=1.1` is separate. About reads
+- `VERSION` (`MAJOR.MINOR.PATCH`) is the only edited version; tag must equal `v$(tools/version.py --label)`;
+  versions are monotonic. Android `versionName`, 31-bit `versionCode`, NEMESIS `package-version`, module versions
+  and the root `installed-version` file derive from it. A beta adds `PRERELEASE` (`beta.N`): only `versionName`,
+  the tag and the package's `PRERELEASE` file carry `-beta.N`; it publishes as a GitHub prerelease, which
+  `/releases/latest` never returns. The updater treats an installed `X.Y.Z-beta.N` (APK `versionName`, or
+  `core/update.sh` from the USB package's `PRERELEASE` while no OTA build is current) as older than `X.Y.Z`. `NEMESIS.data` descriptor `version=1.1` is separate. About reads
   `PackageInfo.versionName` at runtime.
 - Release assets (`hmg-seogaemo-<v>` prefix except `SHA256SUMS`): NEMESIS package zip, USB zip, OTA zip, APK, `SHA256SUMS`,
   signed JSON manifest + detached signature. Manifest lists APK and three zips with sizes and SHA-256; `SHA256SUMS` also

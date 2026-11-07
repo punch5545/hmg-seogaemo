@@ -55,7 +55,7 @@ again while the module is on):
   `psk=<64 hex>|none`; the app derives the WPA key with PBKDF2 so no passphrase reaches root) and restarts
   `usb-wpa`/`usb-dhcp` with `sg_daemon_restart`. DNS and routing beside the stock connectivity stack are unverified.
 - CarPlay hotspot: SSID `HMG-Seogaemo-<4 hex>` and a 20-hex passphrase from `/proc/sys/kernel/random/uuid`, kept in the
-  module state (`usb-ap`); `hw_mode=a`, channel 36, `country_code=KR`, WPA2-PSK CCMP. Published with
+  module state (`usb-ap`); `hw_mode=g`, 2.4 GHz channel 6 (`ap_channel`; 5 GHz channel 36 made hostapd exit on the tester's RTL8831BU), `country_code=KR`, WPA2-PSK CCMP, `rtwlan0` up with `192.168.50.1/24` before hostapd starts, hostapd run as `wifi` in its own run directory. Published with
   `sg_peer_publish` (contract "Peer info").
 
 ## UI

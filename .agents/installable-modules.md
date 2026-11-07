@@ -314,7 +314,7 @@ where a missing ID disables that part and never crashes the app; the bounded per
 reports every hooking module.
 
 CarPlay on the core host: entry `hmgapi.mods.wireless.Wireless` (zygote record under
-`runtime/wireless-carplay-and-aa`, `boot` points gate) for its five apps; app parts load from a
+`runtime/wireless-carplay-and-aa`, `boot` points gate) for its six apps; app parts load from a
 world-readable copy `/system/framework/hmg-seogaemo-wireless-parts.jar` (apps cannot read the core's root-only
 copy).
 

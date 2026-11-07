@@ -21,8 +21,8 @@ Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902`, o
 | --- | --- |
 | `feature_flags` generates CarPlay/AA wireless permission XMLs and comments their removal lines; `patches.json` comments the hotspot removal line. | `sg_file_put` only for absent XMLs and `sg_file_replace_line` for exact active lines. Missing removal lines are no-ops, as in the upstream engine; duplicate lines are refused. An existing XML must declare the expected feature. We also add hotspot XML if absent on this KOR build. |
 | `persist.ium.support=carplay`; bridge `persist.sys.iap2.wifi=t`, `persist.iap2.iden.wireless=t`. | Same values via `sg_prop_set`; ledger restores live values and `/data/property` existence/content. |
-| `Wireless`, `AaTurns`, `dipo/{Dipo,Bridge,CpTurns}` Java hooks DiPO, iAP2, GPM, navigation, USB startService, BtSettings. | Copied with fixed upstream default settings. Korean BtSettings menu hook is a no-op; upstream changes only US/CAN. |
-| Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | The core hook host owns wrapper, loader and engine JAR (ledger owner `core-hook`); this module registers its mod jar (`hmgapi.mods.wireless.Wireless`, five apps) with `sg_hook_register`, ships a world-readable parts copy, and the core selects and publishes the verified map. Car-verified 2026-11-07: migration from the self-installed wrapper, wireless CarPlay, status `on`. |
+| `Wireless`, `AaTurns`, `dipo/{Dipo,Bridge,CpTurns}` Java hooks DiPO, iAP2, GPM, navigation, USB startService, BtSettings. | Copied with fixed upstream default settings. Upstream changes only US/CAN; ours also covers Korea (see "Phone Projection menu"). |
+| Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | The core hook host owns wrapper, loader and engine JAR (ledger owner `core-hook`); this module registers its mod jar (`hmgapi.mods.wireless.Wireless`, six apps) with `sg_hook_register`, ships a world-readable parts copy, and the core selects and publishes the verified map. Car-verified 2026-11-07: migration from the self-installed wrapper, wireless CarPlay, status `on`. |
 | Native `MemRecipe` on `libautoreceiver_infobank.so`, `libCarPlayCore.so`, `libCarPlayAudio.so`, `libCarPlayUtils.so`. | Same 5 recipes applied **in memory** after exact byte-region verification. Stock libraries stay untouched. No `lpatch` binary or rebuilt OEM APK/odex. KOR CarPlayCore hash `ef49c09b7ab5eb72298f9973443b66b3` is listed as Wi-Fi native; Utils hash `e85385d70194efe82cc8a6d0f66f5115` as converter native. Other builds may reject recipes. |
 | `libleafiaaac.so` for AAC/Opus. | Rebuilt from upstream `leafiaaac.c` with local clang/lld and installed through the package API. No manufacturer binary is bundled. |
 | Generic settings UI, HMG-API `hmgapid`, mod engine, APK patch transaction, network keeper. | Dropped. The upstream mod declares no network rule; this car's pre-install firewall report is permissive. No Wi-Fi client property or feature is requested. |
@@ -107,8 +107,8 @@ Not part of the firmware transaction but removed at revert through the package A
 (`owns_generated_dirs`, advisory, never a conflict): the hook's own
 `app_hmg-seogaemo-wireless-runtime` diagnostic directory and its
 `app_hmg-seogaemo-wireless-dex` Dalvik output directory in each of `com.daudio.app.dipo`,
-`com.tcc.iap2server`, `com.google.android.projection.sink`, `com.mnsoft.navi` and
-`com.android.btsettings`. Running apps rewrite them until the next restart, so the revert
+`com.tcc.iap2server`, `com.google.android.projection.sink`, `com.mnsoft.navi`,
+`com.android.btsettings` and `com.daudio.app.phoneprojection`. Running apps rewrite them until the next restart, so the revert
 records `restart-cleanup/wireless-carplay-and-aa` and boot reconcile finishes the removal. If the app_process swap has no
 ownership record (stock backup or hook `.so`/`.jar` present, or an `app_process`
 other than the declared stock MD5 `33f798115689d1859e8d2159dc88e7dc` seen on this car),
@@ -127,19 +127,65 @@ No stock app APK/odex, manufacturer native library file, `build.prop`, Wi-Fi cli
 
 No direct `cp`, `mv`, `rm`, `setprop`, remount, service restart, or cache deletion occurs in this module root script. The module-local fake in `test/run.sh` checks the module sequence; the shared `tools/test-runtime.py` exercises the real transaction and restore implementation.
 
+## Android Auto turn-by-turn UTF-8 length helper
+
+The `aa-tbt-*` recipes carry a segment function (offset `0x17a`, 32 bytes, same in both stock variants; `r0` = bytes, `r1` = count, returns the count to pack, at most 96, clobbers `r1`-`r3`) that sizes the destination/turn strings packed into the NavigationStatus callbacks. Upstream HMG-API (1.0.2) walked back over trailing continuation bytes even for strings under 96 bytes, so the last Hangul syllable reached the cluster service as its lead byte alone (`우회쀀`, `U퀀` on the cluster/HUD). Now: up to 96 bytes the count is returned unchanged; longer, a character straddling the 96-byte boundary is dropped whole. Source `payload/recipes/aa-utf8-len.s` (assembled with clang, thumbv7) is the 32 bytes in both recipes. `test/aautf8/test.py` (run by `test/run.sh`) runs the recipe bytes and the old bytes in a small Thumb interpreter over every Hangul syllable, ASCII, mixed and 95-98-byte boundary strings and compares with a host model and Python's UTF-8 decoder. The recipes' `patched md5` header comment still names the upstream generation. Not verified on a car: the cluster/HUD display after this change.
+
+## Android Auto lanes
+
+Native (`aa-tbt-*.recipe`, source `payload/recipes/aa-lane-routes.s`, applied by `payload/recipes/apply-aa-lane-routes.py`): on NavigationState (msg 0x8006) the segment parses `steps[0]`; field 3 repeats the lanes, each lane's field 1 repeats the directions (`shape` varint 1, `is_recommended` varint 2). Up to eight lanes and three arrows per lane go into next-turn event 34 as `nn` lanes then `bbaaaaaa` per lane (lowercase hex): `bb` = mask of the arrow slots whose direction is recommended (bit k: slot k; upstream wrote 1, or 2 when any direction was recommended), `aa` = direction classes through the segment table (shape 1 straight 1, 2 slight left 8, 3 slight right 2, 4 left 7, 5 right 3, 6 sharp left 6, 7 sharp right 4, 8 and 9 U-turn 5; the same 1..8 as `CpTurns.laneIcon`; shape 9 used to drop out). A lane with no usable arrow is left out; no lanes sends `""`. The tail of the segment holds the extra code (the arrow store moves there); the segment grew by 28 / 26 bytes.
+
+Java (`AaTurns.sendLanes`, `dipo/CpLaneFrame`): the arrows become the cluster's car-verified lane values exactly as CarPlay lanes do (status 2 bits per slot, component glyph pairs and triples from `CpTurns.LaneGlyphs`, [cluster-lane-arrows.md](cluster-lane-arrows.md)): drawn as the equivalent CarPlay lane through the same `CpLaneFrame.lane(arrows, onRoute, status)` (owner decision 2026-11-07: draw what the phone sends, the same on both projections): a lane with a highlighted direction is a CarPlay status 1 lane (the highlighted arrow white, the other arrows of that lane grey), a lane without one is status 0 (every arrow grey) while another lane of the frame is highlighted, and with no highlight anywhere nothing is flagged (status 1, every arrow white, as CarPlay draws a good lane with highlight 1000). Android Auto never produces blue: it has one recommended bit and no must-use level (CarPlay status 2). Upstream sent the raw lane byte (1 or 2) as the status, which draws only slot 0 and no glyph pairs.
+
+**Root cause of "no lanes on the cluster/HUD" (offline; cluster ageing not yet seen on the car):** the lane frame went out once, when the phone sent a NavigationState, and was never sent again, while the turn and distance go out about every second and CarPlay's `CpTurns.refresh` re-sends its lane frame every ~1 s because the car's own navigation calls the cluster every 0.5-0.75 s and the cluster/HUD age out stale data. The same lanes from the phone were also skipped as duplicates. Now `AaTurns.laneTick` re-sends the frame every 750 ms while the route is live (not while rerouting), the lane distance box (`updateRemainDis`, next-turn distance, as CarPlay, owner decision in [cluster-lane-frame.md](cluster-lane-frame.md) 1b) is sent with it, and lanes that arrive before the active status wait for it. Lanes are cleared (empty frame, box back to 65535/15/15) on empty lanes, end of guidance and focus back to the car's navigation. The HMG Leafia Plus package (third party, reference only) reads the same event-34 string and post-processes the frame in Java (colours of a "recommended-lane" mode); its library patch is ours plus a raw NavigationState hex dump, not another lane reader.
+
+**Which step owns the lanes.** The patched library reads the lanes of `steps[0]` only, the same step whose maneuver and distance the callbacks carry, so the lane box (next-maneuver distance) is always the distance to the lane point. HMG Leafia Plus r8.2 takes the first step *that has lanes* (a later step is possible there) and hides its distance box for lanes of a step after the first. We do not do that: the raw NavigationState is not available in Java (only event 34 and the dump `S `/`P ` text), a later step's lanes would sit under the wrong turn and distance, and a native change is a new code cave in a boot-critical library. Whether the phones we use ever send lanes only on a later step is unknown: the car check is in [backlog.md](backlog.md) (Android Auto guidance stability). If it happens, the least risky change is the recipe (steps loop) with the `test/aalanes` emulation, plus an explicit hidden box for lanes of a later step.
+
+**Stability (`AaTurns.heartbeat`, `beat` every 1 s while a route is live).** Mirrors `CpTurns.refresh`: when the phone has been quiet for 900 ms the last turn goes out again (a car waiting at a light gets no new distance; the cluster and HUD age out stale data), and the HUD turn list is sent again unchanged after 2 s (CarPlay's HUD froze while only the distance moved). Not while rerouting (`RECALC_ROUTE` stays) and not while the car's navigation has the focus (`stop()`; the next turn event from the phone ends that). Guide-lost watchdog: with no library callback of any kind (turn, distance, trip, lanes, dump, status) for `GUIDE_LOST_MS` = 120 s while a route is live, the guidance is cleared exactly like status 2 (turn, trip, destination, HUD, lanes and box) and the heartbeat stops; if the phone speaks again without a new active status (it was only quiet) its next callback brings the route back, while a real status 2 or `end()` is final. 120 s, not r8.2's 60 s: no AA drive logs are in hand to show what the phones send at a standstill, a long red light can exceed 60 s, and the phone's own end status and the connection ending already clear the common cases; the watchdog only covers a phone app that stops without either. The quiet gaps the trace records tell whether to shorten it.
+
+**Alternating turns (not implemented).** r8.2's `LeafiaTurn` arbitrates a legacy feed that alternates between two maneuvers (flip window 10 s, armed after 2 flips, then keeps the farther of the two fresh turns). Our feed is the same library callbacks (`next_turn`, `next_turn_distance`), so alternation could happen if the phone sends both the legacy NavigationNextTurn messages and a NavigationState and they name different maneuvers; the icon, bar and distance would then flip (`meters` resets on every changed maneuver). No log shows it. Arbitration is not ported until a drive does: the farther-turn rule is only right for r8.2's pattern. Developer mode (`persist.hmg_seogaemo.dev` 1) logs the evidence to logcat tag `AATRACE`: every changed maneuver (`turn ev= side= angle= road=`), `flip n` when a turn comes back within 10 s of another, `status n`, `quiet N ms, ended by <callback>` for gaps of 5 s or more, `quiet for N ms, the route is still live` at 30/60/90 s, `guide lost`, and a `state ...` summary every 5 s (call counts, quiet time, longest gap); at most 600 lines per route (plus the same again of status/flip/guide-lost lines), nothing with the toggle off. The `NAVDUMP` line (the library's `S `/`P ` message dump) is logged as before.
+
+Tests: `test/cpturns` (`AaTurnsTest.lanes`: refresh, colours, glyphs, box, wait for status, clearing; `AaTurnsTest.guard`: heartbeat, watchdog, revival, focus on the car, rerouting, trace on/off/bounds), `test/aalanes/test.py` (patch sites and tail equal the assembled source in both recipes; with the python module `unicorn` it runs the real Thumb code on NavigationState messages and checks the event-34 strings). Not verified on a car: lane strip and box with a phone that sends lanes, the refresh interval, the colours.
+
 ## Copied source and AGPL notice
 
 Copied HMG-API paths (destinations relative to this module's `payload/`):
 
-- `mods/wireless-carplay-aa/src/hmgapi/mods/wireless/{Wireless,AaTurns}.java`, `dipo/{Bridge,CpTurns,Dipo}.java` → `src/hmgapi/mods/wireless/` as `.java.src`; `AaTurns` drops an HMG-API-only projection event.
+- `mods/wireless-carplay-aa/src/hmgapi/mods/wireless/{Wireless,AaTurns}.java`, `dipo/{Bridge,CpTurns,Dipo}.java` → `src/hmgapi/mods/wireless/` as `.java.src`; `AaTurns` drops an HMG-API-only projection event and adds stock-format turns (our `AaGuidance`, `ApproachBar`).
 - `core/runtime/java/hmgapi/hook/{Bridge,Hooks,Points,LoadedApp,MethodHook,ModEntry,ModContext,NativePatch,Car,Cluster,AppPartLoader}.java` → `src/hmgapi/hook/` as `.java.src`; four are trimmed, and new `HmgApi.java` replaces the generic loader.
 - `core/runtime/java/hmgapi/engine/MemRecipe.java` → `src/hmgapi/engine/` as `.java.src`, unchanged.
 - `core/loader/loader.c`, `core/zygote/zygote.c`, `core/loader/syslib-stubs.sh` → `native/`, modified for HMG-Seogaemo paths and without `hmgapid` spawning.
 - `mods/wireless-carplay-aa/native/leafiaaac/{leafiaaac.c,build.sh}` → `native/`; output path modified. `data/libleafiaaac.so` is rebuilt from source, not an upstream binary copy.
-- `mods/wireless-carplay-aa/recipes/{aa-tbt-48ee793a,aa-tbt-a0bea1c4,carplay-core-wifi,carplay-audio-formats,carplay-utils-converter}.recipe` → `recipes/` unchanged.
+- `mods/wireless-carplay-aa/recipes/{aa-tbt-48ee793a,aa-tbt-a0bea1c4,carplay-core-wifi,carplay-audio-formats,carplay-utils-converter}.recipe` → `recipes/`; `carplay-*` unchanged, the two `aa-tbt-*` recipes modified (UTF-8 length helper, below).
 - `mods/wireless-carplay-aa/stubs/com/{broadcom,tcc}/...` (six Java compile-time signature stubs and README) → `stubs/` as `.java.src`, unchanged, not in the runtime JAR.
 
 Original headers remain; modified files have a `Modified by HMG-Seogaemo` marker. Root `NOTICE.md` credits HMG-API (VysseCodes), NEMESIS (xwtk), HMG Leafia Plus, and Xposed design lineage. The repository is GNU AGPL-3.0 (`LICENSE`). The core mapper is an independent implementation; `UPSTREAM.md` tracks the HMG-API reference paths.
+
+## Phone Projection menu
+
+Status: implemented, off-car tested only (`test/projectionmenu`); needs the on-car check in `backlog.md`.
+
+- **Stock.** `BluetoothSettings` menu case 8 ("Phone Projection") opens the wireless page
+  (`iP.aQ` -> `wireless.WPPSettingsActivity`) whenever the `carplay_wireless` or `androidauto_wireless`
+  feature exists, which our feature XMLs add. That page has no split-view option and lists only phones
+  registered by PhoneProjection's wireless service, never ours, so on Korea it is effectively empty.
+  With the wireless features absent, Korea (REGION 0) skips the Device Connections branch
+  (US/Canada only) and calls `iP.aj` (verified in the stock `HKMC_BtSettings` smali).
+- **`iP.aj` on this car** (`ih()` true, STEP_OF_SPEC 110): broadcasts `com.daudio.app.phoneprojection.command.launch`
+  with `SSEARCH_TAB=1`; PhoneProjection opens `settings.ui.DeviceConnectionSettings` on the Android tab
+  (`PhoneProjectionSettingsActivity` when `gb()` is true, or when `ih()` is false the activity directly).
+  That is the connection screen where CarPlay/Android Auto is chosen.
+- **Hook.** `Wireless.phoneProjectionMenu` on `open_wireless_page` (`ProjectionMenu.target`): Korea calls
+  `open_other_page` (`iP.aj`) and swallows the wireless page; US/Canada keep Device Connections (else
+  `open_other_page`); other or unknown regions keep the stock choice. Korea does not use
+  `open_device_connections` (`iP.a(ctx,1)`): stock Korea never reaches it and it differs from `aj` when `ih()` is false.
+  Existing points only, all mapped on NEEV KOR. Failure mode is the stock wireless page; nothing outside the hook changes.
+- **Interaction with the CarPlay -> Android Auto switch** (`ProjectionSwitch`, `PpListener`): that listener hangs off
+  the `phoneprojection` system service, not off a screen, so it works with either page. The reachable connection
+  screen is now the Device Connections page, whose Android Auto/CarPlay choice calls the same `connectPP`/`disconnectPP`.
+  Which row a bridged iPhone shows there is not known (the bridge registers no PhoneProjection record).
+- Reference: the community HMG Leafia Plus r8.2 build ships the same behavior as a patched `HKMC_BtSettings`;
+  only behavior was taken, we write nothing to BtSettings.
 
 ## On-car validation and recovery
 
@@ -178,6 +224,35 @@ cleanup and retain recovery material.
 Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches, wireless sessions or head-unit boot recovery; the on-car checks in this section stay required for each new payload.
 
 
+## Switching from wireless CarPlay to Android Auto
+
+Status: implemented, off-car tested only (`test/projectionswitch`); needs the on-car check in `backlog.md`.
+
+- **Cause (stock NEEV KOR code, offline dump).** GPM answers a phone's wireless Android Auto start
+  request with `STATUS_PROJECTION_ALREADY_STARTED` while `DiPOManager.getCurrentDiPOStat()` is above 0
+  (`WirelessExplorer.handleStartRequest`; vtable@19 of `DiPOManager`). The bridge starts iAP2 as soon
+  as a registered iPhone connects over Bluetooth, so DiPO's status goes 1 → 4
+  (`tmp/car-sessions/2026-11-04-tbt/live/logcat-mac.log`, 22:48:34-39) and stays above 0 while the
+  iPhone is near. The stock Phone Projection app asks PPService `connectPP`/`disconnectPP`
+  (type 1 CarPlay, 2 Android Auto; transfer 1 wireless), and PPService passes them only to registered
+  `IPPActionListener`s. On this firmware only GPM registers one; DiPO has none, so choosing
+  Android Auto or disconnecting CarPlay never reached the bridged CarPlay. Upstream (HMG-API 1.0.2,
+  Leafia) has the same bridge and no fix; Leafia #143 (CarPlay ignores a profile change, AA does not) is
+  the same gap.
+- **Behavior now.** The DiPO part registers a listener with `phoneprojection` (`Bridge.PpListener`).
+  A wireless `connectPP` for Android Auto, or a wireless `disconnectPP` for CarPlay, while a bridged
+  iAP2/CarPlay session is up sends `BT_DETACHED`, and `dipoIgnoreDisconnect` lets that end reach
+  DiPO so it closes CarPlay as for a USB phone. That iPhone is then held off: no SPP connect, attach or
+  re-attach after the session ends. A wireless `connectPP` for CarPlay releases the hold and connects
+  it again. So does its next Bluetooth connection after its link went down (the next drive). While
+  `GpmManager.isGpmActivated()` is true, the bridge starts no session. This mirrors GPM's rule:
+  one projection at a time.
+- **Known limits.** Phone Projection may send a wireless Android Auto `connectPP` by itself
+  (auto-connection when an Android phone's Bluetooth connects). With two phones in the car,
+  the Android phone may then take the screen from CarPlay. The hold lives in DiPO's process, so a
+  head-unit restart also releases it. GPM may receive the phone's start request before DiPO's status
+  drops to 0. In that case, choose Android Auto again.
+
 ## CarPlay turn-by-turn: lane fix, fallback icons, developer toggle
 
 - **Stock-format guidance (always on with TBT).** Inside the approach window (300 m ordinary
@@ -186,9 +261,11 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
   hologram; outside it, or with ambiguous geometry, the projection icon stays. Loading /
   rerouting send stock types 9 / 10. `CpTrapOverlay` (navigation process) lays the approach bar
   over the latest real stock trap record under a 3.5 s lease renewed by DiPO. `CpJunctions`
-  picks the HUD junction view from the generated `CpJunctionTable`. Details:
+  picks the HUD junction view from the generated `CpJunctionTable`. Android Auto: `AaTurns`
+  applies the same windows through our `AaGuidance` (event + side; no junction pictures) and
+  renews the bar lease through `ApproachBar` from GPM. Details:
   [cluster-ar-view.md](cluster-ar-view.md), [hud-hologram.md](hud-hologram.md),
-  [hud-junction-view.md](hud-junction-view.md). Android Auto keeps projection icons.
+  [hud-junction-view.md](hud-junction-view.md).
 - **Lane guidance (our own raw 0x5204 decoder).** Bridge forwards CarPlay-channel bytes unchanged,
   then feeds the bounded, Android-free CpLaneDecoder and posts decoded data through Dipo.post
   to the TBT handler. Link/control messages may be split or coalesced; link/header checksums,
@@ -209,11 +286,15 @@ Off-car build/fake-root tests cannot prove Dalvik offsets, native recipe matches
   A set not in the table is retried with slight/sharp turns snapped to plain left/right; if it
   still does not match (or has more than 3 directions) only the highlighted arrow is drawn as a
   single glyph, else the first. The status byte is 2 bits per slot (`00` blank, `01` white, `10`
-  blue, `11` grey), following the arrow each slot shows, and mirrors CarPlay per lane from its
-  LaneStatus and highlight angle: status 0 every arrow grey; status 1 the highlighted arrows white
-  and the rest grey; status 2 the highlighted arrows blue and the rest grey; with no valid
-  highlight (1000, or no angle matches) every arrow takes the lane's colour. Blue only comes from
-  phone status 2 (NAVER usually sends none, so nothing is blue). A lane with no usable angle sets
+  blue, `11` grey), following the arrow each slot shows, and draws what the phone sends per lane
+  (`CpLaneFrame.lane`, also used by Android Auto), from its LaneStatus and highlight angle: status 0 (not
+  good) every arrow grey; status 1 (good, the recommended lanes) the highlighted arrows white and the
+  rest grey; status 2 (preferred, the lane the driver must use for the maneuver) the highlighted
+  arrows blue and the rest grey; with no valid highlight (1000, or no angle matches) every arrow
+  takes the lane's colour. Blue only comes from phone status 2, by owner decision: NAVER sends
+  status 1 on most recommended lanes and status 2 only on the lane that must be used, and that
+  difference stays visible (recorded 2026-11-05/07 drives: every status 1 or 2 lane carries a
+  highlight equal to one of its angles, every status 0 lane has 1000). A lane with no usable angle sets
   slot 0 only. U-turn + left, status 1, highlight -90: arrows `0a 0e`, status `0x07` (status 2:
   `0x0b`; status 0: `0x0f`). The old `lanes` setting modes (`off`/`rec`/`dim0`/`dim3`) were
   removed. While a frame with lanes shows, `NavigationCluster.updateRemainDis(dist, unit, tenths, 0)` carries the distance to
@@ -341,7 +422,8 @@ world-writable directory is needed. These are generated diagnostics, never stock
 baselines or an authorization channel. Root prepares the private runtime parent
 through the package API before enabling the loader. Root reads only the fixed projection app
 packages: `com.daudio.app.dipo`, `com.tcc.iap2server`,
-`com.google.android.projection.sink`, `com.mnsoft.navi`, `com.android.btsettings`.
+`com.google.android.projection.sink`, `com.mnsoft.navi`, `com.android.btsettings`,
+`com.daudio.app.phoneprojection` (no parts of its own; it only loads `usb_hotspot` with a USB hotspot).
 
 Each process writes `p-<pid>-<start_ticks>.txt` atomically via `.txt.tmp`.
 UTF-8 `key=value` lines, first `=` is the separator; keys `[a-zA-Z0-9_.-]+`,
@@ -457,7 +539,7 @@ KitKat libcore lstat for UID/type); it never executes record contents. Expected
 app UID comes from the fixed package's data directory, and proc UID, cmdline,
 record process and start ticks must agree. Only the package main process or its
 colon subprocesses qualify. Every current record is considered, so a ready
-record cannot hide another current failure. Zygote plus all five packages and
+record cannot hide another current failure. Zygote plus all six packages and
 their relevant parts/native recipes are required for `on`. Missing evidence is
 `unknown`; an apply receipt uses `pending-restart` for missing evidence so the
 dispatcher can retain enabled intent. Old loaded hashes mean `pending-restart`.

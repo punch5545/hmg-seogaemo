@@ -94,6 +94,15 @@ The six additions have exact-stock host evidence in the bundled sidecar and
 still need on-car reflection. No module requirement changes here. Source paths,
 smali cross-checks and Parcelable copying notes: [.agents/car-mapping.md](.agents/car-mapping.md).
 
+## Phone Projection menu on Korea
+
+HMG-API changes the Phone Projection menu only for US/Canada (`Wireless` hook on `btsettings.projection_helper.open_wireless_page`).
+For Korea (region 0) we extend our own hook (`ProjectionMenu`, `Wireless.phoneProjectionMenu`) to call the stock non-wireless
+branch (`open_other_page`), the behavior stock Korea has without the wireless features. The community HMG Leafia Plus
+r8.2 build (third party, not installed alongside) was the behavioral reference: it patches `HKMC_BtSettings` so region 0 skips the
+wireless page. Behavior only; no code or odex delta was copied, and the stock choice was confirmed in the stock smali.
+See [.agents/wireless-carplay-and-aa.md](.agents/wireless-carplay-and-aa.md).
+
 ## Startup consent screen reference
 
 The community [HKMC Factory 82 package](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (`local.hkmc.factory82`, release `4.2.1`, MIT) is the behavioral reference for `skip-consent-screen`. Its `packages/hkmc-factory82/svc/watch.sh` calls `com.hkmc.factory` Binder transaction `82` after startup or display wake. HMG-Seogaemo independently implements a fixed-call API and shared `watcher` service; it has not copied the package scripts. See [.agents/skip-consent-screen.md](.agents/skip-consent-screen.md).
@@ -117,6 +126,18 @@ including quick boot without a new boot ID/display transition. The shared watche
 reuses fixed screen_on dispatch on declared property drift; original product-bound
 baselines survive, and disable restores them even over drift. This uses no upstream
 hook code; see the module/runtime notes for policy and car verification limits.
+
+## Android Auto UTF-8 length helper
+
+`modules/wireless-carplay-and-aa/files/recipes/aa-tbt-48ee793a.recipe` and `aa-tbt-a0bea1c4.recipe` come from HMG-API but are no longer unchanged: the 32-byte UTF-8 length helper at segment offset `0x17a` is replaced. HMG-API `main` 1.0.2 still ships the unfixed helper (it cut the last Hangul syllable of every short turn-by-turn string). The fix was located and confirmed against the third-party package `HMG_Leafia_Plus_Wireless_CarPlay_AA-v1.0.5.NEEV.KOR.03-r8.2` (its `patches/neev_kr/libautoreceiver_infobank.tbt.lpd`, reference only, not executed or copied). Our replacement is written from the described logic in `modules/wireless-carplay-and-aa/payload/recipes/aa-utf8-len.s` and happens to assemble to the same 32 bytes. See [.agents/wireless-carplay-and-aa.md](.agents/wireless-carplay-and-aa.md). Re-apply this slot when taking new upstream recipe changes.
+
+## Android Auto lane packing
+
+The same two recipes carry a second local change: the lane byte of next-turn event 34 (upstream 1, or 2 when any direction is recommended) is the mask of recommended arrow slots, and shape 9 (U-turn right) gets the U-turn arrow. The in-place edits and the extra tail code are written from our own analysis of the segment in `modules/wireless-carplay-and-aa/payload/recipes/aa-lane-routes.s`, applied with `apply-aa-lane-routes.py`; test `test/aalanes`. The third-party package `HMG_Leafia_Plus_Wireless_CarPlay_AA-v1.0.5.NEEV.KOR.03-r8.2` was only compared (its library patch matches this segment plus a raw NavigationState hex dump; its lane colours are made in Java); nothing was copied. The Java side (`AaTurns`, `dipo/CpLaneFrame`) is our own. The `AaTurns` heartbeat, guide-lost watchdog and `AATRACE` developer trace are written from the behaviour described in our analysis of the same package (a 5 s heartbeat, a 60 s "guide lost" end, flip counting); no code was copied, the 120 s watchdog value and the structure are our own, and r8.2's split/flip arbitration is deliberately not ported (see the doc). Re-apply with the script when taking new upstream recipe changes.
+
+Lane colours (`CpLaneFrame`, CarPlay and Android Auto): the third-party r8.2 package's rule (route arrow blue on every recommended lane) was examined from reading only (reference only, not executed, nothing copied) and not adopted; the owner decision is to draw what the phone sends, so only CarPlay status 2 is blue and Android Auto never is. Our implementation and tests are independent.
+
+CarPlay stock-format turns (`CpGuidance.stock`): the U-turn angle check (at least 158 degrees when an angle is given) and reading a plain left/right inside a roundabout as the roundabout exit are behaviour-only, from reading the same third-party r8.2 package (reference only, not executed, nothing copied; our own code and tests). Its icon tables, raw-angle directions and keep/highway shapes were not adopted (see [.agents/cluster-ar-view.md](.agents/cluster-ar-view.md)).
 
 ## USB Wi-Fi kernel drivers
 

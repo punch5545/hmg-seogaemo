@@ -25,7 +25,9 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
-          version="$(python3 tools/version.py)"
+          # VERSION, plus PRERELEASE (beta.N) for a beta, published as a prerelease that
+          # OTA's releases/latest never offers
+          version="$(python3 tools/version.py --label)"
           test "$tag" = "v$version"
           : "${RELEASE_KEYSTORE_B64:?missing release keystore}"
           : "${RELEASE_KEYSTORE_PASSWORD:?missing keystore password}"
@@ -77,7 +79,9 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           lists="$(mktemp -d)"
           trap 'rm -rf "$lists"' EXIT
-          gh release create "$tag" --draft --verify-tag out/dist/*
+          prerelease=
+          case "$tag" in *-beta.*) prerelease=--prerelease;; esac
+          gh release create "$tag" --draft $prerelease --verify-tag out/dist/*
           find out/dist -maxdepth 1 -type f -printf '%f\n' | sort > "$lists/expected-assets"
           gh release view "$tag" --json assets --jq '.assets[].name' | sort > "$lists/uploaded-assets"
           diff -u "$lists/expected-assets" "$lists/uploaded-assets"
