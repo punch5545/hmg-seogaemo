@@ -64,6 +64,19 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   arrows/lanes grey (like a CarPlay status 1 / status 0 lane; never blue), multi-arrow lanes show pairs, the box beside it shows the turn distance,
   everything clears at arrival and when the car's navigation takes over. If no strip: developer
   mode on, pull logcat (`AALANES event 34 [...]` per lane change, `NAVDUMP` the phone's state when the library dumps it) and the USB export.
+- [ ] **Verify Android Auto guidance stability on a drive (developer mode on).**
+  `AaTurns` heartbeat, guide-lost watchdog and `AATRACE` trace, see
+  [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) "Android Auto lanes" (Stability).
+  Pull logcat (`AATRACE`, `AALANES`, `NAVDUMP`) from one real route with each phone app:
+  (1) `flip n` lines and the cluster photo at that moment: if turns alternate, port the
+  arbitration (not before); (2) `quiet N ms, ended by ...` gaps while stopped at a light:
+  if gaps near or over 120 s occur on a live route, raise `GUIDE_LOST_MS`, if never over ~30 s consider
+  60 s; (3) stop at a light for a minute: the turn, lanes and HUD list stay (heartbeat resend),
+  the cluster does not blank; (4) end navigation on the phone without a status (kill the map app):
+  the cluster and HUD clear after 120 s, and show again if the app resumes; (5) lanes: if the
+  `NAVDUMP` text shows the steps, look whether lanes ever sit on a step after the first while step 0 has none
+  (then a native steps loop, same `test/aalanes` rigor, and a hidden lane box for later steps); (6) the
+  lane box equals the turn distance at three lane junctions.
 - [ ] **Verify Android Auto stock-format turns on a drive.** `AaGuidance` (policy in
   [cluster-ar-view.md](cluster-ar-view.md#android-auto-policy)): AR view and hologram near turns,
   U-turns, exits and roundabouts with the right direction; the bar falls with distance and gives

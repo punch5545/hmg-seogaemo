@@ -93,6 +93,7 @@ public final class AaTurnsTest {
         t.status(2);
         require("false 0".equals(ApproachBar.sent.get(ApproachBar.sent.size() - 1)), "end: bar back");
         lanes();
+        guard();
         System.out.println("AaTurnsTest ok");
     }
 
@@ -126,6 +127,24 @@ public final class AaTurnsTest {
     static int count(Cluster c, String call) {
         int n = 0;
         for (String x : c.calls) if (x.equals(call)) n++;
+        return n;
+    }
+
+    static int tbts(Cluster c) {
+        int n = 0;
+        for (String x : c.calls) if (x.startsWith("tbt ")) n++;
+        return n;
+    }
+
+    static int huds(Cluster c) {
+        int n = 0;
+        for (String x : c.calls) if (x.startsWith("hud ")) n++;
+        return n;
+    }
+
+    static int trace(String part) {
+        int n = 0;
+        for (String x : android.util.Log.lines) if (x.startsWith("AATRACE") && x.contains(part)) n++;
         return n;
     }
 
@@ -177,7 +196,7 @@ public final class AaTurnsTest {
         require(count(c, f1) == again + 1, "active again: lanes back");
         // no lanes: empty frame, no refresh, box given back
         t.nextTurn("00", 0, AaTurns.EV_LANES, -1, -1);
-        require(frame().equals(last(c, "lanes ")) && h.pending.isEmpty(), "empty lanes: " + last(c, "lanes "));
+        require(frame().equals(last(c, "lanes ")) && !h.pending.contains(t.laneTick), "empty lanes: " + last(c, "lanes "));
         require("remain 65535 15 15 0".equals(last(c, "remain ")), "empty lanes: box back " + last(c, "remain "));
         // an end of guidance clears lanes and refresh
         t.nextTurn("01" + R_ONLY, 0, AaTurns.EV_LANES, -1, -1);
@@ -229,7 +248,7 @@ public final class AaTurnsTest {
         t = live(c, h);
         t.nextTurn("01" + R_ONLY, 0, AaTurns.EV_LANES, -1, -1);
         t.stop();
-        require(frame().equals(last(c, "lanes ")) && h.pending.isEmpty(), "focus native clears lanes");
+        require(frame().equals(last(c, "lanes ")) && !h.pending.contains(t.laneTick), "focus native clears lanes");
         // unit conversions in the box
         c = new Cluster();
         h = new Handler();
@@ -240,5 +259,158 @@ public final class AaTurnsTest {
         t.nextTurn("01" + R_ONLY, 0, AaTurns.EV_LANES, -1, -1);
         require("remain 1 1 3 0".equals(last(c, "remain ")), "km in the box " + last(c, "remain "));
         System.out.println("AaTurnsTest lanes ok");
+    }
+
+    /** Heartbeat (the last turn sent again), guide-lost watchdog and developer trace. */
+    static void guard() {
+        Car.unit = Car.DISTANCE_KM;
+        Cluster c = new Cluster();
+        Handler h = new Handler();
+        AaTurns t = live(c, h);
+        require(h.pending.contains(t.beat), "heartbeat scheduled while the route is live");
+        int tbt = tbts(c), hud = huds(c);
+        // nothing is due yet
+        require(fire(h) && tbts(c) == tbt && huds(c) == hud && h.pending.contains(t.beat), "no resend while the phone is fresh");
+        // the phone goes quiet for a moment (a light): the last turn and the HUD list come again, the distance unchanged
+        String turn = last(c, "tbt ");
+        t.skew += 1000;
+        fire(h);
+        require(tbts(c) == tbt + 1 && turn.equals(last(c, "tbt ")), "quiet 1 s: the turn is sent again unchanged " + last(c, "tbt "));
+        require(huds(c) == hud, "quiet 1 s: the HUD list waits for 2 s");
+        t.skew += 500;
+        fire(h);
+        require(tbts(c) == tbt + 1, "no second resend within 900 ms");
+        t.skew += 1000;
+        fire(h);
+        require(tbts(c) == tbt + 2, "resends keep coming");
+        require(huds(c) == hud + 1 && last(c, "hud ").startsWith("hud f2"), "quiet 2.5 s: the HUD list is sent again unchanged");
+        // a phone callback restarts the quiet clock
+        t.skew += 100000;
+        t.nextTurnDistance(700, 50, 700, AaTurns.METERS);
+        t.skew += 100000;
+        fire(h);
+        require(t.navLive && !t.lost, "100 s of quiet after a callback is not a lost guide");
+        require(last(c, "tbt ").contains(" 700.0 "), "the resend carries the last distance " + last(c, "tbt "));
+        // 120 s of nothing: cleared like the end status (turn, trip, destination and HUD), and no more heartbeat
+        t.skew += 25000;
+        fire(h);
+        require(!t.navLive && t.lost && !h.pending.contains(t.beat), "guide lost: route ended");
+        require("tbt 0 0 0.0 0.0 -1 0 0 0 -1".equals(last(c, "tbt ")), "guide lost: turn cleared " + last(c, "tbt "));
+        int cleared = c.calls.size();
+        t.skew += 10000;
+        fire(h);
+        require(c.calls.size() == cleared, "nothing more after the clear");
+        // the phone was only quiet: its next callback brings the route back
+        t.nextTurnDistance(650, 45, 650, AaTurns.METERS);
+        require(t.navLive && !t.lost && h.pending.contains(t.beat), "a late callback revives the route");
+        require(last(c, "tbt ").contains(" 650.0 "), "revived: the turn is shown again " + last(c, "tbt "));
+        // an end status is final: late callbacks do not bring the route back
+        t.status(2);
+        t.nextTurnDistance(600, 40, 600, AaTurns.METERS);
+        require(!t.navLive && !h.pending.contains(t.beat), "after status 2 a late distance stays dark");
+
+        // lanes are cleared with the rest
+        c = new Cluster();
+        h = new Handler();
+        t = live(c, h);
+        t.nextTurn("01" + "01030000", 0, AaTurns.EV_LANES, -1, -1);
+        t.skew += AaTurns.GUIDE_LOST_MS;
+        fire(h);
+        require(frame().equals(last(c, "lanes ")) && !h.pending.contains(t.laneTick) && "remain 65535 15 15 0".equals(last(c, "remain ")), "guide lost clears lanes and the box");
+
+        // any callback counts, even a dump or a trip update: a route that talks is not lost
+        c = new Cluster();
+        h = new Handler();
+        t = live(c, h);
+        for (int k = 0; k < 5; k++) {
+            t.skew += 60000;
+            if (k % 2 == 0) t.nextTurn("S 1", 0, AaTurns.EV_DUMP, 0, 0);
+            else t.nextTurnDistance(5000, 600, 0, AaTurns.FLAG_TRIP);
+            fire(h);
+        }
+        require(t.navLive, "dumps and trip updates keep the route alive");
+
+        // the car's navigation has the cluster: nothing is resent or cleared
+        c = new Cluster();
+        h = new Handler();
+        t = live(c, h);
+        t.stop();
+        int n = c.calls.size();
+        t.skew += AaTurns.GUIDE_LOST_MS + 5000;
+        fire(h);
+        require(c.calls.size() == n && t.navLive, "focus on the car: no heartbeat sends, no watchdog clear");
+        // the phone takes the cluster back with a turn
+        t.nextTurn("Road", AaTurns.RIGHT, AaTurns.TURN, -1, 0);
+        t.nextTurnDistance(500, 30, 500, AaTurns.METERS);
+        t.skew += 1000;
+        fire(h);
+        require(last(c, "tbt ").contains(" 500.0 ") && !t.nativeFocus, "a turn from the phone ends the car's focus");
+
+        // rerouting: the turn is not resent over RECALC_ROUTE
+        c = new Cluster();
+        h = new Handler();
+        t = live(c, h);
+        t.status(3);
+        n = tbts(c);
+        t.skew += 3000;
+        fire(h);
+        require(tbts(c) == n, "no resend while rerouting");
+        // before any turn was sent, nothing is resent
+        c = new Cluster();
+        h = new Handler();
+        t = new AaTurns(new android.content.Context(), c, h);
+        t.status(1);
+        t.skew += 5000;
+        fire(h);
+        require(tbts(c) == 0, "no turn yet: nothing to resend");
+
+        // developer trace: off by default
+        c = new Cluster();
+        h = new Handler();
+        android.util.Log.lines.clear();
+        android.os.SystemProperties.dev = "0";
+        t = live(c, h);
+        t.skew += 6000;
+        t.nextTurn("Other", AaTurns.LEFT, AaTurns.TURN, -1, 0);
+        fire(h);
+        require(trace("") == 0, "trace off: no AATRACE line");
+        // on: turns, quiet gaps, a flip, the summary, status; bounded per route
+        android.os.SystemProperties.dev = "1";
+        c = new Cluster();
+        h = new Handler();
+        android.util.Log.lines.clear();
+        t = new AaTurns(new android.content.Context(), c, h);
+        t.status(1);
+        t.nextTurn("A", AaTurns.RIGHT, AaTurns.TURN, -1, 0);
+        t.nextTurnDistance(800, 60, 800, AaTurns.METERS);
+        require(trace("status 1") == 1 && trace("turn ev=4 side=2") == 1, "trace: status and the first turn");
+        t.skew += 2000;
+        t.nextTurn("B", AaTurns.LEFT, AaTurns.TURN, -1, 0);
+        t.skew += 2000;
+        t.nextTurn("A", AaTurns.RIGHT, AaTurns.TURN, -1, 0);
+        require(trace("flip 1") == 1 && t.flips == 1, "trace: a turn back within 10 s is a flip");
+        t.nextTurn("A", AaTurns.RIGHT, AaTurns.TURN, -1, 0);
+        require(trace("flip") == 1 && trace("turn ev=4 side=2") == 2, "trace: a repeat is neither a flip nor a new turn");
+        t.skew += 20000;
+        t.nextTurn("B", AaTurns.LEFT, AaTurns.TURN, -1, 0);
+        require(trace("flip") == 1, "trace: not a flip after 10 s");
+        t.skew += 8000;
+        t.nextTurnDistance(700, 50, 700, AaTurns.METERS);
+        require(trace("quiet 8000 ms, ended by distance") == 1 && t.maxGap == 20000, "trace: a quiet gap is logged " + android.util.Log.lines);
+        fire(h);
+        require(trace("state ev=4 side=1") >= 1, "trace: summary line");
+        t.skew += 40000;
+        fire(h);
+        require(trace("quiet for 40000 ms") == 1, "trace: quiet marker");
+        int lines = trace("");
+        for (int k = 0; k < 2000; k++) {
+            t.skew += 6000;
+            t.nextTurn(k % 2 == 0 ? "X" : "Y", AaTurns.LEFT, AaTurns.TURN, -1, k);
+        }
+        require(trace("") <= AaTurns.TRACE_LINES, "trace is bounded per route: " + trace(""));
+        t.status(2);
+        require(trace("status 2") == 1, "trace: the end status is still logged");
+        android.os.SystemProperties.dev = "0";
+        System.out.println("AaTurnsTest guard ok");
     }
 }
