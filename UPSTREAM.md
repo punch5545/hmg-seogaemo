@@ -135,6 +135,10 @@ hook code; see the module/runtime notes for policy and car verification limits.
 
 The same two recipes carry a second local change: the lane byte of next-turn event 34 (upstream 1, or 2 when any direction is recommended) is the mask of recommended arrow slots, and shape 9 (U-turn right) gets the U-turn arrow. The in-place edits and the extra tail code are written from our own analysis of the segment in `modules/wireless-carplay-and-aa/payload/recipes/aa-lane-routes.s`, applied with `apply-aa-lane-routes.py`; test `test/aalanes`. The third-party package `HMG_Leafia_Plus_Wireless_CarPlay_AA-v1.0.5.NEEV.KOR.03-r8.2` was only compared (its library patch matches this segment plus a raw NavigationState hex dump; its lane colours are made in Java); nothing was copied. The Java side (`AaTurns`, `dipo/CpLaneFrame`) is our own. Re-apply with the script when taking new upstream recipe changes.
 
+Lane colours (`CpLaneFrame`, CarPlay and Android Auto): the third-party r8.2 package's rule (route arrow blue on every recommended lane) was examined from reading only (reference only, not executed, nothing copied) and not adopted; the owner decision is to draw what the phone sends, so only CarPlay status 2 is blue and Android Auto never is. Our implementation and tests are independent.
+
+CarPlay stock-format turns (`CpGuidance.stock`): the U-turn angle check (at least 158 degrees when an angle is given) and reading a plain left/right inside a roundabout as the roundabout exit are behaviour-only, from reading the same third-party r8.2 package (reference only, not executed, nothing copied; our own code and tests). Its icon tables, raw-angle directions and keep/highway shapes were not adopted (see [.agents/cluster-ar-view.md](.agents/cluster-ar-view.md)).
+
 ## USB Wi-Fi kernel drivers
 
 `kernel/usb-wifi/` builds two GPL-2.0 Realtek out-of-tree drivers for the Gen5W

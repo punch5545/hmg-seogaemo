@@ -135,7 +135,7 @@ The `aa-tbt-*` recipes carry a segment function (offset `0x17a`, 32 bytes, same 
 
 Native (`aa-tbt-*.recipe`, source `payload/recipes/aa-lane-routes.s`, applied by `payload/recipes/apply-aa-lane-routes.py`): on NavigationState (msg 0x8006) the segment parses `steps[0]`; field 3 repeats the lanes, each lane's field 1 repeats the directions (`shape` varint 1, `is_recommended` varint 2). Up to eight lanes and three arrows per lane go into next-turn event 34 as `nn` lanes then `bbaaaaaa` per lane (lowercase hex): `bb` = mask of the arrow slots whose direction is recommended (bit k: slot k; upstream wrote 1, or 2 when any direction was recommended), `aa` = direction classes through the segment table (shape 1 straight 1, 2 slight left 8, 3 slight right 2, 4 left 7, 5 right 3, 6 sharp left 6, 7 sharp right 4, 8 and 9 U-turn 5; the same 1..8 as `CpTurns.laneIcon`; shape 9 used to drop out). A lane with no usable arrow is left out; no lanes sends `""`. The tail of the segment holds the extra code (the arrow store moves there); the segment grew by 28 / 26 bytes.
 
-Java (`AaTurns.sendLanes`, `dipo/CpLaneFrame`): the arrows become the cluster's car-verified lane values exactly as CarPlay lanes do (status 2 bits per slot, component glyph pairs and triples from `CpTurns.LaneGlyphs`, [cluster-lane-arrows.md](cluster-lane-arrows.md)): the route arrow blue, the other arrows of that lane grey; with a route lane in the frame the lanes without one are grey; with no recommendation anywhere every arrow is white. Upstream sent the raw lane byte (1 or 2) as the status, which draws only slot 0 and no glyph pairs.
+Java (`AaTurns.sendLanes`, `dipo/CpLaneFrame`): the arrows become the cluster's car-verified lane values exactly as CarPlay lanes do (status 2 bits per slot, component glyph pairs and triples from `CpTurns.LaneGlyphs`, [cluster-lane-arrows.md](cluster-lane-arrows.md)): drawn as the equivalent CarPlay lane through the same `CpLaneFrame.lane(arrows, onRoute, status)` (owner decision 2026-11-07: draw what the phone sends, the same on both projections): a lane with a highlighted direction is a CarPlay status 1 lane (the highlighted arrow white, the other arrows of that lane grey), a lane without one is status 0 (every arrow grey) while another lane of the frame is highlighted, and with no highlight anywhere nothing is flagged (status 1, every arrow white, as CarPlay draws a good lane with highlight 1000). Android Auto never produces blue: it has one recommended bit and no must-use level (CarPlay status 2). Upstream sent the raw lane byte (1 or 2) as the status, which draws only slot 0 and no glyph pairs.
 
 **Root cause of "no lanes on the cluster/HUD" (offline; cluster ageing not yet seen on the car):** the lane frame went out once, when the phone sent a NavigationState, and was never sent again, while the turn and distance go out about every second and CarPlay's `CpTurns.refresh` re-sends its lane frame every ~1 s because the car's own navigation calls the cluster every 0.5-0.75 s and the cluster/HUD age out stale data. The same lanes from the phone were also skipped as duplicates. Now `AaTurns.laneTick` re-sends the frame every 750 ms while the route is live (not while rerouting), the lane distance box (`updateRemainDis`, next-turn distance, as CarPlay, owner decision in [cluster-lane-frame.md](cluster-lane-frame.md) 1b) is sent with it, and lanes that arrive before the active status wait for it. Lanes are cleared (empty frame, box back to 65535/15/15) on empty lanes, end of guidance and focus back to the car's navigation. The HMG Leafia Plus package (third party, reference only) reads the same event-34 string and post-processes the frame in Java (colours of a "recommended-lane" mode); its library patch is ours plus a raw NavigationState hex dump, not another lane reader.
 
@@ -280,11 +280,15 @@ Status: implemented, off-car tested only (`test/projectionswitch`); needs the on
   A set not in the table is retried with slight/sharp turns snapped to plain left/right; if it
   still does not match (or has more than 3 directions) only the highlighted arrow is drawn as a
   single glyph, else the first. The status byte is 2 bits per slot (`00` blank, `01` white, `10`
-  blue, `11` grey), following the arrow each slot shows, and mirrors CarPlay per lane from its
-  LaneStatus and highlight angle: status 0 every arrow grey; status 1 the highlighted arrows white
-  and the rest grey; status 2 the highlighted arrows blue and the rest grey; with no valid
-  highlight (1000, or no angle matches) every arrow takes the lane's colour. Blue only comes from
-  phone status 2 (NAVER usually sends none, so nothing is blue). A lane with no usable angle sets
+  blue, `11` grey), following the arrow each slot shows, and draws what the phone sends per lane
+  (`CpLaneFrame.lane`, also used by Android Auto), from its LaneStatus and highlight angle: status 0 (not
+  good) every arrow grey; status 1 (good, the recommended lanes) the highlighted arrows white and the
+  rest grey; status 2 (preferred, the lane the driver must use for the maneuver) the highlighted
+  arrows blue and the rest grey; with no valid highlight (1000, or no angle matches) every arrow
+  takes the lane's colour. Blue only comes from phone status 2, by owner decision: NAVER sends
+  status 1 on most recommended lanes and status 2 only on the lane that must be used, and that
+  difference stays visible (recorded 2026-11-05/07 drives: every status 1 or 2 lane carries a
+  highlight equal to one of its angles, every status 0 lane has 1000). A lane with no usable angle sets
   slot 0 only. U-turn + left, status 1, highlight -90: arrows `0a 0e`, status `0x07` (status 2:
   `0x0b`; status 0: `0x0f`). The old `lanes` setting modes (`off`/`rec`/`dim0`/`dim3`) were
   removed. While a frame with lanes shows, `NavigationCluster.updateRemainDis(dist, unit, tenths, 0)` carries the distance to
