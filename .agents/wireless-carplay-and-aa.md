@@ -21,7 +21,7 @@ Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902`, o
 | --- | --- |
 | `feature_flags` generates CarPlay/AA wireless permission XMLs and comments their removal lines; `patches.json` comments the hotspot removal line. | `sg_file_put` only for absent XMLs and `sg_file_replace_line` for exact active lines. Missing removal lines are no-ops, as in the upstream engine; duplicate lines are refused. An existing XML must declare the expected feature. We also add hotspot XML if absent on this KOR build. |
 | `persist.ium.support=carplay`; bridge `persist.sys.iap2.wifi=t`, `persist.iap2.iden.wireless=t`. | Same values via `sg_prop_set`; ledger restores live values and `/data/property` existence/content. |
-| `Wireless`, `AaTurns`, `dipo/{Dipo,Bridge,CpTurns}` Java hooks DiPO, iAP2, GPM, navigation, USB startService, BtSettings. | Copied with fixed upstream default settings. Korean BtSettings menu hook is a no-op; upstream changes only US/CAN. |
+| `Wireless`, `AaTurns`, `dipo/{Dipo,Bridge,CpTurns}` Java hooks DiPO, iAP2, GPM, navigation, USB startService, BtSettings. | Copied with fixed upstream default settings. Upstream changes only US/CAN; ours also covers Korea (see "Phone Projection menu"). |
 | Zygote wrapper, Dalvik JNI loader, hook JAR, car hook map. | The core hook host owns wrapper, loader and engine JAR (ledger owner `core-hook`); this module registers its mod jar (`hmgapi.mods.wireless.Wireless`, six apps) with `sg_hook_register`, ships a world-readable parts copy, and the core selects and publishes the verified map. Car-verified 2026-11-07: migration from the self-installed wrapper, wireless CarPlay, status `on`. |
 | Native `MemRecipe` on `libautoreceiver_infobank.so`, `libCarPlayCore.so`, `libCarPlayAudio.so`, `libCarPlayUtils.so`. | Same 5 recipes applied **in memory** after exact byte-region verification. Stock libraries stay untouched. No `lpatch` binary or rebuilt OEM APK/odex. KOR CarPlayCore hash `ef49c09b7ab5eb72298f9973443b66b3` is listed as Wi-Fi native; Utils hash `e85385d70194efe82cc8a6d0f66f5115` as converter native. Other builds may reject recipes. |
 | `libleafiaaac.so` for AAC/Opus. | Rebuilt from upstream `leafiaaac.c` with local clang/lld and installed through the package API. No manufacturer binary is bundled. |
@@ -154,6 +154,32 @@ Copied HMG-API paths (destinations relative to this module's `payload/`):
 - `mods/wireless-carplay-aa/stubs/com/{broadcom,tcc}/...` (six Java compile-time signature stubs and README) → `stubs/` as `.java.src`, unchanged, not in the runtime JAR.
 
 Original headers remain; modified files have a `Modified by HMG-Seogaemo` marker. Root `NOTICE.md` credits HMG-API (VysseCodes), NEMESIS (xwtk), HMG Leafia Plus, and Xposed design lineage. The repository is GNU AGPL-3.0 (`LICENSE`). The core mapper is an independent implementation; `UPSTREAM.md` tracks the HMG-API reference paths.
+
+## Phone Projection menu
+
+Status: implemented, off-car tested only (`test/projectionmenu`); needs the on-car check in `backlog.md`.
+
+- **Stock.** `BluetoothSettings` menu case 8 ("Phone Projection") opens the wireless page
+  (`iP.aQ` -> `wireless.WPPSettingsActivity`) whenever the `carplay_wireless` or `androidauto_wireless`
+  feature exists, which our feature XMLs add. That page has no split-view option and lists only phones
+  registered by PhoneProjection's wireless service, never ours, so on Korea it is effectively empty.
+  With the wireless features absent, Korea (REGION 0) skips the Device Connections branch
+  (US/Canada only) and calls `iP.aj` (verified in the stock `HKMC_BtSettings` smali).
+- **`iP.aj` on this car** (`ih()` true, STEP_OF_SPEC 110): broadcasts `com.daudio.app.phoneprojection.command.launch`
+  with `SSEARCH_TAB=1`; PhoneProjection opens `settings.ui.DeviceConnectionSettings` on the Android tab
+  (`PhoneProjectionSettingsActivity` when `gb()` is true, or when `ih()` is false the activity directly).
+  That is the connection screen where CarPlay/Android Auto is chosen.
+- **Hook.** `Wireless.phoneProjectionMenu` on `open_wireless_page` (`ProjectionMenu.target`): Korea calls
+  `open_other_page` (`iP.aj`) and swallows the wireless page; US/Canada keep Device Connections (else
+  `open_other_page`); other or unknown regions keep the stock choice. Korea does not use
+  `open_device_connections` (`iP.a(ctx,1)`): stock Korea never reaches it and it differs from `aj` when `ih()` is false.
+  Existing points only, all mapped on NEEV KOR. Failure mode is the stock wireless page; nothing outside the hook changes.
+- **Interaction with the CarPlay -> Android Auto switch** (`ProjectionSwitch`, `PpListener`): that listener hangs off
+  the `phoneprojection` system service, not off a screen, so it works with either page. The reachable connection
+  screen is now the Device Connections page, whose Android Auto/CarPlay choice calls the same `connectPP`/`disconnectPP`.
+  Which row a bridged iPhone shows there is not known (the bridge registers no PhoneProjection record).
+- Reference: the community HMG Leafia Plus r8.2 build ships the same behavior as a patched `HKMC_BtSettings`;
+  only behavior was taken, we write nothing to BtSettings.
 
 ## On-car validation and recovery
 

@@ -114,6 +114,12 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
 - [ ] Status of an installed module that is off or pending restart prints `info.desired=off` twice
   (`core/hsm-module.sh` `hm_status`, then the dispatcher in `bin/hmg-seogaemo-root`); print it once.
 - [ ] `tools/hsm pack` without `--out` writes to `./dist/` (not gitignored); default to `out/`.
+- [ ] **Phone Projection menu on Korea (on car).** With wireless CarPlay/AA on, Settings > Phone Projection
+  should open Device Connections (Android tab, split-view settings), not the wireless page
+  (`wireless-carplay-and-aa.md`, "Phone Projection menu"). Check logcat `HMG-Seogaemo-Wireless` for
+  `Phone Projection: stock Korean settings screen (region 0)` (confirms `Car.region()` is 0 in `com.android.btsettings`),
+  that the entry still behaves while a projection runs (stock popup, no crash), that choosing Android Auto there switches
+  from CarPlay, and that module off restores the wireless page.
 
 ## 2. Older open items
 

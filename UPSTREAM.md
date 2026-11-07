@@ -94,6 +94,15 @@ The six additions have exact-stock host evidence in the bundled sidecar and
 still need on-car reflection. No module requirement changes here. Source paths,
 smali cross-checks and Parcelable copying notes: [.agents/car-mapping.md](.agents/car-mapping.md).
 
+## Phone Projection menu on Korea
+
+HMG-API changes the Phone Projection menu only for US/Canada (`Wireless` hook on `btsettings.projection_helper.open_wireless_page`).
+For Korea (region 0) we extend our own hook (`ProjectionMenu`, `Wireless.phoneProjectionMenu`) to call the stock non-wireless
+branch (`open_other_page`), the behavior stock Korea has without the wireless features. The community HMG Leafia Plus
+r8.2 build (third party, not installed alongside) was the behavioral reference: it patches `HKMC_BtSettings` so region 0 skips the
+wireless page. Behavior only; no code or odex delta was copied, and the stock choice was confirmed in the stock smali.
+See [.agents/wireless-carplay-and-aa.md](.agents/wireless-carplay-and-aa.md).
+
 ## Startup consent screen reference
 
 The community [HKMC Factory 82 package](https://github.com/armandodollia/nemesis-package-builds) by armandodollia (`local.hkmc.factory82`, release `4.2.1`, MIT) is the behavioral reference for `skip-consent-screen`. Its `packages/hkmc-factory82/svc/watch.sh` calls `com.hkmc.factory` Binder transaction `82` after startup or display wake. HMG-Seogaemo independently implements a fixed-call API and shared `watcher` service; it has not copied the package scripts. See [.agents/skip-consent-screen.md](.agents/skip-consent-screen.md).
