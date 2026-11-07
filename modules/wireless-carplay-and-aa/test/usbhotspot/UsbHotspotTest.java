@@ -62,6 +62,11 @@ public final class UsbHotspotTest {
         check(UsbHotspot.gpmChannelType() == null && UsbHotspot.gpmFrequency(5745) == 5745 && UsbHotspot.gpmFrequency(5180) == 5180, "interface down: stock request");
         flags(sys, "0x1003\n");
         check(UsbHotspot.frequency() == 5180 && "CHANNELS_5GHZ_ONLY".equals(UsbHotspot.gpmChannelType()), "channel 36 is 5 GHz");
+        int[] stockList = { 5745, 5180 };
+        check(UsbHotspot.gpmChannels(stockList).length == 1 && UsbHotspot.gpmChannels(stockList)[0] == 5180, "WifiData channels: the hotspot's");
+        flags(sys, "0x1002\n");
+        check(UsbHotspot.gpmChannels(stockList) == stockList, "WifiData channels: stock while down");
+        flags(sys, "0x1003\n");
         check(UsbHotspot.gpmFrequency(5745) == 5180 && UsbHotspot.gpmFrequency(5180) == -1 && UsbHotspot.gpmFrequency(2412) == 2412, "5 GHz list");
         UsbHotspot.use(UsbHotspot.parse(USB.replace("channel=36", "channel=6")));
         check(UsbHotspot.frequency() == 2437 && "CHANNELS_24GHZ_ONLY".equals(UsbHotspot.gpmChannelType()), "channel 6 is 2.4 GHz");

@@ -146,7 +146,9 @@ Normative rules: contract [Peer info](module-runtime-contract.md#peer-info). In 
   2.4 GHz hotspot either. While the interface is up, the `WifiVersionRequest$Builder` hooks (by class name in GPM's loader, no
   map point) set `CHANNELS_24GHZ_ONLY`/`CHANNELS_5GHZ_ONLY` from the published `channel` and replace 5745 by the hotspot's
   frequency (2437 MHz for channel 6) and drop 5180; a missing or invalid `channel` falls back to 6. `WifiData.setSupportedChannels`
-  (stock 5745/5180) has no reader, so the Wi-Fi info response (SSID, PSK, BSSID, security) needs no change. The
+  (stock 5745/5180) is read by `CarWifiStub`, which builds the `CarWifiCredentials` for the phone over the projection
+  channel, so that hook returns `{hotspot frequency}` too. The BT Wi-Fi info response (SSID, PSK, BSSID, security) carries
+  no channel list. The
   HMG-Leafia-Plus r8.2 package does the same in its patched GPM (`aaVersion`: type from the frequency, one frequency).
 - Without a published USB hotspot nothing loads or changes: the stock `wlan0` path is the car-verified one.
 - Root: `info.hotspot_radio` and the built-in client refusal in `apply` (warning in `precheck`).

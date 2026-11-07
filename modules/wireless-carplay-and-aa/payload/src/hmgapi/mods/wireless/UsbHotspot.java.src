@@ -231,4 +231,12 @@ public final class UsbHotspot {
         if (stock == STOCK_FREQ_SECOND) return -1;
         return stock;
     }
+
+    /**
+     * WifiData.setSupportedChannels(int[]) in GPM: stock sets {5745, 5180}, which CarWifiStub puts into the
+     * CarWifiCredentials it hands the phone over the projection channel. The hotspot's frequency instead, while it is up.
+     */
+    public static int[] gpmChannels(int[] stock) {
+        return apUp() ? new int[] { frequency() } : stock;
+    }
 }

@@ -419,6 +419,7 @@ public final class Wireless extends ModEntry {
     /**
      * GPM's WifiVersionRequest builder: stock sets CHANNELS_5GHZ_ONLY and adds 5745 and 5180 (MHz); the hotspot's
      * band and frequency go there instead while its interface is up (UsbHotspot.gpmChannelType / gpmFrequency).
+     * The same list in WifiData.setSupportedChannels, which CarWifiStub reads for the CarWifiCredentials.
      * Classes by name in GPM's loader: they are not hookpoints, so there is no map point.
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -432,6 +433,15 @@ public final class Wireless extends ModEntry {
                     if (name == null || p.args[0] == null) return;
                     p.args[0] = Enum.valueOf(((Enum) p.args[0]).getDeclaringClass(), name);
                     mod.log("GPM version request: " + name + " " + UsbHotspot.frequency() + " MHz");
+                }
+            });
+        Hooks.findAndHookMethod("com.google.android.projection.sink.wireless.WifiData", cl, "setSupportedChannels",
+            int[].class, new MethodHook() {
+                @Override
+                protected void beforeHookedMethod(Param p) {
+                    int[] stock = (int[]) p.args[0];
+                    int[] mine = UsbHotspot.gpmChannels(stock);
+                    if (mine != stock) p.args[0] = mine;
                 }
             });
         Hooks.findAndHookMethod(builder, cl, "addSupportedWifiChannels", int.class, new MethodHook() {
