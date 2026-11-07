@@ -135,6 +135,8 @@ hook code; see the module/runtime notes for policy and car verification limits.
 
 The same two recipes carry a second local change: the lane byte of next-turn event 34 (upstream 1, or 2 when any direction is recommended) is the mask of recommended arrow slots, and shape 9 (U-turn right) gets the U-turn arrow. The in-place edits and the extra tail code are written from our own analysis of the segment in `modules/wireless-carplay-and-aa/payload/recipes/aa-lane-routes.s`, applied with `apply-aa-lane-routes.py`; test `test/aalanes`. The third-party package `HMG_Leafia_Plus_Wireless_CarPlay_AA-v1.0.5.NEEV.KOR.03-r8.2` was only compared (its library patch matches this segment plus a raw NavigationState hex dump; its lane colours are made in Java); nothing was copied. The Java side (`AaTurns`, `dipo/CpLaneFrame`) is our own. Re-apply with the script when taking new upstream recipe changes.
 
+CarPlay lane colours (`CpTurns.laneValues`, shared with Android Auto through `CpLaneFrame`): the rule "the arrow matching the phone's highlight angle is blue, the other arrows of a usable lane grey" is behaviour-only, taken from reading the third-party package `HMG_Leafia_Plus_Wireless_CarPlay_AA-v1.0.5.NEEV.KOR.03-r8.2` (reference only, not executed, nothing copied). Its status model (two status fields per lane, no status bits 4-5) contradicts the car-verified three-slot status byte and was not adopted. The decision rests on recorded NAVER lane data (`tmp/car-sessions`), see [.agents/wireless-carplay-and-aa.md](.agents/wireless-carplay-and-aa.md).
+
 ## USB Wi-Fi kernel drivers
 
 `kernel/usb-wifi/` builds two GPL-2.0 Realtek out-of-tree drivers for the Gen5W

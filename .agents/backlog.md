@@ -24,7 +24,7 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   2026-11-06 by frame injection (`tmp/lane-probe/step.sh`): white/blue/grey slots in one
   lane, `updateRemainDis` 300 m / 1.2 km, an empty `0xF1` frame removes strip and box. Still open (needs real phone lane data): `CpTurns`
   (`LaneGlyphs`, `laneValues`, `sendLaneDist`) turns NAVER/Apple lanes into the right
-  pairs/colours, only the route arrow is blue, the box tracks the turn distance.
+  pairs/colours, only the route arrow is blue (from the highlight angle on NAVER's status-1 lanes, not only status 2; recorded NAVER lanes support it, no Apple Maps lane records exist yet), the box tracks the turn distance.
 - [ ] **CarPlay altScreen (iOS-rendered cluster video) research record.** Kept separate
   from the junction view: document altScreen (display type 111) declaration,
   negotiation, stream format and what iOS renders, even if this cluster cannot
