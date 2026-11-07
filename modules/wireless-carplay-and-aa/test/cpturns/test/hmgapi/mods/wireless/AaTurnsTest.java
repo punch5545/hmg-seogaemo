@@ -151,8 +151,8 @@ public final class AaTurnsTest {
         Handler h = new Handler();
         AaTurns t = live(c, h);
         t.nextTurn("02" + "02010300" + "01030000", 0, AaTurns.EV_LANES, -1, -1);
-        // glyph pair 16, 18 (straight + right): straight grey, right blue; the single right lane blue
-        String f1 = frame(new int[] { 0x0b, 16, 18 }, new int[] { 0x02, 3 });
+        // glyph pair 16, 18 (straight + right): straight grey, right white (a CarPlay status 1 lane, route arrow white); the single right lane white
+        String f1 = frame(new int[] { 0x07, 16, 18 }, new int[] { 0x01, 3 });
         require(f1.equals(last(c, "lanes ")), "lanes: " + last(c, "lanes ") + " wanted " + f1);
         require("remain 800 0 0 0".equals(last(c, "remain ")), "lane distance box " + last(c, "remain "));
         // the cluster ages a frame sent once out: it comes again while the route is live
@@ -188,7 +188,7 @@ public final class AaTurnsTest {
         // the same lanes after a new route are not taken for old ones
         t.status(1);
         t.nextTurn("01" + R_ONLY, 0, AaTurns.EV_LANES, -1, -1);
-        require(frame(new int[] { 0x02, 3 }).equals(last(c, "lanes ")), "after a new route: shown again " + last(c, "lanes "));
+        require(frame(new int[] { 0x01, 3 }).equals(last(c, "lanes ")), "after a new route: shown again " + last(c, "lanes "));
 
         // lanes before the active status wait for it
         c = new Cluster();
@@ -197,7 +197,7 @@ public final class AaTurnsTest {
         t.nextTurn("01" + "01010300", 0, AaTurns.EV_LANES, -1, -1);
         require(last(c, "lanes ") == null && h.pending.isEmpty(), "lanes wait for status");
         t.status(1);
-        require(frame(new int[] { 0x0e, 16, 18 }).equals(last(c, "lanes ")), "lanes shown at status " + last(c, "lanes "));
+        require(frame(new int[] { 0x0d, 16, 18 }).equals(last(c, "lanes ")), "lanes shown at status " + last(c, "lanes "));
 
         // no recommendation anywhere: every arrow white; with one lane recommended the others grey
         c = new Cluster();
@@ -206,16 +206,16 @@ public final class AaTurnsTest {
         t.nextTurn("03" + "00010300" + "00030000" + "00080000", 0, AaTurns.EV_LANES, -1, -1);
         require(frame(new int[] { 0x05, 16, 18 }, new int[] { 0x01, 3 }, new int[] { 0x01, 8 }).equals(last(c, "lanes ")), "no route lane: all white " + last(c, "lanes "));
         t.nextTurn("03" + "00010300" + "01030000" + "00080000", 0, AaTurns.EV_LANES, -1, -1);
-        require(frame(new int[] { 0x0f, 16, 18 }, new int[] { 0x02, 3 }, new int[] { 0x03, 8 }).equals(last(c, "lanes ")), "route lane blue, the rest grey " + last(c, "lanes "));
+        require(frame(new int[] { 0x0f, 16, 18 }, new int[] { 0x01, 3 }, new int[] { 0x03, 8 }).equals(last(c, "lanes ")), "route lane white, the rest (status 0) grey " + last(c, "lanes "));
         // a U-turn (both sides draw arrow 5) with a left lane: the U-turn pair, U-turn on the route
         t.nextTurn("01" + "01050700", 0, AaTurns.EV_LANES, -1, -1);
-        require(frame(new int[] { 0x0e, 10, 14 }).equals(last(c, "lanes ")), "u-turn + left " + last(c, "lanes "));
-        // a sharp left snaps to the left of a verified set (UT, L, ST): the U-turn on the route blue, the others grey
+        require(frame(new int[] { 0x0d, 10, 14 }).equals(last(c, "lanes ")), "u-turn + left " + last(c, "lanes "));
+        // a sharp left snaps to the left of a verified set (UT, L, ST): the U-turn on the route white, the others grey
         t.nextTurn("01" + "04010605", 0, AaTurns.EV_LANES, -1, -1);
-        require(frame(new int[] { 0x3e, 26, 31, 22 }).equals(last(c, "lanes ")), "snapped set " + last(c, "lanes "));
+        require(frame(new int[] { 0x3d, 26, 31, 22 }).equals(last(c, "lanes ")), "snapped set " + last(c, "lanes "));
         // U-turn right (shape 9) used to drop out of the lane: now its arrow is the U-turn like the left one
         t.nextTurn("01" + "01050000", 0, AaTurns.EV_LANES, -1, -1);
-        require(frame(new int[] { 0x02, 5 }).equals(last(c, "lanes ")), "u-turn alone " + last(c, "lanes "));
+        require(frame(new int[] { 0x01, 5 }).equals(last(c, "lanes ")), "u-turn alone " + last(c, "lanes "));
         // malformed strings change nothing
         int n = c.calls.size();
         t.nextTurn("09", 0, AaTurns.EV_LANES, -1, -1);

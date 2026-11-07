@@ -24,7 +24,7 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   2026-11-06 by frame injection (`tmp/lane-probe/step.sh`): white/blue/grey slots in one
   lane, `updateRemainDis` 300 m / 1.2 km, an empty `0xF1` frame removes strip and box. Still open (needs real phone lane data): `CpTurns`
   (`LaneGlyphs`, `laneValues`, `sendLaneDist`) turns NAVER/Apple lanes into the right
-  pairs/colours, only the route arrow is blue, the box tracks the turn distance.
+  pairs/colours (status 1 route arrow white, blue only on NAVER's status 2 lane), the box tracks the turn distance.
 - [ ] **CarPlay altScreen (iOS-rendered cluster video) research record.** Kept separate
   from the junction view: document altScreen (display type 111) declaration,
   negotiation, stream format and what iOS renders, even if this cluster cannot
@@ -60,8 +60,8 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
 - [ ] **Verify Android Auto lanes on a drive (next beta).** Offline fix, see
   [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) "Android Auto lanes". With a phone
   that sends lanes (Google Maps; NAVER/T map/Kakao may send none): the strip appears on the
-  cluster and HUD and stays (refresh every 750 ms), the route arrow is blue and the other
-  arrows/lanes grey, multi-arrow lanes show pairs, the box beside it shows the turn distance,
+  cluster and HUD and stays (refresh every 750 ms), the route arrow is white, the other
+  arrows/lanes grey (like a CarPlay status 1 / status 0 lane; never blue), multi-arrow lanes show pairs, the box beside it shows the turn distance,
   everything clears at arrival and when the car's navigation takes over. If no strip: developer
   mode on, pull logcat (`AALANES event 34 [...]` per lane change, `NAVDUMP` the phone's state when the library dumps it) and the USB export.
 - [ ] **Verify Android Auto stock-format turns on a drive.** `AaGuidance` (policy in

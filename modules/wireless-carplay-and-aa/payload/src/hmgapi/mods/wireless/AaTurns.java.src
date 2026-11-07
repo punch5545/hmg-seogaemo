@@ -550,8 +550,9 @@ final class AaTurns {
     }
 
     // ---- lanes: "nn" lane count, then per lane 8 hex digits: the route mask (bit k: arrow slot k is
-    // on the route), then three arrow bytes (direction classes 1..8, 0 unused). The cluster takes
-    // the lane values CarPlay uses (CpLaneFrame) and wants the frame again every 0.75 s.
+    // on the route), then three arrow bytes (direction classes 1..8, 0 unused). The lanes are
+    // drawn as the equivalent CarPlay lanes (CpLaneFrame, never blue: no must-use signal) and the
+    // cluster wants the frame again every 0.75 s.
 
     void sendLanes(String s) {
         if (s == null) s = "";
@@ -581,7 +582,9 @@ final class AaTurns {
         f[0] = LANES;
         f[1] = (byte) n;
         for (int k = 0; k < n; k++) {
-            int[] v = CpLaneFrame.lane(arrows[k], route[k], anyRoute ? CpLaneFrame.GREY : CpLaneFrame.WHITE);
+            // the equivalent CarPlay lane: a lane with a highlighted direction is status 1 (good), a lane without one is
+            // status 0 (not good) while another lane is highlighted, and with no highlight anywhere nothing is flagged (status 1)
+            int[] v = CpLaneFrame.lane(arrows[k], route[k], route[k] != 0 || !anyRoute ? 1 : 0);
             f[k + 3] = (byte) v[0];
             for (int j = 0; j < 3; j++) f[k * 3 + 19 + j] = (byte) v[1 + j];
         }
