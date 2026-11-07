@@ -44,8 +44,9 @@ public final class CpJunctionsTest {
         for (int h = 0; h < CpJunctionTable.HIGHLIGHTS.length; h += 5)
             if (CpJunctionTable.HIGHLIGHTS[h + 1] == result[1]) {
                 found = CpJunctionTable.PICTURES[CpJunctionTable.HIGHLIGHTS[h] * 4] == result[0];
-                check("selected highlight is an exit route " + result[1],
-                        CpJunctionTable.HIGHLIGHTS[h + 2] == CpJunctionTable.ROUTE_EXIT);
+                check("selected highlight is an exit or straight route " + result[1],
+                        CpJunctionTable.HIGHLIGHTS[h + 2] == CpJunctionTable.ROUTE_EXIT
+                        || CpJunctionTable.HIGHLIGHTS[h + 2] == CpJunctionTable.ROUTE_STRAIGHT);
             }
         check("B belongs to selected A " + result[0], found);
     }
@@ -72,10 +73,25 @@ public final class CpJunctionsTest {
         text.description = "고가차도"; text.afterRoad = "경부고속도로";
         pair("text never changes the selection", CpJunctions.select(text, null, row("-0 -0 -0 +90")), 10193, 10194);
 
-        // Not a highway exit maneuver: keeps also mark slip roads in town.
-        for (int type : new int[] {0, 1, 2, 3, 4, 5, 9, 13, 14, 47, 48, 49, 50})
+        // Keeps: toward an exit, or staying on the through lanes while an exit peels off.
+        pair("keep right onto the exit lane", select(14, "-0 -0 -0 -0 -0 +90"), 10193, 10194);
+        pair("keep right on a two-lane ramp", select(14, "-0 +90"), 10046, 10047);
+        pair("keep left onto a left exit", select(13, "+-90 -0 -0"), 10016, 10018);
+        pair("keep left past a right exit", select(13, "+0 +0 +0 -90"), 10193, 10195);
+        pair("keep left past a two-lane right exit", select(13, "+0 +0 -0 -90 -90"), 10320, 10323);
+        pair("keep left past an exit on a two-lane road", select(13, "+0 -90"), 10046, 10048);
+        pair("keep right past a left exit", select(14, "--90 +0 +0"), 10016, 10017);
+        pair("keep right past a left exit, two lanes", select(14, "--90 +0"), 10001, 10002);
+        check("keep left, half split", select(13, "+0 +0 +0 -90 -90 -90") == null);
+        check("keep left, the route is on the exit lane", select(13, "-0 -0 +90") == null);
+        check("keep right, route still on the through lanes", select(14, "+0 +0 +0 -90") == null);
+        check("keep right in town (U-turn lane)", select(14, "-180 -0 +90") == null);
+        check("past-exit highlight is for keeps only", select(53, "+0 +0 -90") == null && select(23, "+0 +0 -90") == null);
+
+        // Not a junction-view maneuver.
+        for (int type : new int[] {0, 1, 2, 3, 4, 5, 9, 47, 48, 49, 50})
             check("no picture for type " + type, select(type, "-0 -0 -0 +90") == null
-                    && select(type, "+-90 -0 -0") == null);
+                    && select(type, "+-90 -0 -0") == null && select(type, "+0 +0 -90") == null);
         CpTurns.Maneuver round = maneuver(23); round.junction = 1;
         check("roundabout", CpJunctions.select(round, null, row("-0 -0 +90")) == null);
         // Lanes that do not show one plain exit.
@@ -98,8 +114,9 @@ public final class CpJunctionsTest {
         check("left two exit lanes have no template", select(22, "+-90 +-90 -0 -0") == null);
         check("left exit on a two-lane road", select(22, "+-90 -0") == null);
 
-        String[] specs = {"-0 -0 -0 +90", "-0 +90", "-0 -0 -0 +90 +90", "+-90 -0 -0", "-0 -0 *90"};
-        for (String spec : specs) for (int type : new int[] {8, 22, 23, 51, 52, 53}) {
+        String[] specs = {"-0 -0 -0 +90", "-0 +90", "-0 -0 -0 +90 +90", "+-90 -0 -0", "-0 -0 *90",
+                "+0 +0 +0 -90", "+0 -90", "+0 +0 -0 -90 -90", "--90 +0 +0", "--90 +0"};
+        for (String spec : specs) for (int type : new int[] {8, 13, 14, 22, 23, 51, 52, 53}) {
             CpLaneDecoder.Info info = row(spec);
             int[] result = CpJunctions.select(maneuver(type), null, info);
             if (result == null) continue;

@@ -46,17 +46,24 @@ CpJunctions selects from two inputs only, the maneuver type and the phone's deco
 the maneuver; instruction text and road names are never used (owner decision). iAP2 has no
 overpass, underpass or tunnel maneuver, and no PE14 picture draws elevation.
 
-- Types: highway exits and highway changes only (8, 22, 23, 51, 52, 53). Keeps (13/14) are
-  excluded because phones also use them for slip roads in town; straight-on, ordinary turns
-  and roundabouts get no picture.
+- Types: highway exits, highway changes and keeps (8, 13, 14, 22, 23, 51, 52, 53); keeps were
+  added after the 2026-11-07 drives (owner decision). Straight-on, ordinary turns and
+  roundabouts get no picture. A keep in town with an exit-like lane set without a U-turn lane
+  also gets one (accepted).
 - Lanes must show one plain exit: one or two contiguous edge lanes turning to the exit side,
   at least one through lane, every recommended lane among the exit lanes, through lanes off
   route with no turn arrows, no U-turn (±150° or more) lane anywhere. Explicit types fix the
-  side; 8 and 51 take it from the lanes and give nothing when both edges qualify.
+  side (13 left, 14 right); 8 and 51 take it from the lanes and give nothing when both edges
+  qualify.
+- A keep away from an exit (13 with exit lanes peeling off right, 14 with exit lanes peeling
+  off left; route on the through lanes only, exit lanes off route) shows the same template
+  with its straight highlight.
 - Templates: right, one exit lane: 10193/10194 (stock pair); 10168/10170 (second stock pair)
   when the next maneuver is also a right exit (8, 23, 53); 10046/10047 on a two-lane road.
   Right, two exit lanes, four or more lanes: 10320/10322 (wide branch). Left, one exit lane,
-  three or more lanes: 10016/10018 (no stock sample). Everything else gets no picture.
+  three or more lanes: 10016/10018 (no stock sample). Straight past a right exit: 10193/10195,
+  10046/10048 on two lanes, 10320/10323 for two exit lanes; past a left exit: 10016/10017,
+  10001/10002 on two lanes. Everything else gets no picture.
 
 The CarPlay app seen on the car sends no junction or exit angles and quantises lane arrows
 to 0, ±90 and ±180, so angles cannot pick Y, pocket, loop or multi-road pictures. The full
