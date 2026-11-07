@@ -35,6 +35,14 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   sets `exit = 0` / `hasExit = false` before parsing, so an update without optional p11
   erases a cached exit angle (absent is now distinguishable from 0° via `hasExit`). Confirm
   against tests/dispatch, then preserve the cached value. Raised independently by the 2026-11-06 external-project comparisons.
+- [ ] **CarPlay turn-type gaps from the r8.2 comparison (verify on a drive).** Two small
+  behaviour changes in `CpGuidance.stock`, not seen on a car: a U-turn with an explicit exit
+  angle under 158 degrees keeps the projection icon, and a turn type 1/2 in a roundabout with an
+  explicit non-zero exit angle sends 32/33 at that clock position. No recorded NAVER maneuver
+  has either (exit angle always 0, roundabouts are type 0 / junction 1 / exit 180); an Apple
+  Maps drive through a roundabout would show them. Open, needs a car photo set: plain turns at
+  20, 30, 60, 75, 105 and 150 degrees (stock directions are 45 degree steps only), and whether
+  a NAVER roundabout (type 0) should draw the AR roundabout.
 - [ ] **Verify CarPlay stock-format guidance on a drive.** Implemented
   ([cluster-ar-view.md](cluster-ar-view.md), [hud-hologram.md](hud-hologram.md),
   [hud-junction-view.md](hud-junction-view.md)); the six guidance map points reflect on the car.
