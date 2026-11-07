@@ -10,6 +10,7 @@ import java.util.Calendar;
 
 import hmgapi.hook.Car;
 import hmgapi.hook.Cluster;
+import hmgapi.mods.wireless.dipo.CpLaneFrame;
 
 /**
  * Android Auto turn-by-turn on the cluster and HUD, for one Android Auto connection.
@@ -54,6 +55,13 @@ final class AaTurns {
             unitTick();
         }
     };
+    /** sends the lane frame again: the car's own navigation calls the cluster every 0.5-0.75 s, and a frame sent once is aged out */
+    final Runnable laneTick = new Runnable() {
+        @Override
+        public void run() {
+            refreshLanes();
+        }
+    };
     /** renews the approach bar's lease (3500 ms in the navigation process) */
     final Runnable renew = new Runnable() {
         @Override
@@ -64,6 +72,7 @@ final class AaTurns {
         }
     };
     static final long RENEW_MS = 1000;
+    static final long LANE_MS = 750, LANE_DIST_RESEND_MS = 2000;
 
     // the next turn
     int event, turnSide, turnAngle, turnNumber, displayType, direction, unit;
@@ -88,6 +97,10 @@ final class AaTurns {
     int hudType = -1, hudNext;
     boolean hudFresh;
     String hudRoad, laneKey;
+    /** the lane frame to show while a route is live (null: no lanes), and the lane distance box last sent (whole, unit, tenths) and when */
+    byte[] lastLane;
+    int[] laneDist;
+    long laneDistAt;
     // the turns ahead (index 0..2)
     final String[] aheadName = new String[3];
     final int[] aheadEv = new int[3], aheadSide = new int[3], aheadAng = new int[3], aheadExit = new int[3];
@@ -223,6 +236,7 @@ final class AaTurns {
             navLive = true;
             if (s == 1) {
                 rerouting = false;
+                if (lastLane != null) showLanes();
             } else if (!rerouting) {
                 rerouting = true;
                 rerouteHeld = 0;
@@ -254,12 +268,19 @@ final class AaTurns {
         direction = 0;
         rerouting = false;
         setApproach(-1);
+        if (lastLane != null || laneDist != null) {
+            forgetLanes();
+            byte[] blank = new byte[81];
+            blank[0] = LANES;
+            cluster.laneInfo(blank);
+        }
     }
 
     /** The connection ended: clear what we showed, if a route was on. */
     void end() {
         handler.removeCallbacks(tick);
         if (navLive) status(2);
+        forgetLanes();
         setApproach(-1);
     }
 
@@ -286,6 +307,7 @@ final class AaTurns {
         }
         sendHudList();
         sendHudDistance();
+        sendLaneDist();
     }
 
     /** The approach bar: 0..100 shows it (renewed while on), -1 gives the stock bar back. */
@@ -499,7 +521,7 @@ final class AaTurns {
     }
 
     void hudBlank() {
-        laneKey = "";
+        forgetLanes();
         cluster.tbtSubInfo2C(0, 0, 0, 0, 0, 0, 0, 0, 0);
         byte[] lanes = new byte[81];
         lanes[0] = LANES;
@@ -527,7 +549,9 @@ final class AaTurns {
         if (destName != null) cluster.destinationName(0, destName);
     }
 
-    // ---- lanes: "nn" lane count, then per lane 8 hex digits (type, then 3 arrow bytes)
+    // ---- lanes: "nn" lane count, then per lane 8 hex digits: the route mask (bit k: arrow slot k is
+    // on the route), then three arrow bytes (direction classes 1..8, 0 unused). The cluster takes
+    // the lane values CarPlay uses (CpLaneFrame) and wants the frame again every 0.75 s.
 
     void sendLanes(String s) {
         if (s == null) s = "";
@@ -537,22 +561,106 @@ final class AaTurns {
             n = hexByte(s, 0);
             if (n < 0 || n > 8) return;
         }
-        byte[] f = new byte[81];
-        f[0] = LANES;
-        f[1] = (byte) n;
+        int[][] arrows = new int[n][3];
+        int[] route = new int[n];
+        boolean anyRoute = false;
         for (int k = 0; k < n; k++) {
             int at = k * 8 + 2;
             int b = hexByte(s, at);
             if (b < 0) return;
-            f[k + 3] = (byte) b;
+            route[k] = b & 7;
             for (int j = 0; j < 3; j++) {
                 b = hexByte(s, at + 2 + j * 2);
                 if (b < 0) return;
-                f[k * 3 + 19 + j] = (byte) b;
+                arrows[k][j] = b;
+                if (b < 1 || b > 8) route[k] &= ~(1 << j);   // a route mark needs an arrow
             }
+            anyRoute |= route[k] != 0;
         }
-        cluster.laneInfo(f);
+        byte[] f = new byte[81];
+        f[0] = LANES;
+        f[1] = (byte) n;
+        for (int k = 0; k < n; k++) {
+            int[] v = CpLaneFrame.lane(arrows[k], route[k], anyRoute ? CpLaneFrame.GREY : CpLaneFrame.WHITE);
+            f[k + 3] = (byte) v[0];
+            for (int j = 0; j < 3; j++) f[k * 3 + 19 + j] = (byte) v[1 + j];
+        }
+        Log.d("AALANES", "event 34 [" + s + "]");   // logcat only, on change
         laneKey = s;
+        if (n == 0) {
+            forgetLanes();
+            laneKey = s;
+            if (navLive) cluster.laneInfo(f);
+            return;
+        }
+        lastLane = f;
+        if (navLive) showLanes();
+    }
+
+    /** sends the lane frame and the distance beside it, and keeps them coming */
+    void showLanes() {
+        cluster.laneInfo(lastLane);
+        sendLaneDist();
+        handler.removeCallbacks(laneTick);
+        handler.postDelayed(laneTick, LANE_MS);
+    }
+
+    void refreshLanes() {
+        if (lastLane == null || !navLive) return;
+        if (!rerouting) {
+            cluster.laneInfo(lastLane);
+            sendLaneDist();
+        }
+        handler.postDelayed(laneTick, LANE_MS);
+    }
+
+    /** no lanes any more: stop the refresh, drop the frame and give the distance box back */
+    void forgetLanes() {
+        laneKey = "";
+        lastLane = null;
+        handler.removeCallbacks(laneTick);
+        clearLaneDist();
+    }
+
+    /**
+     * The distance to the next maneuver in the box beside the lane strip (updateRemainDis), the same
+     * as CarPlay: an empty box is worse than the next turn's distance (cluster-lane-frame.md 1b).
+     * Sent on change and every LANE_DIST_RESEND_MS. Feet and yards go out as metres.
+     */
+    void sendLaneDist() {
+        if (lastLane == null || distance < 0f) return;
+        float f = distance;
+        int u = unit;
+        if (u < 0 || u > Cluster.UNIT_YD) return;
+        if (u == Cluster.UNIT_FT) {
+            f *= 0.3048f;
+            u = Cluster.UNIT_M;
+        } else if (u == Cluster.UNIT_YD) {
+            f *= 0.9144f;
+            u = Cluster.UNIT_M;
+        }
+        int whole = (int) (f + 0.5f), tenths = 0;
+        if (u == Cluster.UNIT_KM || u == Cluster.UNIT_MI) {
+            int t = (int) (f * 10f + 0.5f);
+            whole = t / 10;
+            tenths = t % 10;
+        }
+        if (whole > 65534) {
+            whole = 65534;
+            tenths = 0;
+        }
+        int[] v = { whole, u, tenths };
+        long now = System.currentTimeMillis();
+        if (laneDist != null && java.util.Arrays.equals(laneDist, v) && now - laneDistAt < LANE_DIST_RESEND_MS) return;
+        laneDist = v;
+        laneDistAt = now;
+        cluster.remainDis(whole, u, tenths, 0);
+    }
+
+    void clearLaneDist() {
+        if (laneDist == null) return;
+        laneDist = null;
+        cluster.remainDis(65535, 15, 15, 0);
     }
 
     static int hexByte(String s, int at) {

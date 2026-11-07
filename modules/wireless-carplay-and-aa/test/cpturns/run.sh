@@ -10,6 +10,7 @@ cp "$PAY/src/hmgapi/mods/wireless/dipo/CpLaneDecoder.java.src" "$T/src/hmgapi/mo
 cp "$PAY/src/hmgapi/mods/wireless/dipo/CpGuidance.java.src" "$T/src/hmgapi/mods/wireless/dipo/CpGuidance.java"
 cp "$PAY/src/hmgapi/mods/wireless/dipo/CpJunctions.java.src" "$T/src/hmgapi/mods/wireless/dipo/CpJunctions.java"
 cp "$PAY/src/hmgapi/mods/wireless/dipo/CpJunctionTable.java.src" "$T/src/hmgapi/mods/wireless/dipo/CpJunctionTable.java"
+cp "$PAY/src/hmgapi/mods/wireless/dipo/CpLaneFrame.java.src" "$T/src/hmgapi/mods/wireless/dipo/CpLaneFrame.java"
 cp "$PAY/src/hmgapi/mods/wireless/AaTurns.java.src" "$T/src/hmgapi/mods/wireless/AaTurns.java"
 cp "$PAY/src/hmgapi/mods/wireless/AaGuidance.java.src" "$T/src/hmgapi/mods/wireless/AaGuidance.java"
 cp "$PAY/stubs/com/tcc/iap2/Iap2NotiMsg.java.src" "$T/src/com/tcc/iap2/Iap2NotiMsg.java"
