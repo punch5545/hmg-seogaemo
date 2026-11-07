@@ -134,8 +134,10 @@ Normative rules: contract [Peer info](module-runtime-contract.md#peer-info). In 
   In GPM only, `NetworkInterface.getName()`/`getDisplayName()` report the adapter as `wlan0` and a real `wlan0` as
   `wlan0-builtin`, so GPM's host locator (first site-local IPv4 interface named `wlan0`; BSSID from its MAC) picks
   `rtwlan0`/`192.168.50.1`. A failed part shows in the module status; it never disables other parts.
-  Also in GPM only: `WifiManager.isWifiApEnabled()` and `getWifiApMode()` answer true / 2 while `/sys/class/net/<iface>`
-  has `IFF_UP`. GPM's start request (`WirelessExplorer.handleStartRequest`, stock smali) calls `isWifiApEnable()`
+  Also in GPM only: `WifiManager.isWifiApEnabled()` and `getWifiApMode()` answer true / 2 while the hotspot is serving:
+  `/sys/class/net/<iface>` has `IFF_UP` and a process has the argument `usb-hostapd.conf` (the module brings `rtwlan0` up
+  before it starts hostapd, so `IFF_UP` alone is true too early; hostapd runs as `wifi` in its run directory, hence the
+  relative argument). Every hook that follows uses the same check. GPM's start request (`WirelessExplorer.handleStartRequest`, stock smali) calls `isWifiApEnable()`
   = `isWifiApEnabled() && getWifiApMode() == 2` first and answers the phone `STATUS_WIFI_DISABLED` otherwise, so with the
   stock AP off (the tester car has no built-in chip) the phone showed the Android Auto popup (0.1.44) and never went on:
   no Wi-Fi credentials were sent. The first override is logged once per process (`GPM isWifiApEnabled answered for the

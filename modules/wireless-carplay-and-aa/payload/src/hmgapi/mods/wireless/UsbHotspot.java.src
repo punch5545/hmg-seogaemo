@@ -32,7 +32,12 @@ public final class UsbHotspot {
     /** IFF_UP in /sys/class/net/<iface>/flags */
     static final int IFF_UP = 1;
     /** replaced by the host test */
-    static File sysNet = new File("/sys/class/net");
+    static File sysNet = new File("/sys/class/net"), procRoot = new File("/proc");
+    /**
+     * The config file argument of the wifi module's hostapd daemon (module.properties daemon.usb-hostapd). The daemon
+     * runs as wifi in its own run directory, so the runtime passes it relative: argv is "hostapd usb-hostapd.conf".
+     */
+    static final String HOSTAPD_CONF = "usb-hostapd.conf";
     /** the hotspot channel when the wifi module published none: 2.4 GHz channel 6, the one it runs (modules/wifi ap_channel) */
     static final int DEFAULT_CHANNEL = 6;
     /** the 5 GHz channel frequencies HKMC_GPM's version request hard-codes, as MHz: 5745 (149) and 5180 (36) */
@@ -176,10 +181,16 @@ public final class UsbHotspot {
     }
 
     /**
-     * Whether the adapter's interface is up now: hostapd runs on a transient, replug-able adapter, so this is read at
-     * each call rather than from the zygote snapshot. Needs no permission beyond reading /sys/class/net.
+     * Whether the hotspot is serving now: the adapter's interface is up and the wifi module's hostapd is running.
+     * The module brings the interface up before it starts hostapd, so IFF_UP alone says "up" while hostapd is not
+     * yet (or no longer) there. Read at each call, not from the zygote snapshot (a transient, replug-able adapter);
+     * needs no permission beyond /sys/class/net and the world-readable /proc/<pid>/cmdline.
      */
     public static boolean apUp() {
+        return ifaceUp() && hostapdRunning();
+    }
+
+    static boolean ifaceUp() {
         String i = iface;
         if (i == null) return false;
         try {
@@ -189,6 +200,22 @@ public final class UsbHotspot {
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** a process whose command line has the module's hostapd config as an argument (relative, or any path to it) */
+    static boolean hostapdRunning() {
+        String[] pids = procRoot.list();
+        if (pids == null) return false;
+        for (String pid : pids) {
+            if (pid.isEmpty() || pid.charAt(0) < '0' || pid.charAt(0) > '9') continue;
+            try {
+                for (String arg : read(new File(new File(procRoot, pid), "cmdline")).split("\u0000"))
+                    if (arg.equals(HOSTAPD_CONF) || arg.endsWith("/" + HOSTAPD_CONF)) return true;
+            } catch (Throwable gone) {
+                // the process exited or is unreadable
+            }
+        }
+        return false;
     }
 
     /**

@@ -17,6 +17,14 @@ public final class UsbHotspotTest {
         catch (IllegalStateException expected) { }
     }
 
+    static void hostapd(java.io.File proc, String pid, String cmdline) throws Exception {
+        java.io.File d = new java.io.File(proc, pid);
+        d.mkdirs();
+        java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(d, "cmdline"));
+        o.write(cmdline.getBytes("UTF-8"));
+        o.close();
+    }
+
     static void flags(java.io.File sys, String text) throws Exception {
         java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(new java.io.File(sys, "rtwlan0"), "flags"));
         o.write(text.getBytes("UTF-8"));
@@ -44,6 +52,11 @@ public final class UsbHotspotTest {
         sys.delete();
         new java.io.File(sys, "rtwlan0").mkdirs();
         UsbHotspot.sysNet = sys;
+        java.io.File proc = java.io.File.createTempFile("proc", "");
+        proc.delete();
+        new java.io.File(proc, "self").mkdirs();
+        UsbHotspot.procRoot = proc;
+        hostapd(proc, "100", "/data/nemesis/backup/hmg-seogaemo/modules/wifi/bin/hostapd\u0000usb-hostapd.conf\u0000");
         check(!UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApMode(0) == 0, "no flags file: stock answers");
         flags(sys, "0x1002\n");
         check(!UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false), "interface down");
@@ -54,6 +67,14 @@ public final class UsbHotspotTest {
         check(!UsbHotspot.apUp(), "unparsable flags");
         flags(sys, "0x1003\n");
         check(UsbHotspot.gpmApEnabled(true) && UsbHotspot.gpmApEnabled(false), "up again after garbage");
+        // The interface is up before hostapd starts, and stays up if it dies: not serving without the daemon.
+        new java.io.File(proc, "100/cmdline").delete();
+        hostapd(proc, "101", "/system/bin/dnsmasq\u0000-k\u0000--interface=rtwlan0\u0000");
+        hostapd(proc, "102", "/system/bin/hostapd\u0000/data/misc/wifi/hostapd.conf\u0000");
+        check(UsbHotspot.ifaceUp() && !UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApMode(0) == 0, "no hostapd: stock answers");
+        check(UsbHotspot.gpmChannelType() == null && UsbHotspot.gpmFrequency(5745) == 5745, "no hostapd: stock version request");
+        hostapd(proc, "103", "hostapd\u0000/data/nemesis/backup/hmg-seogaemo/modules/wifi/usb-hostapd.conf");
+        check(UsbHotspot.apUp(), "hostapd running (last argument without a trailing NUL)");
         UsbHotspot.clear();
         check(!UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApMode(1) == 1, "no USB hotspot: stock answers");
         UsbHotspot.use(UsbHotspot.parse(USB));
