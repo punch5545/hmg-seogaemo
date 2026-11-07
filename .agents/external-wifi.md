@@ -137,7 +137,15 @@ Normative rules: contract [Peer info](module-runtime-contract.md#peer-info). In 
   Also in GPM only: `WifiManager.isWifiApEnabled()` and `getWifiApMode()` answer true / 2 while the hotspot is serving:
   `/sys/class/net/<iface>` has `IFF_UP` and a process has the argument `usb-hostapd.conf` (the module brings `rtwlan0` up
   before it starts hostapd, so `IFF_UP` alone is true too early; hostapd runs as `wifi` in its run directory, hence the
-  relative argument). Every hook that follows uses the same check. GPM's start request (`WirelessExplorer.handleStartRequest`, stock smali) calls `isWifiApEnable()`
+  relative argument). Every hook that follows uses the same check.
+  The same two answers in PhoneProjection (`com.daudio.app.phoneprojection`, registered as the sixth app of the module): its
+  wireless service decides on `a/f.getWiFiApMode()` = `isWifiApEnabled() ? getWifiApMode() : UNKNOWN` and starts a wireless
+  connection only for mode 2 ("CONNECTIVITY"; mode 1 "HOTSPOT" is the other accepted one), silently doing nothing otherwise
+  (stock smali `wireless/a/f.j` and `b`; upstream log "getWiFiApMode ... APMode.UNKNOWN"). It also cycles the stock AP around a
+  connection (`a/f.l` turn off, `a/f.k` turn on = `setWifiApEnabledForConnectivity(config, false/true)`); that call is a
+  no-op returning true there while the USB hotspot serves (`turnOnWiFi` is already a no-op once the AP reads as enabled).
+  `renewWirelessPasskey` and `isNewWirelessKey` read `getWifiApConfiguration`, which returns the fixed USB credentials, so the key
+  never looks new. PhoneProjection gets no map point and no other hook. GPM's start request (`WirelessExplorer.handleStartRequest`, stock smali) calls `isWifiApEnable()`
   = `isWifiApEnabled() && getWifiApMode() == 2` first and answers the phone `STATUS_WIFI_DISABLED` otherwise, so with the
   stock AP off (the tester car has no built-in chip) the phone showed the Android Auto popup (0.1.44) and never went on:
   no Wi-Fi credentials were sent. The first override is logged once per process (`GPM isWifiApEnabled answered for the

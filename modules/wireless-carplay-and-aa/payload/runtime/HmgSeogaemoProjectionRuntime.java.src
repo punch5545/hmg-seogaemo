@@ -11,8 +11,8 @@ import java.util.*;
 public final class HmgSeogaemoProjectionRuntime {
     static final int LIMIT = 65536;
     static final String[] PACKAGES = {"com.daudio.app.dipo", "com.tcc.iap2server",
-        "com.google.android.projection.sink", "com.mnsoft.navi", "com.android.btsettings"};
-    static final String[][] PARTS = {{"dipo"}, {"iap2"}, {"gpm_usb", "gpm_tbt"}, {"navigation"}, {"btsettings"}};
+        "com.google.android.projection.sink", "com.mnsoft.navi", "com.android.btsettings", "com.daudio.app.phoneprojection"};
+    static final String[][] PARTS = {{"dipo"}, {"iap2"}, {"gpm_usb", "gpm_tbt"}, {"navigation"}, {"btsettings"}, {}};
     interface Metadata { int[] stat(File file) throws Exception; }
     // KitKat libcore provides lstat; android.system.Os requires API21.
     static final class KitKatMetadata implements Metadata {
