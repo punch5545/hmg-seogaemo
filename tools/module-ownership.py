@@ -111,6 +111,9 @@ def transient(module, fields, owners):
         elif key.startswith('daemon.'):
             if key[7:] not in daemons or not daemon_ok(value):
                 raise ValueError(f'invalid daemon: {module}:{key}')
+        elif key.startswith('daemon_user.'):
+            if key[12:] not in daemons or value != 'wifi':
+                raise ValueError(f'invalid daemon user: {module}:{key}')
         elif key.startswith('derived_bin.'):
             if key[12:] not in derived or not derived_ok(value):
                 raise ValueError(f'invalid derived program: {module}:{key}')
@@ -148,7 +151,8 @@ def generate(root, order, output):
             key, value = raw.split('=', 1)
             if (key in ('owns_files', 'owns_props', 'reassert_props', 'owns_generated_dirs', 'kmods', 'daemons',
                         'derived_bins', 'owns_ifaces')
-                    or key.startswith(('kmod.', 'kmod_params.', 'daemon.', 'derived_bin.', 'net_rules.'))) and key in fields:
+                    or key.startswith(('kmod.', 'kmod_params.', 'daemon.', 'daemon_user.', 'derived_bin.',
+                                       'net_rules.'))) and key in fields:
                 raise ValueError(f'duplicate ownership key: {module}:{key}')
             if key.startswith('owns_lines'):
                 if not re.fullmatch(r'owns_lines\.[1-9][0-9]*', key) or key in fields:

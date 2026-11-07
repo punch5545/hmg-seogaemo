@@ -40,25 +40,44 @@ only the generated source and generator are committed.
 
 ## CarPlay selection and lifecycle
 
-CpJunctions chooses a picture for exits and ramps only (CarPlay types 8, 22, 23), and only when
-it is likely exact: the phone's decoded lanes at the maneuver are known, the picture draws exactly
-that many lanes, and the recommended lanes are on the exit edge. The route update's lane count
-is the number of lane guidance entries, not lanes, and is never used. Keeps, forks, highway
-changes, straight-on and ordinary turns get no picture: a lane recommendation drew splits that
-were not on the road. Explicit exit types give the route side, a generic ramp takes it from the
-recommended lanes. Lane and junction angles pick the exit, Y, pocket, loop or multi-road layout.
-Road names and the next maneuver refine otherwise equal candidates; the observed stock pairs
-10193/10194 and 10168/10170 remain weak tie preferences.
+Stock picks pictures from map data, not by lane count: at 양재IC (four through lanes and one
+exit lane) it drew the three-lane 10193/10194. PE14 pictures are therefore used as templates.
+CpJunctions selects from two inputs only, the maneuver type and the phone's decoded lanes at
+the maneuver; instruction text and road names are never used (owner decision). iAP2 has no
+overpass, underpass or tunnel maneuver, and no PE14 picture draws elevation.
 
-Selection uses the classified family, side, route and lane count. The CSVs do not define
-physical lane masks for `lane_variant` highlights, so those entries are retained but never
-selected. C remains 65535. This is a best-fit diagram from the phone's available geometry;
-CarPlay supplies no stock map picture identifier or complete lane connectivity.
+- Types: highway exits, highway changes and keeps (8, 13, 14, 22, 23, 51, 52, 53); keeps were
+  added after the 2026-11-07 drives (owner decision). Straight-on, ordinary turns and
+  roundabouts get no picture. A keep in town with an exit-like lane set without a U-turn lane
+  also gets one (accepted).
+- Lanes must show one plain exit: one or two contiguous edge lanes turning to the exit side,
+  at least one through lane, every recommended lane among the exit lanes, through lanes off
+  route with no turn arrows, no U-turn (±150° or more) lane anywhere. Explicit types fix the
+  side (13 left, 14 right); 8 and 51 take it from the lanes and give nothing when both edges
+  qualify.
+- A keep away from an exit (13 with exit lanes peeling off right, 14 with exit lanes peeling
+  off left; route on the through lanes only, exit lanes off route) shows the same template
+  with its straight highlight.
+- Templates: right, one exit lane: 10193/10194 (stock pair); 10168/10170 (second stock pair)
+  when the next maneuver is also a right exit (8, 23, 53); 10046/10047 on a two-lane road.
+  Right, two exit lanes, four or more lanes: 10320/10322 (wide branch). Left, one exit lane,
+  three or more lanes: 10016/10018 (no stock sample). Straight past a right exit: 10193/10195,
+  10046/10048 on two lanes, 10320/10323 for two exit lanes; past a left exit: 10016/10017,
+  10001/10002 on two lanes. Everything else gets no picture.
+
+The CarPlay app seen on the car sends no junction or exit angles and quantises lane arrows
+to 0, ±90 and ±180, so angles cannot pick Y, pocket, loop or multi-road pictures. The full
+picture table stays in the payload as the reference the tests check templates against.
+C remains 65535. Whether stock shows a picture at JC splits, and which picture it uses for
+two-lane exits, still needs a stock capture on the car.
 
 CpTurns sends the selection inside the same raw-metre approach window as stock turns. Only
 the current component's displayed lane index supplies lane evidence; late matching packets
-recompute the selection. Unchanged pictures are not resent. A changed maneuver or component
-clears the old picture even if the replacement selects the same codes. Window exit, missing
+recompute the selection. Unchanged pictures are not resent, also when the phone re-indexes
+the same maneuver on the way (seen at every junction on the 2026-11-07 drives); a different
+picture for a new maneuver or component clears the old one first. At 0 m the phone may link
+the next maneuver's lanes while the list still names the current one, so the shown picture
+is kept until the list moves on. Window exit, missing
 current maneuver, loading/rerouting, arrival, route end, source change, stop and disconnect
 all clear with three 65535 values. Junction clearing and trap-bar restoration precede the
 final idle compass at stop/disconnect. Each CarPlay guidance session first sends one clear,

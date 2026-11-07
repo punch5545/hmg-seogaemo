@@ -709,11 +709,17 @@ final class CpTurns {
         int[] list = u.list;
         Maneuver current = known == null || list == null || list.length == 0 ? null : known.get(list[0]);
         if (!CpGuidance.approach(u, current)) { clearJunction(); return; }
+        // At the maneuver point the phone may already link the next maneuver's lanes while the
+        // list still names this one: keep what is shown until the list moves on.
+        if (u.distNext == 0 && junctionComponent != null && junctionComponent == component
+                && junctionIndex == current.index) return;
         Maneuver next = list.length > 1 ? known.get(list[1]) : null;
         CpLaneDecoder.Info lanes = u.lanesShown ? laneInfos.get(laneKey(component, u.laneIndex)) : null;
         int[] selected = CpJunctions.select(current, next, lanes);
         if (selected == null) { clearJunction(); return; }
-        if (junctionComponent != null && (junctionComponent != component || junctionIndex != current.index)) clearJunction();
+        // The phone re-indexes the same maneuver on the way; the same picture stays up.
+        if (junctionComponent != null && (junctionComponent != component || junctionIndex != current.index)
+                && !java.util.Arrays.equals(junction, selected)) clearJunction();
         if (!java.util.Arrays.equals(junction, selected)) cluster.junctionView(selected[0], selected[1], selected[2]);
         junction = selected;
         junctionComponent = component;

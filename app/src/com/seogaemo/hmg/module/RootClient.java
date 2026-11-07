@@ -93,6 +93,11 @@ public final class RootClient {
         return invoke(ROOT + "preflight run", PREFLIGHT_TIMEOUT_MS);
     }
 
+    /** Read-only redacted summary for the GitHub issue QR code: info.log_NNN lines, most important first. */
+    public static RootResult reportDigest() {
+        return invoke(ROOT + "report digest", PREFLIGHT_TIMEOUT_MS);
+    }
+
     /** Problem report: everything `export usb` writes plus Android/NEMESIS logs; logs is all or ours. */
     public static RootResult exportReport(boolean allLogs) {
         return invoke("/system/bin/sh /data/nemesis/apps/hmg-seogaemo/bin/hmg-seogaemo-root export usb "

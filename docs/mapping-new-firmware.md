@@ -64,7 +64,7 @@ The comparison lists differing point IDs and file hashes. Resolve differences fr
 
 ## Owner submission (GitHub issue)
 
-Owners without a development setup send a map as a GitHub issue. After **Map this car**, choose **Export map** (Car tab or Settings → Developer options) and pick **GitHub issue**: the app saves the folder to USB (or the adb export directory) and then shows a QR code. The phone camera opens the `new-firmware-map.yml` issue form prefilled with product, onebin, Android release, app version and map counts/failing IDs. The owner attaches the exported `maps` folder as a `.zip`. Maintainers turn the issue into a pull request with the steps below. Support → **Report a problem** → **Export as a GitHub issue** opens `bug-car-support.yml` the same way, with module states and recent app errors.
+Owners without a development setup send a map as a GitHub issue. After **Map this car**, choose **Export map** (Car tab or Settings → Developer options) and pick **GitHub issue**: the app saves the folder to USB (or the adb export directory) and then shows a QR code. The phone camera opens the `new-firmware-map.yml` issue form prefilled with product, onebin, Android release, app version and map counts/failing IDs. The owner attaches the exported `maps` folder as a `.zip`. Maintainers turn the issue into a pull request with the steps below. Support → **Report a problem** → **Export as a GitHub issue** opens `bug-car-support.yml` the same way, with a packed, redacted log (module states, failed changes, module/reconcile/watcher log tails, recent app errors) that the `Issue report log` workflow decodes into a comment; `tools/decode-issue-log.py` decodes it locally.
 
 ## Pull Request
 

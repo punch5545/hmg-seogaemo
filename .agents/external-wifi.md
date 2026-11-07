@@ -112,7 +112,10 @@ The hotspot to project over is published by `wifi` (root side; contract table "P
 RTL8831BU: hostapd exited within seconds), WPA2-PSK, SSID `HMG-Seogaemo-<4 hex>`; `rtwlan0` is up with its address
 before hostapd starts. Stock hostapd (NEEV KOR, MD5 `27f00af8...`) hard-codes the stock hotspot's station list
 `/data/misc/wifi/all_sta.list` (written only when a station joins or leaves), so `wifi` runs a private copy
-(`derived_bin.hostapd`) that writes `usb_sta.list` in its state directory instead. When hostapd fails, `module.log`
+(`derived_bin.hostapd`) that writes `usb_sta.list` instead. Stock hostapd drops root for `wifi` (uid 1010) at start
+(the running stock hotspot hostapd is user `wifi`), so 0.1.43 exited 1 on its root-only config; it now starts in a
+`wifi`-owned run directory with a private config copy (`daemon_user.usb-hostapd=wifi`), no `ctrl_interface`.
+When hostapd fails, `module.log`
 says why it stopped and `daemon.usb-hostapd.logcat.log` keeps its logcat lines (both in the problem report);
 credentials stay fixed across boots. `radio=builtin`, `ready=stock` means the stock hotspot as today.
 

@@ -1433,6 +1433,7 @@ sg_transient_decl_ok() (
         kmod_params.*) sg_tr_kmod_name "${key#kmod_params.}" && sg_tr_kmod_params "$value" ;;
         daemon.*) sg_tr_daemon_name "${key#daemon.}" && sg_tr_daemon_spec "$value" ;;
         derived_bin.*) sg_tr_daemon_name "${key#derived_bin.}" && sg_tr_derived_spec "$value" ;;
+        daemon_user.*) sg_tr_daemon_name "${key#daemon_user.}" && [ "$value" = wifi ] ;;
         net_rules.*)
             n=${key#net_rules.}
             case "$n" in ''|0*|*[!0-9]*) exit 1;; esac
@@ -1599,6 +1600,29 @@ sg_daemon_expand() (
     done
     sg_write "$out"
 )
+# A daemon_user daemon (Android hostapd drops root for wifi at start) cannot reach the
+# state directory: each whole @state@/<file> argument is copied into run directory $2
+# (owned by that user, mode 600) and passed relative to it. Prints the argv line.
+sg_daemon_stage() (
+    set -f
+    out=
+    for token in $1; do
+        case "$token" in
+            @state@/*)
+                prefix=@state@/
+                name=${token#"$prefix"}
+                case "$name" in ''|.*|*/*|*[!a-zA-Z0-9_.-]*) exit 2;; esac
+                if [ -f "$HMG_SEOGAEMO_STATE/$name" ]; then
+                    rm -f "$2/$name" && cp "$HMG_SEOGAEMO_STATE/$name" "$2/$name" &&
+                        chown 1010:1010 "$2/$name" && chmod 600 "$2/$name" || exit 1
+                fi
+                token=$name ;;
+            *@*) token=$(sg_daemon_expand "$token") || exit 2 ;;
+        esac
+        out="$out${out:+ }$token"
+    done
+    sg_write "$out"
+)
 # Prints the derived_bin name whose stock program is $1.
 sg_derived_name() {
     sg_dn_manifest=$(sg_manifest_file) || return 1
@@ -1678,6 +1702,14 @@ sg_daemon_start() {
     sg_dm_record=$HMG_SEOGAEMO_STATE/daemon.$sg_dm_name
     ! sg_daemon_running "$sg_dm_name" || return 0
     sg_dm_boot=$(sg_boot_id) || return 1
+    sg_dm_cwd=$HMG_SEOGAEMO_STATE
+    sg_dm_user=$(sg_manifest_value "daemon_user.$sg_dm_name") || sg_dm_user=
+    if [ -n "$sg_dm_user" ]; then
+        [ "$sg_dm_user" = wifi ] || return 2
+        sg_dm_cwd=$HMG_SEOGAEMO_STATE/run/$sg_dm_name
+        mkdir -p "$sg_dm_cwd" && chown 1010:1010 "$sg_dm_cwd" && chmod 700 "$sg_dm_cwd" || return 1
+        sg_dm_line=$(sg_daemon_stage "$sg_dm_spec" "$sg_dm_cwd") || return $?
+    fi
     set -- $sg_dm_line
     case "$1" in
         /system/*)
@@ -1702,7 +1734,7 @@ sg_daemon_start() {
     mv "$sg_dm_record.cmdline.tmp.$$" "$sg_dm_record.cmdline" || return 1
     sg_dm_log=$HMG_SEOGAEMO_STATE/daemon.$sg_dm_name.log
     if [ -f "$sg_dm_log" ] && [ "$(sg_file_size "$sg_dm_log")" -gt 65536 ]; then : > "$sg_dm_log" || return 1; fi
-    ( cd "$HMG_SEOGAEMO_STATE" && exec "$@" ) < /dev/null >> "$sg_dm_log" 2>&1 & # android44-shell: allow -- argv is the manifest daemon.<name> command checked by sg_tr_daemon_spec
+    ( cd "$sg_dm_cwd" && exec "$@" ) < /dev/null >> "$sg_dm_log" 2>&1 & # android44-shell: allow -- argv is the manifest daemon.<name> command checked by sg_tr_daemon_spec
     sg_dm_pid=$!
     sg_tr_record "$sg_dm_record" "$sg_dm_boot" "$sg_dm_pid" || return 1
     sg_changed daemon "$sg_dm_name" || return 1

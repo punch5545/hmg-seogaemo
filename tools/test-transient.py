@@ -441,7 +441,7 @@ def test_declarations(base):
             ("daemon.dhcp", "@payload@/bin/udhcpc -p @state@/pid -s @payload@/script"),
             ("net_rules.1", "iptables FORWARD -i rtwlan0 ! -o rtwlan0 -j ACCEPT"),
             ("net_rules.12", "ip rule iif rtwlan0 lookup 61 prio 9000"), ("owns_ifaces", "rtwlan*,wlan1"),
-            ("derived_bins", "hostapd"),
+            ("derived_bins", "hostapd"), ("daemon_user.wpa", "wifi"),
             ("derived_bin.hostapd", "/system/bin/hostapd /data/misc/wifi/all_sta.list usb_sta.list")]
     bad = [("kmods", ""), ("kmods", "R8188"), ("kmods", "a,,b"), ("kmod.r8188eu", "/system/lib/r.ko"),
            ("kmod.r8188eu", "drivers/r8188eu.so"), ("kmod.r8188eu.tcc.803", "d/r.ko"), ("kmod.R", "d/r.ko"),
@@ -451,6 +451,7 @@ def test_declarations(base):
            ("daemon.wpa", "/system/bin/wpa @state@x"), ("net_rules.0", "ip rule from all lookup 1"),
            ("net_rules.1", "iptables -t nat POSTROUTING -I x"), ("net_rules.1", "ip rule show"),
            ("owns_ifaces", "*"), ("owns_ifaces", "rtw[0-9]"), ("derived_bins", "-x"),
+           ("daemon_user.wpa", "root"), ("daemon_user.wpa", "system"),
            ("derived_bin.hostapd", "/data/hostapd /data/x.list a"), ("derived_bin.hostapd", "/system/bin/hostapd data/x.list a"),
            ("derived_bin.hostapd", "/system/bin/hostapd /data/x.list a/b"), ("derived_bin.hostapd", "/system/bin/hostapd /d/x longername"),
            ("derived_bin.hostapd", "/system/bin/hostapd /data/../x.list a"), ("derived_bin.hostapd", "/system/bin/hostapd /data/x.list"),
@@ -562,6 +563,27 @@ def test_daemon_exit_reason(base):
     assert ("daemon_start", "fakesupp", "failed") in car.ledger()
 
 
+def test_daemon_user(base):
+    car = Car(base, MANIFEST + "daemon_user.fakesupp=wifi\n")
+    executable(base / "fake/chown", '#!/bin/sh\necho "chown $*" >> "$FAKE_KERNEL/calls"\n')
+    car.state.mkdir(parents=True, exist_ok=True)
+    (car.state / "supp.conf").write_text("network={}\n")
+    run = car.state / "run/fakesupp"
+    try:
+        car.sh("sg_daemon_start fakesupp\nsg_daemon_running fakesupp")
+        pid = car.daemon_pid()
+        # The config is a private copy in the wifi-owned run directory, passed relative to it.
+        argv = (car.proc / str(pid) / "cmdline").read_bytes().split(b"\0")
+        assert argv[1:5] == [b"-i", b"rtwlan0", b"-c", b"supp.conf"], argv
+        assert (run / "supp.conf").read_text() == "network={}\n"
+        assert f"chown 1010:1010 {run}" in car.calls() and f"chown 1010:1010 {run}/supp.conf" in car.calls()
+        car.sh("sg_revert_all")
+        wait_gone(pid)
+    finally:
+        car.cleanup()
+    Car(base / "other", MANIFEST + "daemon_user.fakesupp=root\n").sh("sg_daemon_start fakesupp", code=2)
+
+
 def test_derived_program(base):
     classes = base / "binpatch-classes"
     subprocess.run(["javac", "-nowarn", "-d", str(classes),
@@ -648,6 +670,7 @@ run_tests([
     test_daemon_restart,
     test_system_daemon_seam,
     test_daemon_exit_reason,
+    test_daemon_user,
     test_derived_program,
     test_peer_info,
     test_mutation_lint,

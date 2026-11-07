@@ -184,7 +184,7 @@ mi_check_props() {
             owns_props|reassert_props|owns_files|owns_generated_dirs|services|service_calls|restore|owns_lines.[1-9]|owns_lines.[1-9][0-9])
                 [ "$mi_mode" = bundled ] || mi_fail "HSM-E203 module.properties: unknown key $mi_key"
                 mi_check_owned "$mi_key" "$mi_val" ;;
-            kmods|daemons|owns_ifaces|derived_bins|kmod.*|kmod_params.*|daemon.*|derived_bin.*|net_rules.*)
+            kmods|daemons|owns_ifaces|derived_bins|kmod.*|kmod_params.*|daemon.*|daemon_user.*|derived_bin.*|net_rules.*)
                 [ "$mi_mode" = bundled ] || mi_fail "HSM-E203 module.properties: unknown key $mi_key"
                 sg_transient_decl_ok "$mi_key" "$mi_val" ;;
             *) mi_fail "HSM-E203 module.properties: unknown key $mi_key" ;;
@@ -408,9 +408,10 @@ mi_ownership() {
     grep -E '^(owns_props|reassert_props|owns_files|owns_generated_dirs|services|service_calls|restore|hooks|owns_lines\.[0-9]+|kmods|daemons|owns_ifaces|kmod\.[^=]*|kmod_params\.[^=]*|daemon\.[^=]*|net_rules\.[0-9]+)=' "$1" 2>/dev/null
 }
 # Transient declarations (kernel modules, daemons, network rules, interfaces) copied verbatim.
-# Derived programs are private state-directory files, so they are not ownership (mi_ownership).
+# Derived programs and daemon users only shape private state-directory files, so they are not
+# ownership (mi_ownership).
 mi_transient() {
-    grep -E '^(kmods|daemons|owns_ifaces|derived_bins|kmod\.[^=]*|kmod_params\.[^=]*|daemon\.[^=]*|derived_bin\.[^=]*|net_rules\.[0-9]+)=' "$1" 2>/dev/null || :
+    grep -E '^(kmods|daemons|owns_ifaces|derived_bins|kmod\.[^=]*|kmod_params\.[^=]*|daemon\.[^=]*|daemon_user\.[^=]*|derived_bin\.[^=]*|net_rules\.[0-9]+)=' "$1" 2>/dev/null || :
 }
 
 # describe must fit the app's 8 KiB root output (two string files, ui.txt and

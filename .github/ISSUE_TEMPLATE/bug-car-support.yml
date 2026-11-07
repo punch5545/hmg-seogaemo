@@ -75,7 +75,9 @@ body:
     id: app-log
     attributes:
       label: App log / 앱 로그
-      description: Filled in by the app's QR code (recent errors and environment). Leave empty otherwise.
+      description: |
+        Filled in by the app's QR code as a packed `HSR1.` log; a bot comment shows it as text after you
+        submit. Leave empty otherwise. 앱 QR 코드가 압축된 로그를 넣고, 제출하면 봇 댓글로 풀어서 보여 줍니다.
       render: text
   - type: textarea
     id: ledger
