@@ -17,7 +17,13 @@ public final class UsbHotspotTest {
         catch (IllegalStateException expected) { }
     }
 
-    public static void main(String[] args) {
+    static void flags(java.io.File sys, String text) throws Exception {
+        java.io.FileOutputStream o = new java.io.FileOutputStream(new java.io.File(new java.io.File(sys, "rtwlan0"), "flags"));
+        o.write(text.getBytes("UTF-8"));
+        o.close();
+    }
+
+    public static void main(String[] args) throws Exception {
         // No peer file on the host: the stock hotspot, nothing thrown.
         check(UsbHotspot.snapshot().startsWith("stock") && !UsbHotspot.active(), "missing file");
 
@@ -33,6 +39,24 @@ public final class UsbHotspotTest {
         check("wlan0".equals(UsbHotspot.gpmName("rtwlan0")), "adapter as wlan0");
         check("wlan0-builtin".equals(UsbHotspot.gpmName("wlan0")), "built-in renamed");
         check("lo".equals(UsbHotspot.gpmName("lo")) && UsbHotspot.gpmName(null) == null, "others unchanged");
+        // GPM's start check (isWifiApEnabled && getWifiApMode == 2) passes only while the adapter's interface is up.
+        java.io.File sys = java.io.File.createTempFile("sysnet", "");
+        sys.delete();
+        new java.io.File(sys, "rtwlan0").mkdirs();
+        UsbHotspot.sysNet = sys;
+        check(!UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApMode(0) == 0, "no flags file: stock answers");
+        flags(sys, "0x1002\n");
+        check(!UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false), "interface down");
+        flags(sys, "0x1003\n");
+        check(UsbHotspot.apUp() && UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApEnabled(true), "interface up");
+        check(UsbHotspot.gpmApMode(0) == 2 && UsbHotspot.gpmApMode(1) == 2 && UsbHotspot.gpmApMode(2) == 2, "mode 2 while up");
+        flags(sys, "garbage");
+        check(!UsbHotspot.apUp(), "unparsable flags");
+        flags(sys, "0x1003\n");
+        check(UsbHotspot.gpmApEnabled(true) && UsbHotspot.gpmApEnabled(false), "up again after garbage");
+        UsbHotspot.clear();
+        check(!UsbHotspot.apUp() && !UsbHotspot.gpmApEnabled(false) && UsbHotspot.gpmApMode(1) == 1, "no USB hotspot: stock answers");
+        UsbHotspot.use(UsbHotspot.parse(USB));
         // The first value of a key wins, as sg_peer_info reads it.
         check(UsbHotspot.parse("radio=usb\nradio=none\n").get("radio").equals("usb"), "first wins");
 
@@ -48,6 +72,6 @@ public final class UsbHotspotTest {
         // A valid snapshot followed by an invalid one leaves nothing behind.
         UsbHotspot.use(UsbHotspot.parse(USB));
         stock(USB.replace("ssid=HMG-Seogaemo-6f1d", "ssid=" + new String(new char[33]).replace('\0', 'x')), "long ssid");
-        System.out.println("ok usb hotspot snapshot, configuration and GPM names");
+        System.out.println("ok usb hotspot snapshot, configuration, GPM names and AP state");
     }
 }

@@ -27,6 +27,12 @@ public final class UsbHotspot {
     /** WifiConfiguration.KeyMgmt.WPA2_PSK, hidden on API 19; the iAP2 server logs auth type 4 as WPA2_PSK */
     static final int KEY_MGMT_WPA2_PSK = 4;
     static final int LIMIT = 4096;
+    /** WifiManager.getWifiApMode() of the hotspot "for connectivity", the one GPM's start check wants */
+    static final int AP_MODE_CONNECTIVITY = 2;
+    /** IFF_UP in /sys/class/net/<iface>/flags */
+    static final int IFF_UP = 1;
+    /** replaced by the host test */
+    static File sysNet = new File("/sys/class/net");
     private static volatile String iface, ssid, passphrase;
 
     private UsbHotspot() {}
@@ -145,5 +151,36 @@ public final class UsbHotspot {
         if (name.equals(i)) return STOCK;
         if (name.equals(STOCK)) return STOCK_RENAMED;
         return name;
+    }
+
+    /**
+     * Whether the adapter's interface is up now: hostapd runs on a transient, replug-able adapter, so this is read at
+     * each call rather than from the zygote snapshot. Needs no permission beyond reading /sys/class/net.
+     */
+    public static boolean apUp() {
+        String i = iface;
+        if (i == null) return false;
+        try {
+            String flags = read(new File(new File(sysNet, i), "flags")).trim();
+            if (!flags.startsWith("0x")) return false;
+            return (Long.parseLong(flags.substring(2), 16) & IFF_UP) != 0;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * WifiManager.isWifiApEnabled() as GPM sees it. GPM's start request (WirelessExplorer.handleStartRequest) answers
+     * the phone STATUS_WIFI_DISABLED, and Android Auto goes no further than its popup, unless the stock hotspot is
+     * enabled and in mode 2. With the hotspot on the adapter the stock one is off (the car may have no built-in
+     * chip), so while the adapter's interface is up GPM is told the hotspot is enabled.
+     */
+    public static boolean gpmApEnabled(boolean real) {
+        return real || apUp();
+    }
+
+    /** WifiManager.getWifiApMode() as GPM sees it; see gpmApEnabled */
+    public static int gpmApMode(int real) {
+        return apUp() ? AP_MODE_CONNECTIVITY : real;
     }
 }

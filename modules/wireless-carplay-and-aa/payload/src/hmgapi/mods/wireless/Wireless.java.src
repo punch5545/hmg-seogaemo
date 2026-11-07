@@ -362,7 +362,9 @@ public final class Wireless extends ModEntry {
      * map points. The iAP2 server and GPM read the hotspot credentials from
      * WifiManager.getWifiApConfiguration(): they get the published SSID and passphrase as WPA2-PSK.
      * GPM's host locator takes the interface named "wlan0" (host IP, BSSID from its MAC, AA port 40515):
-     * in GPM only, the USB interface is called "wlan0" and a real wlan0 another name.
+     * in GPM only, the USB interface is called "wlan0" and a real wlan0 another name. GPM's start request also
+     * wants isWifiApEnabled() and getWifiApMode() == 2 (else it answers the phone STATUS_WIFI_DISABLED): in GPM only,
+     * both report the adapter's hotspot while its interface is up.
      */
     private void usbHotspot(final ModContext mod, LoadedApp app) {
         Hooks.findAndHookMethod(WifiManager.class, "getWifiApConfiguration", new MethodHook() {
@@ -376,6 +378,26 @@ public final class Wireless extends ModEntry {
             }
         });
         if (GPM.equals(app.packageName)) {
+            // WirelessExplorer.isWifiApEnable() = isWifiApEnabled() && getWifiApMode() == 2; false answers the phone STATUS_WIFI_DISABLED
+            Hooks.findAndHookMethod(WifiManager.class, "isWifiApEnabled", new MethodHook() {
+                @Override
+                protected void afterHookedMethod(Param p) {
+                    boolean real = Boolean.TRUE.equals(p.getResult());
+                    if (UsbHotspot.gpmApEnabled(real) == real) return;
+                    noteApOverride(mod, "isWifiApEnabled");
+                    p.setResult(Boolean.TRUE);
+                }
+            });
+            Hooks.findAndHookMethod(WifiManager.class, "getWifiApMode", new MethodHook() {
+                @Override
+                protected void afterHookedMethod(Param p) {
+                    Object real = p.getResult();
+                    int mode = UsbHotspot.gpmApMode(real instanceof Integer ? (Integer) real : 0);
+                    if (real instanceof Integer && (Integer) real == mode) return;
+                    noteApOverride(mod, "getWifiApMode");
+                    p.setResult(Integer.valueOf(mode));
+                }
+            });
             MethodHook rename = new MethodHook() {
                 @Override
                 protected void afterHookedMethod(Param p) {
@@ -387,6 +409,15 @@ public final class Wireless extends ModEntry {
             Hooks.findAndHookMethod(NetworkInterface.class, "getDisplayName", rename);
         }
         mod.log("USB hotspot " + UsbHotspot.iface() + " for wireless projection in " + app.processName);
+    }
+
+    private static volatile boolean apOverrideLogged;
+
+    /** Evidence for a problem report: the first time GPM is told the adapter's hotspot is the enabled one. */
+    private static void noteApOverride(ModContext mod, String call) {
+        if (apOverrideLogged) return;
+        apOverrideLogged = true;
+        mod.log("GPM " + call + " answered for the USB hotspot " + UsbHotspot.iface());
     }
 
     private void usbDrives(final ModContext mod, LoadedApp app) {

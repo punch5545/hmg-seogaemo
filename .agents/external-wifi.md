@@ -134,6 +134,13 @@ Normative rules: contract [Peer info](module-runtime-contract.md#peer-info). In 
   In GPM only, `NetworkInterface.getName()`/`getDisplayName()` report the adapter as `wlan0` and a real `wlan0` as
   `wlan0-builtin`, so GPM's host locator (first site-local IPv4 interface named `wlan0`; BSSID from its MAC) picks
   `rtwlan0`/`192.168.50.1`. A failed part shows in the module status; it never disables other parts.
+  Also in GPM only: `WifiManager.isWifiApEnabled()` and `getWifiApMode()` answer true / 2 while `/sys/class/net/<iface>`
+  has `IFF_UP`. GPM's start request (`WirelessExplorer.handleStartRequest`, stock smali) calls `isWifiApEnable()`
+  = `isWifiApEnabled() && getWifiApMode() == 2` first and answers the phone `STATUS_WIFI_DISABLED` otherwise, so with the
+  stock AP off (the tester car has no built-in chip) the phone showed the Android Auto popup (0.1.44) and never went on:
+  no Wi-Fi credentials were sent. The first override is logged once per process (`GPM isWifiApEnabled answered for the
+  USB hotspot`) in the module log ring. Same symptom upstream: HMG-Leafia-Plus issue 171
+  (`wifiManager.isWifiApEnabled() = false`, `APMode.UNKNOWN`, stuck at "Connecting").
 - Without a published USB hotspot nothing loads or changes: the stock `wlan0` path is the car-verified one.
 - Root: `info.hotspot_radio` and the built-in client refusal in `apply` (warning in `precheck`).
 
@@ -141,7 +148,7 @@ Normative rules: contract [Peer info](module-runtime-contract.md#peer-info). In 
 
 1. The whole USB path: hostapd/dnsmasq on `rtwlan0`, the iPhone joining with the credentials iAP2 sends, and whether
    CarPlay Bonjour/AirPlay (native) binds or advertises on `rtwlan0`.
-2. Android Auto reaching `192.168.50.1:40515` (GPM logs `findHostInterfaceAndIp`), and the phone accepting the adapter's
+2. Android Auto getting past the popup now that GPM sees an enabled hotspot (needs a car run), then reaching `192.168.50.1:40515` (GPM logs `findHostInterfaceAndIp`), and the phone accepting the adapter's
    MAC as BSSID.
 3. Whether the car firewall (`iptrules`) still drops anything on `rtwlan0` beyond the `wifi` module's INPUT accept rule.
 4. That Dalvik hooks on `NetworkInterface` getters and `WifiManager.getWifiApConfiguration` take effect in those apps
