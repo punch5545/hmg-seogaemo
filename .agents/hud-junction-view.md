@@ -66,8 +66,11 @@ two-lane exits, still needs a stock capture on the car.
 
 CpTurns sends the selection inside the same raw-metre approach window as stock turns. Only
 the current component's displayed lane index supplies lane evidence; late matching packets
-recompute the selection. Unchanged pictures are not resent. A changed maneuver or component
-clears the old picture even if the replacement selects the same codes. Window exit, missing
+recompute the selection. Unchanged pictures are not resent, also when the phone re-indexes
+the same maneuver on the way (seen at every junction on the 2026-11-07 drives); a different
+picture for a new maneuver or component clears the old one first. At 0 m the phone may link
+the next maneuver's lanes while the list still names the current one, so the shown picture
+is kept until the list moves on. Window exit, missing
 current maneuver, loading/rerouting, arrival, route end, source change, stop and disconnect
 all clear with three 65535 values. Junction clearing and trap-bar restoration precede the
 final idle compass at stop/disconnect. Each CarPlay guidance session first sends one clear,

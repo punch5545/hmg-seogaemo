@@ -41,10 +41,20 @@ public final class CpJunctionLifecycleTest {
         require(cluster.calls.contains(CLEAR), "leaving window clears persistent view");
         cluster.calls.clear(); distance(500);
         turns.routeGuidance(msg(0,U16,i(1),13,U16,i(1),10,U32,i(450)));
-        require(cluster.calls.contains(CLEAR) && pictures() == 2, "replacement clears even identical picture");
+        require(!cluster.calls.contains(CLEAR) && pictures() == 1, "re-indexed maneuver keeps an identical picture");
         cluster.calls.clear();
         turns.routeGuidance(msg(0,U16,i(1),13,U16,i(0)));
         require(cluster.calls.contains(CLEAR) && pictures() == 0, "new index cannot reuse old distance");
+
+        // At the maneuver point the next maneuver's lanes may arrive first: keep the picture.
+        setup(23,45); distance(100); cluster.calls.clear();
+        distance(0);
+        CpLaneDecoder.Lane[] two = {
+            new CpLaneDecoder.Lane(0,0,new int[] {0},1000),
+            new CpLaneDecoder.Lane(1,2,new int[] {45},45)
+        };
+        turns.rawLanes(new CpLaneDecoder.Info(1,0,two,0));
+        require(cluster.calls.isEmpty() || !cluster.calls.toString().contains("junction"), "next lanes at 0 m do not replace the picture");
 
         for (int action = 0; action < 9; action++) {
             setup(23,45); distance(100); cluster.calls.clear();
