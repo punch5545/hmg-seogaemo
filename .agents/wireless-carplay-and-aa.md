@@ -127,6 +127,10 @@ No stock app APK/odex, manufacturer native library file, `build.prop`, Wi-Fi cli
 
 No direct `cp`, `mv`, `rm`, `setprop`, remount, service restart, or cache deletion occurs in this module root script. The module-local fake in `test/run.sh` checks the module sequence; the shared `tools/test-runtime.py` exercises the real transaction and restore implementation.
 
+## Android Auto turn-by-turn UTF-8 length helper
+
+The `aa-tbt-*` recipes carry a segment function (offset `0x17a`, 32 bytes, same in both stock variants; `r0` = bytes, `r1` = count, returns the count to pack, at most 96, clobbers `r1`-`r3`) that sizes the destination/turn strings packed into the NavigationStatus callbacks. Upstream HMG-API (1.0.2) walked back over trailing continuation bytes even for strings under 96 bytes, so the last Hangul syllable reached the cluster service as its lead byte alone (`우회쀀`, `U퀀` on the cluster/HUD). Now: up to 96 bytes the count is returned unchanged; longer, a character straddling the 96-byte boundary is dropped whole. Source `payload/recipes/aa-utf8-len.s` (assembled with clang, thumbv7) is the 32 bytes in both recipes. `test/aautf8/test.py` (run by `test/run.sh`) runs the recipe bytes and the old bytes in a small Thumb interpreter over every Hangul syllable, ASCII, mixed and 95-98-byte boundary strings and compares with a host model and Python's UTF-8 decoder. The recipes' `patched md5` header comment still names the upstream generation. Not verified on a car: the cluster/HUD display after this change.
+
 ## Copied source and AGPL notice
 
 Copied HMG-API paths (destinations relative to this module's `payload/`):
@@ -136,7 +140,7 @@ Copied HMG-API paths (destinations relative to this module's `payload/`):
 - `core/runtime/java/hmgapi/engine/MemRecipe.java` → `src/hmgapi/engine/` as `.java.src`, unchanged.
 - `core/loader/loader.c`, `core/zygote/zygote.c`, `core/loader/syslib-stubs.sh` → `native/`, modified for HMG-Seogaemo paths and without `hmgapid` spawning.
 - `mods/wireless-carplay-aa/native/leafiaaac/{leafiaaac.c,build.sh}` → `native/`; output path modified. `data/libleafiaaac.so` is rebuilt from source, not an upstream binary copy.
-- `mods/wireless-carplay-aa/recipes/{aa-tbt-48ee793a,aa-tbt-a0bea1c4,carplay-core-wifi,carplay-audio-formats,carplay-utils-converter}.recipe` → `recipes/` unchanged.
+- `mods/wireless-carplay-aa/recipes/{aa-tbt-48ee793a,aa-tbt-a0bea1c4,carplay-core-wifi,carplay-audio-formats,carplay-utils-converter}.recipe` → `recipes/`; `carplay-*` unchanged, the two `aa-tbt-*` recipes modified (UTF-8 length helper, below).
 - `mods/wireless-carplay-aa/stubs/com/{broadcom,tcc}/...` (six Java compile-time signature stubs and README) → `stubs/` as `.java.src`, unchanged, not in the runtime JAR.
 
 Original headers remain; modified files have a `Modified by HMG-Seogaemo` marker. Root `NOTICE.md` credits HMG-API (VysseCodes), NEMESIS (xwtk), HMG Leafia Plus, and Xposed design lineage. The repository is GNU AGPL-3.0 (`LICENSE`). The core mapper is an independent implementation; `UPSTREAM.md` tracks the HMG-API reference paths.
