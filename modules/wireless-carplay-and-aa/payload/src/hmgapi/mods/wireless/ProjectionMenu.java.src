@@ -1,0 +1,33 @@
+// HMG-Seogaemo: which screen Settings > Phone Projection opens. SPDX-License-Identifier: AGPL-3.0-or-later
+package hmgapi.mods.wireless;
+
+/**
+ * The choice behind the Phone Projection menu hook, kept free of the car's classes so a host test
+ * can run it. The stock menu opens the wireless page whenever a wireless projection feature is
+ * present; this says what to open instead, by region (Hyundai/Kia region codes).
+ */
+final class ProjectionMenu {
+    private ProjectionMenu() {}
+
+    static final int REGION_KR = 0, REGION_US = 1, REGION_CANADA = 4;
+
+    /** keep the stock choice: the wireless page */
+    static final int STOCK = 0;
+    /** Device Connections, Android tab (what stock US/Canada opens) */
+    static final int DEVICE_CONNECTIONS = 1;
+    /** the stock non-wireless branch: Korean phone projection settings (or Device Connections, Android tab, on newer specs) */
+    static final int OTHER_PAGE = 2;
+
+    static int target(int region, boolean deviceConnectionsAvailable) {
+        switch (region) {
+            case REGION_US:
+            case REGION_CANADA:
+                return deviceConnectionsAvailable ? DEVICE_CONNECTIONS : OTHER_PAGE;
+            case REGION_KR:
+                // Stock Korea never evaluates the Device Connections branch, so the other page only.
+                return OTHER_PAGE;
+            default:
+                return STOCK;   // unknown (-1) or another region
+        }
+    }
+}

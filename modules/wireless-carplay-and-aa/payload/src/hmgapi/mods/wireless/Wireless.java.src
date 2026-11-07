@@ -26,8 +26,9 @@ import java.net.NetworkInterface;
  * Phone Projection menu (setting "menu"): with the wireless CarPlay/AA features
  * on, HKMC_BtSettings opens the wireless projection page for Settings > Phone
  * Projection (no split screen, and only phones the stock wireless service paired).
- * Stock US/Canada opens Device Connections. On US/Canada units the hook on the
- * "open the wireless page" call does what the non-wireless branch does instead.
+ * Stock US/Canada opens Device Connections and stock Korea the phone projection settings
+ * (split view). On those units the hook on the "open the wireless page" call does what
+ * the non-wireless branch does instead (ProjectionMenu).
  * Through HMG-API's hook points (btsettings.projection_helper.*): HMG-API's map for
  * this car says what they are in this build.
  *
@@ -421,15 +422,20 @@ public final class Wireless extends ModEntry {
             @Override
             protected void beforeHookedMethod(Param p) {
                 int region = Car.region();
-                if (region != Car.REGION_US && region != Car.REGION_CANADA) return;   // other regions: stock choice
+                boolean dc = (region == ProjectionMenu.REGION_US || region == ProjectionMenu.REGION_CANADA)
+                        && Boolean.TRUE.equals(Points.call(cl, HELPER + ".device_connections_available", null));
+                int target = ProjectionMenu.target(region, dc);
+                if (target == ProjectionMenu.STOCK) return;   // other regions: stock choice
                 Context c = (Context) p.args[0];
-                if (Boolean.TRUE.equals(Points.call(cl, HELPER + ".device_connections_available", null))) {
+                if (target == ProjectionMenu.DEVICE_CONNECTIONS) {
                     Points.call(cl, HELPER + ".open_device_connections", null, c, 1);
                 } else {
                     Points.call(cl, HELPER + ".open_other_page", null, c);
                 }
                 p.setResult(null);
-                mod.log("Phone Projection: Device Connections (US/Canada), not the wireless page");
+                mod.log("Phone Projection: " + (region == ProjectionMenu.REGION_KR
+                        ? "stock Korean settings screen" : "Device Connections (US/Canada)")
+                        + " (region " + region + "), not the wireless page");
             }
         });
         mod.log("Phone Projection menu hook in " + app.processName);
