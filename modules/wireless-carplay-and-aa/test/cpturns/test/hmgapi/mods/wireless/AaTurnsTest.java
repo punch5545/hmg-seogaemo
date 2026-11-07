@@ -6,6 +6,12 @@ import hmgapi.hook.Cluster;
 
 /** Android Auto turns: the stock format inside the approach window (AaGuidance), icons outside. */
 public final class AaTurnsTest {
+    /** a fixed clock: timings in the test never depend on how fast the host runs it */
+    static void freeze(AaTurns t) {
+        t.frozen = true;
+        t.skew = 1000000000L;
+    }
+
     static void require(boolean value, String label) {
         if (!value) throw new AssertionError(label);
     }
@@ -49,6 +55,7 @@ public final class AaTurnsTest {
         Cluster c = new Cluster();
         Handler h = new Handler();
         AaTurns t = new AaTurns(new android.content.Context(), c, h);
+        freeze(t);
         ApproachBar.sent.clear();
         t.status(1);
         t.nextTurn("Road", R, AaTurns.TURN, -1, 0);
@@ -151,6 +158,7 @@ public final class AaTurnsTest {
     /** a live route with a turn 800 m ahead (outside the approach window, so no bar lease is pending) */
     static AaTurns live(Cluster c, Handler h) {
         AaTurns t = new AaTurns(new android.content.Context(), c, h);
+        freeze(t);
         t.status(1);
         t.nextTurn("Road", AaTurns.RIGHT, AaTurns.TURN, -1, 0);
         t.nextTurnDistance(800, 60, 800, AaTurns.METERS);
@@ -213,6 +221,7 @@ public final class AaTurnsTest {
         c = new Cluster();
         h = new Handler();
         t = new AaTurns(new android.content.Context(), c, h);
+        freeze(t);
         t.nextTurn("01" + "01010300", 0, AaTurns.EV_LANES, -1, -1);
         require(last(c, "lanes ") == null && h.pending.isEmpty(), "lanes wait for status");
         t.status(1);
@@ -253,6 +262,7 @@ public final class AaTurnsTest {
         c = new Cluster();
         h = new Handler();
         t = new AaTurns(new android.content.Context(), c, h);
+        freeze(t);
         t.status(1);
         t.nextTurn("Road", AaTurns.RIGHT, AaTurns.TURN, -1, 0);
         t.nextTurnDistance(1250, 80, 1250, AaTurns.METERS);
@@ -359,6 +369,7 @@ public final class AaTurnsTest {
         c = new Cluster();
         h = new Handler();
         t = new AaTurns(new android.content.Context(), c, h);
+        freeze(t);
         t.status(1);
         t.skew += 5000;
         fire(h);
@@ -380,6 +391,7 @@ public final class AaTurnsTest {
         h = new Handler();
         android.util.Log.lines.clear();
         t = new AaTurns(new android.content.Context(), c, h);
+        freeze(t);
         t.status(1);
         t.nextTurn("A", AaTurns.RIGHT, AaTurns.TURN, -1, 0);
         t.nextTurnDistance(800, 60, 800, AaTurns.METERS);

@@ -102,8 +102,9 @@ final class AaTurns {
     static final int K_TURN = 0, K_DIST = 1, K_STATUS = 2, K_LANES = 3, K_DUMP = 4;
     static final String[] KINDS = { "turn", "distance", "status", "lanes", "dump" };
 
-    /** the clock (milliseconds); the host test moves it with skew */
+    /** the clock (milliseconds); the host test freezes it (frozen) and moves it with skew */
     long skew;
+    boolean frozen;
     /** the heartbeat is scheduled; the last library callback; the last turn sent; the HUD turn list sent last and when */
     boolean beating;
     long lastIn, lastSendAt;
@@ -160,7 +161,7 @@ final class AaTurns {
     }
 
     long now() {
-        return System.currentTimeMillis() + skew;
+        return (frozen ? 0L : System.currentTimeMillis()) + skew;
     }
 
     // ---- from the AA library
