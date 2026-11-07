@@ -137,8 +137,6 @@ The same two recipes carry a second local change: the lane byte of next-turn eve
 
 CarPlay stock-format turns (`CpGuidance.stock`): the U-turn angle check (at least 158 degrees when an angle is given) and reading a plain left/right inside a roundabout as the roundabout exit are behaviour-only, from reading the same third-party r8.2 package (reference only, not executed, nothing copied; our own code and tests). Its icon tables, raw-angle directions and keep/highway shapes were not adopted (see [.agents/cluster-ar-view.md](.agents/cluster-ar-view.md)).
 
-CarPlay lane colours (`CpTurns.laneValues`, shared with Android Auto through `CpLaneFrame`): the rule "the arrow matching the phone's highlight angle is blue, the other arrows of a usable lane grey" is behaviour-only, taken from reading the third-party package `HMG_Leafia_Plus_Wireless_CarPlay_AA-v1.0.5.NEEV.KOR.03-r8.2` (reference only, not executed, nothing copied). Its status model (two status fields per lane, no status bits 4-5) contradicts the car-verified three-slot status byte and was not adopted. The decision rests on recorded NAVER lane data (`tmp/car-sessions`), see [.agents/wireless-carplay-and-aa.md](.agents/wireless-carplay-and-aa.md).
-
 ## USB Wi-Fi kernel drivers
 
 `kernel/usb-wifi/` builds two GPL-2.0 Realtek out-of-tree drivers for the Gen5W

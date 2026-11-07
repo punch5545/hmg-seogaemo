@@ -280,16 +280,13 @@ Status: implemented, off-car tested only (`test/projectionswitch`); needs the on
   A set not in the table is retried with slight/sharp turns snapped to plain left/right; if it
   still does not match (or has more than 3 directions) only the highlighted arrow is drawn as a
   single glyph, else the first. The status byte is 2 bits per slot (`00` blank, `01` white, `10`
-  blue, `11` grey), following the arrow each slot shows. The colours follow the route arrow, through
-  the one rule CarPlay and Android Auto share (`CpLaneFrame`): the arrow whose angle is a highlight
-  angle is blue and the other arrows of that lane grey on a lane the phone calls good (status 1) or
-  preferred (2); with no valid highlight (1000, or no angle matches) every arrow takes the lane's
-  colour (good white, preferred blue); a not-good lane (status 0) is grey on every arrow. Recorded
-  NAVER lanes (2026-11-05/07 drives, 0/1/2 statuses): every lane with status 1 or 2 carries a highlight
-  that equals one of its angles, every status 0 lane has 1000, and status 2 appears only on some
-  lanes, so the highlight (not status 2) makes the route arrow blue. A lane with no usable angle sets
-  slot 0 only. U-turn + left, status 1, highlight -90: arrows `0a 0e`, status `0x0b` (route U-turn:
-  `0x0e`; status 0: `0x0f`). The old `lanes` setting modes (`off`/`rec`/`dim0`/`dim3`) were
+  blue, `11` grey), following the arrow each slot shows, and mirrors CarPlay per lane from its
+  LaneStatus and highlight angle: status 0 every arrow grey; status 1 the highlighted arrows white
+  and the rest grey; status 2 the highlighted arrows blue and the rest grey; with no valid
+  highlight (1000, or no angle matches) every arrow takes the lane's colour. Blue only comes from
+  phone status 2 (NAVER usually sends none, so nothing is blue). A lane with no usable angle sets
+  slot 0 only. U-turn + left, status 1, highlight -90: arrows `0a 0e`, status `0x07` (status 2:
+  `0x0b`; status 0: `0x0f`). The old `lanes` setting modes (`off`/`rec`/`dim0`/`dim3`) were
   removed. While a frame with lanes shows, `NavigationCluster.updateRemainDis(dist, unit, tenths, 0)` carries the distance to
   the next maneuver (the turn's distance and unit; feet and yards as metres; resent every 2 s,
   `65535, 15, 15, 0` when lanes go away, where the empty lane frame removes the box anyway; no toll-gate flag; the box always shows the next-maneuver distance by owner decision, [cluster-lane-frame.md](cluster-lane-frame.md) 1b). The trailer bytes 0x43..0x50 stay

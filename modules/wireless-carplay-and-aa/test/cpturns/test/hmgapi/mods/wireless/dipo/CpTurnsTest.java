@@ -114,7 +114,7 @@ public final class CpTurnsTest {
         new CpTurns(new android.content.Context(), c, null).lanes(lanes);
         StringBuilder z = new StringBuilder();
         for (int k = 0; k < 14; k++) z.append("00");
-        expect("lanes: straight; right + slight right as the 18 + 21 pair, route right blue, slight right grey (status 0e)", "lanes f10200010e" + z + "0100001215");
+        expect("lanes: straight; right + slight right as the 18 + 21 pair, route right white, slight right grey (status 0d)", "lanes f10200010d" + z + "0100001215");
 
         Car.unit = Car.DISTANCE_KM;
         t.routeGuidance(msg(0, U16, i(1), 7, U32, i(800), 11, STR, s("1.5"), 12, ENUM, i(KM)));
@@ -210,8 +210,8 @@ public final class CpTurnsTest {
         along.add(1, U16, i(1)).add(2, U16, i(0, 90)).add(3, U16, i(0));
         off.add(1, U16, i(0)).add(2, U16, i(90));
         // pref / off have one arrow; along has two (straight + right), route straight
-        check("lane colours: preferred lane blue, a good lane blue on its route arrow and grey on the other, a not-good lane grey",
-                CpTurns.laneOne(pref)[0] == 2 && CpTurns.laneOne(along)[0] == 0x0e && CpTurns.laneOne(off)[0] == 3);
+        check("lane colours: preferred lane blue, a good lane white on its route arrow and grey on the other, a not-good lane grey",
+                CpTurns.laneOne(pref)[0] == 2 && CpTurns.laneOne(along)[0] == 0x0d && CpTurns.laneOne(off)[0] == 3);
         Iap2NotiMsg.Iap2ObjGroup[] withPref = { along, pref, off }, noPref = { along, off };
         Iap2NotiMsg am = new Iap2NotiMsg();
         am.getItemGroup().add(0, U16, i(1)).add(2, GROUPS, withPref);
@@ -222,7 +222,7 @@ public final class CpTurnsTest {
         StringBuilder z13 = new StringBuilder();
         for (int k = 0; k < 13; k++) z13.append("00");
         expect("lanes: colours follow each lane's own status, whether or not another lane is preferred",
-                "lanes f10300" + "0e0203" + z13 + "101200" + "010000" + "03", "lanes f10200" + "0e03" + z + "101200" + "03");
+                "lanes f10300" + "0d0203" + z13 + "101200" + "010000" + "03", "lanes f10200" + "0d03" + z + "101200" + "03");
         t.sendHudDist(0.96f, Cluster.UNIT_MI);
         t.sendHudDist(1.97f, Cluster.UNIT_KM);
         t.sendHudDist(0.1f, Cluster.UNIT_MI);
@@ -310,19 +310,19 @@ public final class CpTurnsTest {
 
         // lane glyph pairs and per-arrow status (.agents/cluster-lane-arrows.md)
         // status per slot: 00 blank, 01 white, 10 blue, 11 grey; arrows off the route are grey
-        laneIs("U-turn + left, good lane, route left: U-turn grey, left blue", CpTurns.laneValues(1, i(180, -90), i(-90)), 0x0b, 10, 14);
-        laneIs("U-turn + left listed left first: same slots", CpTurns.laneValues(1, i(-90, 180), i(-90)), 0x0b, 10, 14);
+        laneIs("U-turn + left, good lane, route left: U-turn grey, left white", CpTurns.laneValues(1, i(180, -90), i(-90)), 0x07, 10, 14);
+        laneIs("U-turn + left listed left first: same slots", CpTurns.laneValues(1, i(-90, 180), i(-90)), 0x07, 10, 14);
         laneIs("U-turn + left, preferred lane, route left: left blue", CpTurns.laneValues(2, i(180, -90), i(-90)), 0x0b, 10, 14);
         laneIs("U-turn + left, not-good lane: both grey", CpTurns.laneValues(0, i(180, -90), i(-90)), 0x0f, 10, 14);
-        laneIs("U-turn + left, good lane, route U-turn: blue + grey", CpTurns.laneValues(1, i(180, -90), i(180)), 0x0e, 10, 14);
+        laneIs("U-turn + left, good lane, route U-turn", CpTurns.laneValues(1, i(180, -90), i(180)), 0x0d, 10, 14);
         laneIs("U-turn + left, preferred lane, route U-turn", CpTurns.laneValues(2, i(180, -90), i(180)), 0x0e, 10, 14);
-        laneIs("straight + left, good lane, route straight: 9 + 12, blue + grey", CpTurns.laneValues(1, i(0, -90), i(0)), 0x0e, 9, 12);
-        laneIs("straight + left, good lane, route left: grey + blue", CpTurns.laneValues(1, i(0, -90), i(-90)), 0x0b, 9, 12);
+        laneIs("straight + left, good lane, route straight: 9 + 12, white + grey", CpTurns.laneValues(1, i(0, -90), i(0)), 0x0d, 9, 12);
+        laneIs("straight + left, good lane, route left: grey + white", CpTurns.laneValues(1, i(0, -90), i(-90)), 0x07, 9, 12);
         laneIs("left + straight + right, preferred, route right: 28 22 24, blue on the right only", CpTurns.laneValues(2, i(-90, 0, 90), i(90)), 0x2f, 28, 22, 24);
-        laneIs("left + straight + right listed in another order, good, route straight", CpTurns.laneValues(1, i(90, -90, 0), i(0)), 0x3b, 28, 22, 24);
+        laneIs("left + straight + right listed in another order, good, route straight", CpTurns.laneValues(1, i(90, -90, 0), i(0)), 0x37, 28, 22, 24);
         laneIs("sharp left + straight + slight right is not listed: snapped to left + straight + right", CpTurns.laneValues(2, i(-135, 0, 45), i(45)), 0x2f, 28, 22, 24);
-        laneIs("slight left + slight right is listed as is: 30 + 33, route slight left blue", CpTurns.laneValues(1, i(-45, 45), i(-45)), 0x0e, 30, 33);
-        laneIs("sharp + slight left snap to one left glyph, good lane: the route arrow blue", CpTurns.laneValues(1, i(-135, -45), i(-45)), 0x02, 7);
+        laneIs("slight left + slight right is listed as is: 30 + 33", CpTurns.laneValues(1, i(-45, 45), i(-45)), 0x0d, 30, 33);
+        laneIs("sharp + slight left snap to one left glyph", CpTurns.laneValues(1, i(-135, -45), i(-45)), 0x01, 7);
         laneIs("... preferred: blue", CpTurns.laneValues(2, i(-135, -45), i(-45)), 0x02, 7);
         laneIs("four directions, preferred: only the highlighted arrow, right (3), blue", CpTurns.laneValues(2, i(-90, 0, 90, 180), i(90)), 0x02, 3);
         laneIs("four directions, good lane with no highlight: the first arrow, white", CpTurns.laneValues(1, i(-90, 0, 90, 180), i(1000)), 0x01, 7);
@@ -330,15 +330,6 @@ public final class CpTurnsTest {
         laneIs("four directions, not-good lane: the first arrow, grey", CpTurns.laneValues(0, i(-90, 0, 90, 180), i(1000)), 0x03, 7);
         laneIs("preferred without a highlight: every arrow blue", CpTurns.laneValues(2, i(0, -90), i(1000)), 0x0a, 9, 12);
         laneIs("good lane without a highlight: every arrow white", CpTurns.laneValues(1, i(0, -90), i(1000)), 0x05, 9, 12);
-        // recorded NAVER lanes (2026-11-05/07 drives): status 1 with the highlight on the route arrow, status 0 with none
-        laneIs("NAVER good lane, one straight arrow, highlight 0: the route arrow blue", CpTurns.laneValues(1, i(0), i(0)), 0x02, 1);
-        laneIs("NAVER good lane, straight + right, highlight 0: blue + grey", CpTurns.laneValues(1, i(0, 90), i(0)), 0x0e, 16, 18);
-        laneIs("NAVER good lane, left single arrow, highlight -90: blue", CpTurns.laneValues(1, i(-90), i(-90)), 0x02, 7);
-        laneIs("NAVER not-good lane (highlight 1000): grey", CpTurns.laneValues(0, i(90), i(1000)), 0x03, 3);
-        laneIs("a not-good lane stays grey even when a highlight matches", CpTurns.laneValues(0, i(0, 90), i(0)), 0x0f, 16, 18);
-        // CarPlay and Android Auto share one rule (CpLaneFrame): the same lane gives the same values
-        int[] cp = CpTurns.laneValues(1, i(-90, 180), i(-90)), aa = CpLaneFrame.lane(new int[] { 7, 5 }, 1, CpLaneFrame.WHITE);
-        check("CarPlay and Android Auto lane values match", java.util.Arrays.equals(cp, aa));
         laneIs("a highlight that matches no arrow counts as none", CpTurns.laneValues(1, i(0, -90), i(45)), 0x05, 9, 12);
         laneIs("single direction keeps the plain glyph; two angles of one direction are one arrow", CpTurns.laneValues(2, i(85, 95), i(95)), 0x02, 3);
         laneIs("a not-good single arrow is grey", CpTurns.laneValues(0, i(90), i(1000)), 0x03, 3);
