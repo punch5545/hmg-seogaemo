@@ -122,6 +122,10 @@ hook code; see the module/runtime notes for policy and car verification limits.
 
 `modules/wireless-carplay-and-aa/files/recipes/aa-tbt-48ee793a.recipe` and `aa-tbt-a0bea1c4.recipe` come from HMG-API but are no longer unchanged: the 32-byte UTF-8 length helper at segment offset `0x17a` is replaced. HMG-API `main` 1.0.2 still ships the unfixed helper (it cut the last Hangul syllable of every short turn-by-turn string). The fix was located and confirmed against the third-party package `HMG_Leafia_Plus_Wireless_CarPlay_AA-v1.0.5.NEEV.KOR.03-r8.2` (its `patches/neev_kr/libautoreceiver_infobank.tbt.lpd`, reference only, not executed or copied). Our replacement is written from the described logic in `modules/wireless-carplay-and-aa/payload/recipes/aa-utf8-len.s` and happens to assemble to the same 32 bytes. See [.agents/wireless-carplay-and-aa.md](.agents/wireless-carplay-and-aa.md). Re-apply this slot when taking new upstream recipe changes.
 
+## Android Auto lane packing
+
+The same two recipes carry a second local change: the lane byte of next-turn event 34 (upstream 1, or 2 when any direction is recommended) is the mask of recommended arrow slots, and shape 9 (U-turn right) gets the U-turn arrow. The in-place edits and the extra tail code are written from our own analysis of the segment in `modules/wireless-carplay-and-aa/payload/recipes/aa-lane-routes.s`, applied with `apply-aa-lane-routes.py`; test `test/aalanes`. The third-party package `HMG_Leafia_Plus_Wireless_CarPlay_AA-v1.0.5.NEEV.KOR.03-r8.2` was only compared (its library patch matches this segment plus a raw NavigationState hex dump; its lane colours are made in Java); nothing was copied. The Java side (`AaTurns`, `dipo/CpLaneFrame`) is our own. Re-apply with the script when taking new upstream recipe changes.
+
 ## USB Wi-Fi kernel drivers
 
 `kernel/usb-wifi/` builds two GPL-2.0 Realtek out-of-tree drivers for the Gen5W

@@ -49,6 +49,13 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   takes it over; clears after the maneuver, on reroute, guidance end and disconnect; idle compass
   at the end; `stop()` does not race stock navigation
   resuming its own guidance.
+- [ ] **Verify Android Auto lanes on a drive (next beta).** Offline fix, see
+  [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) "Android Auto lanes". With a phone
+  that sends lanes (Google Maps; NAVER/T map/Kakao may send none): the strip appears on the
+  cluster and HUD and stays (refresh every 750 ms), the route arrow is blue and the other
+  arrows/lanes grey, multi-arrow lanes show pairs, the box beside it shows the turn distance,
+  everything clears at arrival and when the car's navigation takes over. If no strip: developer
+  mode on, pull logcat (`AALANES event 34 [...]` per lane change, `NAVDUMP` the phone's state when the library dumps it) and the USB export.
 - [ ] **Verify Android Auto stock-format turns on a drive.** `AaGuidance` (policy in
   [cluster-ar-view.md](cluster-ar-view.md#android-auto-policy)): AR view and hologram near turns,
   U-turns, exits and roundabouts with the right direction; the bar falls with distance and gives

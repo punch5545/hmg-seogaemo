@@ -92,6 +92,153 @@ public final class AaTurnsTest {
         require("tbt 2 0 270.0 40.0 0 0 0 0 0".equals(last(c, "tbt ")), "destination on the left " + last(c, "tbt "));
         t.status(2);
         require("false 0".equals(ApproachBar.sent.get(ApproachBar.sent.size() - 1)), "end: bar back");
+        lanes();
         System.out.println("AaTurnsTest ok");
+    }
+
+    static String hex(byte[] f) {
+        StringBuilder b = new StringBuilder("lanes ");
+        int end = f.length;
+        while (end > 1 && f[end - 1] == 0) end--;
+        for (int i = 0; i < end; i++) b.append(String.format("%02x", f[i] & 0xff));
+        return b.toString();
+    }
+
+    /** the cluster frame for lanes {status, arrow ids...} */
+    static String frame(int[]... lanes) {
+        byte[] f = new byte[81];
+        f[0] = (byte) 0xf1;
+        f[1] = (byte) lanes.length;
+        for (int k = 0; k < lanes.length; k++) {
+            f[3 + k] = (byte) lanes[k][0];
+            for (int j = 1; j < lanes[k].length; j++) f[19 + 3 * k + j - 1] = (byte) lanes[k][j];
+        }
+        return hex(f);
+    }
+
+    /** the looper runs what is pending: true when something was */
+    static boolean fire(Handler h) {
+        boolean any = false;
+        for (Runnable r : new java.util.ArrayList<Runnable>(h.pending)) any |= h.fire(r);
+        return any;
+    }
+
+    static int count(Cluster c, String call) {
+        int n = 0;
+        for (String x : c.calls) if (x.equals(call)) n++;
+        return n;
+    }
+
+    /** a live route with a turn 800 m ahead (outside the approach window, so no bar lease is pending) */
+    static AaTurns live(Cluster c, Handler h) {
+        AaTurns t = new AaTurns(new android.content.Context(), c, h);
+        t.status(1);
+        t.nextTurn("Road", AaTurns.RIGHT, AaTurns.TURN, -1, 0);
+        t.nextTurnDistance(800, 60, 800, AaTurns.METERS);
+        return t;
+    }
+
+    /**
+     * Lanes (event 34): "nn" lanes, then per lane the mask of recommended arrow slots and three
+     * direction classes (1 straight, 2 slight right, 3 right, 4 sharp right, 5 U-turn, 6 sharp left,
+     * 7 left, 8 slight left). Status bytes: 2 bits per slot, 1 white, 2 blue, 3 grey.
+     */
+    static void lanes() {
+        Car.unit = Car.DISTANCE_KM;
+        final String ST_R = "01010300", R_ONLY = "01030000";
+        // straight + right (right on the route), then a right-only lane on the route
+        Cluster c = new Cluster();
+        Handler h = new Handler();
+        AaTurns t = live(c, h);
+        t.nextTurn("02" + "02010300" + "01030000", 0, AaTurns.EV_LANES, -1, -1);
+        // glyph pair 16, 18 (straight + right): straight grey, right blue; the single right lane blue
+        String f1 = frame(new int[] { 0x0b, 16, 18 }, new int[] { 0x02, 3 });
+        require(f1.equals(last(c, "lanes ")), "lanes: " + last(c, "lanes ") + " wanted " + f1);
+        require("remain 800 0 0 0".equals(last(c, "remain ")), "lane distance box " + last(c, "remain "));
+        // the cluster ages a frame sent once out: it comes again while the route is live
+        require(!h.pending.isEmpty(), "lane refresh scheduled");
+        int sent = count(c, f1);
+        require(fire(h), "lane refresh runs");
+        require(count(c, f1) == sent + 1 && !h.pending.isEmpty(), "lane frame sent again, refresh rescheduled");
+        fire(h);
+        require(count(c, f1) == sent + 2, "lane frame keeps coming");
+        // the same lanes from the phone again: no second frame beyond the refresh
+        t.nextTurn("02" + "02010300" + "01030000", 0, AaTurns.EV_LANES, -1, -1);
+        require(count(c, f1) == sent + 2, "same lanes ignored");
+        // distance changes reach the box
+        t.nextTurnDistance(650, 40, 650, AaTurns.METERS);
+        require("remain 650 0 0 0".equals(last(c, "remain ")), "lane distance follows " + last(c, "remain "));
+        // rerouting: the old lanes are not renewed
+        t.status(3);
+        int again = count(c, f1);
+        fire(h);
+        require(count(c, f1) == again && !h.pending.isEmpty(), "no refresh while rerouting");
+        t.status(1);
+        require(count(c, f1) == again + 1, "active again: lanes back");
+        // no lanes: empty frame, no refresh, box given back
+        t.nextTurn("00", 0, AaTurns.EV_LANES, -1, -1);
+        require(frame().equals(last(c, "lanes ")) && h.pending.isEmpty(), "empty lanes: " + last(c, "lanes "));
+        require("remain 65535 15 15 0".equals(last(c, "remain ")), "empty lanes: box back " + last(c, "remain "));
+        // an end of guidance clears lanes and refresh
+        t.nextTurn("01" + R_ONLY, 0, AaTurns.EV_LANES, -1, -1);
+        require(!h.pending.isEmpty(), "lanes again");
+        t.status(2);
+        require(frame().equals(last(c, "lanes ")) && h.pending.isEmpty(), "end: lanes cleared " + last(c, "lanes "));
+        require("remain 65535 15 15 0".equals(last(c, "remain ")), "end: box back");
+        // the same lanes after a new route are not taken for old ones
+        t.status(1);
+        t.nextTurn("01" + R_ONLY, 0, AaTurns.EV_LANES, -1, -1);
+        require(frame(new int[] { 0x02, 3 }).equals(last(c, "lanes ")), "after a new route: shown again " + last(c, "lanes "));
+
+        // lanes before the active status wait for it
+        c = new Cluster();
+        h = new Handler();
+        t = new AaTurns(new android.content.Context(), c, h);
+        t.nextTurn("01" + "01010300", 0, AaTurns.EV_LANES, -1, -1);
+        require(last(c, "lanes ") == null && h.pending.isEmpty(), "lanes wait for status");
+        t.status(1);
+        require(frame(new int[] { 0x0e, 16, 18 }).equals(last(c, "lanes ")), "lanes shown at status " + last(c, "lanes "));
+
+        // no recommendation anywhere: every arrow white; with one lane recommended the others grey
+        c = new Cluster();
+        h = new Handler();
+        t = live(c, h);
+        t.nextTurn("03" + "00010300" + "00030000" + "00080000", 0, AaTurns.EV_LANES, -1, -1);
+        require(frame(new int[] { 0x05, 16, 18 }, new int[] { 0x01, 3 }, new int[] { 0x01, 8 }).equals(last(c, "lanes ")), "no route lane: all white " + last(c, "lanes "));
+        t.nextTurn("03" + "00010300" + "01030000" + "00080000", 0, AaTurns.EV_LANES, -1, -1);
+        require(frame(new int[] { 0x0f, 16, 18 }, new int[] { 0x02, 3 }, new int[] { 0x03, 8 }).equals(last(c, "lanes ")), "route lane blue, the rest grey " + last(c, "lanes "));
+        // a U-turn (both sides draw arrow 5) with a left lane: the U-turn pair, U-turn on the route
+        t.nextTurn("01" + "01050700", 0, AaTurns.EV_LANES, -1, -1);
+        require(frame(new int[] { 0x0e, 10, 14 }).equals(last(c, "lanes ")), "u-turn + left " + last(c, "lanes "));
+        // a sharp left snaps to the left of a verified set (UT, L, ST): the U-turn on the route blue, the others grey
+        t.nextTurn("01" + "04010605", 0, AaTurns.EV_LANES, -1, -1);
+        require(frame(new int[] { 0x3e, 26, 31, 22 }).equals(last(c, "lanes ")), "snapped set " + last(c, "lanes "));
+        // U-turn right (shape 9) used to drop out of the lane: now its arrow is the U-turn like the left one
+        t.nextTurn("01" + "01050000", 0, AaTurns.EV_LANES, -1, -1);
+        require(frame(new int[] { 0x02, 5 }).equals(last(c, "lanes ")), "u-turn alone " + last(c, "lanes "));
+        // malformed strings change nothing
+        int n = c.calls.size();
+        t.nextTurn("09", 0, AaTurns.EV_LANES, -1, -1);
+        t.nextTurn("01zz", 0, AaTurns.EV_LANES, -1, -1);
+        t.nextTurn("0201030000", 0, AaTurns.EV_LANES, -1, -1);
+        require(c.calls.size() == n, "malformed lane strings ignored");
+
+        // the focus goes back to the car's navigation: lanes cleared
+        c = new Cluster();
+        h = new Handler();
+        t = live(c, h);
+        t.nextTurn("01" + R_ONLY, 0, AaTurns.EV_LANES, -1, -1);
+        t.stop();
+        require(frame().equals(last(c, "lanes ")) && h.pending.isEmpty(), "focus native clears lanes");
+        // unit conversions in the box
+        c = new Cluster();
+        h = new Handler();
+        t = new AaTurns(new android.content.Context(), c, h);
+        t.status(1);
+        t.nextTurn("Road", AaTurns.RIGHT, AaTurns.TURN, -1, 0);
+        t.nextTurnDistance(1250, 80, 1250, AaTurns.METERS);
+        t.nextTurn("01" + R_ONLY, 0, AaTurns.EV_LANES, -1, -1);
+        require("remain 1 1 3 0".equals(last(c, "remain ")), "km in the box " + last(c, "remain "));
+        System.out.println("AaTurnsTest lanes ok");
     }
 }
