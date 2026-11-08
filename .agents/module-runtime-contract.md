@@ -289,6 +289,17 @@ such a snapshot follows a role change after the next head-unit restart.
   ignored because the zygote starts before this boot's reconcile) that call is skipped and the hook part
   `usb_hotspot` (no map points; runtime record `part.usb_hotspot`) loads in `com.tcc.iap2server` and
   `com.google.android.projection.sink`. Anything else, including a missing or unreadable file, is the stock path.
+- On the stock path the hook part `stock_hotspot` (no map points; `com.tcc.iap2server`, GPM,
+  `com.daudio.app.phoneprojection`) covers units whose stock call does not bring up the hotspot for connectivity
+  (`WifiManager.getWifiApState()`/`getWifiApMode()` read at each call, `StockHotspot`):
+  - the normal hotspot serves (state enabled, mode not 2), or nothing serves (state disabled or failed): in the iAP2
+    server and GPM `getWifiApConfiguration()` returns the normal hotspot's SSID and passphrase in
+    `ConnectivitySSID`/`ConnectivityPSK` too (the returned copy only; nothing is written);
+  - the normal hotspot serves: in GPM and PhoneProjection `getWifiApMode()` answers 2;
+  - 10 seconds after a `setWifiApEnabledForConnectivity(config, true)` (DiPO's `ensureHotspot`, or PhoneProjection's own
+    call) the state is still disabled or failed: `setWifiApEnabled(null, true)` starts the normal hotspot with its saved
+    configuration (a null configuration is not stored; the hotspot goes away at a restart like the stock one).
+  A unit whose connectivity hotspot comes up (state enabled, mode 2) sees none of this.
 - `status` prints `info.hotspot_radio=usb|builtin|none`: `usb` for a published USB hotspot; `none` for `radio=none`
   with `wifi` setting `builtin_role=client`; otherwise `builtin` when the stock Broadcom radio exists
   (`tcc.wifi.vendor=broadcom`, non-empty `bcmdhd.ko` and `fw_bcmdhd.bin`), else `none`.
