@@ -75,7 +75,7 @@ persistent targets, then drops the old package and records `module_takeover` in 
 
 ## Compatibility gate
 
-- `ro.build.product` glob `NEEV.KOR.*.260902`, `tcc.wifi.vendor=broadcom`, and nonempty regular
+- A car map for the exact `ro.build.product` (`sg_car_mapped`), `tcc.wifi.vendor=broadcom`, and nonempty regular
   `/system/wifi/bcmdhd.ko` and `/system/wifi/fw_bcmdhd.bin`. Missing/wrong vendor or missing/empty driver/firmware fails
   incompatible before any write, even with live SDIO/WLAN entries.
 - Not required: `wlan.driver.status`, a current interface, SDIO enumeration, current firmware mode. Owner's 2026-11-04
