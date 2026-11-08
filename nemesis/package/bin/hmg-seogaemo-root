@@ -136,7 +136,7 @@ if [ "$1" = export ]; then
     grep '^package-version=' "$base/NEMESIS.data" > "$dest/package-version"
     HMG_SEOGAEMO_BASE=$base HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
     export HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE SG_DATA_ROOT
-    hmg_seogaemo_map_active_dir >/dev/null 2>&1 && hmg_seogaemo_map_export "$dest" || true
+    hmg_seogaemo_map_export "$dest" || true
     . "$base/lib/diagnostics.sh"
     HMG_SEOGAEMO_EXPORT_LOGS=$export_logs
     hmg_seogaemo_diagnostics "$dest" || refuse 1 failed 'Could not collect diagnostics'

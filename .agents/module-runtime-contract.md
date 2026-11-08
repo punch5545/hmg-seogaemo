@@ -667,6 +667,13 @@ The zygote hook gate (`HmgApi.zygoteInit`) checks only the first two lines of th
 boot's verification finishes one to three minutes later. Every stock file is
 still compared with the MD5s in `car.json` before the map is used. Module `hookpoints.required` IDs must all survive
 resolution and reflection before publish. `map.json` exposes only verified points.
+A scan that fails a required point publishes nothing (no `active` change). The mapper still writes its
+candidate to scratch (`map.json`, `car.json` with each unresolved point's reason under `missing` and the failed
+required IDs under `incomplete`, `layout`, and `incomplete`, one ID per line), and the package API keeps it through
+`hmg_seogaemo_map_keep_incomplete` as `car-maps/incomplete/` (one copy, plus `product`; ledger `map_contents`).
+No module, hook engine or status reads it. `map export` and the ledger export fall back to it when there is
+no active verified map and `product` still matches: the usual `maps/...` folder plus `incomplete.txt`, and
+`info.export_kind=incomplete`. It is for diagnosis, never an installable map; the next publish removes it.
 
 Car gate: no module is tied to one firmware by name. Bundled modules declare `cars=*`
 and report `incompatible` unless a map exists for this exact `ro.build.product`:
