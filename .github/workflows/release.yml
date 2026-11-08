@@ -14,6 +14,20 @@ jobs:
     environment: release
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Check the tagged commit is on the right branch
+        # Betas ship only from beta, finals only from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in *-beta.*) branch=beta;; *) branch=main;; esac
+          git fetch --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$branch"; then
+            echo "::error::$tag points at $GITHUB_SHA, which is not contained in origin/$branch"
+            exit 1
+          fi
       - uses: ./.github/actions/setup
       - name: Build and verify release package
         shell: bash

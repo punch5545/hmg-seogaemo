@@ -154,20 +154,35 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 - CI (`ci.yml`) and release share `.github/actions/setup`: the runner's preinstalled SDK plus a
   cached API 19 platform and mksh .deb, LLVM 18 from the image; `android-actions/setup-android@v3`
   breaks on the removed `tools` package.
-- Release order (always): merge everything first, bump `VERSION` in its own commit on `main`, push
-  `main`, wait until CI on that exact commit is green, then tag that commit `vX.Y.Z` (must equal
-  `VERSION`) and push only the tag. Never tag a commit CI has not run on (e.g. a local merge
-  commit), and never move or reuse a pushed tag; a failed release gets the next patch version.
-- Beta: on a feature branch, `VERSION` holds the coming release (`X.Y.Z`) and `PRERELEASE` holds
-  `beta.N`; tag `vX.Y.Z-beta.N`. The APK shows `X.Y.Z-beta.N` (same versionCode), the package
-  carries `PRERELEASE`, and the release is a GitHub prerelease that in-app OTA
-  (`releases/latest`) never offers; install it by hand. The `X.Y.Z` release replaces it over OTA
-  (a beta is older than its release). Delete `PRERELEASE` before merging to `main`.
-- Release workflow: `release.yml` builds
-  with the release keystore, checks the APK certificate SHA-256, signs the manifest, waits for CI
-  on the tagged SHA (success: `make test-dist` on the release build; otherwise the full suite via
-  `make test-suites`), uploads to a draft release, verifies the asset list, then publishes. Tag a
-  commit CI tested (pushed to `main`) to get the short path.
+- Branches: `main` ships finals, the long-lived `beta` ships betas. Cut feature branches from `main`;
+  merge them (`--no-ff`) into `beta` to ship as a beta, into `main` for a final. Never merge `beta`
+  into `main` and never cut a feature branch from `beta`: `PRERELEASE` exists only on `beta`, and CI
+  on `main` (push and PR) fails if it is present. `beta` is not deleted or reset.
+- Version files: `VERSION` is `X.Y.Z`, the only edited version. Final: `VERSION` alone, tag `vX.Y.Z`.
+  Beta: `VERSION` holds the coming release and `PRERELEASE` holds `beta.N`, tag `vX.Y.Z-beta.N`
+  (`tools/version.py --label`). The APK shows `X.Y.Z-beta.N` (same versionCode), the package carries
+  `PRERELEASE`, and the release is a GitHub prerelease that in-app OTA (`releases/latest`) never
+  offers; install it by hand. The `X.Y.Z` final replaces it over OTA (a beta is older than its release).
+- Release order (always): merge everything first; for a final bump `VERSION` in its own commit on
+  `main` (beta's version moves automatically, see below); push the branch, wait until CI on that
+  exact commit is green (CI runs on pushes and PRs to `main` and `beta`), then tag that commit and
+  push only the tag. Never tag a
+  commit CI has not run on (e.g. a local merge commit) and never move or reuse a pushed tag; a failed
+  release gets the next number (patch for a final, `beta.N+1` for a beta).
+- Release workflow: `release.yml` refuses a beta tag whose commit is not contained in `origin/beta` and
+  a final tag whose commit is not contained in `origin/main`. It builds with the release keystore,
+  checks the APK certificate SHA-256, signs the manifest, waits for CI on the tagged SHA (success:
+  `make test-dist` on the release build; otherwise the full suite via `make test-suites`), uploads
+  to a draft release, verifies the asset list, then publishes. Tag a commit CI tested to get the
+  short path (commits pushed by the bump below start no CI, so tag after a merge or push that ran it).
+- Automatic beta bumps (`beta-sync.yml`, `tools/beta-bump.py`; runs after `Release` succeeds, pushes
+  `beta` with `GITHUB_TOKEN`, never tags): after a final `vX.Y.Z` it merges that tag commit into
+  `beta` ("Merge vX.Y.Z into beta"; creates `beta` from it when missing) and commits
+  `beta: X.Y.(Z+1)-beta.1` (`VERSION` X.Y.(Z+1), `PRERELEASE` beta.1; a `beta` already ahead keeps
+  its `VERSION`). After a beta `vX.Y.Z-beta.N` it commits `beta: X.Y.Z-beta.(N+1)`, only while `beta`
+  is still at `X.Y.Z` / `beta.N`. A merge conflict (only `VERSION`/`PRERELEASE` auto-resolve) pushes
+  nothing, fails the job and opens an issue: merge the final into `beta` by hand and set the next
+  `VERSION`/`PRERELEASE` in a separate commit. Re-runs change nothing.
 - UI screenshots: AVD `hmg_1920x720` (1920x720, 240 dpi, API 28 image; no NEMESIS, so module
   status shows unavailable). README screenshots are the Korean UI.
 - README: every image is a real app screenshot from `assets/`; no "mock", "demo", "example",
