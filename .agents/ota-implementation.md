@@ -31,6 +31,15 @@ only the NEMESIS package installer.
   `/releases/latest` never returns. The updater treats an installed `X.Y.Z-beta.N` (APK `versionName`, or
   `core/update.sh` from the USB package's `PRERELEASE` while no OTA build is current) as older than `X.Y.Z`. `NEMESIS.data` descriptor `version=1.1` is separate. About reads
   `PackageInfo.versionName` at runtime.
+- Branches: finals are tagged only on `main`, betas only on the long-lived `beta`; `release.yml` fails a tag whose
+  commit is not contained in `origin/main` (final) or `origin/beta` (beta). `PRERELEASE` exists only on `beta`; CI on
+  `main` fails if it is present. `ci.yml` runs on pushes and PRs to both branches, so a tag on a CI-tested commit
+  takes the short release path. Branch rules and tagging order: `AGENTS.md` (Build, test, release).
+- `beta-sync.yml` (`workflow_run` on `Release`, success only, runs from the default branch's copy, no signing secrets
+  or `release` environment) runs `tools/beta-bump.py` as `github-actions[bot]`: after a final it merges the tag commit
+  into `beta` and sets `VERSION` to the next patch with `PRERELEASE=beta.1`; after a beta it advances `PRERELEASE` to
+  `beta.N+1` while `beta` is still at that beta. It is idempotent, pushes only `beta`, never tags, and (as a
+  `GITHUB_TOKEN` push) starts no other workflow. A real merge conflict pushes nothing, fails the job and opens an issue.
 - Release assets (`hmg-seogaemo-<v>` prefix except `SHA256SUMS`): NEMESIS package zip, USB zip, OTA zip, APK, `SHA256SUMS`,
   signed JSON manifest + detached signature. Manifest lists APK and three zips with sizes and SHA-256; `SHA256SUMS` also
   covers manifest and signature. The job checks tag vs `VERSION`, verifies the distribution and expected APK certificate,
