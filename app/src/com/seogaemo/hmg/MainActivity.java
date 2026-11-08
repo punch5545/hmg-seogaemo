@@ -31,6 +31,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import com.seogaemo.hmg.module.InstalledModule;
+import com.seogaemo.hmg.module.RemovedModule;
 import com.seogaemo.hmg.module.Module;
 import com.seogaemo.hmg.module.ModuleAction;
 import com.seogaemo.hmg.module.ModuleManager;
@@ -2180,8 +2181,10 @@ public final class MainActivity extends Activity {
         new Thread(new Runnable() { public void run() {
             getFilesDir();
             RootClient.moduleUsbImport();
-            final List<File> packages = findPackages();
-            for (File file : packages) packageInfo(file);
+            final List<AddItem> packages = new ArrayList<AddItem>();
+            for (RemovedModule removed : RemovedModule.parse(RootClient.moduleListRemoved(describeLocale())))
+                packages.add(new AddItem(removed));
+            for (File file : findPackages()) packages.add(new AddItem(file, packageInfo(file)));
             runOnUiThread(new Runnable() { public void run() {
                 if (!addVisible) return;
                 list.removeAllViews();
@@ -2193,10 +2196,28 @@ public final class MainActivity extends Activity {
                     detail.removeAllViews();
                     return;
                 }
-                for (File file : packages) addPackageRow(list, detail, file, packages, file == packages.get(0));
+                for (AddItem item : packages) addPackageRow(list, detail, item, packages, item == packages.get(0));
                 showPackage(detail, packages.get(0));
             } });
         } }, "hmg-seogaemo-add-scan").start();
+    }
+
+    /** One row of the Add screen: a USB package file, or a bundled module the owner removed. */
+    private static final class AddItem {
+        final File file;
+        final String bundledId;
+        final Map<String, String> info;
+        AddItem(File file, Map<String, String> info) { this.file = file; this.bundledId = null; this.info = info; }
+        AddItem(RemovedModule removed) {
+            this.file = null;
+            this.bundledId = removed.id;
+            Map<String, String> values = new HashMap<String, String>();
+            values.put("name", removed.name);
+            values.put("icon", removed.icon);
+            if (removed.summary.length() > 0) values.put("summary", removed.summary);
+            if (removed.version.length() > 0) values.put("version", removed.version);
+            this.info = values;
+        }
     }
 
     private List<File> findPackages() {
@@ -2272,40 +2293,40 @@ public final class MainActivity extends Activity {
     private String packageName(File file) { return packageInfo(file).get("name"); }
 
 
-    private void addPackageRow(final LinearLayout list, final LinearLayout detail, final File file,
-            final List<File> all, boolean selected) {
+    private void addPackageRow(final LinearLayout list, final LinearLayout detail, final AddItem item,
+            final List<AddItem> all, boolean selected) {
         LinearLayout row = horizontal();
         row.setPadding(dp(SettingsUi.LG), 0, dp(SettingsUi.MD), 0);
         row.setBackgroundDrawable(selectable(selected ? Theme.SELECTED : SURFACE, Color.TRANSPARENT, 0, false));
         View marker = new View(this);
         marker.setBackgroundColor(selected ? BLUE : Color.TRANSPARENT);
         row.addView(marker, new LinearLayout.LayoutParams(dp(4), dp(56)));
-        ImageView glyph = iconBox(packageInfo(file).get("icon"), selected ? BLUE : MUTED, 44, 26);
+        ImageView glyph = iconBox(item.info.get("icon"), selected ? BLUE : MUTED, 44, 26);
         LinearLayout.LayoutParams glyphParams = new LinearLayout.LayoutParams(dp(44), dp(44));
         glyphParams.leftMargin = dp(SettingsUi.MD);
         row.addView(glyph, glyphParams);
         LinearLayout copy = vertical();
         copy.setGravity(Gravity.CENTER_VERTICAL);
         copy.setPadding(dp(SettingsUi.MD), 0, 0, 0);
-        SettingsUi.titleBlock(this, copy, text(packageName(file), 21, selected ? WHITE : Theme.DIM, medium),
-                text("USB" + (packageInfo(file).get("version") != null
-                        ? " \u00B7 " + packageInfo(file).get("version") : ""), 16, MUTED, sans));
+        SettingsUi.titleBlock(this, copy, text(item.info.get("name"), 21, selected ? WHITE : Theme.DIM, medium),
+                text((item.bundledId != null ? getString(R.string.add_removed_source) : "USB")
+                        + (item.info.get("version") != null ? " \u00B7 " + item.info.get("version") : ""), 16, MUTED, sans));
         row.addView(copy, new LinearLayout.LayoutParams(0, -1, 1));
         row.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 list.removeAllViews();
-                for (File other : all) addPackageRow(list, detail, other, all, other == file);
-                showPackage(detail, file);
+                for (AddItem other : all) addPackageRow(list, detail, other, all, other == item);
+                showPackage(detail, item);
             }
         });
         list.addView(row, new LinearLayout.LayoutParams(-1, dp(76)));
         divider(list, false);
     }
 
-    private void showPackage(LinearLayout detail, final File file) {
+    private void showPackage(LinearLayout detail, final AddItem item) {
         detail.removeAllViews();
         LinearLayout head = horizontal();
-        Map<String, String> info = packageInfo(file);
+        Map<String, String> info = item.info;
         head.addView(iconBox(info.get("icon"), WHITE, 72, 40), new LinearLayout.LayoutParams(dp(72), dp(72)));
         LinearLayout copy = vertical();
         copy.setPadding(dp(SettingsUi.LG), 0, 0, 0);
@@ -2316,7 +2337,7 @@ public final class MainActivity extends Activity {
         detail.addView(head, new LinearLayout.LayoutParams(-1, -2));
         OptionsList rows = new OptionsList(this);
         if (info.get("version") != null) rows.addReadOnly(getString(R.string.add_version), info.get("version"));
-        rows.addReadOnly(getString(R.string.add_file), file.getName());
+        if (item.file != null) rows.addReadOnly(getString(R.string.add_file), item.file.getName());
         LinearLayout.LayoutParams rowsParams = new LinearLayout.LayoutParams(-1, -2);
         rowsParams.topMargin = dp(SettingsUi.LG);
         detail.addView(rows, rowsParams);
@@ -2325,7 +2346,10 @@ public final class MainActivity extends Activity {
         LinearLayout actions = horizontal();
         actions.setGravity(Gravity.RIGHT);
         TextView install = Theme.button(this, getString(R.string.add_install), true, false);
-        install.setOnClickListener(new View.OnClickListener() { public void onClick(View v) { confirmPackageInstall(file); } });
+        install.setOnClickListener(new View.OnClickListener() { public void onClick(View v) {
+            if (item.bundledId != null) confirmBundledAdd(item.bundledId, item.info.get("name"));
+            else confirmPackageInstall(item.file);
+        } });
         actions.addView(install, new LinearLayout.LayoutParams(dp(220), dp(Theme.ACTION_HEIGHT)));
         detail.addView(actions, new LinearLayout.LayoutParams(-1, -2));
     }
@@ -2365,6 +2389,36 @@ public final class MainActivity extends Activity {
                         } else showFailure(getString(R.string.add_failed), result.detail);
                     } });
                 } }, "hmg-seogaemo-install").start();
+            }
+        }, null);
+    }
+
+    /** Adds a removed bundled module back; like an install it changes nothing until the owner turns it on. */
+    private void confirmBundledAdd(final String moduleId, final String name) {
+        if (moduleWorking || modulePlanning || stockBusy) return;
+        ConfirmDialog.show(this, getString(R.string.add_install_confirm_title, name, particle(name)),
+                getString(R.string.add_removed_confirm), getString(R.string.add_install), getString(R.string.cancel), false,
+                new ConfirmDialog.Action() {
+            public void run(final ConfirmDialog dialog) {
+                moduleWorking = true;
+                dialog.dismiss();
+                final StepProgressDialog progress = StepProgressDialog.show(MainActivity.this,
+                        getString(R.string.add_install), java.util.Collections.singletonList(
+                                getString(R.string.add_install_step, name)));
+                if (progress != null) progress.setStep(0, StepProgressDialog.RUNNING);
+                new Thread(new Runnable() { public void run() {
+                    final RootResult result = RootClient.moduleAddBundled(moduleId);
+                    refreshInstalled(describeLocale());
+                    runOnUiThread(new Runnable() { public void run() {
+                        moduleWorking = false;
+                        if (progress != null) progress.dismiss();
+                        if (result.exitCode == 0) {
+                            goBack();
+                            ConfirmDialog.showResult(MainActivity.this, getString(R.string.add_install),
+                                    getString(R.string.add_installed_done), getString(R.string.close));
+                        } else showFailure(getString(R.string.add_failed), result.detail);
+                    } });
+                } }, "hmg-seogaemo-add-removed").start();
             }
         }, null);
     }

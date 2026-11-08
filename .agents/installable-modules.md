@@ -54,8 +54,13 @@ class, no Android resources and no `modules.list` entry.
   ([wifi.md](wifi.md)). Foreign cleanup recognises the HMG-API Wi-Fi XML by its MD5, so it works after `wifi` is
   removed.
 - IDs of bundled packages are reserved: a direct install with such an ID is refused. Removing a bundled
-  module (normal `module remove`) records `bundled-removed/<id>`. Adding it back from the app is not
-  implemented yet.
+  module (normal `module remove`) records `bundled-removed/<id>`; the marker survives a package uninstall and
+  reinstall (the data root stays). The app's Add screen lists removed bundled modules next to USB packages:
+  `module list-removed <xx>` (read-only; `info.removed_N=<id>,<version>,<icon>` plus `_name`/`_summary` from the
+  `bundled/<id>.strings.<locale>` files the packer writes beside each `.hsm`) and `module add-bundled <id>`
+  (confirmed in the app; needs `bundled/<id>.hsm` and the marker; drops the marker and installs only that package,
+  the marker returns if the install fails; a `replaces=` module whose predecessors were all removed installs
+  anyway because the owner asked for it). Adding does not turn the module on.
 - `module list` reports `bundled` as the source; the app treats it like an installed package.
 - All six former built-ins (`raw_shell=1` with their former root scripts). The user-button broadcast receiver is
   app code (`com.seogaemo.hmg.UserButtonReceiver`), not module code. A bundled raw_shell package may declare
