@@ -50,6 +50,7 @@ HOST = (["python3", "tools/test-module-install.py"], ["python3", "tools/test-for
         ["python3", "tools/lint-module-root.py"], ["python3", "tools/lint-names.py"],
         ["python3", "tools/test-hsm.py"], ["python3", "tools/test-hsm-cli.py"],
         ["python3", "tools/test-update.py"], ["python3", "tools/test-module-switch.py"],
+        ["python3", "tools/test-beta-bump.py"],
         ["make", "-s", "test-java"])
 # Measured seconds on a 4-CPU CI runner; longest first keeps the tail short.
 EXPECTED = {"test_mutation_api_and_export": 55, "test_zygote_and_dex": 40, "wireless-carplay-and-aa": 35,
