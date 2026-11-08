@@ -4,7 +4,8 @@ set -eu
 . "$HMG_SEOGAEMO_BASE/lib/common.sh"
 umask 077
 
-FEATURE=/system/onebin/neev_kr/featurexml.cfg
+# Same @onebin@ path as owns_lines.N; empty when ro.mobis.onebindir is unusable.
+FEATURE=$(sg_onebin_path /system/onebin/@onebin@/featurexml.cfg) || FEATURE=
 ASSET=/system/etc/hmg-seogaemo/wireless-carplay-and-aa
 RESTART_DETAIL='restart unit to start wireless CarPlay and Android Auto'
 # The hooks load through the core hook host; apps read the world-readable copy of the jar.
@@ -71,7 +72,7 @@ compatibility() {
     map_state=$(/system/bin/sh "$HMG_SEOGAEMO_BASE/bin/hmg-seogaemo-root" map status 2>/dev/null) || map_state= # android44-shell: allow -- fixed dispatcher beneath the runtime-supplied package root
     sg_print "$map_state" | grep -Fxq 'state=on' ||
         { incompatible 'verified car map required'; return 4; }
-    [ "$(value ro.mobis.onebindir)" = neev_kr ] || { incompatible 'unsupported onebin'; return 4; }
+    [ -n "$FEATURE" ] || { incompatible 'unsupported onebin'; return 4; }
     [ "$(value ro.build.version.release)" = 4.4.2 ] || { incompatible 'requires Android 4.4.2'; return 4; }
     for owner in hmgapi leafia nemesis-adb-tcp; do
         if sg_owner_present "$owner"; then conflict "external owner: $owner"; return 3; fi

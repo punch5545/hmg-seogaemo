@@ -30,11 +30,15 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 4. Add new findings to `.agents/` (and list new docs in `.agents/README.md`). For mapping work,
    read `docs/mapping-new-firmware.md` and `UPSTREAM.md` as well.
 
-## Target device (verified facts)
+## Reference car (verified facts)
 
-- Hyundai Ioniq 5, Korea. `ro.build.product` = `NEEV.KOR.0000.V039.001.260902`; match it with the
-  glob `NEEV.KOR.*.260902` (descriptor `os=` and scripts). NEMESIS compares `os=` to
-  `ro.build.product` with globs; an exact `NEEV.KOR.260902` never matches.
+No code is tied to this car by name: the package installs on any Gen5W on Android 4.4 (descriptor
+`os=any`, `models=any`), bundled modules declare `cars=*`, and each module needs a car map for the
+exact `ro.build.product` (runtime contract, "Car gate"). Other cars are untested on a car.
+
+- Hyundai Ioniq 5, Korea. `ro.build.product` = `NEEV.KOR.0000.V039.001.260902` (glob
+  `NEEV.KOR.*.260902`; NEMESIS compares `os=` to `ro.build.product` with globs, so an exact
+  `NEEV.KOR.260902` never matches). Its map is the only bundled one.
 - onebin `neev_kr`, Android 4.4.2 (API 19, Dalvik), Telechips, display 1920x720 hdpi (density 1.5).
 - Owner-verified: HMG-API's car map + wireless mod gave a working hotspot + wireless CarPlay on this
   car; the stock firmware has no Wi-Fi client menu.
@@ -133,6 +137,10 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   Unknown firmware requires the confirmed **Map this car** action in Settings → Car mapping.
   `map run` scans the full catalogue in a separate root `app_process`; it publishes only verified
   points through the package API and ledger. Modules stay off unless all their required IDs pass.
+- Car gate: every module reports `incompatible` until a bundled or published map exists for the exact
+  `ro.build.product` (`sg_car_map`, cheap, no map tool). Per-firmware facts come from that map's
+  `car.json`, `ro.mobis.onebindir` (`@onebin@` in `owns_lines` paths) or product-scoped
+  `stock_file.N=<glob>:<path>:<md5>`; never write a product check into a module script.
 - `map export` and ordinary USB/adb ledger export include a PR-ready `maps/...` folder. Owners send it
   through the `new-firmware-map.yml` issue form, opened from the app's QR code (only firmware ids,
   versions and map/module states; never personal data); maintainers turn it into a PR. See
@@ -200,6 +208,9 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 
 - The 18 v1.0.1 and six stock-guidance map additions have exact-stock host evidence and still
   need on-car reflection.
+- Cars other than the Ioniq 5 KOR: the generic install, car gate and `@onebin@` path are tested off-car
+  only. CarPlay's stock `app_process` MD5 is known only for `NEEV.KOR.*.260902`; elsewhere that
+  unrecorded-swap check has no reference build.
   Other feature claims require their own evidence.
 - The core hook host replaces `/system/bin/app_process` for every hook module, `wireless-carplay-and-aa`
   included (boot guard disables it after 3 quick restarts). Keep an adb recovery path ready. CarPlay on the
@@ -233,8 +244,10 @@ whole-file operations. For a shared text file, add one numbered entry per change
 stock line, for example:
 
 ```properties
-owns_lines.1=/system/onebin/neev_kr/featurexml.cfg:-/system/etc/permissions/com.hkmc.software.wifihotspot.xml
+owns_lines.1=/system/onebin/@onebin@/featurexml.cfg:-/system/etc/permissions/com.hkmc.software.wifihotspot.xml
 ```
+
+`@onebin@` is replaced with `ro.mobis.onebindir` when the module is installed.
 
 Numbers are unique positive decimals without leading zero. The first colon
 separates the path from the exact stock line; everything after it is literal,

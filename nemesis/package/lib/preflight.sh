@@ -195,17 +195,19 @@ EOF
 
 hmg_seogaemo_preflight() {
     pf_product=$(getprop ro.build.product)
-    case "$pf_product" in
-        NEEV.KOR.*.260902) pf_line firmware ok observed "Ioniq 5 KOR 260902 ($pf_product)" ;;
-        '') pf_line firmware unknown observed 'ro.build.product is empty' ;;
-        *) pf_line firmware block observed "Unsupported firmware: $(pf_text "$pf_product")" ;;
-    esac
+    if [ -z "$pf_product" ]; then
+        pf_line firmware unknown observed 'ro.build.product is empty'
+    elif sg_car_mapped; then
+        pf_line firmware ok observed "Car map available for $(pf_text "$pf_product")"
+    else
+        pf_line firmware warn observed "No car map for $(pf_text "$pf_product") yet; map this car before turning modules on"
+    fi
     [ "$(getprop ro.build.version.release)" = 4.4.2 ] &&
         pf_line android ok observed 'Android 4.4.2' ||
         pf_line android block observed "Android $(pf_text "$(getprop ro.build.version.release)") (4.4.2 required)"
-    [ "$(getprop ro.mobis.onebindir)" = neev_kr ] &&
-        pf_line onebin ok observed 'onebin neev_kr' ||
-        pf_line onebin block observed "onebin $(pf_text "$(getprop ro.mobis.onebindir)") (neev_kr required)"
+    sg_onebin_path @onebin@ >/dev/null &&
+        pf_line onebin ok observed "onebin $(pf_text "$(getprop ro.mobis.onebindir)")" ||
+        pf_line onebin warn observed "onebin '$(pf_text "$(getprop ro.mobis.onebindir)")' is not usable; wireless CarPlay cannot find featurexml.cfg"
     [ "$(getprop sys.boot_completed)" = 1 ] &&
         pf_line boot ok observed 'Android finished booting' ||
         pf_line boot warn observed 'Android has not finished booting; results may be incomplete'
