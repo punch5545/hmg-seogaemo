@@ -1,0 +1,52 @@
+name: Beta sync
+# After a release is published, keep the long-lived `beta` branch one release ahead
+# (tools/beta-bump.py). Runs from the default branch's copy of this file and apart from
+# the signing secrets, so a failure here never touches a published release. Pushes made
+# with GITHUB_TOKEN start no workflows; humans tag betas.
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: beta-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Bump beta
+        shell: bash
+        env:
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          # head_branch is the tag name for a tag push
+          case "$TAG" in
+            v*-beta.*) kind=beta;;
+            v*) kind=final;;
+            *) echo "::notice::Release ran for '$TAG', not a release tag"; exit 0;;
+          esac
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python3 tools/beta-bump.py "$kind" --tag "$TAG"
+      - name: Report a sync that needs a human
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create --title "beta sync failed after $TAG" \
+            --body "The Beta sync job failed after release $TAG; nothing was pushed to beta. Run: $RUN_URL" || true

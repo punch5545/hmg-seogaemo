@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, beta]
   pull_request:
-    branches: [main]
+    branches: [main, beta]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -15,6 +15,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Keep PRERELEASE off main
+        # PRERELEASE exists only on beta; a merge from beta (or a branch cut from it) must not reach main
+        if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+        run: |
+          if [ -e PRERELEASE ]; then
+            echo "::error::PRERELEASE must not exist on main; merge feature branches, never beta, into main"
+            exit 1
+          fi
       - uses: ./.github/actions/setup
       - name: Test and package debug build
         # test depends on package; test exactly the artifacts built here.
