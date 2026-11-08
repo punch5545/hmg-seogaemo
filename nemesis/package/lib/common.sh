@@ -3061,7 +3061,51 @@ hmg_seogaemo_map_publish() {
     sg_ledger map_contents "$hmg_seogaemo_map_final/map.json" "" "$hmg_seogaemo_map_final/map.json" "" || return 1
     sg_ledger map_contents "$hmg_seogaemo_map_final/car.json" "" "$hmg_seogaemo_map_final/car.json" "" || return 1
     rm -f "$hmg_seogaemo_map_root/.before.$$"
+    rm -rf "$hmg_seogaemo_map_root/incomplete"
     hmg_seogaemo_map_prune "$hmg_seogaemo_map_root/$hmg_seogaemo_map_product" "$hmg_seogaemo_map_hash/$hmg_seogaemo_map_id" || :
+}
+# A scan that fails a required point publishes nothing. Keep its candidate (resolved points, the per-point
+# failure reasons, the failed required IDs) so the owner can still export it. One copy, never an active map:
+# nothing reads it except `map export`, and the next published map removes it.
+hmg_seogaemo_map_keep_incomplete() {
+    hmg_seogaemo_map_input=$1
+    [ "$hmg_seogaemo_map_input" = "$HMG_SEOGAEMO_MAP_WORK" ] || return 2
+    for hmg_seogaemo_map_name in map.json car.json layout incomplete; do
+        [ -s "$hmg_seogaemo_map_input/$hmg_seogaemo_map_name" ] && [ ! -L "$hmg_seogaemo_map_input/$hmg_seogaemo_map_name" ] || return 1
+    done
+    hmg_seogaemo_map_product=$(getprop ro.build.product)
+    case "$hmg_seogaemo_map_product" in ''|*[!a-zA-Z0-9._-]*) return 2;; esac
+    hmg_seogaemo_map_layout=$(cat "$hmg_seogaemo_map_input/layout")
+    case "$hmg_seogaemo_map_layout" in
+        maps/*/*/*/*) case "$hmg_seogaemo_map_layout" in *..*|*[!a-zA-Z0-9_./-]*) return 2;; esac ;;
+        *) return 2;;
+    esac
+    hmg_seogaemo_map_root=$SG_DATA_ROOT/car-maps
+    hmg_seogaemo_map_stage=$hmg_seogaemo_map_root/.incomplete.$$
+    mkdir -p "$hmg_seogaemo_map_stage" || return 1
+    chmod 700 "$hmg_seogaemo_map_root" "$hmg_seogaemo_map_stage" || { rm -rf "$hmg_seogaemo_map_stage"; return 1; }
+    for hmg_seogaemo_map_name in map.json car.json layout incomplete; do
+        cp "$hmg_seogaemo_map_input/$hmg_seogaemo_map_name" "$hmg_seogaemo_map_stage/$hmg_seogaemo_map_name" &&
+            cmp "$hmg_seogaemo_map_input/$hmg_seogaemo_map_name" "$hmg_seogaemo_map_stage/$hmg_seogaemo_map_name" >/dev/null 2>&1 &&
+            chmod 600 "$hmg_seogaemo_map_stage/$hmg_seogaemo_map_name" || { rm -rf "$hmg_seogaemo_map_stage"; return 1; }
+    done
+    sg_print "$hmg_seogaemo_map_product" > "$hmg_seogaemo_map_stage/product" &&
+        chmod 600 "$hmg_seogaemo_map_stage/product" || { rm -rf "$hmg_seogaemo_map_stage"; return 1; }
+    rm -rf "$hmg_seogaemo_map_root/incomplete"
+    mv "$hmg_seogaemo_map_stage" "$hmg_seogaemo_map_root/incomplete" || { rm -rf "$hmg_seogaemo_map_stage"; return 1; }
+    HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/map
+    mkdir -p "$HMG_SEOGAEMO_STATE" || return 1
+    sg_ledger map_contents "$hmg_seogaemo_map_root/incomplete/map.json" "" "$hmg_seogaemo_map_root/incomplete/map.json" "" || return 1
+    sg_ledger map_contents "$hmg_seogaemo_map_root/incomplete/car.json" "" "$hmg_seogaemo_map_root/incomplete/car.json" "" || return 1
+}
+# The kept candidate counts only for the firmware it was scanned on.
+hmg_seogaemo_map_incomplete_dir() {
+    hmg_seogaemo_map_dir=$SG_DATA_ROOT/car-maps/incomplete
+    [ -d "$hmg_seogaemo_map_dir" ] && [ ! -L "$hmg_seogaemo_map_dir" ] || return 1
+    [ "$(cat "$hmg_seogaemo_map_dir/product" 2>/dev/null)" = "$(getprop ro.build.product)" ] || return 1
+    [ -s "$hmg_seogaemo_map_dir/map.json" ] && [ -s "$hmg_seogaemo_map_dir/car.json" ] &&
+        [ -s "$hmg_seogaemo_map_dir/layout" ] && [ -s "$hmg_seogaemo_map_dir/incomplete" ] || return 1
+    sg_print "$hmg_seogaemo_map_dir"
 }
 # Every verification publishes a new map id and only the active one is read (the hook
 # engines read it once at zygote start), so older copies of this product are removed.
@@ -3087,8 +3131,14 @@ hmg_seogaemo_map_active_dir() {
     [ -f "$SG_DATA_ROOT/car-maps/$hmg_seogaemo_map_rel/verified" ] || return 1
     sg_print "$SG_DATA_ROOT/car-maps/$hmg_seogaemo_map_rel"
 }
+# Exports the active verified map. With none, exports the kept incomplete candidate and sets
+# hmg_seogaemo_map_incomplete=1 so the caller can say so.
 hmg_seogaemo_map_export() {
-    hmg_seogaemo_map_from=$(hmg_seogaemo_map_active_dir) || return 1
+    hmg_seogaemo_map_incomplete=
+    if ! hmg_seogaemo_map_from=$(hmg_seogaemo_map_active_dir); then
+        hmg_seogaemo_map_from=$(hmg_seogaemo_map_incomplete_dir) || return 1
+        hmg_seogaemo_map_incomplete=1
+    fi
     hmg_seogaemo_map_layout=$(cat "$hmg_seogaemo_map_from/layout") || return 1
     case "$hmg_seogaemo_map_layout" in maps/*/*/*/*) ;; *) return 2;; esac
     case "$hmg_seogaemo_map_layout" in *..*|*[!a-zA-Z0-9_./-]*) return 2;; esac
@@ -3097,5 +3147,8 @@ hmg_seogaemo_map_export() {
     cp "$hmg_seogaemo_map_from/map.json" "$hmg_seogaemo_map_to/map.json" &&
         cp "$hmg_seogaemo_map_from/car.json" "$hmg_seogaemo_map_to/car.json" &&
         cmp "$hmg_seogaemo_map_from/map.json" "$hmg_seogaemo_map_to/map.json" >/dev/null 2>&1 &&
-        cmp "$hmg_seogaemo_map_from/car.json" "$hmg_seogaemo_map_to/car.json" >/dev/null 2>&1
+        cmp "$hmg_seogaemo_map_from/car.json" "$hmg_seogaemo_map_to/car.json" >/dev/null 2>&1 &&
+        { [ -z "$hmg_seogaemo_map_incomplete" ] ||
+            { cp "$hmg_seogaemo_map_from/incomplete" "$hmg_seogaemo_map_to/incomplete.txt" &&
+                cmp "$hmg_seogaemo_map_from/incomplete" "$hmg_seogaemo_map_to/incomplete.txt" >/dev/null 2>&1; }; }
 }
