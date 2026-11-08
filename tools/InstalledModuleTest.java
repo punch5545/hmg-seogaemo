@@ -88,6 +88,14 @@ public class InstalledModuleTest {
         check(plan("wifi", true, on).equals("-addon -sample +wifi"), plan("wifi", true, on));
         check(plan("addon", true, new HashSet<String>()).equals("+sample +addon"), plan("addon", true, new HashSet<String>()));
         check(plan("sample", false, on).equals("-addon -sample"), plan("sample", false, on));
+        java.util.List<RemovedModule> removed = RemovedModule.parse(describe(
+                "info.removed_1=wifi,0.1.47,wifi", "info.removed_1_name=Wi-Fi", "info.removed_1_summary=Radios",
+                "info.removed_2=bad id,1,box", "info.removed_3=nameless,,x y"));
+        check(removed.size() == 2, "malformed entry kept: " + removed.size());
+        check(removed.get(0).id.equals("wifi") && removed.get(0).name.equals("Wi-Fi") && removed.get(0).version.equals("0.1.47")
+                && removed.get(0).icon.equals("wifi") && removed.get(0).summary.equals("Radios"), "removed fields");
+        check(removed.get(1).id.equals("nameless") && removed.get(1).name.equals("nameless") && removed.get(1).icon.equals("box"), "removed fallbacks");
+        check(RemovedModule.parse(new RootResult("failed", "none", "x", 1, new HashMap<String, String>())).isEmpty(), "failed result");
         System.out.println("InstalledModuleTest ok");
     }
 }

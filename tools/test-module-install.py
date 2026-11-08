@@ -411,6 +411,56 @@ def bundle_as(car, module_id, files):
     (car.base / f"bundled/{module_id}.sha256").write_text(hashlib.sha256(buffer.getvalue()).hexdigest())
 
 
+def test_add_bundled(car):
+    # A removed bundled module is listed with its names and can be added back; failures change nothing.
+    def listing(locale="en"):
+        return car.root("module", "list-removed", locale)
+
+    bundle(car, RAW)
+    (car.base / "bundled/raw-demo.strings.en").write_text("name=Raw\nsummary=Bundled raw module\n")
+    (car.base / "bundled/raw-demo.strings.ko").write_text("name=원시\nsummary=번들 원시 모듈\n")
+    car.root("module", "install-bundled")
+    assert "info.removed_" not in listing()
+    car.root("module", "remove", "raw-demo")
+    props = car.base / "modules/raw-demo.properties"
+    props.write_text("id=raw-demo\nversion=1.0.0\nicon=wifi\n")
+    out = listing()
+    props.unlink()
+    assert "info.removed_1=raw-demo,1.0.0,wifi" in out and "info.removed_1_name=Raw" in out, out
+    assert "info.removed_1_name=원시" in listing("ko") and "info.removed_1_summary=번들 원시 모듈" in listing("ko")
+    # Fixed verbs only.
+    car.root("module", "list-removed", "english", code=2)
+    car.root("module", "add-bundled", "Raw-Demo", code=2)
+    car.root("module", "add-bundled", "../raw-demo", code=2)
+    assert "is not a bundled module" in car.root("module", "add-bundled", "unknown-id", code=1)
+    # A failing install puts the marker back.
+    good = (car.base / "bundled/raw-demo.hsm").read_bytes()
+    (car.base / "bundled/raw-demo.sha256").write_text("0" * 64)
+    out = car.root("module", "add-bundled", "raw-demo", code=1)
+    assert "Could not add raw-demo" in out, out
+    assert (car.data / "bundled-removed/raw-demo").is_file() and "raw-demo" not in car.root("module", "list")
+    (car.base / "bundled/raw-demo.sha256").write_text(hashlib.sha256(good).hexdigest())
+    out = car.root("module", "add-bundled", "raw-demo")
+    assert "Added raw-demo" in out, out
+    assert "raw-demo,1.0.0,bundled" in car.root("module", "list")
+    assert not (car.data / "bundled-removed/raw-demo").exists() and "info.removed_" not in listing()
+    assert "state=on" in car.root("raw-demo", "apply")
+    # Installed or never removed: refused.
+    assert "was not removed" in car.root("module", "add-bundled", "raw-demo", code=1)
+    # A module whose replaced predecessors were all removed comes back when the owner asks for it.
+    owned = "owns_files=/system/etc/raw-demo.conf\n"
+    car.root("module", "remove", "raw-demo")
+    (car.data / "bundled-removed/raw-demo").unlink()
+    bundle_as(car, "new-raw", raw_package("new-raw", "persist.raw.demo", owned + "replaces=old-raw\n"))
+    (car.data / "bundled-removed").mkdir(exist_ok=True)
+    (car.data / "bundled-removed/old-raw").write_text("")
+    assert "stays removed" in car.root("module", "install-bundled")
+    assert "info.removed_1=new-raw," in listing()
+    assert "Added new-raw" in car.root("module", "add-bundled", "new-raw")
+    assert "new-raw,1.0.0,bundled" in car.root("module", "list")
+    assert not (car.data / "bundled-removed/new-raw").exists()
+
+
 def test_replaces(car):
     # A package update renames a bundled module that is on: the new id takes over state without a write.
     # Both own the same file, so the installer must not count the old module as a colliding owner.
@@ -632,5 +682,5 @@ def on_car(test):
 if __name__ == "__main__":
     run_tests([on_car(test) for test in (
         test_install_validation, test_lifecycle, test_reconcile_reapplies, test_hook_host, test_usb_import,
-        test_button_action, test_bundled, test_replaces, test_merged_takeover, test_converted_builtin, test_installed_shared_line)],
+        test_button_action, test_bundled, test_add_bundled, test_replaces, test_merged_takeover, test_converted_builtin, test_installed_shared_line)],
         "installed module tests passed")

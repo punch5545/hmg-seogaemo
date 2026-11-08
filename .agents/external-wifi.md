@@ -163,6 +163,18 @@ Normative rules: contract [Peer info](module-runtime-contract.md#peer-info). In 
 - Without a published USB hotspot nothing loads or changes: the stock `wlan0` path is the car-verified one.
 - Root: `info.hotspot_radio` and the built-in client refusal in `apply` (warning in `precheck`).
 
+## Reference: korea-projection (checked 2026-11-08)
+
+`StopDragon/korea-projection` (AGPL-3.0, a NEMESIS package around a fork of the HMG-API wireless mod) does not support
+USB Wi-Fi adapters: it starts the stock `hostapd`/`dnsmasq` on the built-in `wlan0` (5 GHz channel 149, 40 MHz) and says
+cars without the Wi-Fi part are unsupported. Its Android Auto step (mod 2.2.0, `AaWifi`) is the same idea as our GPM and
+PhoneProjection hooks: `isWifiApEnabled()` true, `getWifiApMode()` 2, `setWifiApEnabled*` and `setWifiApConfiguration` skipped
+while the system property `sys.kp.aa_ap` is 1 (set by its shell script while its hostapd runs); SSID/PSK come from
+`getWifiApConfiguration`, host IP and BSSID from `wlan0`. Differences from ours: the serving gate (property versus our
+`IFF_UP` plus the `usb-hostapd.conf` process check), and it also no-ops `setWifiApConfiguration` and `setWifiApEnabled`.
+Behaviour only; nothing was copied. It reports wireless Android Auto working on built-in-radio Korean cars, so it does
+not settle the USB-adapter path.
+
 ## Still unverified on a car
 
 1. The whole USB path: hostapd/dnsmasq on `rtwlan0`, the iPhone joining with the credentials iAP2 sends, and whether

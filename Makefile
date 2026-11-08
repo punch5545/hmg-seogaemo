@@ -96,7 +96,7 @@ test-java:
 	java -cp out/java-test/trust com.seogaemo.hmg.core.update.UpdateTrustTest app/res/raw/update_roots.pem tools/fixtures/tls/api.github.com.pem tools/fixtures/tls/objects.githubusercontent.com.pem
 	$(JAVAC7) -d out/java-test/guards $(APPSRC)/core/update/BoundedProcess.java $(addprefix $(APPSRC)/module/,ModuleResume.java RestoreGate.java RootResult.java) tools/AppGuardsTest.java
 	java -cp out/java-test/guards AppGuardsTest
-	$(JAVAC7) -d out/java-test/installed $(addprefix $(APPSRC)/module/,InstalledModule.java RootResult.java RootClient.java ModuleRegistry.java ParallelReads.java Module.java ModuleAction.java InfoRow.java HomeTile.java Warning.java ModuleStatus.java ModulePlan.java ModulePlanner.java) $(APPSRC)/ui/settings/SettingsPage.java tools/InstalledModuleTest.java
+	$(JAVAC7) -d out/java-test/installed $(addprefix $(APPSRC)/module/,InstalledModule.java RemovedModule.java RootResult.java RootClient.java ModuleRegistry.java ParallelReads.java Module.java ModuleAction.java InfoRow.java HomeTile.java Warning.java ModuleStatus.java ModulePlan.java ModulePlanner.java) $(APPSRC)/ui/settings/SettingsPage.java tools/InstalledModuleTest.java
 	java -cp out/java-test/installed com.seogaemo.hmg.module.InstalledModuleTest
 	$(JAVAC7) -d out/java-test/wifi $(APPSRC)/module/WifiNetwork.java tools/WifiNetworkTest.java
 	java -cp out/java-test/wifi com.seogaemo.hmg.module.WifiNetworkTest

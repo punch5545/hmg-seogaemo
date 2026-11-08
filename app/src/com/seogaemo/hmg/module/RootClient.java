@@ -73,6 +73,18 @@ public final class RootClient {
         return invoke(ROOT + "module install " + sha256, WRITE_TIMEOUT_MS);
     }
 
+    /** Read-only: bundled modules the owner removed (info.removed_N lines). */
+    public static RootResult moduleListRemoved(String locale) {
+        if (locale == null || !locale.matches("[a-z]{2}")) return failure("invalid locale");
+        return invoke(ROOT + "module list-removed " + locale, READ_TIMEOUT_MS);
+    }
+
+    /** Adds a removed bundled module back; it stays off until the owner turns it on. */
+    public static RootResult moduleAddBundled(String moduleId) {
+        if (!validId(moduleId)) return failure("invalid module");
+        return invoke(ROOT + "module add-bundled " + moduleId, WRITE_TIMEOUT_MS);
+    }
+
     public static RootResult moduleRemove(String moduleId) {
         if (!validId(moduleId)) return failure("invalid module");
         return invoke(ROOT + "module remove " + moduleId, WRITE_TIMEOUT_MS);

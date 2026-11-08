@@ -1,5 +1,6 @@
 #!/system/bin/sh
-# Fixed installed-module commands: install <sha256>, remove <id>, list, usb-import, install-bundled.
+# Fixed installed-module commands: install <sha256>, remove <id>, list, usb-import, install-bundled,
+# list-removed <xx>, add-bundled <id>.
 # Packages come only from fixed inbox directories, by content digest.
 umask 077
 base=${0%/*}
@@ -10,7 +11,7 @@ HMG_SEOGAEMO_STATE=$SG_DATA_ROOT/core/module
 export SG_DATA_ROOT HMG_SEOGAEMO_BASE HMG_SEOGAEMO_STATE
 . "$base/lib/common.sh"
 . "$base/lib/hsm.sh"
-case "${1:-}:$#" in list:1|usb-import:1|install-bundled:1|install:2|remove:2|describe:3) ;; *) exit 2;; esac
+case "${1:-}:$#" in list:1|usb-import:1|install-bundled:1|install:2|remove:2|describe:3|list-removed:2|add-bundled:2) ;; *) exit 2;; esac
 bundled=$base/bundled
 mi_mode=direct
 installed=$SG_DATA_ROOT/installed
@@ -260,7 +261,8 @@ mi_persistent() {
 # system. Every target an old module owns must be owned by the new one; old modules must be
 # bundled and must not share text lines (shared-line patches are keyed by module id).
 # migrate/<new> journals the takeover so an interrupted run finishes on the next bundled check.
-# When every old module was removed by the owner, the new one stays removed.
+# When every old module was removed by the owner, the new one stays removed (unless the owner adds it
+# back explicitly: mi_explicit=1).
 mi_items() {
     for mi_if in "$@"; do mi_persistent "$mi_if"; done | while IFS='=' read -r mi_ik mi_iv; do
         case "$mi_ik" in
@@ -322,7 +324,7 @@ mi_replaces_prepare() {
             fi
         done
         if [ -z "$mi_present" ]; then
-            if [ "$mi_removed" -eq "$#" ] && [ ! -d "$installed/$mi_id" ]; then
+            if [ "$mi_removed" -eq "$#" ] && [ ! -d "$installed/$mi_id" ] && [ "${mi_explicit:-0}" -ne 1 ]; then
                 mkdir -p "$SG_DATA_ROOT/bundled-removed" && : > "$SG_DATA_ROOT/bundled-removed/$mi_id" ||
                     mi_fail 'Could not record module removal'
                 sg_status off none "$mi_olds was removed by the owner; $mi_id stays removed"
@@ -705,8 +707,25 @@ mi_install_file() {
     sg_status on none "Installed $mi_id $(mi_field version "$installed/$mi_id.properties")"
 }
 
-# Installs or updates every package in bundled/ that the owner has not removed. Each runs in its own
-# subshell so one bad package never stops the others.
+# Installs or updates one package of bundled/ (the caller checked that the owner has not removed it).
+# Each runs in its own subshell so one bad package never stops the others.
+mi_bundled_one() {
+    mi_bid=$1
+    # The build writes each package's SHA-256 beside it; the extractor verifies the archive against it.
+    mi_sum=$(cat "$bundled/$mi_bid.sha256" 2>/dev/null)
+    case "$mi_sum" in ????????????????????????????????????????????????????????????????) ;; *) return 0;; esac
+    case "$mi_sum" in *[!0-9a-f]*) return 0;; esac
+    if [ -f "$installed/$mi_bid.properties" ] && [ "$(mi_field bundle_sha256 "$installed/$mi_bid.properties")" = "$mi_sum" ] &&
+            [ ! -f "$SG_DATA_ROOT/migrate/$mi_bid" ]; then
+        return 0
+    fi
+    mi_any=1
+    mi_out=$(lock_owned=0; work=; trap cleanup EXIT; mi_mode=bundled; mi_bundle_md5=$mi_sum
+        mi_install_file "$bundled/$mi_bid.hsm" "$mi_sum" 2>&1)
+    sg_print "bundled $mi_bid: $(sg_clean "$mi_out")"
+}
+
+# Installs or updates every package in bundled/ that the owner has not removed.
 mi_install_bundled() {
     mi_any=0
     for mi_file in "$bundled"/*.hsm; do
@@ -715,21 +734,56 @@ mi_install_bundled() {
         mi_bid=${mi_bid%.hsm}
         hsm_ok_id "$mi_bid" || continue
         [ ! -f "$SG_DATA_ROOT/bundled-removed/$mi_bid" ] || continue
-        # The build writes each package's SHA-256 beside it; the extractor verifies the archive against it.
-        mi_sum=$(cat "$bundled/$mi_bid.sha256" 2>/dev/null)
-        case "$mi_sum" in ????????????????????????????????????????????????????????????????) ;; *) continue;; esac
-        case "$mi_sum" in *[!0-9a-f]*) continue;; esac
-        if [ -f "$installed/$mi_bid.properties" ] && [ "$(mi_field bundle_sha256 "$installed/$mi_bid.properties")" = "$mi_sum" ] &&
-                [ ! -f "$SG_DATA_ROOT/migrate/$mi_bid" ]; then
-            continue
-        fi
-        mi_any=1
-        mi_out=$(lock_owned=0; work=; trap cleanup EXIT; mi_mode=bundled; mi_bundle_md5=$mi_sum
-            mi_install_file "$mi_file" "$mi_sum" 2>&1)
-        sg_print "bundled $mi_bid: $(sg_clean "$mi_out")"
+        mi_bundled_one "$mi_bid"
     done
     [ "$mi_any" -eq 0 ] || sg_log 'bundled modules checked'
     sg_status on none 'Bundled modules checked'
+}
+
+# Read-only: bundled packages the owner removed, for the app's Add screen. info.removed_N=<id>,<version>,<icon>
+# and info.removed_N_name / _summary from the package's strings (en, then the requested locale).
+mi_list_removed() {
+    case "$1" in [a-z][a-z]) ;; *) exit 2;; esac
+    mi_n=0
+    for mi_file in "$bundled"/*.hsm; do
+        [ -f "$mi_file" ] && [ ! -L "$mi_file" ] || continue
+        mi_bid=${mi_file##*/}
+        mi_bid=${mi_bid%.hsm}
+        hsm_ok_id "$mi_bid" || continue
+        [ -f "$SG_DATA_ROOT/bundled-removed/$mi_bid" ] && [ ! -f "$installed/$mi_bid.properties" ] || continue
+        mi_n=$((mi_n + 1))
+        mi_props=$base/modules/$mi_bid.properties
+        mi_icon=$(mi_field icon "$mi_props")
+        sg_print "info.removed_$mi_n=$mi_bid,$(mi_field version "$mi_props"),${mi_icon:-box}"
+        mi_locales=en
+        [ "$1" = en ] || mi_locales="en $1"
+        for mi_locale in $mi_locales; do
+            mi_text=$bundled/$mi_bid.strings.$mi_locale
+            [ -f "$mi_text" ] || continue
+            while IFS='=' read -r mi_key mi_val; do
+                case "$mi_key" in name|summary) sg_print "info.removed_${mi_n}_$mi_key=$mi_val";; esac
+            done < "$mi_text"
+        done
+    done
+    sg_status on none 'Removed built-in modules'
+}
+
+# The owner adds a removed bundled module back: drop the marker and install just that package. On failure
+# the marker returns, so nothing changes.
+mi_add_bundled() {
+    hsm_ok_id "$1" || exit 2
+    [ -f "$bundled/$1.hsm" ] && [ ! -L "$bundled/$1.hsm" ] || mi_fail "$1 is not a bundled module"
+    [ -f "$SG_DATA_ROOT/bundled-removed/$1" ] || mi_fail "$1 was not removed"
+    [ ! -f "$installed/$1.properties" ] || mi_fail "$1 is already installed"
+    rm -f "$SG_DATA_ROOT/bundled-removed/$1" || mi_fail 'Could not update module list'
+    mi_any=0
+    mi_explicit=1
+    mi_bundled_one "$1"
+    if [ ! -f "$installed/$1.properties" ]; then
+        mkdir -p "$SG_DATA_ROOT/bundled-removed" && : > "$SG_DATA_ROOT/bundled-removed/$1" || :
+        mi_fail "Could not add $1"
+    fi
+    sg_status on none "Added $1"
 }
 
 mi_remove() {
@@ -781,5 +835,7 @@ case "$1" in
     describe) mi_describe "$2" "$3" ;;
     install) mi_lock; mi_install "$2" ;;
     install-bundled) mi_lock; mi_install_bundled ;;
+    list-removed) mi_list_removed "$2" ;;
+    add-bundled) mi_lock; mi_add_bundled "$2" ;;
     remove) mi_lock; mi_remove "$2" ;;
 esac

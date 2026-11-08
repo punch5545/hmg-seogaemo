@@ -117,6 +117,10 @@ def build(aapt):
             packed = bundled_hsm(module, version)
             files[f"bundled/{module.name}.hsm"] = packed
             files[f"bundled/{module.name}.sha256"] = hashlib.sha256(packed).hexdigest().encode()
+            # Names for the app's list of removed modules (module list-removed); the archive itself is not unpacked for it.
+            for strings in sorted((module / "strings").glob("*.txt")):
+                if re.fullmatch(r"[a-z]{2}", strings.stem):
+                    files[f"bundled/{module.name}.strings.{strings.stem}"] = strings
             continue
         payload = module / "payload"
         if payload.is_dir():

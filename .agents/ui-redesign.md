@@ -104,5 +104,6 @@ are not 옵션 rows: they appear only in the developer-only 진단 정보 dialog
 above the raw status output (ledger and logs still go through Support → USB export). The app cannot read
 USB mounts, so opening Add first runs `module usb-import` (root copies the USB `HSM/` folder packages into `files/hsm-usb/`,
 no confirm because it changes no stock state) and lists that directory with the name, icon, summary and
-version read from each package; install and remove show `StepProgressDialog` and a result dialog.
+version read from each package, plus removed bundled modules (`module list-removed`, installed again with
+`module add-bundled` after the usual confirm); install and remove show `StepProgressDialog` and a result dialog.
 Screenshots use the android-21 arm64 AVD `hmg_1920x720`, the only image on the build machine.

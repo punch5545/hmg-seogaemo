@@ -25,6 +25,8 @@ case "$1" in
     module)
         case "$#:$2" in
             2:list|2:usb-import|2:install-bundled) ;;
+            3:list-removed) case "$3" in [a-z][a-z]) ;; *) refuse 2 failed 'Invalid command';; esac ;;
+            3:add-bundled) case "$3" in ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command';; esac ;;
             3:install) case "$3" in *[!0-9a-f]*|'') refuse 2 failed 'Invalid command';; esac
                 [ "${#3}" -eq 64 ] || refuse 2 failed 'Invalid command' ;;
             3:remove) case "$3" in ''|*[!a-z0-9-]*|-*|*--*|*-) refuse 2 failed 'Invalid command';; esac ;;

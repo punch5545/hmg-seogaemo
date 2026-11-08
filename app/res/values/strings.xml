@@ -74,6 +74,8 @@
     <string name="add_version">Version</string>
     <string name="detail_remove_step">Remove %1$s</string>
     <string name="detail_removed_done">Removed %1$s.</string>
+    <string name="add_removed_source">Built-in</string>
+    <string name="add_removed_confirm">The module is added again from this package and checked, then installed. Adding does not turn the module on.</string>
     <string name="add_installed_done">Installed. Turn it on from Modules.</string>
     <string name="language">Language</string>
     <string name="language_hint">Choose the app display language</string>
