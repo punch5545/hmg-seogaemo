@@ -116,10 +116,8 @@ mi_usb_import() {
 }
 
 mi_csv_each() {
-    mi_old_ifs=$IFS
-    IFS=,
-    for mi_item in $1; do
-        IFS=$mi_old_ifs
+    [ -n "$1" ] || return 0
+    while IFS= read -r mi_item; do
         case "$2" in
             glob) hsm_ok_glob "$mi_item" ;;
             event) case "$mi_item" in boot|screen_on) ;; *) false;; esac ;;
@@ -129,8 +127,9 @@ mi_csv_each() {
             resource) hsm_ok_resource "$mi_item" ;;
             *) false ;;
         esac || return 1
-    done
-    IFS=$mi_old_ifs
+    done <<EOF
+$(sg_csv_items "$1")
+EOF
 }
 
 mi_check_props() {
@@ -157,7 +156,10 @@ mi_check_props() {
             conflicts) mi_csv_each "$mi_val" owner ;;
             uses) mi_csv_each "$mi_val" resource ;;
             stock_file.[1-9]|stock_file.[1-9][0-9])
-                hsm_ok_path "${mi_val%:*}" && case "${mi_val##*:}" in
+                # <path>:<md5> applies to every cars glob; <product glob>:<path>:<md5> to that firmware.
+                mi_sf=$mi_val
+                case "$mi_sf" in /*) ;; *) hsm_ok_glob "${mi_sf%%:*}" && mi_sf=${mi_sf#*:} ;; esac &&
+                hsm_ok_path "${mi_sf%:*}" && case "${mi_sf##*:}" in
                     ????????????????????????????????) case "${mi_val##*:}" in *[!0-9a-f]*) false;; esac ;;
                     *) false ;;
                 esac ;;
@@ -193,14 +195,11 @@ mi_check_props() {
     for mi_required in id version api cars; do
         case " $mi_seen " in *" $mi_required "*) ;; *) mi_fail "HSM-E205 module.properties: missing $mi_required";; esac
     done
-    mi_match=0
-    mi_old_ifs=$IFS
-    IFS=,
-    for mi_glob in $(mi_field cars "$mi_props"); do
-        case "$mi_product" in $mi_glob) mi_match=1;; esac
-    done
-    IFS=$mi_old_ifs
-    [ "$mi_match" -eq 1 ] || { sg_status incompatible none "Not built for $mi_product"; exit 4; }
+    sg_csv_glob_match "$(mi_field cars "$mi_props")" "$mi_product" || { sg_status incompatible none "Not built for $mi_product"; exit 4; }
+    if grep -q '^owns_lines\.[0-9]*=[^:]*@onebin@' "$mi_props"; then
+        sg_onebin_path @onebin@ >/dev/null ||
+            { sg_status incompatible none "Unsupported onebin: $(getprop ro.mobis.onebindir)"; exit 4; }
+    fi
     for mi_key in name summary; do
         grep -q "^$mi_key=" "$mi_pkg/strings/en.txt" 2>/dev/null || mi_fail "HSM-E206 strings/en.txt: missing $mi_key"
     done
@@ -224,7 +223,7 @@ mi_check_owned() {
             services) hsm_ok_service "$mi_item" ;;
             service_calls) hsm_ok_service "${mi_item%:*}" && hsm_ok_code "${mi_item##*:}" ;;
             restore) case "$mi_item" in exact|reboot) ;; *) false;; esac ;;
-            owns_lines.*) hsm_ok_path "${2%%:*}" && case "$2" in *:?*) ;; *) false;; esac; IFS=$mi_old_ifs; return ;;
+            owns_lines.*) hsm_ok_path "$(sg_onebin_subst "${2%%:*}" onebin)" && case "$2" in *:?*) ;; *) false;; esac; IFS=$mi_old_ifs; return ;;
         esac || { IFS=$mi_old_ifs; return 1; }
     done
     IFS=$mi_old_ifs
@@ -243,7 +242,7 @@ mi_declared_touched() {
             owns_files) for mi_t in $mi_val; do sg_print "file	$mi_t"; done ;;
             services) for mi_t in $mi_val; do sg_print "service	$mi_t"; done ;;
             service_calls) for mi_t in $mi_val; do sg_print "call	$mi_t"; done ;;
-            owns_lines.*) sg_print "line	$mi_val" ;;
+            owns_lines.*) sg_print "line	$(sg_onebin_path "${mi_val%%:*}"):${mi_val#*:}" ;;
             hooks) sg_print "hook	1" ;;
         esac
         IFS=$mi_old_ifs
@@ -535,11 +534,13 @@ mi_collides() {
             case "$mi_kind" in
                 file)
                     case "$mi_other_files" in *",$mi_target,"*) sg_print "$mi_other"; return 0;; esac
-                    grep -q "^owns_lines\.[0-9]*=$mi_target:" "$mi_other_props" && { sg_print "$mi_other"; return 0; } ;;
+                    while IFS='=' read -r mi_key mi_val; do
+                        case "$mi_key" in owns_lines.*) [ "$(sg_line_decl "$mi_val")" != "$mi_target:${mi_val#*:}" ] || { sg_print "$mi_other"; return 0; };; esac
+                    done < "$mi_other_props" ;;
                 line)
                     case "$mi_other_files" in *",${mi_target%%:*},"*) sg_print "$mi_other"; return 0;; esac
                     while IFS='=' read -r mi_key mi_val; do
-                        case "$mi_key" in owns_lines.*) [ "$mi_val" != "$mi_target" ] || { sg_print "$mi_other"; return 0; };; esac
+                        case "$mi_key" in owns_lines.*) [ "$(sg_line_decl "$mi_val")" != "$mi_target" ] || { sg_print "$mi_other"; return 0; };; esac
                     done < "$mi_other_props" ;;
             esac
         done < "$work.touched"
@@ -594,13 +595,16 @@ mi_generate() {
         mi_n=0
         while IFS='=' read -r mi_key mi_val; do
             case "$mi_key" in stock_file.*) ;; *) continue;; esac
-            mi_old_ifs=$IFS
-            IFS=,
-            for mi_glob in $(mi_field cars "$mi_src"); do
+            case "$mi_val" in
+                /*) ;;
+                *) mi_n=$((mi_n + 1)); sg_print "known_stock.$mi_n=$mi_val"; continue ;;
+            esac
+            while IFS= read -r mi_glob; do
                 mi_n=$((mi_n + 1))
                 sg_print "known_stock.$mi_n=$mi_glob:$mi_val"
-            done
-            IFS=$mi_old_ifs
+            done <<EOF
+$(sg_csv_items "$(mi_field cars "$mi_src")")
+EOF
         done < "$mi_src"
     } > "$mi_out"
 }
