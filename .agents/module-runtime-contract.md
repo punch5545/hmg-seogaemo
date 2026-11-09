@@ -286,8 +286,15 @@ The `wifi` module publishes the active CarPlay hotspot on apply, watch and rever
 | `interface` | `rtwlan0` (usb), `wlan0` (builtin), empty |
 | `ip` | `192.168.50.1` (usb), `192.168.0.1` (builtin), empty |
 | `ssid`, `passphrase` | the generated USB hotspot credentials; empty for builtin (Android's `WifiManager` config) |
-| `channel` | `36` (usb), empty |
-| `ready` | `1` while hostapd and dnsmasq run this boot, `0` otherwise, `stock` when Android runs the built-in hotspot |
+| `channel` | `6` (usb), empty |
+| `ready` | `1` while hostapd and dnsmasq run for the successful current boot/interface ifindex generation, `0` otherwise, `stock` when Android runs the built-in hotspot |
+
+USB apply/watch clears readiness before tearing down a missing or changed interface generation, stops its daemons
+and removes network/address records with `sg_revert_transient keep_kmods`, then records the new boot/ifindex only
+after bring-up succeeds. Missing adapters remain non-error; stale daemons on a present replacement interface report
+failed until recovery. Bring-up compares the captured generation to the last successful generation before starting
+the role, and checks it again afterward so a replug during startup cannot adopt old daemons. Status is read-only.
+This recovery is host-tested and remains unverified on a car.
 
 Hooks in system-uid processes cannot read `<data root>`. A consumer either copies what its hooks need from its
 root script, or (`wireless-carplay-and-aa`) reads the peer file once in its zygote entry, which still runs as root

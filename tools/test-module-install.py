@@ -559,7 +559,7 @@ def test_converted_builtin(car):
         "wifi": ("raw_shell=1", "owns_props=persist.wifi.state",
                  "owns_files=/system/etc/permissions/android.hardware.wifi.xml",
                  "excludes=", "restart=head_unit", "kmods=88x2bu,8851bu", "owns_ifaces=rtwlan*",
-                 "watch=boot,screen_on"),
+                 "watch=boot,screen_on,usb_change"),
         "wireless-carplay-and-aa": ("raw_shell=1", "hooks=1", "restart=head_unit",
                                     "known_stock.1=NEEV.KOR.*.260902:/system/bin/app_process:33f798115689d1859e8d2159dc88e7dc",
                                     "owns_lines.1=/system/onebin/neev_kr/featurexml.cfg:-/system/etc/permissions/com.hkmc.software.connectivity.carplay_wireless.xml",
