@@ -34,11 +34,13 @@ through **NEMESIS**, made of toggleable modules. Target setup is **NEMESIS + HMG
 
 No code is tied to this car by name: the package installs on any Gen5W on Android 4.4 (descriptor
 `os=any`, `models=any`), bundled modules declare `cars=*`, and each module needs a car map for the
-exact `ro.build.product` (runtime contract, "Car gate"). Other cars are untested on a car.
+exact `ro.build.product` (runtime contract, "Car gate"). Host-mapped bundles also exist for the
+Hyundai Avante CN7 KOR `260902` and Avante N CN7N KOR `260319` (`maps/hyundai/cn7/`, `maps/hyundai/cn7n/`,
+349/349 points, no on-car reflection yet). Other cars are untested on a car.
 
 - Hyundai Ioniq 5, Korea. `ro.build.product` = `NEEV.KOR.0000.V039.001.260902` (glob
   `NEEV.KOR.*.260902`; NEMESIS compares `os=` to `ro.build.product` with globs, so an exact
-  `NEEV.KOR.260902` never matches). Its map is the only bundled one.
+  `NEEV.KOR.260902` never matches). Its map is the only car-verified bundled one.
 - onebin `neev_kr`, Android 4.4.2 (API 19, Dalvik), Telechips, display 1920x720 hdpi (density 1.5).
 - Owner-verified: HMG-API's car map + wireless mod gave a working hotspot + wireless CarPlay on this
   car; the stock firmware has no Wi-Fi client menu.
@@ -131,7 +133,8 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 
 - The core owns mapping; modules declare stable IDs in `hookpoints.required`. The build validates
   those manifests against the full catalogue. The bundled NEEV KOR map has 348 of 349 points;
-  `themesettings.split_item.type` remains unresolved and no module requires it.
+  `themesettings.split_item.type` remains unresolved and no module requires it. The CN7 and CN7N KOR
+  bundles map 349 of 349 (host evidence only, `maps/hyundai/cn7*/README.md`).
 - `map status` is read-only and matches the exact product, onebin, Android release, and MD5 of every
   stock file in `car.json`. Known maps get reflection verification once per boot on a worker.
   Unknown firmware requires the confirmed **Map this car** action in Settings → Car mapping.
@@ -231,7 +234,8 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 - The 18 v1.0.1 and six stock-guidance map additions have exact-stock host evidence and still
   need on-car reflection.
 - Cars other than the Ioniq 5 KOR: the generic install, car gate and `@onebin@` path are tested off-car
-  only. CarPlay's stock `app_process` MD5 is known only for `NEEV.KOR.*.260902`; elsewhere that
+  only. CarPlay's stock `app_process` MD5 is known for `NEEV.KOR.*.260902` (car) and `CN7.KOR.*.260902`
+  (same build `33f79811…`, read from the contributor's decrypted firmware image, not a car); elsewhere that
   unrecorded-swap check has no reference build.
   Other feature claims require their own evidence.
 - The core hook host replaces `/system/bin/app_process` for every hook module, `wireless-carplay-and-aa`

@@ -55,5 +55,10 @@ with tempfile.TemporaryDirectory(prefix='hmg-seogaemo-evidence-') as tmp:
         pass
     else:
         raise AssertionError('changed mapping accepted under old evidence')
+# A host-only bundle: every point is a mapping observation, and the two WindowManagerService
+# points bind to services.odex, a boot classpath member car.json does not hash.
+record, reflected = evidence.validate(ROOT / 'maps/hyundai/cn7/kor/260902')
+assert not reflected and len(record['mapped']['observations'][0]['points']) == 349
+assert record['mapped']['observations'][0]['points']['framework.window_manager_service']['stock_file'] == '/system/framework/services.odex'
 subprocess.run(['python3', str(ROOT / 'tools/hmg-seogaemo-map-evidence.py'), 'check'], check=True)
 print('map evidence rejects promoted reflection, wrong stock identity and changed signatures')
