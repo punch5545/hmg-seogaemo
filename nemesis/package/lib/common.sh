@@ -719,17 +719,21 @@ sg_public_readable() (
     done
 )
 # Call only for dedicated export containers, never USB roots or private state.
+# One chmod per directory: a per-file chmod costs a process each on the head unit.
 sg_export_public() (
     set +f
     sg_path_safe "$1" && [ -d "$1" ] || exit 3
     chmod 0755 "$1" || exit 1
-    for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+    sg_ep_dir=$1
+    set --
+    for entry in "$sg_ep_dir"/* "$sg_ep_dir"/.[!.]* "$sg_ep_dir"/..?*; do
         [ ! -L "$entry" ] || exit 3
         [ -e "$entry" ] || continue
         if [ -d "$entry" ]; then sg_export_public "$entry" || exit 1
-        elif [ -f "$entry" ]; then chmod 0644 "$entry" || exit 1
+        elif [ -f "$entry" ]; then set -- "$@" "$entry"
         else exit 3; fi
     done
+    [ "$#" -eq 0 ] || chmod 0644 "$@" || exit 1
 )
 # Size in bytes of a regular file from toolbox ls -l (no stat on the unit).
 sg_file_size() (
@@ -740,15 +744,54 @@ sg_file_size() (
     case "$sg_fs_size" in ''|*[!0-9]*) exit 1;; esac
     sg_write "$sg_fs_size"
 )
+# "<size><TAB><prefix><name>" for every regular file under $1, from one
+# ls -lna per directory (a per-file ls costs two processes each on the head unit).
+# Falls back to one ls per file when a listing line does not parse to exactly
+# one name of a regular file, or when it misses a file the glob sees.
 sg_export_sizes() (
     set +f
-    for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
-        [ -e "$entry" ] || continue
-        if [ -d "$entry" ]; then sg_export_sizes "$entry" "$2${entry##*/}/" || exit 1
-        elif [ -f "$entry" ]; then
+    sg_xs_dir=$1; sg_xs_prefix=$2; sg_xs_out=; sg_xs_listed=0; sg_xs_files=0; sg_xs_ok=1
+    sg_xs_nl='
+'
+    sg_xs_list=$(ls -lna "$sg_xs_dir") || exit 1
+    set -f
+    IFS=$sg_xs_nl
+    for sg_xs_line in $sg_xs_list; do
+        IFS=' 	'
+        # Intentional field splitting of one listing line.
+        # shellcheck disable=SC2086
+        set -- $sg_xs_line
+        case "$1" in -*) ;; *) continue;; esac
+        # Android toolbox: mode uid gid size date time name; desktop ls adds the
+        # link count and a three-field date.
+        case "$#:$5" in
+            7:*[!0-9]*) sg_xs_size=$4; shift 6;;
+            9:[0-9]*) sg_xs_size=$5; shift 8;;
+            *) sg_xs_ok=0; break;;
+        esac
+        if [ ! -f "$sg_xs_dir/$1" ] || [ -L "$sg_xs_dir/$1" ]; then sg_xs_ok=0; break; fi
+        case "$sg_xs_size" in ''|*[!0-9]*) sg_xs_ok=0; break;; esac
+        sg_xs_out=$sg_xs_out$sg_xs_size'	'$sg_xs_prefix$1$sg_xs_nl
+        sg_xs_listed=$((sg_xs_listed + 1))
+    done
+    IFS=' 	
+'
+    set +f
+    for entry in "$sg_xs_dir"/* "$sg_xs_dir"/.[!.]* "$sg_xs_dir"/..?*; do
+        [ -f "$entry" ] && [ ! -L "$entry" ] && sg_xs_files=$((sg_xs_files + 1))
+    done
+    if [ "$sg_xs_ok" = 1 ] && [ "$sg_xs_listed" = "$sg_xs_files" ]; then
+        [ -z "$sg_xs_out" ] || sg_print "${sg_xs_out%"$sg_xs_nl"}" || exit 1
+    else
+        for entry in "$sg_xs_dir"/* "$sg_xs_dir"/.[!.]* "$sg_xs_dir"/..?*; do
+            [ -f "$entry" ] && [ ! -L "$entry" ] || continue
             size=$(sg_file_size "$entry") || exit 1
-            sg_print "$size	$2${entry##*/}" || exit 1
-        fi
+            sg_print "$size	$sg_xs_prefix${entry##*/}" || exit 1
+        done
+    fi
+    for entry in "$sg_xs_dir"/* "$sg_xs_dir"/.[!.]* "$sg_xs_dir"/..?*; do
+        [ -d "$entry" ] && [ ! -L "$entry" ] || continue
+        sg_export_sizes "$entry" "$sg_xs_prefix${entry##*/}/" || exit 1
     done
 )
 # The head unit mounts the stick write-back: a name can reach the stick while its
@@ -764,10 +807,20 @@ sg_export_seal() (
     sg_print "$sg_es_sizes" > "$sg_es_dest/MANIFEST" && chmod 0644 "$sg_es_dest/MANIFEST" || exit 1
     sync || exit 4
     [ "$sg_es_mode" = usb ] || exit 0
-    while IFS='	' read -r sg_es_size sg_es_rel; do
-        [ -n "$sg_es_rel" ] || continue
-        [ "$(sg_file_size "$sg_es_dest/$sg_es_rel")" = "$sg_es_size" ] || exit 4
-    done < "$sg_es_dest/MANIFEST"
+    # Re-list after the sync: every recorded file keeps its size, nothing else appeared.
+    sg_es_again=$(sg_export_sizes "$sg_es_dest" '') || exit 4
+    sg_es_check=
+    set -f
+    sg_es_ifs=$IFS
+    IFS='
+'
+    for sg_es_line in $sg_es_again; do
+        case "$sg_es_line" in *'	MANIFEST') ;; *) sg_es_check=$sg_es_check$sg_es_line'
+';; esac
+    done
+    IFS=$sg_es_ifs
+    set +f
+    [ "${sg_es_check%?}" = "$sg_es_sizes" ] || exit 4
     for sg_es_key do
         sg_es_rel=${sg_es_key%%=*}
         sg_es_have=$(sg_file_size "$sg_es_dest/$sg_es_rel") || exit 4
