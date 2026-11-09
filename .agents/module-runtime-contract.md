@@ -96,6 +96,11 @@ needs no `restore=reboot`.
 (`before/`), the bytes we wrote (`after/`), file metadata, and property before/after values. It is
 never pruned while any change is active; after a verified uninstall it is kept as a final
 export-able record until the package directory is removed.
+`export adb` copies the whole ledger. `export usb` copies `ledger.tsv` whole but only the
+`before/`/`after/` records whose name stamp (`<epoch>.<pid>.<seq>`) is at or after the
+earlier of this boot (`now - /proc/uptime`) and `now - 12 h`, and writes `ledger/WINDOW`
+(`since=`, scope, and the adb command for the full ledger). The 50 MB limit applies to the
+bytes copied.
 Binder calls record the exact allow-listed pair, time, bounded Parcel summary,
 and outcome in this same ledger; export includes them.
 
@@ -600,8 +605,9 @@ before its data does.
 `sg_export_seal <dest> <usb|adb> [key...]` after the last write and the public chmod:
 
 - writes `MANIFEST` (`<size><TAB><relative path>` for every exported file, sizes from
-  toolbox `ls -ln`), then runs `sync`;
-- for `usb`, re-reads every listed file and requires the recorded size, and requires
+  one toolbox `ls -lna` per directory, falling back to one `ls -ln` per file when a
+  listing line does not parse), then runs `sync`;
+- for `usb`, re-lists the export and requires exactly the recorded files and sizes, and requires
   each key file to match its source size (`<relative>=<source>`) or be non-empty:
   `ledger/ledger.tsv`, `package-version`, `ro.build.product`, `desired/*` for the ledger
   export, `<layout>/map.json` and `car.json` for the map export;
@@ -618,8 +624,11 @@ must not use the 150-second module-write or 30-second map-status deadline. On
 2026-11-06, each v0.1.30 USB export contained 1,798 files and took 145 seconds
 from its destination timestamp to MANIFEST's modification time, before the USB
 verification pass. The 150-second app deadline could expire while the daemon
-continued exporting. Evidence: `tmp/car-reports/usb-20261106/`. The longer deadline
-is covered off-car; completion of the fixed build still needs car verification.
+continued exporting. Evidence: `tmp/car-reports/usb-20261106/`. Per-file processes
+were the cost: `sg_export_public` now runs one `chmod` per directory and the size
+listing one `ls` per directory (that export's public chmod + seal: 21 s to 1.2 s on a
+host), and USB copies only the recent ledger window above. The longer deadline and
+the faster export are covered off-car; on-car timing still needs verification.
 
 ## Diagnostic export
 
