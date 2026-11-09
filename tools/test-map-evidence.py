@@ -32,6 +32,8 @@ with tempfile.TemporaryDirectory(prefix='hmg-seogaemo-evidence-') as tmp:
         lambda e: e['reflection'][0].update(points=sorted(e['reflection'][0]['points'] + ['iap2.service.native_handle'])),
         lambda e: e['mapped']['observations'][0]['points']['iap2.service.native_handle']['member'].update(static=False),
         lambda e: e['mapped']['observations'][0]['stock_files'].update({'/system/app/Iap2ServerApp.odex': '0' * 32}),
+        lambda e: e['mapped']['observations'][0]['stock_files'].update({'/system/app/Other.odex': '0' * 32}),
+        lambda e: e['mapped']['observations'][0]['stock_files'].update({'/system/framework/services.odex': 'nothex'}),
         lambda e: e['mapped'].update(observations=[]),
     ):
         record = copy.deepcopy(original)
