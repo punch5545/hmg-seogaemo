@@ -36,7 +36,7 @@ The private Car Report is never committed. Operator workflow:
 - 6 iAP2 points in `/system/app/Iap2ServerApp.odex` (`a672fd0e0070414f2eb70a2807117a6f`); 12 framework points in
   `/system/framework/automotive.odex` (`c76b8209ef171739b177eb14e8df61dd`). Per-ID signatures in the bundled `evidence.json`.
   Keep the stock `iAP2UsedVehicelInformation` spelling. No module requires a new ID.
-- Bundle maps 348/349; `themesettings.split_item.type` stays missing. Only the original 324 points have owner-reported
+- Bundle maps 349/350; `themesettings.split_item.type` stays missing. Only the original 324 points have owner-reported
   on-car reflection (324/324, 2026-11-03); the 24 additions need it. The sidecar and generated `docs/hookpoints.md` distinguish these claims; the host validator checks
   consistency and optional exact-stock MD5s, not that a physical observation happened.
 
@@ -60,6 +60,14 @@ fields via a Parcelable round trip rather than mapping every camera/speed field.
 a failed reflection turns off only the approach bar or the junction view, never CarPlay.
 The six additions still need on-car reflection; physical view observations in
 cluster-ar-view.md and hud-junction-view.md do not establish that verification.
+
+## CarPlay telephony key (2026-11-10)
+
+`dipo.carplay.telephony` is `CarPlayService.onTelephony(CarPlayTelephony, boolean)` returning `CarPlayReturn`
+(readable telechips names; `HKMC_DiPO.smali` `telechips/CarPlayService.smali:7874`). Our host scanner resolves it
+uniquely in the KOR dump (`HKMC_DiPO.odex` `3b26cdcbf3c43f75623311f2bdfc3471`, unchanged in `car.json`).
+`wireless-carplay-and-aa` uses it as an optional point (CALL key with no call opens the Phone app); a missing or
+failed point leaves the key stock. On-car reflection is pending.
 
 ## Verification seal
 

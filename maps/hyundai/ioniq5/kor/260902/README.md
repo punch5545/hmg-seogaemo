@@ -1,6 +1,6 @@
 # Hyundai Ioniq 5 KOR 260902
 
-The bundle maps 348 of 349 catalogue points. The original 324 names and all
+The bundle maps 349 of 350 catalogue points. The original 324 names and all
 18 stock MD5s came from the owner-supplied KOR pre-install report; those 324
 points passed on-car reflection on 2026-11-03. The 18 catalogue additions were
 resolved on 2026-11-04 from the KOR stock dump using our DEX scanner, with all
@@ -16,6 +16,11 @@ no-argument constructor and instance int barGraphLevel. All six are in
 automotive.odex (MD5 c76b8209ef171739b177eb14e8df61dd) and still require on-car
 reflection. See UPSTREAM.md for stable IDs and exact signatures; no further
 trap fields are mapped because Parcelable supports copying the stock object.
+
+`dipo.carplay.telephony` (CarPlayService.onTelephony(CarPlayTelephony, boolean),
+returning CarPlayReturn) was resolved on 2026-11-10 with our DEX scanner against the
+same dump, in HKMC_DiPO.odex (MD5 3b26cdcbf3c43f75623311f2bdfc3471). It is optional for
+`wireless-carplay-and-aa` and still requires on-car reflection.
 
 `themesettings.split_item.type` remains unresolved; no module requires it.
 No new point was added to a module requirement.
