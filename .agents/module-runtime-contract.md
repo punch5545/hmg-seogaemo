@@ -224,7 +224,9 @@ on spaces as argv, never evaluated. Tools are fixed absolute paths `/system/bin/
   `bin/<name>.source` holds the stock MD5 and both strings; the copy is rebuilt only when they
   change. Ledger `bin_derive` (`failed` with the helper's exit code).
 - `sg_daemon_start <name>`: executable must be a regular non-symlink file; a `/system` executable
-  named by a `derived_bin.<n>=` runs as `bin/<n>` (made by `sg_bin_derive` first); starts
+  named by a `derived_bin.<n>=` runs as `bin/<n>` (made by `sg_bin_derive` first); a `@payload@`
+  executable is first made mode 700 (the package extractor writes payload files without execute
+  permission); starts
   `( cd <dir> && exec argv ) </dev/null >>daemon.<name>.log 2>&1 &` with `<dir>` the state directory, or
   `run/<name>` for a `daemon_user` daemon (log emptied at a start beyond 64 KiB),
   records boot id and PID plus the expected `/proc/<pid>/cmdline` bytes (each argument followed
