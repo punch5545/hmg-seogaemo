@@ -257,7 +257,7 @@ Status: implemented, off-car tested only (`test/projectionswitch`); needs the on
 
 ## Wireless CarPlay call state (steering-wheel CALL)
 
-Status: implemented, off-car tested only (`test/callstate`); needs the on-car check in `backlog.md`.
+Status: implemented, off-car tested only (`test/callstate`, `test/callkey`); needs the on-car check in `backlog.md`.
 
 - **Cause (stock NEEV KOR code, car log 2026-11-10).** `HKMC_DiPO` `e/b.e(int)` (setStartiAP2Service)
   starts `Iap2SvcNowPlayingStart`, `Iap2SvcTelephonyStartCallState` and `Iap2SvcTelephonyStartUpdates`
@@ -272,9 +272,17 @@ Status: implemented, off-car tested only (`test/callstate`); needs the on-car ch
   session, 500 ms after the identification, each subscription tracked separately, up to 3 tries,
   stale tries of an earlier session ignored. DiPO's own listener parses the notifications as on USB.
   The result is in the module log (`CarPlay call state: ...`).
-- **Open.** Whether an idle CALL press opens the CarPlay Phone app once the call state arrives, and
-  whether the earlier intermittent "CALL does not answer" recurs, are unverified. NowPlaying is
-  skipped on wireless the same way and is not started here.
+- **CALL with no call (car log 2026-11-10).** DiPO sends HookSwitch press/release in every state and
+  the iPhone ignores it with no call, also after the call-state subscription. The stock Phone app opens
+  CarPlay's Phone app another way: ModeManager starts `DipoActivity` with int extra `CarPlayMode=2`,
+  `DipoService.updateDisplay(2)` → `displayPhone()` → `requestUI("mobilephone:")`. The bridge hooks the
+  optional point `dipo.carplay.telephony` (`CarPlayService.onTelephony`) and, on a wireless HookSwitch
+  release while `DiPOManager` stat is 1 and `DiPOMode` phone call and speech are 0 (phone call is 1 from
+  ringing to hang-up), starts that same activity intent (`CallKey`). HookSwitch still goes to the phone.
+  Each release is logged (`CarPlay CALL key: ...`). Point unmapped or failed: the key stays stock.
+- **Open.** On-car: the subscription log line, the Phone app opening with no call, answer/hang-up
+  unchanged, and whether the earlier intermittent "CALL does not answer" recurs. NowPlaying is skipped
+  on wireless the same way and is not started here.
 
 ## CarPlay turn-by-turn: lane fix, fallback icons, developer toggle
 
