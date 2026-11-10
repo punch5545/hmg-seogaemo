@@ -119,7 +119,8 @@ Every module ships as a bundled `.hsm` package, installed on first install and r
 built-in modules. The package's `modules.list`/`modules.graph` hold only the `package-compat` entry so
 installs from 0.1.33 and older accept an OTA payload; the runtime ignores it. Current modules: `wifi` (formerly `wifi-client`; one role per radio, built-in or USB
 adapter; the built-in client role excludes `wireless-carplay-and-aa`),
-`wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wireless-carplay-and-aa`,
+`wireless-adb` (independent; offers "Connect to another Wi-Fi"), `wired-adb` (ADB from a Mac over a
+USB cable; transient daemon only, accepts only owner-imported keys), `wireless-carplay-and-aa`,
 `skip-consent-screen` (factory Binder call on boot and screen wake), and
 `user-button` (both star buttons; merged from `user-button-shortcut` / `user-button-head-unit` with `replaces=`).
 `wireless-carplay-and-aa` claims `featurexml.cfg` stock lines; `wifi` owns only
@@ -160,7 +161,8 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 - Local builds are signed with a throwaway debug key. **Install only release-signed builds on a
   car you want to update OTA later**: a signer change forces uninstall and loses app data.
 - Requirements: JDK 17, Android SDK (`platforms;android-19`, `build-tools;34.0.0`), python3,
-  clang + lld (carplay native payload), optional `mksh`.
+  clang + lld (carplay native payload), optional `mksh`. The `wired-adb` programs in
+  `modules/wired-adb/files/` are prebuilt; rebuilding them needs Docker (`modules/wired-adb/payload/build.sh`).
 - CI (`ci.yml`) and release share `.github/actions/setup`: the runner's preinstalled SDK plus a
   cached API 19 platform and mksh .deb, LLVM 18 from the image; `android-actions/setup-android@v3`
   breaks on the removed `tools` package.
@@ -243,6 +245,9 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
   names that property, and stock `HKMC_WifiSettings` gates its client menu on `android.hardware.wifi`.
 - OTA: TLS 1.2 to GitHub on 4.4 with bundled roots (`update_roots.pem`), the reboot/resume flow
   through `wifi`, and rollback are untested on a car.
+- `wired-adb` is adapted from a standalone package that was car-verified on a CN7 KOR `260902` unit;
+  this module form (root-started adbd that drops to shell, key import from USB, any USB port) is not
+  verified on a car, and only a Mac can be the computer (`.agents/wired-adb.md`).
 - An official firmware OTA while modules are applied makes restores conflict by design.
 - Removing only the APK (not via NEMESIS) skips the uninstall hook; reconcile must clean up.
 

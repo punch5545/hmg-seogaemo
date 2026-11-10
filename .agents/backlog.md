@@ -142,6 +142,21 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
   that the entry still behaves while a projection runs (stock popup, no crash), that choosing Android Auto there switches
   from CarPlay, and that module off restores the wireless page.
 
+## 1c. wired-adb
+
+Background: [wired-adb.md](wired-adb.md).
+
+- [ ] **First on-car run (CN7 KOR 260902 is the verified base).** Module on, status asks for a key; import
+  `HSM/adbkey.pub` from a USB drive; plug the Mac in; `adb connect 192.168.2.249:5556` (Internet Sharing on) and the
+  `fe80::c7ad:b%<iface>` form; `adb shell id` shows uid 2000 with the adb groups; a computer whose key was not imported
+  stays unauthorized; `adb root`/`tcpip`/`usb` are refused; file push/pull round trip; replug and head-unit restart
+  reconnect; module off stops `cable-link` and removes `sgncm0`; stock adbd state, `persist.*` ADB properties and the
+  wireless projection are unchanged throughout. Check `daemon.cable-link.log` and `logcat` for the privilege drop.
+- [ ] Other units: which USB port carries the Mac (the scan takes any), whether `/dev/net/tun` exists and is usable
+  by root, tcc803x behaviour.
+- [ ] A Mac-side helper that reconnects automatically (the standalone package had a LaunchAgent bound to one Mac's
+  interface names); for now the owner runs `adb connect` by hand.
+
 ## 2. Older open items
 
 - [ ] **First car other than the Ioniq 5 KOR.** Install (`os=any`), **Map this car**, then check

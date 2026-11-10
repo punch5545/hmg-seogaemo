@@ -35,6 +35,7 @@ Target: any Gen5W on Android 4.4 with NEMESIS + HMG-Seogaemo only; modules need 
 | [wifi.md](wifi.md) | Wi-Fi radios (former wifi-client): built-in/USB roles, takeover, capability gate, checklist. |
 | [external-wifi.md](external-wifi.md) | USB Wi-Fi dongle support: constraints, report evidence, open questions. |
 | [wireless-adb.md](wireless-adb.md) | Implemented ADB properties, upstream facts, restart rule, checklist. |
+| [wired-adb.md](wired-adb.md) | ADB over a USB cable from a Mac: user-space NCM link, key-checking cable adbd, owner-supplied keys, build recipe. |
 | [wireless-carplay-and-aa.md](wireless-carplay-and-aa.md) | AGPL projection port, hook points, change inventory, TBT behavior, zygote/runtime-record details. |
 | [user-button-shortcut.md](user-button-shortcut.md) | Steering/head-unit shortcuts, reassertion, KOR evidence. |
 | [skip-consent-screen.md](skip-consent-screen.md) | Factory82 provenance, watcher behavior, checklist. |
