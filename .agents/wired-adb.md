@@ -45,6 +45,15 @@ imported. It works next to wireless Android Auto and CarPlay because it never to
   it is plain `[A-Za-z0-9@._-]`, at most 64 characters), then writes `<state>/adb_keys` in one
   redirection (mode 600) and restarts the daemon so a live link uses it. A refused file changes
   nothing. Import replaces earlier keys; **Remove ADB keys** empties the file.
+- Without a USB drive the owner can write the same lines to the state file as root over wireless
+  ADB (screen note `key_adb_note`):
+  `adb push ~/.android/adbkey.pub /data/local/tmp/adbkey.pub`, then
+  `adb shell "/system/xbin/nemesis root -c 'cat /data/local/tmp/adbkey.pub > /data/nemesis/backup/hmg-seogaemo/modules/wired-adb/adb_keys && chmod 600 /data/nemesis/backup/hmg-seogaemo/modules/wired-adb/adb_keys'"`.
+  This skips the import checks; the cable adbd still decodes each key itself. A waiting daemon
+  polls the file (`runService`), so the link comes up without a restart; a live link keeps the
+  keys its adbd read and needs the module off and on. Car-verified on CN7 KOR `260902`
+  (2026-11-14): the link reported `READY` after the write and `adb connect 192.168.2.249:5556`
+  was authorized.
 - Keys stay across off/on. They live in the module state directory, so package removal clears them.
 - Without a key the daemon waits and never starts the adbd; status says so.
 
