@@ -167,10 +167,15 @@ Background: [wired-adb.md](wired-adb.md).
   call (hang up); call OSD and split screen; no duplicate or stuck call screens after the call ends.
   Evidence before the change: `tmp/car-sessions/2026-11-10-carplay-call-button/`.
 
-- [ ] **First car other than the Ioniq 5 KOR.** Install (`os=any`), **Map this car**, then check
-  that modules move from `incompatible` to usable, `@onebin@` resolves the right
-  `featurexml.cfg`, and revert restores it. Add that firmware's stock `app_process` MD5 as a
-  product-scoped `stock_file.N` for CarPlay (runtime contract, "Car gate").
+- [ ] **First car other than the Ioniq 5 KOR.** Candidates with bundled host maps: Avante CN7 KOR
+  `260902` and Avante N CN7N KOR `260319` (`maps/hyundai/cn7*/`, 2026-11-09, no on-car reflection).
+  Install (`os=any`), check that `map status` accepts the bundle and `map verify` passes reflection,
+  that modules move from `incompatible` to usable, `@onebin@` resolves the right `featurexml.cfg`
+  (CN7N has the three wireless lines, CN7 has none), and revert restores it. CN7N still needs its stock
+  `app_process` MD5 as a product-scoped `stock_file.N` for CarPlay (CN7 has it; runtime contract, "Car gate").
+- [ ] `HmgSeogaemoMapTool.run` derives the export layout only for `NEEV` (`maps/hyundai/ioniq5/...`);
+  every other product exports as `maps/unknown/<prefix>/<region>/<firmware>`. Teach it the bundled
+  makes/models (CN7 → `hyundai/cn7`, CN7N → `hyundai/cn7n`) or derive the make from the bundle.
 - [ ] `nemesis root -c` with long commands fails with "daemon write failed"; find the
   limit and keep app/root commands below it (split or script file).
 - [ ] Restore stock stops at the first module conflict and leaves later modules
