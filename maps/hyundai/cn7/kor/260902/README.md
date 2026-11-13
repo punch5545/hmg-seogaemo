@@ -10,6 +10,9 @@ inside the image reads `HYUNDAI.KOR.0000.V039.001.260902`), onebin `cn7_kr`,
 Android 4.4.2, Telechips tcc897x. The contributor's separate HMG-API host mapping of
 the same dump agrees on all 325 IDs the two catalogues share.
 
+The catalogue has since grown to 350 points: the optional `dipo.carplay.telephony`
+(added 2026-11-10) is not mapped in this bundle and is listed under `missing` in `car.json`.
+
 347 of the 349 entries equal the Ioniq 5 KOR bundle; `panel.test_gate.on` and
 `themesettings.split_item.type` differ.
 

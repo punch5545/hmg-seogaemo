@@ -96,7 +96,9 @@
     "/system/framework/framework.odex": "d80d8279ccd3bee40e73b1f4220d7ee3",
     "/system/framework/framework2.odex": "a0a12adc1340153e908b830472e21f88"
   },
-  "missing": {},
+  "missing": {
+    "dipo.carplay.telephony": "not mapped: added to the catalogue (2026-11-10) after this bundle was host-mapped"
+  },
   "onebin": "cn7_kr",
   "product": "CN7.KOR.0000.V039.001.260902",
   "schema": 1

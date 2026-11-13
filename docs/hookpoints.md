@@ -10,7 +10,7 @@ Mapped means a name/signature was resolved. Reflection means the listed points w
 
 CN7.KOR.0000.V039.001.260902 · cn7_kr · Android 4.4.2 · 18 exact stock MD5s.
 
-**349/349 mapped; 0 missing; 0/349 reflection-verified on exact stock files.**
+**349/350 mapped; 1 missing; 0/349 reflection-verified on exact stock files.**
 
 Evidence: [maps/hyundai/cn7/kor/260902/evidence.json](../maps/hyundai/cn7/kor/260902/evidence.json).
 
@@ -66,6 +66,7 @@ The new catalogue additions require on-car reflection; existing module requireme
 | dipo.carplay.session_created | method | com.daudio.app.dipo.telechips.CarPlayService.onSessionCreated | not recorded | wireless-carplay-and-aa |
 | dipo.carplay.session_finalized | method | com.daudio.app.dipo.telechips.CarPlayService.onSessionFinalized | not recorded | wireless-carplay-and-aa |
 | dipo.carplay.session_started | method | com.daudio.app.dipo.telechips.CarPlayService.onSessionStarted | not recorded | wireless-carplay-and-aa |
+| dipo.carplay.telephony | method | Missing: not mapped: added to the catalogue (2026-11-10) after this bundle was host-mapped | not recorded | — |
 | dipo.iap2 | class | com.daudio.app.dipo.e.b | not recorded | wireless-carplay-and-aa |
 | dipo.iap2.bt_address | method | com.daudio.app.dipo.e.b.K | not recorded | wireless-carplay-and-aa |
 | dipo.iap2.set_notify_on | method | com.daudio.app.dipo.e.b.a | not recorded | wireless-carplay-and-aa |
@@ -374,7 +375,7 @@ The new catalogue additions require on-car reflection; existing module requireme
 
 CN7N.KOR.0000.V037.001.260319 · cn7n_kr · Android 4.4.2 · 18 exact stock MD5s.
 
-**349/349 mapped; 0 missing; 0/349 reflection-verified on exact stock files.**
+**349/350 mapped; 1 missing; 0/349 reflection-verified on exact stock files.**
 
 Evidence: [maps/hyundai/cn7n/kor/260319/evidence.json](../maps/hyundai/cn7n/kor/260319/evidence.json).
 
@@ -430,6 +431,7 @@ The new catalogue additions require on-car reflection; existing module requireme
 | dipo.carplay.session_created | method | com.daudio.app.dipo.telechips.CarPlayService.onSessionCreated | not recorded | wireless-carplay-and-aa |
 | dipo.carplay.session_finalized | method | com.daudio.app.dipo.telechips.CarPlayService.onSessionFinalized | not recorded | wireless-carplay-and-aa |
 | dipo.carplay.session_started | method | com.daudio.app.dipo.telechips.CarPlayService.onSessionStarted | not recorded | wireless-carplay-and-aa |
+| dipo.carplay.telephony | method | Missing: not mapped: added to the catalogue (2026-11-10) after this bundle was host-mapped | not recorded | — |
 | dipo.iap2 | class | com.daudio.app.dipo.e.b | not recorded | wireless-carplay-and-aa |
 | dipo.iap2.bt_address | method | com.daudio.app.dipo.e.b.K | not recorded | wireless-carplay-and-aa |
 | dipo.iap2.set_notify_on | method | com.daudio.app.dipo.e.b.a | not recorded | wireless-carplay-and-aa |
