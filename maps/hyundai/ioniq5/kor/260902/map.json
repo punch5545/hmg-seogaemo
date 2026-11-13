@@ -278,6 +278,15 @@
       "ret": "void",
       "static": false
     },
+    "dipo.carplay.telephony": {
+      "method": "onTelephony",
+      "params": [
+        "com.daudio.app.dipo.telechips.CarPlayTelephony",
+        "boolean"
+      ],
+      "ret": "com.daudio.app.dipo.telechips.CarPlayReturn",
+      "static": false
+    },
     "dipo.iap2": {
       "class": "com.daudio.app.dipo.e.b"
     },

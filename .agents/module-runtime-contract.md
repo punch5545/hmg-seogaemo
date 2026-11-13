@@ -52,7 +52,7 @@ baseline on first touch, perform, verify, mark applied, append ledger; non-zero 
 | `sg_bin_derive <name>` | make `$HMG_SEOGAEMO_STATE/bin/<name>`, a private copy of the `derived_bin.<name>=` stock program with one fixed string replaced; `sg_daemon_start` calls it for a daemon whose executable is that stock program |
 | `sg_net_rule <n>` | insert the exact `net_rules.<n>=` iptables rule or `ip rule` once per boot |
 | `sg_iface_addr <iface> <a.b.c.d/prefix>` | add an IPv4 address to an interface matching `owns_ifaces=` and bring its link up |
-| `sg_revert_transient` | undo only this module's transient effects, newest first, and drop them from `changes`; files and properties stay applied |
+| `sg_revert_transient [keep_kmods]` | undo this module's transient effects, newest first, and drop them from `changes`; optional `keep_kmods` retains drivers and their records for USB reprobe; files and properties stay applied |
 | `sg_daemon_restart <name>` | stop our running `daemon.<name>` (if any) and start it again, e.g. after rewriting its state-directory config |
 | `sg_peer_publish [key=value...]` | replace this module's published facts (see [Peer info](#peer-info)); no argument removes them |
 | `sg_revert_all` | undo every change this module made, newest first, with the guarded restore rules below; clears baselines only after every item verified |
@@ -78,7 +78,7 @@ Directories created under `/system` for a payload file (`sg_mkdir_target`) are m
 scripts run with umask 077: hooks run as the system user inside DiPO and need to read and traverse them.
 State directories keep the private mode.
 
-`watch=boot,screen_on` may declare only these fixed events. The package's single `watcher` service (never apply/revert) invokes `root/<id>.sh watch <event>` only while the module's desired state is on, under the root operation lock, and never passes arbitrary event names or arguments. Details and retry budgets: [boot-lifecycle.md](boot-lifecycle.md).
+`watch=boot,screen_on,usb_change` may declare only these fixed events. The package's single `watcher` service (never apply/revert) invokes `root/<id>.sh watch <event>` only while the module's desired state is on, under the root operation lock, and never passes arbitrary event names or arguments. `usb_change` observes physical USB vendor/product/devnum and manifest-owned interface ifindex (never link flags), dispatching on first observation each boot and subsequent signature changes. Its per-module signature, pending event and six-attempt retry reservation survive watcher restart, disable and stock pause. A new signature starts a fresh retry budget; successful dispatch alone clears pending. Poll roots are `/sys/bus/usb/devices` and `/sys/class/net` (`SG_USB_DEVICES_DIR` and `SG_SYS_NET_ROOT` in host tests). Details and retry budgets: [boot-lifecycle.md](boot-lifecycle.md).
 
 `restore=reboot` is reserved for modules whose only non-reversible effect is
 transient until a head-unit restart. Disable stops future watch calls. Until the
@@ -96,6 +96,11 @@ needs no `restore=reboot`.
 (`before/`), the bytes we wrote (`after/`), file metadata, and property before/after values. It is
 never pruned while any change is active; after a verified uninstall it is kept as a final
 export-able record until the package directory is removed.
+`export adb` copies the whole ledger. `export usb` copies `ledger.tsv` whole but only the
+`before/`/`after/` records whose name stamp (`<epoch>.<pid>.<seq>`) is at or after the
+earlier of this boot (`now - /proc/uptime`) and `now - 12 h`, and writes `ledger/WINDOW`
+(`since=`, scope, and the adb command for the full ledger). The 50 MB limit applies to the
+bytes copied.
 Binder calls record the exact allow-listed pair, time, bounded Parcel summary,
 and outcome in this same ledger; export includes them.
 
@@ -214,8 +219,12 @@ on spaces as argv, never evaluated. Tools are fixed absolute paths `/system/bin/
 - `sg_kmod_load <name>`: refuses (3) when `/proc/modules` lists the name without a current
   record of ours; requires the `.ko` to contain `vermagic=<osrelease> ` (read with `grep -a`;
   otherwise 4); records, `insmod <ko> <params>`, verifies `/proc/modules`; ledger `kmod_load`.
-  Revert: `rmmod` only while loaded and recorded this boot, verified gone; ledger
-  `kmod_unload` (`absent` when nothing was left).
+  Both insmod and rmmod run with a 15-second bound (plus one second signal grace).
+  Timeout logs and retains the boot-bound record and change for a later restore;
+  it never waits for an uninterruptible kernel call after signalling it. A timed-out
+  operation blocks further loads/unloads this boot, since it may complete late;
+  restoration fails closed until a restart. Revert: `rmmod` only while loaded and
+  recorded this boot, verified gone; ledger `kmod_unload` (`absent` when nothing was left).
 - `sg_bin_derive <name>`: reads the stock program (never writes it) and, in a root `app_process`
   running the package helper `core/hsm/hmg-seogaemo-hsm.jar` (`HmgSeogaemoBinPatch`, 60-second
   limit), writes `bin/<name>` (mode 700) with every occurrence of the path string replaced by the
@@ -253,6 +262,9 @@ the `sg_tool_*` wrappers); on the unit it is unset.
 `sg_revert_transient` undoes `kmod`, `daemon`, `net` and `addr` records like `sg_revert_all` and rewrites `changes`
 after each item, keeping persistent kinds. A module backs out a failed transient step with it without restoring
 stock files.
+The optional fixed argument `keep_kmods` skips kernel-module records while undoing daemons, network rules and
+addresses. This lets an unplug handler release netdev references promptly without unloading the driver needed
+for a later replug. Skipped records remain in `changes`; ordinary revert/uninstall still unloads them.
 
 Restore preflight applies the `ro.build.product` guard only when the module holds persistent
 material (property, file, line, bind, dex or directory records) or a build marker; transient
@@ -274,8 +286,15 @@ The `wifi` module publishes the active CarPlay hotspot on apply, watch and rever
 | `interface` | `rtwlan0` (usb), `wlan0` (builtin), empty |
 | `ip` | `192.168.50.1` (usb), `192.168.0.1` (builtin), empty |
 | `ssid`, `passphrase` | the generated USB hotspot credentials; empty for builtin (Android's `WifiManager` config) |
-| `channel` | `36` (usb), empty |
-| `ready` | `1` while hostapd and dnsmasq run this boot, `0` otherwise, `stock` when Android runs the built-in hotspot |
+| `channel` | `6` (usb), empty |
+| `ready` | `1` while hostapd and dnsmasq run for the successful current boot/interface ifindex generation, `0` otherwise, `stock` when Android runs the built-in hotspot |
+
+USB apply/watch clears readiness before tearing down a missing or changed interface generation, stops its daemons
+and removes network/address records with `sg_revert_transient keep_kmods`, then records the new boot/ifindex only
+after bring-up succeeds. Missing adapters remain non-error; stale daemons on a present replacement interface report
+failed until recovery. Bring-up compares the captured generation to the last successful generation before starting
+the role, and checks it again afterward so a replug during startup cannot adopt old daemons. Status is read-only.
+This recovery is host-tested and remains unverified on a car.
 
 Hooks in system-uid processes cannot read `<data root>`. A consumer either copies what its hooks need from its
 root script, or (`wireless-carplay-and-aa`) reads the peer file once in its zygote entry, which still runs as root
@@ -615,8 +634,9 @@ before its data does.
 `sg_export_seal <dest> <usb|adb> [key...]` after the last write and the public chmod:
 
 - writes `MANIFEST` (`<size><TAB><relative path>` for every exported file, sizes from
-  toolbox `ls -ln`), then runs `sync`;
-- for `usb`, re-reads every listed file and requires the recorded size, and requires
+  one toolbox `ls -lna` per directory, falling back to one `ls -ln` per file when a
+  listing line does not parse), then runs `sync`;
+- for `usb`, re-lists the export and requires exactly the recorded files and sizes, and requires
   each key file to match its source size (`<relative>=<source>`) or be non-empty:
   `ledger/ledger.tsv`, `package-version`, `ro.build.product`, `desired/*` for the ledger
   export, `<layout>/map.json` and `car.json` for the map export;
@@ -633,8 +653,11 @@ must not use the 150-second module-write or 30-second map-status deadline. On
 2026-11-06, each v0.1.30 USB export contained 1,798 files and took 145 seconds
 from its destination timestamp to MANIFEST's modification time, before the USB
 verification pass. The 150-second app deadline could expire while the daemon
-continued exporting. Evidence: `tmp/car-reports/usb-20261106/`. The longer deadline
-is covered off-car; completion of the fixed build still needs car verification.
+continued exporting. Evidence: `tmp/car-reports/usb-20261106/`. Per-file processes
+were the cost: `sg_export_public` now runs one `chmod` per directory and the size
+listing one `ls` per directory (that export's public chmod + seal: 21 s to 1.2 s on a
+host), and USB copies only the recent ledger window above. The longer deadline and
+the faster export are covered off-car; on-car timing still needs verification.
 
 ## Diagnostic export
 

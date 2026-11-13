@@ -144,6 +144,14 @@ Background: `carplay-tbt-learnings.md`, `carplay-tbt-external-research.md` (0x52
 
 ## 2. Older open items
 
+- [ ] **Wireless CarPlay call state on the car** (`wireless-carplay-and-aa.md`, "Wireless CarPlay
+  call state"). After connecting, the module log shows `CarPlay call state: call state started, call
+  updates started`; logcat shows DiPO's `analyze CallState` and a non-empty caller list while ringing.
+  `map verify` passes the optional `dipo.carplay.telephony`. Then, parked: CALL short/long press idle
+  opens CarPlay's Phone app (log `CarPlay CALL key: HookSwitch released ... opening the Phone app`), while ringing (answer) and in a
+  call (hang up); call OSD and split screen; no duplicate or stuck call screens after the call ends.
+  Evidence before the change: `tmp/car-sessions/2026-11-10-carplay-call-button/`.
+
 - [ ] **First car other than the Ioniq 5 KOR.** Candidates with bundled host maps: Avante CN7 KOR
   `260902` and Avante N CN7N KOR `260319` (`maps/hyundai/cn7*/`, 2026-11-09, no on-car reflection).
   Install (`os=any`), check that `map status` accepts the bundle and `map verify` passes reflection,

@@ -366,10 +366,58 @@ public final class Dipo {
                 if (Bridge.dipoDropNoti((Integer) p.args[0])) p.setResult(null);
             }
         });
+        callKey(cl);
         reconnectFix(cl);
         firstConnectNotice();
         Bridge.registerProjectionListener(app.context);
         log("bridge: wireless CarPlay Bluetooth bridge in DiPO");
+    }
+
+    /** The steering-wheel CALL key with no call opens CarPlay's Phone app (CallKey); optional point. */
+    private static void callKey(final ClassLoader cl) {
+        final String id = "dipo.carplay.telephony";
+        if (!Points.has(id)) {
+            log("CarPlay: optional " + id + " not mapped; the CALL key stays stock");
+            return;
+        }
+        mod.hook(cl, id, new MethodHook() {
+            @Override
+            protected void beforeHookedMethod(Param p) {
+                Object key = p.args[0];
+                boolean pressed = Boolean.TRUE.equals(p.args[1]);
+                if (pressed || !(key instanceof Enum)) return;
+                Integer stat = null, phoneCall = null, speech = null;
+                try {
+                    Object dipo = app.context.getSystemService("dipo");
+                    if (dipo != null) {
+                        stat = (Integer) Points.call(null, "framework.dipo_manager.current_stat", dipo);
+                        Object mode = Points.call(null, "framework.dipo_manager.current_mode", dipo);
+                        if (mode != null) {
+                            phoneCall = (Integer) Points.call(null, "framework.dipo_mode.phone_call", mode);
+                            speech = (Integer) Points.call(null, "framework.dipo_mode.speech", mode);
+                        }
+                    }
+                } catch (Throwable t) {
+                    error("CarPlay CALL key: DiPO mode", t);
+                }
+                String name = ((Enum<?>) key).name();
+                boolean open = CallKey.opensPhone(Bridge.sCpClient || Bridge.sCpWireless, name, false, stat, phoneCall, speech);
+                log("CarPlay CALL key: " + name + " released, stat=" + stat + " phoneCall=" + phoneCall + " speech=" + speech
+                        + (open ? ", opening the Phone app" : ""));
+                if (!open) return;
+                try {
+                    Intent i = new Intent(Intent.ACTION_MAIN);
+                    i.addCategory(Intent.CATEGORY_LAUNCHER);
+                    i.setClassName(app.context.getPackageName(), "com.daudio.app.dipo.ui.DipoActivity");
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                    i.putExtra(CallKey.EXTRA_MODE, CallKey.MODE_PHONE);
+                    app.context.startActivity(i);
+                } catch (Throwable t) {
+                    error("CarPlay CALL key: Phone app", t);
+                }
+            }
+        });
+        log("CarPlay: CALL key with no call opens the Phone app");
     }
 
     /**

@@ -130,6 +130,19 @@
       "owner": "dipo.carplay",
       "type": "method"
     },
+    "dipo.carplay.telephony": {
+      "about": "a telephony key to the phone (CarPlayTelephony: HookSwitch, Drop; true pressed, false released); the steering-wheel CALL key ends here",
+      "match": {
+        "name": "onTelephony",
+        "parameters": [
+          "com.daudio.app.dipo.telechips.CarPlayTelephony",
+          "boolean"
+        ],
+        "returns": "com.daudio.app.dipo.telechips.CarPlayReturn"
+      },
+      "owner": "dipo.carplay",
+      "type": "method"
+    },
     "dipo.iap2": {
       "about": "DiPO's iAP2 manager (binds the iAP2 server, starts and stops route guidance)",
       "match": {

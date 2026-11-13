@@ -777,17 +777,21 @@ sg_public_readable() (
     done
 )
 # Call only for dedicated export containers, never USB roots or private state.
+# One chmod per directory: a per-file chmod costs a process each on the head unit.
 sg_export_public() (
     set +f
     sg_path_safe "$1" && [ -d "$1" ] || exit 3
     chmod 0755 "$1" || exit 1
-    for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+    sg_ep_dir=$1
+    set --
+    for entry in "$sg_ep_dir"/* "$sg_ep_dir"/.[!.]* "$sg_ep_dir"/..?*; do
         [ ! -L "$entry" ] || exit 3
         [ -e "$entry" ] || continue
         if [ -d "$entry" ]; then sg_export_public "$entry" || exit 1
-        elif [ -f "$entry" ]; then chmod 0644 "$entry" || exit 1
+        elif [ -f "$entry" ]; then set -- "$@" "$entry"
         else exit 3; fi
     done
+    [ "$#" -eq 0 ] || chmod 0644 "$@" || exit 1
 )
 # Size in bytes of a regular file from toolbox ls -l (no stat on the unit).
 sg_file_size() (
@@ -798,15 +802,54 @@ sg_file_size() (
     case "$sg_fs_size" in ''|*[!0-9]*) exit 1;; esac
     sg_write "$sg_fs_size"
 )
+# "<size><TAB><prefix><name>" for every regular file under $1, from one
+# ls -lna per directory (a per-file ls costs two processes each on the head unit).
+# Falls back to one ls per file when a listing line does not parse to exactly
+# one name of a regular file, or when it misses a file the glob sees.
 sg_export_sizes() (
     set +f
-    for entry in "$1"/* "$1"/.[!.]* "$1"/..?*; do
-        [ -e "$entry" ] || continue
-        if [ -d "$entry" ]; then sg_export_sizes "$entry" "$2${entry##*/}/" || exit 1
-        elif [ -f "$entry" ]; then
+    sg_xs_dir=$1; sg_xs_prefix=$2; sg_xs_out=; sg_xs_listed=0; sg_xs_files=0; sg_xs_ok=1
+    sg_xs_nl='
+'
+    sg_xs_list=$(ls -lna "$sg_xs_dir") || exit 1
+    set -f
+    IFS=$sg_xs_nl
+    for sg_xs_line in $sg_xs_list; do
+        IFS=' 	'
+        # Intentional field splitting of one listing line.
+        # shellcheck disable=SC2086
+        set -- $sg_xs_line
+        case "$1" in -*) ;; *) continue;; esac
+        # Android toolbox: mode uid gid size date time name; desktop ls adds the
+        # link count and a three-field date.
+        case "$#:$5" in
+            7:*[!0-9]*) sg_xs_size=$4; shift 6;;
+            9:[0-9]*) sg_xs_size=$5; shift 8;;
+            *) sg_xs_ok=0; break;;
+        esac
+        if [ ! -f "$sg_xs_dir/$1" ] || [ -L "$sg_xs_dir/$1" ]; then sg_xs_ok=0; break; fi
+        case "$sg_xs_size" in ''|*[!0-9]*) sg_xs_ok=0; break;; esac
+        sg_xs_out=$sg_xs_out$sg_xs_size'	'$sg_xs_prefix$1$sg_xs_nl
+        sg_xs_listed=$((sg_xs_listed + 1))
+    done
+    IFS=' 	
+'
+    set +f
+    for entry in "$sg_xs_dir"/* "$sg_xs_dir"/.[!.]* "$sg_xs_dir"/..?*; do
+        [ -f "$entry" ] && [ ! -L "$entry" ] && sg_xs_files=$((sg_xs_files + 1))
+    done
+    if [ "$sg_xs_ok" = 1 ] && [ "$sg_xs_listed" = "$sg_xs_files" ]; then
+        [ -z "$sg_xs_out" ] || sg_print "${sg_xs_out%"$sg_xs_nl"}" || exit 1
+    else
+        for entry in "$sg_xs_dir"/* "$sg_xs_dir"/.[!.]* "$sg_xs_dir"/..?*; do
+            [ -f "$entry" ] && [ ! -L "$entry" ] || continue
             size=$(sg_file_size "$entry") || exit 1
-            sg_print "$size	$2${entry##*/}" || exit 1
-        fi
+            sg_print "$size	$sg_xs_prefix${entry##*/}" || exit 1
+        done
+    fi
+    for entry in "$sg_xs_dir"/* "$sg_xs_dir"/.[!.]* "$sg_xs_dir"/..?*; do
+        [ -d "$entry" ] && [ ! -L "$entry" ] || continue
+        sg_export_sizes "$entry" "$sg_xs_prefix${entry##*/}/" || exit 1
     done
 )
 # The head unit mounts the stick write-back: a name can reach the stick while its
@@ -822,10 +865,20 @@ sg_export_seal() (
     sg_print "$sg_es_sizes" > "$sg_es_dest/MANIFEST" && chmod 0644 "$sg_es_dest/MANIFEST" || exit 1
     sync || exit 4
     [ "$sg_es_mode" = usb ] || exit 0
-    while IFS='	' read -r sg_es_size sg_es_rel; do
-        [ -n "$sg_es_rel" ] || continue
-        [ "$(sg_file_size "$sg_es_dest/$sg_es_rel")" = "$sg_es_size" ] || exit 4
-    done < "$sg_es_dest/MANIFEST"
+    # Re-list after the sync: every recorded file keeps its size, nothing else appeared.
+    sg_es_again=$(sg_export_sizes "$sg_es_dest" '') || exit 4
+    sg_es_check=
+    set -f
+    sg_es_ifs=$IFS
+    IFS='
+'
+    for sg_es_line in $sg_es_again; do
+        case "$sg_es_line" in *'	MANIFEST') ;; *) sg_es_check=$sg_es_check$sg_es_line'
+';; esac
+    done
+    IFS=$sg_es_ifs
+    set +f
+    [ "${sg_es_check%?}" = "$sg_es_sizes" ] || exit 4
     for sg_es_key do
         sg_es_rel=${sg_es_key%%=*}
         sg_es_have=$(sg_file_size "$sg_es_dest/$sg_es_rel") || exit 4
@@ -1583,7 +1636,28 @@ sg_kmod_present() {
 # Read-only: 0 when kernel module $1 is loaded and was loaded by this module this boot.
 sg_kmod_loaded() {
     sg_tr_kmod_name "$1" || return 2
+    ! sg_tr_current "$HMG_SEOGAEMO_STATE/kmod.$1.pending" || return 1
     sg_tr_current "$HMG_SEOGAEMO_STATE/kmod.$1" && sg_kmod_present "$1"
+}
+# Kernel calls can remain uninterruptible even after KILL. Never wait for those
+# children on timeout; keep a boot-bound uncertainty marker to prevent races with
+# a late completion. Output must not keep the caller's pipes open either.
+sg_kmod_command() {
+    sg_kc_op=$1; sg_kc_name=$2; shift 2
+    (
+        case "$sg_kc_op" in
+            load) exec "${HMG_SEOGAEMO_TOOL_ROOT:-}/system/bin/insmod" "$@" ;; # android44-shell: allow -- fixed insmod path with host-test seam
+            unload) exec "${HMG_SEOGAEMO_TOOL_ROOT:-}/system/bin/rmmod" "$@" ;; # android44-shell: allow -- fixed rmmod path with host-test seam
+        esac
+    ) </dev/null >> "$HMG_SEOGAEMO_STATE/kernel.$sg_kc_name.log" 2>&1 &
+    sg_kc_pid=$!
+    sg_bounded_wait "$sg_kc_pid" 15 no_wait && return 0
+    sg_kc_rc=$?
+    if [ "$sg_kc_rc" -eq 124 ]; then
+        sg_tr_record "$HMG_SEOGAEMO_STATE/kmod.$sg_kc_name.pending" "$(sg_boot_id)" "$sg_kc_pid" || :
+        sg_log "kernel module $sg_kc_name $sg_kc_op timed out; restart required" || :
+    fi
+    return "$sg_kc_rc"
 }
 # Loads payload kernel module $1 (kmods=, kmod.<name>.<ro.board.platform>= or
 # kmod.<name>=, optional kmod_params.<name>=). 2 undeclared, 3 loaded by someone
@@ -1594,6 +1668,11 @@ sg_kmod_load() {
     if sg_transient_owner kmod "$1" >/dev/null; then return 3; fi
     sg_ready || return 1
     sg_km_record=$HMG_SEOGAEMO_STATE/kmod.$1
+    if sg_tr_current "$sg_km_record.pending"; then
+        sg_log "kernel module $1 has a timed-out operation; restart required" || :
+        return 1
+    fi
+    rm -f "$sg_km_record.pending"
     if sg_kmod_present "$1"; then
         sg_tr_current "$sg_km_record" && return 0
         sg_log "conflict: kernel module $1 is already loaded and not ours" || :
@@ -1619,8 +1698,8 @@ sg_kmod_load() {
     # Record first: an interrupted load is still found and unloaded by revert.
     sg_tr_record "$sg_km_record" "$sg_km_boot" "$sg_km_ko" "$sg_km_params" || return 1
     sg_changed kmod "$1" || return 1
-    if ! sg_tool_insmod "$sg_km_file" $sg_km_params; then
-        rm -f "$sg_km_record"
+    if sg_kmod_command load "$1" "$sg_km_file" $sg_km_params; then :; else
+        sg_tr_current "$sg_km_record.pending" || rm -f "$sg_km_record"
         sg_tr_ledger kmod_load "$1" absent "insmod $sg_km_ko $sg_km_params" failed || :
         return 1
     fi
@@ -1630,14 +1709,15 @@ sg_kmod_load() {
 sg_kmod_revert() {
     sg_km_record=$HMG_SEOGAEMO_STATE/kmod.$1
     [ -f "$sg_km_record" ] || return 0
+    ! sg_tr_current "$sg_km_record.pending" || return 1
     if sg_tr_current "$sg_km_record" && sg_kmod_present "$1"; then
-        sg_tool_rmmod "$1" || { sg_log "could not unload kernel module $1" || :; return 1; }
+        sg_kmod_command unload "$1" "$1" || { sg_log "could not unload kernel module $1" || :; return 1; }
         ! sg_kmod_present "$1" || return 1
         sg_tr_ledger kmod_unload "$1" loaded absent || return 1
     else
         sg_tr_ledger kmod_unload "$1" 'not loaded in this boot' absent absent || return 1
     fi
-    rm -f "$sg_km_record"
+    rm -f "$sg_km_record" "$sg_km_record.pending"
 }
 sg_daemon_expand() (
     set -f
@@ -1979,7 +2059,9 @@ sg_iface_addr_revert() {
 # and properties stay applied, so a module can back out a failed transient step
 # without restoring stock files. Return codes as sg_revert_all.
 sg_revert_transient() {
-    [ "$#" -eq 0 ] && [ -n "$HMG_SEOGAEMO_STATE" ] || return 2
+    [ "$#" -le 1 ] && [ -n "$HMG_SEOGAEMO_STATE" ] || return 2
+    sg_rt_keep=0
+    if [ "$#" -eq 1 ]; then [ "$1" = keep_kmods ] || return 2; sg_rt_keep=1; fi
     sg_rt_changes=$HMG_SEOGAEMO_STATE/changes
     [ -f "$sg_rt_changes" ] || return 0
     sg_rt_reverse=
@@ -1989,7 +2071,7 @@ sg_revert_transient() {
     for sg_rt_item in $sg_rt_reverse; do
         sg_rt_kind=${sg_rt_item%%:*}; sg_rt_target=${sg_rt_item#*:}
         case "$sg_rt_kind" in
-            kmod) sg_kmod_revert "$sg_rt_target" ;;
+            kmod) [ "$sg_rt_keep" -eq 0 ] || continue; sg_kmod_revert "$sg_rt_target" ;;
             daemon) sg_daemon_revert "$sg_rt_target" ;;
             net) sg_net_rule_revert "$sg_rt_target" ;;
             addr) sg_iface_addr_revert "${sg_rt_target%%@*}" "${sg_rt_target#*@}" ;;
@@ -2612,6 +2694,7 @@ sg_bounded_wait() {
     done
     if kill -0 "$sg_bw_pid" 2>/dev/null; then
         sg_kill_tree "$sg_bw_pid" 3
+        [ "${3:-}" != no_wait ] || return 124
         wait "$sg_bw_pid" 2>/dev/null || :
         return 124
     fi

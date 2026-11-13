@@ -267,9 +267,31 @@
         "stock_files": {
           "/system/framework/automotive.odex": "c76b8209ef171739b177eb14e8df61dd"
         }
+      },
+      {
+        "date": "2026-11-10",
+        "points": {
+          "dipo.carplay.telephony": {
+            "class": "com.daudio.app.dipo.telechips.CarPlayService",
+            "member": {
+              "method": "onTelephony",
+              "params": [
+                "com.daudio.app.dipo.telechips.CarPlayTelephony",
+                "boolean"
+              ],
+              "ret": "com.daudio.app.dipo.telechips.CarPlayReturn",
+              "static": false
+            },
+            "stock_file": "/system/app/HKMC_DiPO.odex"
+          }
+        },
+        "source": "kor-stock-dex-scan",
+        "stock_files": {
+          "/system/app/HKMC_DiPO.odex": "3b26cdcbf3c43f75623311f2bdfc3471"
+        }
       }
     ],
-    "points_sha256": "01269c109fc01c55d0b000e65252f12c052a549012bbc3ff8336aa136736f1cd"
+    "points_sha256": "e39efc1f8fa641555dc243d04cf0e5e0745e0b063e678b9026d377262c71806c"
   },
   "physical_features": [
     {

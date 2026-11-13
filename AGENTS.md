@@ -132,9 +132,10 @@ Device state lives under `/data/nemesis/backup/hmg-seogaemo/` (desired state, ba
 ## Car mapping
 
 - The core owns mapping; modules declare stable IDs in `hookpoints.required`. The build validates
-  those manifests against the full catalogue. The bundled NEEV KOR map has 348 of 349 points;
+  those manifests against the full catalogue. The bundled NEEV KOR map has 349 of 350 points;
   `themesettings.split_item.type` remains unresolved and no module requires it. The CN7 and CN7N KOR
-  bundles map 349 of 349 (host evidence only, `maps/hyundai/cn7*/README.md`).
+  bundles were host-mapped against the 349-point catalogue and resolve all 349 (host evidence only,
+  `maps/hyundai/cn7*/README.md`); the later optional `dipo.carplay.telephony` is not in them.
 - `map status` is read-only and matches the exact product, onebin, Android release, and MD5 of every
   stock file in `car.json`. Known maps get reflection verification once per boot on a worker.
   Unknown firmware requires the confirmed **Map this car** action in Settings → Car mapping.

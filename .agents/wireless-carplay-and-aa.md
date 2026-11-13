@@ -255,6 +255,35 @@ Status: implemented, off-car tested only (`test/projectionswitch`); needs the on
   head-unit restart also releases it. GPM may receive the phone's start request before DiPO's status
   drops to 0. In that case, choose Android Auto again.
 
+## Wireless CarPlay call state (steering-wheel CALL)
+
+Status: implemented, off-car tested only (`test/callstate`, `test/callkey`); needs the on-car check in `backlog.md`.
+
+- **Cause (stock NEEV KOR code, car log 2026-11-10).** `HKMC_DiPO` `e/b.e(int)` (setStartiAP2Service)
+  starts `Iap2SvcNowPlayingStart`, `Iap2SvcTelephonyStartCallState` and `Iap2SvcTelephonyStartUpdates`
+  only when the transport is not Wireless (log `setStartiAP2Service transportType[1]` on the bridge).
+  DiPO's caller list stayed empty while ringing and in a call (`getCallerList().size() : 0`,
+  `CallerList getDirection() uuid is null`). The CALL key still reached DiPO
+  (`ModeKeyDispatcher` → `DipoService.onKeyForService` → `performPhoneKey` → `performTelephony HookSwitch`
+  press/release) on every press; answer and hang up worked, and an idle press did nothing on the iPhone.
+  The `USE_SWRC_CUSTOM_KEY=true` CALL policy depends on that caller state.
+- **Behavior now.** After the CarPlay-channel session's identification is accepted, the bridge
+  starts both telephony subscriptions itself (`CallState`, `Bridge.startCallState`): once per
+  session, 500 ms after the identification, each subscription tracked separately, up to 3 tries,
+  stale tries of an earlier session ignored. DiPO's own listener parses the notifications as on USB.
+  The result is in the module log (`CarPlay call state: ...`).
+- **CALL with no call (car log 2026-11-10).** DiPO sends HookSwitch press/release in every state and
+  the iPhone ignores it with no call, also after the call-state subscription. The stock Phone app opens
+  CarPlay's Phone app another way: ModeManager starts `DipoActivity` with int extra `CarPlayMode=2`,
+  `DipoService.updateDisplay(2)` → `displayPhone()` → `requestUI("mobilephone:")`. The bridge hooks the
+  optional point `dipo.carplay.telephony` (`CarPlayService.onTelephony`) and, on a wireless HookSwitch
+  release while `DiPOManager` stat is 1 and `DiPOMode` phone call and speech are 0 (phone call is 1 from
+  ringing to hang-up), starts that same activity intent (`CallKey`). HookSwitch still goes to the phone.
+  Each release is logged (`CarPlay CALL key: ...`). Point unmapped or failed: the key stays stock.
+- **Open.** On-car: the subscription log line, the Phone app opening with no call, answer/hang-up
+  unchanged, and whether the earlier intermittent "CALL does not answer" recurs. NowPlaying is skipped
+  on wireless the same way and is not started here.
+
 ## CarPlay turn-by-turn: lane fix, fallback icons, developer toggle
 
 - **Stock-format guidance (always on with TBT).** Inside the approach window (300 m ordinary
