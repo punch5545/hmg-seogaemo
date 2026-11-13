@@ -194,6 +194,11 @@ Background: [wired-adb.md](wired-adb.md).
   both user buttons after restart and after visiting stock settings
   (`user-button-shortcut.md`); full NEMESIS uninstall leaves the unit byte-identical
   (`stock-restore.md`); QuickBoot/ignition-only cycle behaviour (`boot-lifecycle.md`).
+- [ ] On-car check: Car tab cleanup of `hmgapi-wifi` when `/system/build.prop` holds the
+  `persist.wifi.state=3` line (runtime contract, "Other packages"). Tested off-car only, also on
+  the bytes of a CN7 KOR `260902` car's file; on that car the line was removed by hand
+  (2026-11-14). Check the rewritten file (bytes, mode, owner), the cleared property, the ledger
+  rows and a normal restart.
 
 ## 3. Planned features (owner-approved direction)
 
