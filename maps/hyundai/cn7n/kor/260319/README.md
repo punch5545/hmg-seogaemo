@@ -9,6 +9,9 @@ Telechips tcc803x. The MD5s of the collected files equal the hashes the car
 reported during collection. The contributor's separate HMG-API host mapping of the same
 files agrees on all 325 IDs the two catalogues share.
 
+The catalogue has since grown to 350 points: the optional `dipo.carplay.telephony`
+(added 2026-11-10) is not mapped in this bundle and is listed under `missing` in `car.json`.
+
 339 of the 349 entries equal the CN7 KOR 260902 bundle. The ten that differ are
 `btsettings.projection_helper.device_connections_available`, the four
 `launcher.menu_*` points, `panel.home.page_for_id`, `panel.home.test_page`,
