@@ -94,6 +94,14 @@ The six additions have exact-stock host evidence in the bundled sidecar and
 still need on-car reflection. No module requirement changes here. Source paths,
 smali cross-checks and Parcelable copying notes: [.agents/car-mapping.md](.agents/car-mapping.md).
 
+## CarPlay telephony key ID (2026-11-10)
+
+`dipo.carplay.telephony` is our own stable ID, independently derived from the same
+read-only NEEV KOR dump (not from HMG-API): `com.daudio.app.dipo.telechips.CarPlayService.onTelephony(com.daudio.app.dipo.telechips.CarPlayTelephony, boolean): com.daudio.app.dipo.telechips.CarPlayReturn`
+in `/system/app/HKMC_DiPO.odex`, MD5 `3b26cdcbf3c43f75623311f2bdfc3471`. Exact-stock host
+evidence is in the bundled sidecar; on-car reflection is pending. It is optional for
+`wireless-carplay-and-aa` and changes no module requirement.
+
 ## Phone Projection menu on Korea
 
 HMG-API changes the Phone Projection menu only for US/Canada (`Wireless` hook on `btsettings.projection_helper.open_wireless_page`).

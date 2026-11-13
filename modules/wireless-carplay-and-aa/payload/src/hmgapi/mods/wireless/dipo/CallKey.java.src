@@ -1,0 +1,31 @@
+package hmgapi.mods.wireless.dipo;
+// HMG-Seogaemo: steering-wheel CALL opens the CarPlay Phone app on wireless CarPlay; see .agents/wireless-carplay-and-aa.md.
+
+/**
+ * The steering-wheel CALL key with no call. DiPO turns the key into a telephony
+ * HookSwitch press and release (CarPlayService.onTelephony) in every state; the iPhone
+ * answers or ends a call with it, and ignores it when there is none. The stock Phone
+ * app opens CarPlay's Phone app instead: it starts DiPO's activity with CarPlayMode 2,
+ * and DiPO asks the phone for "mobilephone:". The bridge does the same on the release,
+ * when DiPO's mode has no phone call and no Siri; HookSwitch still goes to the phone.
+ *
+ * The decision is kept apart from Bridge so the host test needs no Android.
+ */
+final class CallKey {
+    /** DiPO's activity extra: 2 opens CarPlay's Phone app */
+    static final String EXTRA_MODE = "CarPlayMode";
+    static final int MODE_PHONE = 2;
+    static final String HOOK_SWITCH = "HookSwitch";
+
+    /**
+     * Open CarPlay's Phone app for this onTelephony call? key is the CarPlayTelephony
+     * name, pressed its second argument; stat, phoneCall and speech are DiPO's state
+     * (DiPOManager current stat, DiPOMode phone call and speech; null when unknown).
+     */
+    static boolean opensPhone(boolean wireless, String key, boolean pressed, Integer stat, Integer phoneCall, Integer speech) {
+        return wireless && HOOK_SWITCH.equals(key) && !pressed
+                && Integer.valueOf(1).equals(stat)
+                && Integer.valueOf(0).equals(phoneCall)
+                && Integer.valueOf(0).equals(speech);
+    }
+}

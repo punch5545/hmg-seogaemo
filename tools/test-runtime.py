@@ -250,7 +250,7 @@ case "$1" in
 esac
 echo detail=
 ''')
-    (base / "modules/a.properties").write_text("watch=boot,screen_on\n")
+    (base / "modules/a.properties").write_text("watch=boot,screen_on,usb_change\n")
     (base / "modules/c.properties").write_text("restore=exact\n")
     # All module entry points and the dispatcher are non-executable after extraction.
     for path in base.rglob("*"):
@@ -291,8 +291,10 @@ echo detail=
     assert 'info.desired=on' in status
     run(root, "b", "apply", env=env)
     run(root, "a", "watch", "boot", env=env)
+    run(root, "a", "watch", "usb_change", env=env)
     run(root, "a", "watch", "bogus", env=env, ok=False)
     run(root, "b", "watch", "boot", env=env, ok=False)
+    run(root, "b", "watch", "usb_change", env=env, ok=False)
     refused(("c", "apply"), "Excluded module on: a")
     refused(("a", "revert"), "Dependent on: b")
     run(root, "b", "revert", env=env)
@@ -533,6 +535,15 @@ sg_revert_all
     for entry in export_root.rglob("*"):
         assert entry.stat().st_mode & 0o777 == (0o755 if entry.is_dir() else 0o644)
     assert (exported.parents[1] / "ro.build.product").read_text().strip() == "NEEV.KOR.260902"
+    # USB keeps only records of the current boot and the last 12 hours; adb keeps all.
+    old_record = "1000000000.1.0"
+    (base / "data/ledger/before" / old_record).write_text("old before")
+    (base / "data/ledger/after" / old_record).write_text("old after")
+    recent = sorted(p.name for p in (base / "data/ledger/after").iterdir() if p.name != old_record)
+    assert recent
+    uptime = base / "uptime"
+    uptime.write_text("120.50 100.00\n")
+    env["SG_UPTIME_FILE"] = str(uptime)
     usb = base / "usb0"
     usb.mkdir(mode=0o711)
     (usb / "HMG-Seogaemo-export").mkdir(mode=0o700)
@@ -555,8 +566,15 @@ sg_revert_all
     assert sizes["package-version"] != "0" and "MANIFEST" not in sizes
     for relative, size in sizes.items():
         assert str((published / relative).stat().st_size) == size, relative
+    assert not (published / "ledger/before" / old_record).exists()
+    assert not (published / "ledger/after" / old_record).exists()
+    assert sorted(p.name for p in (published / "ledger/after").iterdir()) == recent
+    assert "since=" in (published / "ledger/WINDOW").read_text()
     adb_result = run(base / "bin/hmg-seogaemo-root", "export", "adb", env=env)
     assert "info.export_safe=adb" in adb_result.stdout
+    adb_ledger = Path(adb_result.stdout.split("detail=", 1)[1].split()[0]) / "ledger"
+    assert (adb_ledger / "after" / old_record).read_text() == "old after"
+    assert not (adb_ledger / "WINDOW").exists()
     # Problem report: logs=ours keeps only our area of the Android log and adds NEMESIS log and a summary.
     script(fake / "logcat", 'echo "I/HMG-Seogaemo( 1): ours"; echo "I/SomeVendorApp( 2): other"\n')
     script(fake / "nemesis", 'case "$1" in log) echo "nemesis log line";; *) exit 0;; esac\n')
@@ -922,6 +940,126 @@ def test_watch_dispatch(temp):
     assert not (state / "watch/screen.watcher").exists()
     run(watcher, env=env, timeout=120)
     assert calls.read_text().splitlines() == ["watcher watch screen_on"] * 2
+
+
+def test_usb_watch_dispatch(temp):
+    base = temp / "usb-watch"
+    for folder in ("bin", "svc", "modules", "lib", "fake", "state/desired",
+                   "state/stock", "usb", "net"):
+        (base / folder).mkdir(parents=True, exist_ok=True)
+    copy_shell_script(ROOT / "nemesis/package/lib/common.sh", base / "lib/common.sh")
+    script(base / "svc/watcher.sh",
+           f'sleep() {{ "{base / "fake/sleep"}" "$@"; }}\n' +
+           (ROOT / "nemesis/package/svc/watcher.sh").read_text())
+    (base / "modules.list").write_text("adapter\n")
+    (base / "modules/adapter.properties").write_text("watch=usb_change\nowns_ifaces=rtwlan*,usbnet0\n")
+    state = base / "state"
+    desired = state / "desired/adapter"
+    desired.write_text("on")
+    script(base / "fake/getprop", 'echo 1\n')
+    script(base / "fake/dumpsys", 'echo mWakefulness=Awake\n')
+    script(base / "fake/sleep", ':\n')
+    script(base / "bin/hmg-seogaemo-root",
+           'echo "$1 $2 $3" >> "$FAKE_CALLS"; [ ! -f "$SG_DATA_ROOT/fail-watch" ]\n')
+    calls, uptime, boot = (base / name for name in ("calls", "uptime", "boot"))
+    calls.write_text("")
+    boot.write_text("usb-boot\n")
+    usb, net = base / "usb", base / "net"
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("HMG_SEOGAEMO_", "SG_"))}
+    env.update(PATH=str(base / "fake") + ":" + os.environ["PATH"],
+               SG_DATA_ROOT=str(state), SG_USB_DEVICES_DIR=str(usb), SG_SYS_NET_ROOT=str(net),
+               FAKE_CALLS=str(calls), SG_BOOT_ID_FILE=str(boot),
+               HMG_SEOGAEMO_WATCH_MAX_POLLS="1", HMG_SEOGAEMO_WATCH_UPTIME_FILE=str(uptime))
+
+    def poll(clock=100):
+        uptime.write_text(f"{clock}.0 0.0\n")
+        run(base / "svc/watcher.sh", env=env, timeout=120)
+        return len(calls.read_text().splitlines())
+
+    # First observation (even no devices) dispatches once; same-boot restart is quiet.
+    assert poll() == 1
+    assert poll() == 1
+    device = usb / "1-1"
+    device.mkdir()
+    for name, value in (("idVendor", "0bda"), ("idProduct", "8179"), ("devnum", "2")):
+        (device / name).write_text(value + "\n")
+    assert poll() == 2
+    assert poll() == 2
+    # Replug entirely between polls changes devnum at the same USB port.
+    (device / "devnum").write_text("3\n")
+    assert poll() == 3
+    (device / "idVendor").write_text("2357\n")
+    assert poll() == 4
+    (device / "idProduct").write_text("010c\n")
+    assert poll() == 5
+    iface = net / "rtwlan0"
+    iface.mkdir()
+    (iface / "ifindex").write_text("7\n")
+    assert poll() == 6  # driver creates the owned interface after USB enumeration
+    (iface / "flags").write_text("0x1003\n")
+    other = net / "wlan0"
+    other.mkdir()
+    (other / "ifindex").write_text("22\n")
+    assert poll() == 6  # neither link flags nor an unowned interface affects signature
+    (iface / "ifindex").write_text("8\n")
+    assert poll() == 7
+    # Exact second owns_ifaces entry is observed too.
+    (net / "usbnet0").mkdir()
+    (net / "usbnet0/ifindex").write_text("23\n")
+    assert poll() == 8
+    # Unplug/replug while display stays on within one watcher process.
+    script(base / "fake/sleep", f'''
+if [ -f "{device}/idVendor" ]; then
+    rm "{device}/idVendor" "{iface}/ifindex"
+else
+    echo 2357 > "{device}/idVendor"
+    echo 9 > "{iface}/ifindex"
+fi
+''')
+    env["HMG_SEOGAEMO_WATCH_MAX_POLLS"] = "3"
+    assert poll() == 10
+    env["HMG_SEOGAEMO_WATCH_MAX_POLLS"] = "1"
+    # Failed event remains pending with an unchanged signature across restart,
+    # desired-off and stock-pause periods. No success receipt until actual success.
+    fail = state / "fail-watch"
+    fail.touch()
+    (device / "devnum").write_text("4\n")
+    assert poll() == 11
+    pending = state / "watch/usb.adapter"
+    retry = state / "watch/retry.adapter.usb_change"
+    assert pending.read_text() == "usb-boot"
+    reserved = retry.read_text()
+    assert poll(104) == 11 and retry.read_text() == reserved
+    desired.write_text("off")
+    assert poll(105) == 11 and retry.read_text() == reserved and pending.exists()
+    desired.write_text("on")
+    paused = state / "stock/paused"
+    paused.touch()
+    assert poll(105) == 11 and retry.read_text() == reserved and pending.exists()
+    paused.unlink()
+    fail.unlink()
+    assert poll(105) == 12
+    assert not pending.exists() and not retry.exists()
+    assert poll(999) == 12
+    # Each signature's six-attempt limit survives watcher restarts. New identity
+    # or kernel boot resets its budget; successful same-boot restart stays quiet.
+    fail.touch()
+    (device / "devnum").write_text("5\n")
+    for clock, count in ((1000, 13), (1004, 13), (1005, 14), (1015, 15),
+                         (1035, 16), (1075, 17), (1135, 18), (9999, 18)):
+        assert poll(clock) == count
+        assert pending.exists()
+    (device / "devnum").write_text("6\n")
+    assert poll(10000) == 19
+    assert retry.read_text().split()[1] == "1"
+    boot.write_text("usb-next-boot\n")
+    assert poll(10) == 20
+    assert retry.read_text().split() == ["usb-next-boot", "1", "15"]
+    fail.unlink()
+    assert poll(15) == 21
+    assert poll(20) == 21
+    assert calls.read_text().splitlines() == ["adapter watch usb_change"] * 21
 
 
 def test_reconcile_does_not_watch(temp):
@@ -2247,6 +2385,7 @@ run_tests([
     test_service_call_api,
     test_reconcile,
     test_watch_dispatch,
+    test_usb_watch_dispatch,
     test_reconcile_does_not_watch,
     test_noglob_and_changes_dedup,
     test_lint,
