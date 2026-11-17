@@ -95,13 +95,14 @@ public final class MainActivity extends Activity {
     private enum Tab { FEATURES, CAR, SETTINGS }
 
     private static final int CATEGORY_UPDATE = 0;
-    private static final int CATEGORY_LANGUAGE = 1;
-    private static final int CATEGORY_SUPPORT = 2;
-    private static final int CATEGORY_DEVELOPER = 3;
-    private static final int CATEGORY_RESET = 4;
-    private static final int[] CATEGORIES = {R.string.settings_update, R.string.language, R.string.settings_support,
+    private static final int CATEGORY_WIFI = 1;
+    private static final int CATEGORY_LANGUAGE = 2;
+    private static final int CATEGORY_SUPPORT = 3;
+    private static final int CATEGORY_DEVELOPER = 4;
+    private static final int CATEGORY_RESET = 5;
+    private static final int[] CATEGORIES = {R.string.settings_update, R.string.settings_wifi, R.string.language, R.string.settings_support,
         R.string.settings_developer, R.string.settings_reset};
-    private static final String[] CATEGORY_ICONS = {"download", "globe", "help", "code", "undo"};
+    private static final String[] CATEGORY_ICONS = {"download", "wifi", "globe", "help", "code", "undo"};
     private static final int SETTLE_ATTEMPTS = 6;
     private static final long SETTLE_DELAY_MS = 2000L;
 
@@ -775,6 +776,8 @@ public final class MainActivity extends Activity {
     private void openWifiSettings() {
         try { startActivity(new Intent("android.settings.WIFI_SETTINGS")); }
         catch (ActivityNotFoundException missing) {
+            Toast.makeText(this, R.string.screen_unavailable, Toast.LENGTH_SHORT).show();
+        } catch (SecurityException denied) {
             Toast.makeText(this, R.string.screen_unavailable, Toast.LENGTH_SHORT).show();
         }
     }
@@ -2491,10 +2494,21 @@ public final class MainActivity extends Activity {
         scroll.addView(pane);
         content.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         if (category == CATEGORY_UPDATE) showUpdate(pane);
+        else if (category == CATEGORY_WIFI) showWifiSettings(pane);
         else if (category == CATEGORY_LANGUAGE) showLanguage(pane);
         else if (category == CATEGORY_SUPPORT) showSupport(pane);
         else if (category == CATEGORY_DEVELOPER) showDeveloper(pane);
         else showStock(pane);
+    }
+
+    private void showWifiSettings(LinearLayout content) {
+        OptionsList rows = new OptionsList(this);
+        rows.setPadding(dp(SettingsUi.PAGE), 0, dp(SettingsUi.PAGE), 0);
+        rows.addInfo(getString(R.string.settings_wifi_hint));
+        rows.addLink(getString(R.string.option_open_wifi_settings), new View.OnClickListener() {
+            public void onClick(View view) { openWifiSettings(); }
+        });
+        content.addView(rows, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private void showLanguage(LinearLayout content) {
