@@ -1,6 +1,6 @@
 Status: current — core mapping implemented off-car; on-car timing/reflection for the v1.0.1 and stock-guidance additions unverified; CN7/CN7N bundles host-mapped only.
 
-# Car mapping: NEEV.KOR.260902, CN7.KOR.260902, CN7N.KOR.260319
+# Car mapping on Korean Gen5W firmware
 
 The private Car Report is never committed. Operator workflow:
 `docs/mapping-new-firmware.md`; provenance and stable IDs: `UPSTREAM.md`; AGENTS.md has the mapping summary.
@@ -90,3 +90,11 @@ The verification seal carries a map/car/catalogue/required-manifest digest; old 
 ## Catalogue and mapper shape
 
 `core/hookpoints/*.json` defines stable IDs, app package, stock files, and per-point `kind`, owning class (`of`) and `find` shape (package/class name, superclass, constructor signatures, field/method names and types, static flags, parameter/return types, code string constants). Named regex patterns capture obfuscated names from smali call patterns; `@point` references depend on earlier resolution (`core/hookpoints/README.md`). Zero or multiple candidates leave a point missing (`--strict` fails). The on-unit mapper parses dex in `.odex`/`.jar` directly (no baksmali) and cannot evaluate smali-only regex/`code` rules; the host mapper uses baksmali. Equal point names across cars do not prove binary compatibility. Host mapping uses hundreds of MB of temp smali and is unsuitable for the head unit.
+
+## Grandeur IG PE Hybrid KOR 260902
+
+The [IGPEHEV bundle](../maps/hyundai/igpehev/kor/260902/README.md) resolves all
+350 catalogue points. The November 19 device export retained 348 after reflection.
+Two ambiguous methods were recovered from the CN7 host scan using matching
+stock ODEX hashes and owner classes. On-device reflection of these two methods
+and physical feature testing are pending.
