@@ -118,11 +118,12 @@ class Unit:
 def test_check_without_wifi_chip(folder):
     unit = Unit(folder)
     unit.dmesg.write_text('<4>[   48.5] failed to power up DHD generic adapter, 3 retry left\n'
-                          '<4>[   56.8] failed to power up DHD generic adapter, 0 retry left\n')
+                          '<4>[   56.8] failed to power up DHD generic adapter, 0 retry left\n'
+                          '<4>[   56.9] failed to power up DHD generic adapter, max retry reached**\n')
     checks, verdict = unit.checks()
     assert verdict == 'block', verdict
     assert checks['wifi_hw'][0] == 'block' and checks['wifi_hw'][1] == 'observed', checks['wifi_hw']
-    assert '2 failed power-up tries' in checks['wifi_hw'][2]
+    assert 'the driver gave up 1 times' in checks['wifi_hw'][2]
     assert checks['firmware'][0] == 'ok' and checks['android'][0] == 'ok' and checks['onebin'][0] == 'ok'
     assert checks['module_demo'][0] == 'ok' and checks['boot'][0] == 'ok'
     assert checks['conflict_hmgapi'][0] == 'ok' and checks['adb_tcp'][0] == 'ok'
@@ -193,6 +194,7 @@ def test_enable_records_and_redacts(folder):
         f'<4>[   20.0] wlan0: addr {MAC}\n'
         '<4>[   48.5] dhd_module_init in\n'
         '<4>[   50.5] failed to power up DHD generic adapter, 3 retry left\n'
+        '<4>[   50.9] failed to power up DHD generic adapter, max retry reached**\n'
         '<4>[   51.0] connected to network ssid=HomeNetwork\n')
     try:
         code, out, err = unit.run('recorder', 'enable')

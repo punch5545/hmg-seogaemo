@@ -420,6 +420,11 @@ run precheck; assert_state off
 # Driver and firmware without the chip: every bcmdhd power-up fails, so the radio is absent, the
 # unset built-in role defaults to off and an explicit client role is refused.
 rm "$data/settings/wifi/builtin_role" "$data/settings/wifi/usb_role"
+# A chip that only missed the driver's wait once is present: "N retry left" alone proves nothing.
+: > "$work/props/persist.wifi.state"
+sg_print '<4>[  113.972621] failed to power up DHD generic adapter, 3 retry left' > "$work/dmesg"
+run status; assert_state off; assert_line info.builtin_present=1; assert_line info.builtin_role=client
+sg_print "3" > "$work/props/persist.wifi.state"
 sg_print '<4>[  130.388800] failed to power up DHD generic adapter, max retry reached**' > "$work/dmesg"
 run status; assert_state off; assert_line info.builtin_present=0; assert_line info.builtin_role=off
 run precheck; assert_state off

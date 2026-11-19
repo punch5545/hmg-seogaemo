@@ -67,7 +67,7 @@ switch, other packages (one catalogue:
 as a constraint), **Wi-Fi hardware**, Wi-Fi driver state,
 five native library hashes (against the `native <md5>` lines of the wireless recipes), and each module's own
 `precheck`. Wi-Fi hardware is `ok` only when a device is on the SDIO or `mmc1` bus; `block` (observed) when the
-kernel log shows failed power-up tries; otherwise a guess (`warn` with an empty factory Wi-Fi address,
+kernel log shows that the driver gave up (`max retry reached`; single `N retry left` lines are not evidence); otherwise a guess (`warn` with an empty factory Wi-Fi address,
 `unknown` without). The first Ioniq 5 report with no Wi-Fi chip is the reference case: powered radio, no SDIO
 device, `failed to power up DHD generic adapter`, empty `androidboot.wifimac`.
 

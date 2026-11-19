@@ -58,11 +58,13 @@ wifi_capable() {
         ! builtin_missing
 }
 # Some cars ship the Broadcom driver and firmware without the chip (a tester's NEEV KOR car,
-# 2026-11-07): nothing answers on SDIO and bcmdhd logs failed power-ups, the same evidence as the
-# preflight wifi_hw check. Kernel log only, so the hint is lost once the log rotates.
+# 2026-11-07): nothing answers on SDIO and bcmdhd gives up powering it, the same evidence as the
+# preflight wifi_hw check. Only the driver's final line counts: "N retry left" is also logged when
+# a present chip misses the driver's two-second wait and answers on a later try. Kernel log only,
+# so the hint is lost once the log rotates.
 builtin_missing() {
     for bm_dev in "${SG_SDIO_DIR:-/sys/bus/sdio/devices}"/*; do [ ! -e "$bm_dev" ] || return 1; done
-    dmesg 2>/dev/null | grep -Fq 'failed to power up DHD generic adapter'
+    dmesg 2>/dev/null | grep -Fq 'failed to power up DHD generic adapter, max retry reached'
 }
 # The app hides the built-in role without the radio, so the unset default must not be the client.
 if wifi_capable; then builtin_role=$(role builtin_role client); else builtin_role=$(role builtin_role off); fi

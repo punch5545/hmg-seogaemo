@@ -50,12 +50,13 @@ EOF
 pf_wifi_hardware() {
     pf_sdio=$(pf_count_entries "${SG_SDIO_DIR:-/sys/bus/sdio/devices}" '*')
     pf_card=$(pf_count_entries "${SG_MMC_DIR:-/sys/bus/mmc/devices}" 'mmc1:*')
-    pf_fail=$(pf_dmesg_count 'failed to power up DHD generic adapter')
+    # The driver's final line only: "N retry left" also appears when a present chip answers on a later try.
+    pf_fail=$(pf_dmesg_count 'failed to power up DHD generic adapter, max retry reached')
     pf_mac=$(pf_cmdline_word androidboot.wifimac) || pf_mac=
     if [ "$pf_sdio" -gt 0 ] || [ "$pf_card" -gt 0 ]; then
         pf_line wifi_hw ok observed 'A Wi-Fi chip answers on the SDIO bus'
     elif [ "$pf_fail" -gt 0 ]; then
-        pf_line wifi_hw block observed "The radio was powered but nothing answered on the SDIO bus ($pf_fail failed power-up tries in the kernel log); wireless CarPlay cannot work on this unit"
+        pf_line wifi_hw block observed "The radio was powered but nothing answered on the SDIO bus (the driver gave up $pf_fail times in the kernel log); wireless CarPlay cannot work on this unit"
     elif [ -z "$pf_mac" ]; then
         pf_line wifi_hw warn inferred 'No Wi-Fi chip seen yet and the factory Wi-Fi address is empty; turn Wi-Fi on once, then check again'
     else
@@ -81,7 +82,7 @@ pf_wifi_radios() {
     if [ "$(getprop tcc.wifi.vendor)" = broadcom ] && [ -s "$pf_root/system/wifi/bcmdhd.ko" ] &&
             [ -s "$pf_root/system/wifi/fw_bcmdhd.bin" ] &&
             { [ "$(pf_count_entries "${SG_SDIO_DIR:-/sys/bus/sdio/devices}" '*')" -gt 0 ] ||
-                [ "$(pf_dmesg_count 'failed to power up DHD generic adapter')" -eq 0 ]; }; then
+                [ "$(pf_dmesg_count 'failed to power up DHD generic adapter, max retry reached')" -eq 0 ]; }; then
         pf_line wifi_builtin ok observed 'Built-in Wi-Fi present (Broadcom)'
     else
         pf_line wifi_builtin warn observed 'No built-in Wi-Fi; Wi-Fi needs a USB adapter'

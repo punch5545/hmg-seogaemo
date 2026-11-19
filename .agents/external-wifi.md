@@ -33,7 +33,12 @@ Tester car (2026-11-07 problem report, 0.1.36, tcc803x): the adapter was `0bda:b
 Adapter" (then unsupported). The car has `bcmdhd.ko`/firmware and `tcc.wifi.vendor=broadcom` but
 no chip: every bcmdhd power-up logs `failed to power up DHD generic adapter` and nothing appears on
 SDIO. `wifi` and the Car tab radio check now read that (the preflight `wifi_hw` evidence) as "no
-built-in radio", and `wifi` defaults the built-in role to off there.
+built-in radio", and `wifi` defaults the built-in role to off there. Only the driver's final line
+`failed to power up DHD generic adapter, max retry reached` counts (also seen on a K8 Hybrid, issue #11):
+`N retry left` alone is logged whenever a chip misses bcmdhd's two-second wait and answers on a later
+try, which made a present radio look absent while Wi-Fi was off and refused the built-in client role
+as incompatible (reported on cars set up with a third-party Wi-Fi patch, where Android powers the chip
+during boot).
 It also read `persist.wifi.state=3` after a Car tab cleanup and restart although
 `/data/property/persist.wifi.state` was absent before the cleanup, so the value comes from boot
 files or another package's init; the problem report now lists `persist.wifi` lines from
