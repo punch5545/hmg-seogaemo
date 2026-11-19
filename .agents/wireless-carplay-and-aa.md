@@ -15,6 +15,9 @@ Hotspot: the module starts one only through DiPO's `setWifiApEnabledForConnectiv
 or nothing (phone gets the normal hotspot's credentials, AA sees mode 2, the normal hotspot is started 10 s after an
 unanswered request). Rules: contract "Peer info"; details and open car checks: [external-wifi.md](external-wifi.md).
 
+The host `test/stockhotspot` waits for the scheduled worker to terminate between scenarios. Its log callback runs
+before the `finally` block clears `pending`; receiving the log alone does not mean another check can be scheduled.
+
 Target: Hyundai Ioniq 5 KOR, `ro.build.product=NEEV.KOR.0000.V039.001.260902`, onebin `neev_kr` (`ro.mobis.onebindir`), Android 4.4.2. Owner confirms HMG-API 1.0.0-beta.5 with its mapping and wireless mod worked on this car (hotspot and wireless CarPlay). The pre-install Car Report at `tmp/car-reports/car-report-neev-kor-260902-20261102-2115.json` has 324 mapped points, 12 by reference, one unrelated ThemeSettings point missing. Its `map.status=none` and `wifi_chip=false` are pre-install observations, not a negation of the owner's working test.
 
 ## Dependencies and port choice
@@ -349,6 +352,35 @@ settings turns it off. Behaviour reference: StopDragon/korea-projection 1.7.1 (A
 
 Status: offline-built and host-tested only; unverified on the car (checklist in `backlog.md`).
 
+## Wireless CarPlay call state (steering-wheel CALL)
+
+Status: implemented, off-car tested only (`test/callstate`, `test/callkey`); needs the on-car check in `backlog.md`.
+
+- **Cause (stock NEEV KOR code, car log 2026-11-10).** `HKMC_DiPO` `e/b.e(int)` (setStartiAP2Service)
+  starts `Iap2SvcNowPlayingStart`, `Iap2SvcTelephonyStartCallState` and `Iap2SvcTelephonyStartUpdates`
+  only when the transport is not Wireless (log `setStartiAP2Service transportType[1]` on the bridge).
+  DiPO's caller list stayed empty while ringing and in a call (`getCallerList().size() : 0`,
+  `CallerList getDirection() uuid is null`). The CALL key still reached DiPO
+  (`ModeKeyDispatcher` → `DipoService.onKeyForService` → `performPhoneKey` → `performTelephony HookSwitch`
+  press/release) on every press; answer and hang up worked, and an idle press did nothing on the iPhone.
+  The `USE_SWRC_CUSTOM_KEY=true` CALL policy depends on that caller state.
+- **Behavior now.** After the CarPlay-channel session's identification is accepted, the bridge
+  starts both telephony subscriptions itself (`CallState`, `Bridge.startCallState`): once per
+  session, 500 ms after the identification, each subscription tracked separately, up to 3 tries,
+  stale tries of an earlier session ignored. DiPO's own listener parses the notifications as on USB.
+  The result is in the module log (`CarPlay call state: ...`).
+- **CALL with no call (car log 2026-11-10).** DiPO sends HookSwitch press/release in every state and
+  the iPhone ignores it with no call, also after the call-state subscription. The stock Phone app opens
+  CarPlay's Phone app another way: ModeManager starts `DipoActivity` with int extra `CarPlayMode=2`,
+  `DipoService.updateDisplay(2)` → `displayPhone()` → `requestUI("mobilephone:")`. The bridge hooks the
+  optional point `dipo.carplay.telephony` (`CarPlayService.onTelephony`) and, on a wireless HookSwitch
+  release while `DiPOManager` stat is 1 and `DiPOMode` phone call and speech are 0 (phone call is 1 from
+  ringing to hang-up), starts that same activity intent (`CallKey`). HookSwitch still goes to the phone.
+  Each release is logged (`CarPlay CALL key: ...`). Point unmapped or failed: the key stays stock.
+- **Open.** On-car: the subscription log line, the Phone app opening with no call, answer/hang-up
+  unchanged, and whether the earlier intermittent "CALL does not answer" recurs. NowPlaying is skipped
+  on wireless the same way and is not started here.
+
 ## CarPlay turn-by-turn: lane fix, fallback icons, developer toggle
 
 - **Stock-format guidance (always on with TBT).** Inside the approach window (300 m ordinary
@@ -505,7 +537,10 @@ no desired state changes, and the owner resolves it (for example by restoring st
 the saved copy) before retrying. The wireless module declares the product-scoped
 `stock_file.1=NEEV.KOR.*.260902:/system/bin/app_process:33f798115689d1859e8d2159dc88e7dc`
 (installed as the same `known_stock.1`; `cars=*`)
-(the stock build seen on the Ioniq 5 KOR car before and after HMG-API/this module).
+(the stock build seen on the Ioniq 5 KOR car before and after HMG-API/this module) and
+`stock_file.2=CN7.KOR.*.260902:/system/bin/app_process:<same MD5>` (the same build, read from the
+contributor's decrypted CN7 `260902` firmware image on 2026-11-09, not yet seen on a car). CN7N `260319` has
+no declaration yet, so the guard makes no MD5 judgment there.
 The apply-path orphaned-backup check remains.
 
 ### Runtime results and diagnostics

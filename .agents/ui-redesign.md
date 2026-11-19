@@ -32,7 +32,7 @@ Header: logo, title `HMG Seogaemo` (owner choice, 2026-11-05), tabs **모듈 · 
 | 4 | Confirm | any state change; shows what changes, in order, as icons |
 | 5 | Progress | after confirm; step checks and a bar |
 | 6 | Car | second tab: car, firmware, NEMESIS, compatibility count, `다시 검사` |
-| 7 | Settings | third tab: sidebar 소프트웨어 업데이트 · 언어 · 지원 · 개발자 옵션 · 초기화 |
+| 7 | Settings | third tab: sidebar 소프트웨어 업데이트 · Wi-Fi · 언어 · 지원 · 개발자 옵션 · 초기화 |
 | 8 | Reset | 순정으로 복원, HMG-Seogaemo 제거 (error-colour buttons) |
 
 A restart bar (`재시작 후 적용됩니다` · 나중에 · 지금 재시작) appears above the cards only
@@ -85,7 +85,7 @@ built-in `SettingsPage` items), and `ConfirmDialog.showView` for caller-built bo
 names the card icon of a built-in module. `HomeView` is gone; `HomeTile` stays in the contract unused.
 
 `MainActivity` screens: `showFeatures` (sort on entry only; `loadFeatures(false)` updates cards in
-place), `showDetail`, `showAdd`, `showCar`, `showSettings` (categories update, language, support,
+place), `showDetail`, `showAdd`, `showCar`, `showSettings` (categories update, Wi-Fi, language, support,
 developer, reset = `showStock`). Card state mapping is `entry(Feature)`: `on`, `off`, `pending-restart`
 = 재시작 필요 (no spinner) with the restart bar, `off` while an excluding module is on = 사용 불가 with `<name> 사용 중`,
 root-reported conflict/incompatible/not-implemented = 사용 불가 with the reason, root unreachable
@@ -107,3 +107,8 @@ no confirm because it changes no stock state) and lists that directory with the 
 version read from each package, plus removed bundled modules (`module list-removed`, installed again with
 `module add-bundled` after the usual confirm); install and remove show `StepProgressDialog` and a result dialog.
 Screenshots use the android-21 arm64 AVD `hmg_1920x720`, the only image on the build machine.
+
+2026-11-16: Settings adds a Wi-Fi pane linking to the existing stock Wi-Fi
+intent. This is navigation only; changing a network occurs in the stock screen.
+Missing or restricted activities show the existing screen-unavailable message.
+API19/Java7 local build passed; new APK installation remains pending.

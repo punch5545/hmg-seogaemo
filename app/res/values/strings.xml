@@ -282,4 +282,6 @@
     <string name="wifi_network_open">No password</string>
     <string name="wifi_next">Next</string>
     <string name="wifi_connect">Connect</string>
+    <string name="settings_wifi">Wi-Fi</string>
+    <string name="settings_wifi_hint">Choose a Wi-Fi network in the head unit settings.</string>
 </resources>

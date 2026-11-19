@@ -1,0 +1,88 @@
+package hmgapi.mods.wireless.dipo;
+// HMG-Seogaemo: phone call state for wireless CarPlay; see .agents/wireless-carplay-and-aa.md.
+
+/**
+ * Call state on wireless CarPlay. DiPO subscribes to the phone's iAP2 call state
+ * (Iap2SvcTelephonyStartCallState) and call updates (Iap2SvcTelephonyStartUpdates) only
+ * for a wired session: setStartiAP2Service skips both when the transport is Wireless. Its
+ * caller list then stays empty, so the steering-wheel CALL policy, the call OSD and the
+ * split screen run without the phone's call state.
+ *
+ * The bridge subscribes both itself, once per CarPlay-channel session, after that
+ * session's identification is accepted. The server sends the notifications to DiPO's
+ * own listener, which parses them as on USB. Each subscription is tracked on its own;
+ * a refused or failed one is retried, and a retry from an earlier session does nothing.
+ * No stop: the subscriptions end with the server's session.
+ *
+ * The state is kept apart from Bridge so the host test needs no Android.
+ */
+final class CallState {
+    /** iAP2 notification: identification accepted (Bridge.NOTI_IDENTIFICATION_ACCEPTED) */
+    static final int IDENTIFICATION_ACCEPTED = 0;
+    /** after the identification: the session's own start messages go first */
+    static final long DELAY_MS = 500;
+    static final int TRIES = 3;
+    static final String[] NAMES = { "call state", "call updates" };
+
+    interface Server {
+        /** subscription i (0 call state, 1 call updates); false when the server has no session yet */
+        boolean start(int i) throws Exception;
+    }
+
+    private final boolean[] done = new boolean[NAMES.length];
+    private boolean due;
+    private int session;
+
+    /** True once per channel session, on its identification: subscribe now. */
+    synchronized boolean identified(boolean cpClient, int what) {
+        if (!cpClient || what != IDENTIFICATION_ACCEPTED || due) return false;
+        due = true;
+        return true;
+    }
+
+    /** the channel session ended or a new one starts */
+    synchronized void reset() {
+        due = false;
+        for (int i = 0; i < done.length; i++) done[i] = false;
+        session++;
+    }
+
+    synchronized int session() {
+        return session;
+    }
+
+    /**
+     * One try of every subscription still open. Returns the log line, null to try again
+     * (something left and tries left), or "" for a stale try (the session changed).
+     */
+    String attempt(int s, int tryNo, boolean cpClient, Server server) {
+        if (!cpClient) return "";
+        StringBuilder log = new StringBuilder();
+        boolean left = false;
+        for (int i = 0; i < NAMES.length; i++) {
+            synchronized (this) {
+                if (s != session || !due) return "";
+                if (done[i]) continue;
+            }
+            String why;
+            try {
+                why = server.start(i) ? null : "refused";
+            } catch (Throwable t) {
+                why = "failed: " + t;
+            }
+            synchronized (this) {
+                if (s != session) return "";
+                if (why == null) done[i] = true;
+            }
+            if (log.length() > 0) log.append(", ");
+            log.append(NAMES[i]).append(why == null ? " started" : " " + why);
+            if (why != null) left = true;
+        }
+        if (left && tryNo < TRIES) return null;
+        synchronized (this) {
+            // given up: the session's next identification may subscribe again
+            if (left && s == session) due = false;
+        }
+        return "CarPlay call state: " + log + " (try " + tryNo + ")";
+    }
+}

@@ -1,6 +1,6 @@
-Status: current — core mapping implemented off-car; on-car timing/reflection for the v1.0.1, stock-guidance and CarPlay owner additions unverified.
+Status: current — core mapping implemented off-car; on-car timing/reflection for the v1.0.1, stock-guidance and CarPlay owner additions unverified; CN7/CN7N bundles host-mapped only.
 
-# Car mapping: NEEV.KOR.260902
+# Car mapping on Korean Gen5W firmware
 
 The private Car Report is never committed. Operator workflow:
 `docs/mapping-new-firmware.md`; provenance and stable IDs: `UPSTREAM.md`; AGENTS.md has the mapping summary.
@@ -36,8 +36,8 @@ The private Car Report is never committed. Operator workflow:
 - 6 iAP2 points in `/system/app/Iap2ServerApp.odex` (`a672fd0e0070414f2eb70a2807117a6f`); 12 framework points in
   `/system/framework/automotive.odex` (`c76b8209ef171739b177eb14e8df61dd`). Per-ID signatures in the bundled `evidence.json`.
   Keep the stock `iAP2UsedVehicelInformation` spelling. No module requires a new ID.
-- Bundle maps 356/357; `themesettings.split_item.type` stays missing. Only the original 324 points have owner-reported
-  on-car reflection (324/324, 2026-11-03); the 32 additions need it. The sidecar and generated `docs/hookpoints.md` distinguish these claims; the host validator checks
+- Bundle maps 357/358; `themesettings.split_item.type` stays missing. Only the original 324 points have owner-reported
+  on-car reflection (324/324, 2026-11-03); the 33 additions need it. The sidecar and generated `docs/hookpoints.md` distinguish these claims; the host validator checks
   consistency and optional exact-stock MD5s, not that a physical observation happened.
 
 ## Stock-guidance additions (2026-11-07)
@@ -61,6 +61,28 @@ a failed reflection turns off only the approach bar or the junction view, never 
 The six additions still need on-car reflection; physical view observations in
 cluster-ar-view.md and hud-junction-view.md do not establish that verification.
 
+## CarPlay telephony key (2026-11-10)
+
+`dipo.carplay.telephony` is `CarPlayService.onTelephony(CarPlayTelephony, boolean)` returning `CarPlayReturn`
+(readable telechips names; `HKMC_DiPO.smali` `telechips/CarPlayService.smali:7874`). Our host scanner resolves it
+uniquely in the KOR dump (`HKMC_DiPO.odex` `3b26cdcbf3c43f75623311f2bdfc3471`, unchanged in `car.json`).
+`wireless-carplay-and-aa` uses it as an optional point (CALL key with no call opens the Phone app); a missing or
+failed point leaves the key stock. On-car reflection is pending.
+
+## Avante CN7 KOR 260902 and Avante N CN7N KOR 260319 (2026-11-09)
+
+- Two further bundles, `maps/hyundai/cn7/kor/260902` and `maps/hyundai/cn7n/kor/260319`, were produced
+  with our host mapper (`tools/map-car.py`, baksmali 2.5.2) by a contributor who owns the stock files:
+  CN7 from a read-only dump of the official `260902` system image (product reported by the unit
+  `CN7.KOR.0000.V039.001.260902`, onebin `cn7_kr`, tcc897x), CN7N from files collected read-only on the
+  car (`CN7N.KOR.0000.V037.001.260319`, onebin `cn7n_kr`, tcc803x). Both resolve 349/349, including
+  `themesettings.split_item.type`. The contributor's HMG-API host maps of the same files agree on all
+  325 shared IDs; 347 (CN7) and 339 (CN7N) entries equal the Ioniq 5 KOR names.
+- Evidence sidecars record one `kor-stock-dex-scan` observation per bundle and no reflection; the
+  README of each bundle lists the per-firmware facts (CN7 `featurexml.cfg` has none of the three
+  wireless lines, CN7N has all three; CN7 stock `app_process` MD5 `33f79811…` equals NEEV KOR and is
+  declared as `stock_file.2`). Nothing is car-verified; see the backlog item.
+
 ## Verification seal
 
 The verification seal carries a map/car/catalogue/required-manifest digest; old three-line seals and changed inputs report off until reverified, including same-boot OTA reconciliation (so a same-boot update cannot reuse a stale seal). Normative format, zygote gate and map-ID rules: [module-runtime-contract.md](module-runtime-contract.md), "Core car mapping". On-car validation of the seal is still open.
@@ -68,3 +90,11 @@ The verification seal carries a map/car/catalogue/required-manifest digest; old 
 ## Catalogue and mapper shape
 
 `core/hookpoints/*.json` defines stable IDs, app package, stock files, and per-point `kind`, owning class (`of`) and `find` shape (package/class name, superclass, constructor signatures, field/method names and types, static flags, parameter/return types, code string constants). Named regex patterns capture obfuscated names from smali call patterns; `@point` references depend on earlier resolution (`core/hookpoints/README.md`). Zero or multiple candidates leave a point missing (`--strict` fails). The on-unit mapper parses dex in `.odex`/`.jar` directly (no baksmali) and cannot evaluate smali-only regex/`code` rules; the host mapper uses baksmali. Equal point names across cars do not prove binary compatibility. Host mapping uses hundreds of MB of temp smali and is unsuitable for the head unit.
+
+## Grandeur IG PE Hybrid KOR 260902
+
+The [IGPEHEV bundle](../maps/hyundai/igpehev/kor/260902/README.md) resolves all
+350 catalogue points. The November 19 device export retained 348 after reflection.
+Two ambiguous methods were recovered from the CN7 host scan using matching
+stock ODEX hashes and owner classes. On-device reflection of these two methods
+and physical feature testing are pending.

@@ -183,94 +183,6 @@
       {
         "date": "2026-11-07",
         "points": {
-          "framework.navigation_cluster.update_clu_data_new_14": {
-            "class": "com.hkmc.cluster.NavigationCluster",
-            "member": {
-              "method": "updateCluDataNew_14",
-              "params": [
-                "int",
-                "int",
-                "int",
-                "int",
-                "int"
-              ],
-              "ret": "void",
-              "static": false
-            },
-            "stock_file": "/system/framework/automotive.odex"
-          },
-          "framework.navigation_cluster.update_tbt_trap_info": {
-            "class": "com.hkmc.cluster.NavigationCluster",
-            "member": {
-              "method": "updateTBTTrapInfo",
-              "params": [
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int",
-                "int"
-              ],
-              "ret": "void",
-              "static": false
-            },
-            "stock_file": "/system/framework/automotive.odex"
-          },
-          "framework.navigation_cluster.update_tbt_trap_info_new": {
-            "class": "com.hkmc.cluster.NavigationCluster",
-            "member": {
-              "method": "updateTBTTrapInfoNew",
-              "params": [
-                "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo"
-              ],
-              "ret": "void",
-              "static": false
-            },
-            "stock_file": "/system/framework/automotive.odex"
-          },
-          "framework.tbt_trap_info": {
-            "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo",
-            "member": {
-              "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo"
-            },
-            "stock_file": "/system/framework/automotive.odex"
-          },
-          "framework.tbt_trap_info.bar_graph_level": {
-            "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo",
-            "member": {
-              "field": "barGraphLevel",
-              "static": false,
-              "type": "int"
-            },
-            "stock_file": "/system/framework/automotive.odex"
-          },
-          "framework.tbt_trap_info.new": {
-            "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo",
-            "member": {
-              "ctor": []
-            },
-            "stock_file": "/system/framework/automotive.odex"
-          }
-        },
-        "source": "kor-stock-dex-scan",
-        "stock_files": {
-          "/system/framework/automotive.odex": "c76b8209ef171739b177eb14e8df61dd"
-        }
-      },
-      {
-        "date": "2026-11-07",
-        "points": {
           "btsettings.pp_bt": {
             "class": "com.android.settings2.bluetooth.aW",
             "member": {
@@ -365,9 +277,119 @@
           "/system/app/HKMC_BtSettings.odex": "dc56bcfe68ceb54371ce7e08c1153cad",
           "/system/app/HKMC_DiPO.odex": "3b26cdcbf3c43f75623311f2bdfc3471"
         }
+      },
+      {
+        "date": "2026-11-07",
+        "points": {
+          "framework.navigation_cluster.update_clu_data_new_14": {
+            "class": "com.hkmc.cluster.NavigationCluster",
+            "member": {
+              "method": "updateCluDataNew_14",
+              "params": [
+                "int",
+                "int",
+                "int",
+                "int",
+                "int"
+              ],
+              "ret": "void",
+              "static": false
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          },
+          "framework.navigation_cluster.update_tbt_trap_info": {
+            "class": "com.hkmc.cluster.NavigationCluster",
+            "member": {
+              "method": "updateTBTTrapInfo",
+              "params": [
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int",
+                "int"
+              ],
+              "ret": "void",
+              "static": false
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          },
+          "framework.navigation_cluster.update_tbt_trap_info_new": {
+            "class": "com.hkmc.cluster.NavigationCluster",
+            "member": {
+              "method": "updateTBTTrapInfoNew",
+              "params": [
+                "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo"
+              ],
+              "ret": "void",
+              "static": false
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          },
+          "framework.tbt_trap_info": {
+            "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo",
+            "member": {
+              "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo"
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          },
+          "framework.tbt_trap_info.bar_graph_level": {
+            "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo",
+            "member": {
+              "field": "barGraphLevel",
+              "static": false,
+              "type": "int"
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          },
+          "framework.tbt_trap_info.new": {
+            "class": "com.hkmc.cluster.NavigationCluster$NaviTbtTrapInfo",
+            "member": {
+              "ctor": []
+            },
+            "stock_file": "/system/framework/automotive.odex"
+          }
+        },
+        "source": "kor-stock-dex-scan",
+        "stock_files": {
+          "/system/framework/automotive.odex": "c76b8209ef171739b177eb14e8df61dd"
+        }
+      },
+      {
+        "date": "2026-11-10",
+        "points": {
+          "dipo.carplay.telephony": {
+            "class": "com.daudio.app.dipo.telechips.CarPlayService",
+            "member": {
+              "method": "onTelephony",
+              "params": [
+                "com.daudio.app.dipo.telechips.CarPlayTelephony",
+                "boolean"
+              ],
+              "ret": "com.daudio.app.dipo.telechips.CarPlayReturn",
+              "static": false
+            },
+            "stock_file": "/system/app/HKMC_DiPO.odex"
+          }
+        },
+        "source": "kor-stock-dex-scan",
+        "stock_files": {
+          "/system/app/HKMC_DiPO.odex": "3b26cdcbf3c43f75623311f2bdfc3471"
+        }
       }
     ],
-    "points_sha256": "c425aeabc90bced79a57ad6b487f22a94ca285ef12fc658555673f8d4c927648"
+    "points_sha256": "843fa7700051f40c4bde667cd3ddf8988cd15a17af24429cbc77877d669c83de"
   },
   "physical_features": [
     {
