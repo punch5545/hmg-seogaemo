@@ -20,11 +20,20 @@ final class HmgSeogaemoMapScanner {
     final Map<String,String> files=new TreeMap<String,String>();
     final Map<String,Object> appFiles=new TreeMap<String,Object>();
     private final Map<String,String> resolvedClasses=new LinkedHashMap<String,String>();
-    private final Map<String,Set<String>> referenceNames=new LinkedHashMap<String,Set<String>>();
+    private final List<Reference> references=new ArrayList<Reference>();
     private final Map<String,HmgSeogaemoDexIndex.Type> bootClasses=new LinkedHashMap<String,HmgSeogaemoDexIndex.Type>();
-    private final String system;
-    HmgSeogaemoMapScanner(String system,File maps) throws Exception {
-        this.system=system;
+    private final String system, build;
+    private List<Object> groupPaths=Collections.emptyList();
+    /** One bundled map as a source of reference names. */
+    private static final class Reference {
+        final Map<String,String> names=new LinkedHashMap<String,String>();
+        final Map<String,Object> files=new LinkedHashMap<String,Object>();
+        String build="";
+    }
+    /** The firmware build shared by cars of one release: ro.build.product without its leading model token. */
+    static String buildOf(String product) { int dot=product==null?-1:product.indexOf('.'); return dot<0?"":product.substring(dot+1); }
+    HmgSeogaemoMapScanner(String system,File maps,String product) throws Exception {
+        this.system=system; this.build=buildOf(product);
         for(String name:BOOT) {
             File file=new File(system+"/framework/"+name+".odex");
             if(file.isFile()) bootClasses.putAll(HmgSeogaemoDexIndex.read(file));
@@ -32,14 +41,20 @@ final class HmgSeogaemoMapScanner {
         List<File> mapsFound=new ArrayList<File>(); collect(maps,mapsFound);
         for(File dir:mapsFound) {
             try {
+                Reference reference=new Reference();
                 @SuppressWarnings("unchecked") Map<String,Object> entries=(Map<String,Object>)HmgSeogaemoJsonIO.object(HmgSeogaemoMapFiles.read(new File(dir,"map.json"))).get("points");
                 for(Map.Entry<String,Object> entry:entries.entrySet()) {
                     @SuppressWarnings("unchecked") Map<String,Object> value=(Map<String,Object>)entry.getValue();
-                    for(String field:new String[]{"class","field","method"}) if(value.containsKey(field)) {
-                        Set<String> names=referenceNames.get(entry.getKey());
-                        if(names==null) {names=new LinkedHashSet<String>();referenceNames.put(entry.getKey(),names);}
-                        names.add(String.valueOf(value.get(field)));
-                    }
+                    for(String field:new String[]{"class","field","method"}) if(value.containsKey(field)) reference.names.put(entry.getKey(),String.valueOf(value.get(field)));
+                }
+                references.add(reference);
+                // Without a readable car.json the map still supplies names, at the lowest rank.
+                File carFile=new File(dir,"car.json");
+                if(carFile.isFile()) {
+                    Map<String,Object> car=HmgSeogaemoJsonIO.object(HmgSeogaemoMapFiles.read(carFile));
+                    reference.build=buildOf(car.get("product")==null?null:String.valueOf(car.get("product")));
+                    @SuppressWarnings("unchecked") Map<String,Object> hashes=(Map<String,Object>)car.get("files");
+                    if(hashes!=null) reference.files.putAll(hashes);
                 }
             } catch(Exception ignored) { }
         }
@@ -51,6 +66,26 @@ final class HmgSeogaemoMapScanner {
         for(File child:children) if(child.isDirectory()) collect(child,found);
     }
     private File stock(String path) { return new File(system+path.substring("/system".length())); }
+    /**
+     * Reference names of one point, nearest firmware first: bundles whose stock files of this group are
+     * byte-identical to the unit's, then bundles of the same firmware build, then every other bundle.
+     * Obfuscated names differ between builds, so a farther bundle is consulted only when no nearer
+     * one names a matching candidate.
+     */
+    private List<Set<String>> referenceTiers(String id) {
+        List<Set<String>> tiers=new ArrayList<Set<String>>();
+        for(int i=0;i<3;i++) tiers.add(new LinkedHashSet<String>());
+        for(Reference reference:references) {
+            String name=reference.names.get(id); if(name==null) continue;
+            boolean identical=!groupPaths.isEmpty();
+            for(Object path:groupPaths) {
+                String mine=files.get(String.valueOf(path));
+                if(mine==null||!mine.equals(reference.files.get(String.valueOf(path)))) identical=false;
+            }
+            tiers.get(identical?0:build.length()>0&&build.equals(reference.build)?1:2).add(name);
+        }
+        return tiers;
+    }
     @SuppressWarnings("unchecked")
     void scan(File catalogue) throws Exception {
         File[] groups=catalogue.listFiles(); if(groups==null) throw new IllegalStateException("catalogue missing");
@@ -71,6 +106,7 @@ final class HmgSeogaemoMapScanner {
                 if(spec.get("namespace")==null) for(String bootName:BOOT) if(path.equals("/system/framework/"+bootName+".odex")) inBoot=true;
                 if(!inBoot) classes.putAll(HmgSeogaemoDexIndex.read(file));
             }
+            groupPaths=paths;
             Map<String,Object> descriptions=(Map<String,Object>)spec.get("points");
             if(!available) { for(String id:descriptions.keySet()) missing.put(id,"stock file absent"); continue; }
             Map<String,Map<String,Object>> pending=new LinkedHashMap<String,Map<String,Object>>();
@@ -141,10 +177,15 @@ final class HmgSeogaemoMapScanner {
     private Map<String,Object> resolvePoint(String id,Map<String,Object> point,Map<String,HmgSeogaemoDexIndex.Type> classes) throws NeedsDependency {
         String kind=String.valueOf(point.get("type")); Map<String,Object> shape=(Map<String,Object>)point.get("match");
         boolean reference=shape.containsKey("smali_pattern")||shape.containsKey("smali_code")||shape.containsKey("sole_caller");
-        Set<String> names=referenceNames.get(id);
+        // A non-reference point has one pass over every candidate; a reference point stops at the
+        // nearest tier of names that matches anything, and more than one match there stays ambiguous.
+        List<Set<String>> tiers=reference?referenceTiers(id):Collections.<Set<String>>singletonList(null);
         if(kind.equals("class")) {
             List<String> hits=new ArrayList<String>();
-            for(HmgSeogaemoDexIndex.Type candidate:classes.values()) if((!reference||names!=null&&names.contains(candidate.name))&&clazz(candidate,shape)) hits.add(candidate.name);
+            for(Set<String> names:tiers) {
+                for(HmgSeogaemoDexIndex.Type candidate:classes.values()) if((names==null||names.contains(candidate.name))&&clazz(candidate,shape)) hits.add(candidate.name);
+                if(!hits.isEmpty()) break;
+            }
             if(hits.size()!=1) throw new IllegalStateException(hits.size()+" classes match");
             resolvedClasses.put(id,hits.get(0)); if(reference) byReference.add(id);
             return entry("class",hits.get(0));
@@ -159,8 +200,11 @@ final class HmgSeogaemoMapScanner {
             return entry("ctor",expected);
         }
         List<HmgSeogaemoDexIndex.Member> hits=new ArrayList<HmgSeogaemoDexIndex.Member>();
-        if(kind.equals("field")) for(HmgSeogaemoDexIndex.Member m:candidate.fields) if((!reference||names!=null&&names.contains(m.name))&&field(m,shape)) hits.add(m);
-        if(kind.equals("method")) for(HmgSeogaemoDexIndex.Member m:candidate.methods) if((!reference||names!=null&&names.contains(m.name))&&method(m,shape)) hits.add(m);
+        for(Set<String> names:tiers) {
+            if(kind.equals("field")) for(HmgSeogaemoDexIndex.Member m:candidate.fields) if((names==null||names.contains(m.name))&&field(m,shape)) hits.add(m);
+            if(kind.equals("method")) for(HmgSeogaemoDexIndex.Member m:candidate.methods) if((names==null||names.contains(m.name))&&method(m,shape)) hits.add(m);
+            if(!hits.isEmpty()) break;
+        }
         if(hits.size()!=1) throw new IllegalStateException(hits.size()+" "+kind+" matches");
         if(reference) byReference.add(id);
         HmgSeogaemoDexIndex.Member m=hits.get(0); Map<String,Object> result=new LinkedHashMap<String,Object>();

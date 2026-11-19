@@ -5,8 +5,17 @@ import java.util.Map;
 
 public final class HmgSeogaemoMapScannerTest {
     public static void main(String[] args) throws Exception {
-        HmgSeogaemoMapScanner scanner=new HmgSeogaemoMapScanner(args[0],new File(args[2]));
+        String product=args.length>3?args[3]:"UNIT.KOR.0000.V001.001.000000";
+        HmgSeogaemoMapScanner scanner=new HmgSeogaemoMapScanner(args[0],new File(args[2]),product);
         scanner.scan(new File(args[1]));
+        if(args.length>4) {
+            // Reference-name ranking: args[4] is the expected method of the reference point, "-" for unresolved.
+            Map<String,Object> found=scanner.points.get("example.target.reference");
+            String got=found==null?"-":String.valueOf(found.get("method"));
+            require(got.equals(args[4]),args[5]+": expected "+args[4]+", got "+got+" ("+scanner.missing.get("example.target.reference")+")");
+            require(found==null||scanner.byReference.contains("example.target.reference"),args[5]+": reference marked");
+            return;
+        }
         require(scanner.points.containsKey("example.target"),"class");
         require(scanner.points.containsKey("example.target.unique"),"unique method");
         require(!scanner.points.containsKey("example.target.missing"),"missing method");

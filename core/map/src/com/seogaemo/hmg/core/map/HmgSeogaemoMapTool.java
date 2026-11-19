@@ -202,7 +202,7 @@ public final class HmgSeogaemoMapTool {
         HmgSeogaemoMapFiles.write(new File(scratch,"incomplete"),ids.toString());
     }
     private void run() throws Exception {
-        HmgSeogaemoMapScanner scanner=new HmgSeogaemoMapScanner(systemRoot,new File(packageRoot,"maps"));
+        HmgSeogaemoMapScanner scanner=new HmgSeogaemoMapScanner(systemRoot,new File(packageRoot,"maps"),product);
         scanner.scan(new File(packageRoot,"hookpoints"));
         if(!product.matches("[A-Za-z0-9._-]+"))throw new IllegalStateException("invalid product");
         String[] parts=product.split("\\.");if(parts.length<3)throw new IllegalStateException("invalid product");
