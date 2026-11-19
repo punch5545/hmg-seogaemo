@@ -56,7 +56,13 @@ again while the module is on):
   the same driver-retaining cleanup (module on) or `sg_revert_all` (first enable). Driver operations are bounded
   to 15 seconds plus signal grace; a timeout retains records and requires restart before another driver operation.
   These recovery paths are host-tested, unverified on a car.
-- Client: `usb-wpa.conf` in the module state holds `ctrl_interface=<state>/wpa` and the chosen network. The app's picker
+- Client: `usb-wpa.conf` in the module state holds `ctrl_interface=wpa` and the chosen network. Android's `wpa_supplicant`
+  becomes the `wifi` user as soon as it starts (stock `init.rc` says so; AOSP `os_program_init`), so like hostapd it runs
+  with `daemon_user.usb-wpa=wifi`: started in the wifi-owned `run/usb-wpa` with a private copy of the config passed by
+  relative name, and its control sockets in `run/usb-wpa/wpa` (where `wifi_scan` points `wpa_cli -p`). Until 0.1.57 the
+  config was passed as a path into the root-only state directory and the daemon exited 255 at once on a car
+  (issue #11, K8 Hybrid with an RTL8831BU adapter); a failed USB step then also rolled back the built-in client of the
+  same apply. The fix is host-tested only (the fake supplicant refuses state paths). The app's picker
   runs `action wifi_scan` (needs `/system/bin/wpa_cli`, absent on the owner's car; then only "Other network" with a typed
   name works) and `action wifi_join`, which reads the fixed app file `files/wifi/usb-join` (`ssid=<hex>`,
   `psk=<64 hex>|none`; the app derives the WPA key with PBKDF2 so no passphrase reaches root) and restarts

@@ -190,6 +190,11 @@ Background: [wired-adb.md](wired-adb.md).
   refuses with "ADB state unknown" until the Wireless ADB screen has been opened once.
   The plan/precheck uses a stale or unknown wireless-adb status instead of polling it;
   refresh dependents before planning.
+- [ ] **USB Wi-Fi client after the supplicant fix (issue #11).** On a car with a supported adapter: `usb_role=client`,
+  module on; `daemon.usb-wpa.log` empty and the daemon stays up as uid 1010 (`ps`), `run/usb-wpa/usb-wpa.conf` and
+  `run/usb-wpa/wpa/rtwlan0` exist, `logcat -s wpa_supplicant` shows the scan; pick a network, check `info.usb_ip`,
+  replug and restart. If it still exits, read `logcat -s wpa_supplicant` right after the failed apply (the export's
+  logcat tail is too short on a busy unit).
 - [ ] On-car checks not yet done: wifi-client -> wifi takeover after a USB and an OTA update; USB adapter roles (driver load, client, hotspot); wifi built-in client disable exact restore (+restart);
   both user buttons after restart and after visiting stock settings
   (`user-button-shortcut.md`); full NEMESIS uninstall leaves the unit byte-identical

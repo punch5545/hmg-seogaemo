@@ -230,6 +230,11 @@ EOF
 for daemon in wpa_supplicant dhcpcd hostapd dnsmasq; do
     cat > "$work/tools/system/bin/$daemon" <<EOF
 #!/bin/sh
+# Android's wpa_supplicant and hostapd become the wifi user at once: they cannot open anything
+# by a path through the root-only module state, only names relative to their start directory.
+case "$daemon" in wpa_supplicant|hostapd)
+    for arg do case "\$arg" in *"\$HMG_SEOGAEMO_STATE"/*) exit 255 ;; esac; done ;;
+esac
 proc="\$SG_PROC_ROOT/\$\$"
 /bin/mkdir -p "\$proc"
 "$python" -c 'import sys; open(sys.argv[1], "wb").write(b"".join(a.encode() + b"\0" for a in sys.argv[2:]))' "\$proc/cmdline" "\$0" "\$@"
@@ -240,6 +245,7 @@ done
 cat > "$work/tools/system/bin/wpa_cli" <<'EOF'
 #!/bin/sh
 [ "$1 $3" = "-p -i" ] && [ "$4" = rtwlan0 ] || exit 2
+echo "$2" > "$TEST_WORK/wpa_cli_ctrl"
 case "$5" in
     scan) echo OK ;;
     scan_results)
@@ -500,14 +506,20 @@ plug 0bda b82c
 run apply; assert_state on
 calls | grep -Fxq "insmod $module/files/kmod/tcc803x/88x2bu.ko"
 grep -q '^88x2bu ' "$work/proc/modules"
-grep -Fxq "ctrl_interface=$state/wpa" "$state/usb-wpa.conf"
+grep -Fxq "ctrl_interface=wpa" "$state/usb-wpa.conf"
 if grep -q network= "$state/usb-wpa.conf"; then exit 1; fi
 wpa=$(daemon_pid usb-wpa)
-"$python" - "$work/proc/$wpa/cmdline" "$work/tools/system/bin/wpa_supplicant" "$state" <<'EOF'
+# wpa_supplicant drops root for wifi before reading its config (issue #11: it exited 255 on the
+# root-only state path): it starts in a wifi-owned run directory with a private copy of the
+# config, passed relative to it, and keeps its control sockets there.
+"$python" - "$work/proc/$wpa/cmdline" "$work/tools/system/bin/wpa_supplicant" <<'EOF'
 import sys
 args = open(sys.argv[1], "rb").read().split(b"\0")[:-1]
-assert args == [sys.argv[2].encode(), b"-irtwlan0", b"-Dnl80211", ("-c" + sys.argv[3] + "/usb-wpa.conf").encode()], args
+assert args == [sys.argv[2].encode(), b"-irtwlan0", b"-Dnl80211", b"-c", b"usb-wpa.conf"], args
 EOF
+run_dir=$state/run/usb-wpa
+cmp -s "$state/usb-wpa.conf" "$run_dir/usb-wpa.conf"
+grep -Fxq "chown 1010:1010 $run_dir" "$work/chowns" && grep -Fxq "chown 1010:1010 $run_dir/usb-wpa.conf" "$work/chowns"
 [ -d "$work/proc/$(daemon_pid usb-dhcp)" ]
 [ "$(peer radio)" = none ]
 run apply; assert_state on
@@ -516,6 +528,7 @@ sg_print "rtwlan0: inet addr:172.20.10.4 Bcast:172.20.10.15 Mask:255.255.255.240
 run status; assert_state on; assert_line info.usb_ip=172.20.10.4
 
 run action wifi_scan; assert_state on
+[ "$(cat "$work/wpa_cli_ctrl")" = "$state/run/usb-wpa/wpa" ]
 assert_line 'info.net_1=-41,psk,Home'; assert_line 'info.net_2=-70,open,Cafe Free'
 assert_line 'info.net_3=-60,eap,Office'; assert_line info.count=3
 fails action wifi_join; assert_state failed
@@ -525,6 +538,7 @@ run action wifi_join; assert_state on
 grep -Fxq '	ssid=486f6d65' "$state/usb-wpa.conf"
 grep -Fxq "	psk=$psk64" "$state/usb-wpa.conf"
 [ "$(daemon_pid usb-wpa)" != "$wpa" ]
+cmp -s "$state/usb-wpa.conf" "$state/run/usb-wpa/usb-wpa.conf"
 sg_print "ssid=436166652046726565" "psk=none" > "$work/inbox/usb-join"
 run action wifi_join; assert_state on
 grep -Fxq '	key_mgmt=NONE' "$state/usb-wpa.conf"

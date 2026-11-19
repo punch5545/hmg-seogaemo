@@ -220,12 +220,15 @@ usb_hostapd_conf() {
 }
 
 # The network chosen in the app: ssid as hex, psk as the 64-hex WPA key or "none" (open).
+# Android's wpa_supplicant becomes the wifi user as soon as it starts (like hostapd), so it cannot
+# reach the root-only module state. The runtime starts it in the wifi-owned run/usb-wpa with a
+# private copy of this file (daemon_user.usb-wpa); its control sockets go to wpa/ in that directory.
 usb_wpa_conf() {
     sg_ready || return 1
     wc_ssid=$(state_value usb-network ssid) || wc_ssid=
     wc_psk=$(state_value usb-network psk) || wc_psk=
     {
-        sg_print "ctrl_interface=$HMG_SEOGAEMO_STATE/wpa" update_config=0 ap_scan=1
+        sg_print ctrl_interface=wpa update_config=0 ap_scan=1
         if [ -n "$wc_ssid" ]; then
             sg_print 'network={' "	ssid=$wc_ssid" '	scan_ssid=1'
             if [ "$wc_psk" = none ]; then sg_print '	key_mgmt=NONE'; else sg_print "	psk=$wc_psk"; fi
@@ -497,7 +500,7 @@ scan() {
         sg_print info.scan=unavailable
         result on none 'This unit cannot list networks'
     fi
-    sc_ctrl=$HMG_SEOGAEMO_STATE/wpa
+    sc_ctrl=$HMG_SEOGAEMO_STATE/run/usb-wpa/wpa
     /system/bin/wpa_cli -p "$sc_ctrl" -i "$usb_iface" scan >/dev/null 2>&1 || :
     sleep 4
     sc_out=$(/system/bin/wpa_cli -p "$sc_ctrl" -i "$usb_iface" scan_results 2>/dev/null) ||
