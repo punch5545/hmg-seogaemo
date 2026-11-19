@@ -98,3 +98,11 @@ The [IGPEHEV bundle](../maps/hyundai/igpehev/kor/260902/README.md) resolves all
 Two ambiguous methods were recovered from the CN7 host scan using matching
 stock ODEX hashes and owner classes. On-device reflection of these two methods
 and physical feature testing are pending.
+
+## Kia K8 Hybrid (GL3 HEV) KOR 260902
+
+The [GL3HEV bundle](../maps/kia/gl3hev/kor/260902/README.md) is the device export of
+2026-11-10 (issue #13, app 0.1.53): 348 points, all reflected on the car, every name
+equal to the Ioniq 5 KOR bundle, 17 of 18 stock hashes unique to this firmware.
+`themesettings.split_item.type` and `dipo.carplay.telephony` are missing and optional.
+Physical feature testing and revert checks are pending.
